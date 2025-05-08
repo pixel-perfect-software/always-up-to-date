@@ -1,0 +1,9 @@
+dist/
+tests/
+src/**/*.test.ts
+src/**/*.ts
+bin/alwaysuptodate
+README.md
+tsconfig.json
+package.json
+.github/
