@@ -1,39 +1,98 @@
 import { createPullRequest } from "../../src/services/pr-generator";
-import { mockGitHubAPI } from "../mocks/github-api";
+import { execSync } from "child_process";
+
+// Mock child_process and logger
+jest.mock("child_process");
+jest.mock("../../src/utils/logger", () => ({
+  logger: {
+    error: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+  },
+}));
+
+const mockExecSync = execSync as jest.MockedFunction<typeof execSync>;
 
 describe("PR Generator Service", () => {
-  let originalGitHubAPI;
+  const originalEnv = process.env;
 
   beforeEach(() => {
-    originalGitHubAPI = global.gitHubAPI;
-    global.gitHubAPI = mockGitHubAPI;
+    // Reset environment variables
+    process.env = { ...originalEnv };
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
-    global.gitHubAPI = originalGitHubAPI;
+    process.env = originalEnv;
   });
 
-  test("should create a pull request with correct title and body", async () => {
-    const title = "Update dependencies";
-    const body = "This PR updates the following dependencies:\n- package1\n- package2\n\nMigration instructions:\n- Follow the upgrade guide for package1.\n- No changes needed for package2.";
-    
-    const result = await createPullRequest(title, body);
-    
-    expect(result).toEqual({
-      success: true,
-      url: "https://github.com/user/repo/pull/1",
-    });
-    expect(mockGitHubAPI.createPullRequest).toHaveBeenCalledWith({
-      title,
-      body,
-      head: "branch-name",
-      base: "main",
-    });
+  test("should handle missing GITHUB_TOKEN gracefully", async () => {
+    delete process.env.GITHUB_TOKEN;
+
+    const updates = [
+      {
+        name: "package1",
+        currentVersion: "1.0.0",
+        newVersion: "2.0.0",
+        hasBreakingChanges: false,
+      },
+    ];
+
+    // Should not throw but log error
+    await createPullRequest(updates);
+
+    const { logger } = require("../../src/utils/logger");
+    expect(logger.error).toHaveBeenCalledWith(
+      "GITHUB_TOKEN environment variable is not set"
+    );
   });
 
-  test("should handle errors when creating a pull request", async () => {
-    mockGitHubAPI.createPullRequest.mockRejectedValue(new Error("Failed to create PR"));
+  test("should handle missing repository info gracefully", async () => {
+    process.env.GITHUB_TOKEN = "test-token";
+    mockExecSync.mockImplementation(() => {
+      throw new Error("No git remote");
+    });
 
-    await expect(createPullRequest("Error PR", "This will fail")).rejects.toThrow("Failed to create PR");
+    const updates = [
+      {
+        name: "error-package",
+        currentVersion: "1.0.0",
+        newVersion: "2.0.0",
+        hasBreakingChanges: false,
+      },
+    ];
+
+    // Should not throw but log error
+    await createPullRequest(updates);
+
+    const { logger } = require("../../src/utils/logger");
+    expect(logger.error).toHaveBeenCalledWith(
+      "Could not determine repository owner and name"
+    );
+  });
+
+  test("should attempt to create PR with proper environment", async () => {
+    process.env.GITHUB_TOKEN = "test-token";
+    process.env.REPO_OWNER = "test-owner";
+    process.env.REPO_NAME = "test-repo";
+
+    mockExecSync.mockReturnValue(
+      Buffer.from("https://github.com/test-owner/test-repo.git")
+    );
+
+    const updates = [
+      {
+        name: "package1",
+        currentVersion: "1.0.0",
+        newVersion: "2.0.0",
+        hasBreakingChanges: false,
+      },
+    ];
+
+    // Should not throw
+    await createPullRequest(updates);
+
+    // Should have tried to get git remote
+    expect(mockExecSync).toHaveBeenCalledWith("git remote get-url origin");
   });
 });

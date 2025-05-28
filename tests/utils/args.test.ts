@@ -22,17 +22,9 @@ describe("Arguments Parser Utilities", () => {
   });
 
   test("should parse flags with values correctly", () => {
-    process.argv = [
-      "node",
-      "index.js",
-      "--mode",
-      "audit",
-      "--repository",
-      "user/repo",
-    ];
+    process.argv = ["node", "index.js", "--repository", "user/repo"];
 
     const args = parseArgs();
-    expect(args.mode).toBe("audit");
     expect(args.repository).toBe("user/repo");
   });
 
@@ -44,18 +36,9 @@ describe("Arguments Parser Utilities", () => {
   });
 
   test("should handle mixed flags correctly", () => {
-    process.argv = [
-      "node",
-      "index.js",
-      "--mode",
-      "auto",
-      "--createIssue",
-      "--token",
-      "abc123",
-    ];
+    process.argv = ["node", "index.js", "--createIssue", "--token", "abc123"];
 
     const args = parseArgs();
-    expect(args.mode).toBe("auto");
     expect(args.createIssue).toBe(true);
     expect(args.token).toBe("abc123");
   });

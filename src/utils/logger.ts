@@ -30,6 +30,10 @@ class Logger {
     };
   }
 
+  setLevel(level: string): void {
+    this.logLevel = level;
+  }
+
   log(message: any, level = "info"): void {
     if (this.logLevels[level] <= this.logLevels[this.logLevel]) {
       const timestamp = new Date().toISOString();

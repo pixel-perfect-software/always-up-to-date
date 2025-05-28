@@ -1,5 +1,6 @@
 import { updateDependencies } from "../services/dependency-checker";
 import { createPullRequest } from "../services/pr-generator";
+import { createBackup } from "./rollback";
 import { logger } from "../utils/logger";
 
 export interface AutoUpdateResult {
@@ -16,6 +17,13 @@ export const autoUpdateDependencies = async (
 ): Promise<AutoUpdateResult> => {
   try {
     logger.info("Starting automatic dependency update...");
+
+    // Create backup before updating
+    if (!args?.dryRun) {
+      logger.info("Creating backup before updates...");
+      await createBackup(args?.projectPath);
+    }
+
     const updates = await updateDependencies(args?.projectPath);
 
     if (updates.length > 0) {

@@ -24,4 +24,34 @@ describe("Check Command", () => {
       expect(result.breakingChanges[0]).toHaveProperty("migrationInstructions");
     }
   });
+
+  test("should handle preview mode correctly", async () => {
+    const result = await checkDependencies({ preview: true });
+    expect(result).toHaveProperty("updatable");
+    expect(result).toHaveProperty("breakingChanges");
+  });
+
+  test("should handle interactive mode correctly", async () => {
+    // Mock user input to avoid hanging in interactive mode
+    const mockConsoleLog = jest
+      .spyOn(console, "log")
+      .mockImplementation(() => {});
+
+    const result = await checkDependencies({ interactive: true });
+    expect(result).toHaveProperty("updatable");
+    expect(result).toHaveProperty("breakingChanges");
+
+    mockConsoleLog.mockRestore();
+  });
+
+  test("should handle errors gracefully", async () => {
+    const originalError = console.error;
+    console.error = jest.fn();
+
+    // Test with invalid project path
+    const result = await checkDependencies({ projectPath: "/invalid/path" });
+    expect(result).toEqual({ updatable: [], breakingChanges: [] });
+
+    console.error = originalError;
+  });
 });

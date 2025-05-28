@@ -3,6 +3,8 @@ import { parseArgs } from "./utils/args";
 import { checkDependencies } from "./commands/check";
 import { auditDependencies } from "./commands/audit";
 import { autoUpdateDependencies } from "./commands/auto";
+import { showDependencyDiff } from "./commands/diff";
+import { rollbackDependencies } from "./commands/rollback";
 import { ConfigManager } from "./utils/config";
 import { logger } from "./utils/logger";
 
@@ -27,6 +29,12 @@ program
   .description("Check for outdated dependencies")
   .option("-p, --projectPath <path>", "Path to the project directory")
   .option("-v, --verbose", "Show verbose output", false)
+  .option(
+    "--preview",
+    "Preview mode - show what would be updated without making changes",
+    false
+  )
+  .option("--interactive", "Interactive mode - ask before each update", false)
   .action((options, command) => {
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
@@ -64,6 +72,17 @@ program
     "GitHub repository in format owner/repo"
   )
   .option("-v, --verbose", "Show verbose output", false)
+  .option(
+    "--dry-run",
+    "Dry run mode - show what would be done without making changes",
+    false
+  )
+  .option(
+    "--batch-size <size>",
+    "Number of packages to update in each batch",
+    "10"
+  )
+  .option("--separate-prs", "Create separate PRs for each major update", false)
   .action((options, command) => {
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
@@ -106,6 +125,48 @@ program
       );
       process.exit(1);
     }
+  });
+
+program
+  .command("rollback")
+  .description("Rollback recent dependency updates")
+  .option("-p, --projectPath <path>", "Path to the project directory")
+  .option("-v, --verbose", "Show verbose output", false)
+  .option("--keep-backup", "Keep backup file after rollback", false)
+  .action((options) => {
+    const args = parseArgs();
+    const mergedOptions = { ...args, ...options };
+
+    if (mergedOptions.verbose) {
+      const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
+      logger.info(
+        `Running rollback command with options: ${mergedOptionsString}`
+      );
+    }
+
+    rollbackDependencies(mergedOptions);
+  });
+
+program
+  .command("diff")
+  .description("Show detailed diff of dependency changes")
+  .option("-p, --projectPath <path>", "Path to the project directory")
+  .option("-v, --verbose", "Show verbose output", false)
+  .option(
+    "--format <format>",
+    "Output format: table, json, or detailed",
+    "detailed"
+  )
+  .action((options) => {
+    const args = parseArgs();
+    const mergedOptions = { ...args, ...options };
+
+    if (mergedOptions.verbose) {
+      const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
+      logger.info(`Running diff command with options: ${mergedOptionsString}`);
+    }
+
+    showDependencyDiff(mergedOptions);
   });
 
 // Export a function that runs the CLI

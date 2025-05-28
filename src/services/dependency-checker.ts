@@ -12,7 +12,12 @@ import {
   NetworkError,
   withRetry,
 } from "../utils/errors";
-import { ConfigManager, AlwaysUpToDateConfig } from "../utils/config";
+import {
+  ConfigManager,
+  AlwaysUpToDateConfig,
+  UpdateStrategy,
+} from "../utils/config";
+import { MigrationAdvisor } from "./migration-advisor";
 import semver from "semver";
 
 interface DependencyUpdate {
@@ -27,10 +32,12 @@ interface DependencyUpdate {
 export class DependencyChecker {
   private packageManager: PackageManagerInterface;
   private config: ConfigManager;
+  private migrationAdvisor: MigrationAdvisor;
 
   constructor(private projectPath: string = process.cwd()) {
     this.packageManager = PackageManagerDetector.detect(this.projectPath);
     this.config = new ConfigManager(this.projectPath);
+    this.migrationAdvisor = new MigrationAdvisor();
   }
 
   /**
@@ -56,6 +63,15 @@ export class DependencyChecker {
         }
 
         const latestVersion = await this.getLatestVersion(pkg);
+
+        // Skip if this version should be ignored for this package
+        if (this.config.shouldIgnoreVersion(pkg, latestVersion)) {
+          logger.debug(
+            `Skipping ignored version ${latestVersion} for package: ${pkg}`
+          );
+          continue;
+        }
+
         const installedVersion = await this.packageManager.getInstalledVersion(
           this.projectPath,
           pkg
@@ -74,6 +90,21 @@ export class DependencyChecker {
             this.canUpdate(cleanInstalledVersion, latestVersion));
 
         if (needsUpdate) {
+          // Check if this update is allowed based on package-specific rules
+          const updateStrategy = this.config.getUpdateStrategyForPackage(pkg);
+          if (
+            !this.isUpdateAllowed(
+              cleanCurrentVersion,
+              latestVersion,
+              updateStrategy
+            )
+          ) {
+            logger.debug(
+              `Update not allowed for ${pkg} based on update strategy: ${updateStrategy}`
+            );
+            continue;
+          }
+
           const hasMajorChange =
             this.hasBreakingChanges(cleanCurrentVersion, latestVersion) ||
             (cleanInstalledVersion &&
@@ -169,14 +200,14 @@ export class DependencyChecker {
    */
   private async getLatestVersion(pkg: string): Promise<string> {
     try {
-      const retryConfig = this.config.getRetryConfig();
+      const config = this.config.getConfig();
       return await withRetry(
         async () => {
           const command = `npm show ${pkg} version`;
           return execSync(command, { stdio: "pipe" }).toString().trim();
         },
-        retryConfig.attempts,
-        retryConfig.delay
+        config.retryAttempts,
+        config.retryDelay
       );
     } catch (error) {
       logger.error(
@@ -222,7 +253,7 @@ export class DependencyChecker {
   }
 
   /**
-   * Gets migration instructions for breaking changes
+   * Gets migration instructions for breaking changes using the MigrationAdvisor
    * @param pkg Package name
    * @param currentVersion Current version
    * @param latestVersion Latest version
@@ -234,30 +265,10 @@ export class DependencyChecker {
     latestVersion: string
   ): Promise<string> {
     try {
-      // First try to find migration guide or release notes
-      const commands = [
-        `npm view ${pkg} homepage`,
-        `npm view ${pkg} repository.url`,
-      ];
-
-      for (const command of commands) {
-        try {
-          const url = execSync(command).toString().trim();
-          if (url) {
-            return (
-              `Major version change detected for ${pkg} (${currentVersion} → ${latestVersion}).\n\n` +
-              `Check the package's documentation at ${url} for migration instructions.\n\n` +
-              `You may need to update your code to accommodate breaking changes.`
-            );
-          }
-        } catch (e) {
-          // Ignore errors and try next command
-        }
-      }
-
-      return (
-        `Major version change detected for ${pkg} (${currentVersion} → ${latestVersion}).\n\n` +
-        `Please review the package's documentation for migration instructions.`
+      return await this.migrationAdvisor.getMigrationInstructions(
+        pkg,
+        currentVersion,
+        latestVersion
       );
     } catch (error) {
       logger.error(
@@ -265,7 +276,36 @@ export class DependencyChecker {
           (error as Error).message
         }`
       );
-      return `Unable to fetch migration instructions for ${pkg}.`;
+      return `Unable to fetch migration instructions for ${pkg}. Please check the package documentation manually.`;
+    }
+  }
+
+  /**
+   * Check if an update is allowed based on the update strategy
+   */
+  private isUpdateAllowed(
+    currentVersion: string,
+    latestVersion: string,
+    updateStrategy: UpdateStrategy
+  ): boolean {
+    if (updateStrategy === "none") {
+      return false;
+    }
+
+    const currentMajor = parseInt(currentVersion.split(".")[0]);
+    const latestMajor = parseInt(latestVersion.split(".")[0]);
+    const currentMinor = parseInt(currentVersion.split(".")[1] || "0");
+    const latestMinor = parseInt(latestVersion.split(".")[1] || "0");
+
+    switch (updateStrategy) {
+      case "patch":
+        return currentMajor === latestMajor && currentMinor === latestMinor;
+      case "minor":
+        return currentMajor === latestMajor;
+      case "major":
+        return true;
+      default:
+        return true;
     }
   }
 }
@@ -279,4 +319,35 @@ export async function checkForUpdates(projectPath?: string) {
 export async function updateDependencies(projectPath?: string) {
   const checker = new DependencyChecker(projectPath);
   return checker.updateDependencies();
+}
+
+export async function checkDependencies(
+  dependencies: Record<string, string>
+): Promise<DependencyUpdate[]> {
+  const updates: DependencyUpdate[] = [];
+
+  for (const [name, currentVersion] of Object.entries(dependencies)) {
+    try {
+      const command = `npm show ${name} version`;
+      const latestVersion = execSync(command, { stdio: "pipe" })
+        .toString()
+        .trim();
+
+      if (latestVersion && semver.gt(latestVersion, currentVersion)) {
+        const hasBreakingChanges =
+          semver.major(latestVersion) !== semver.major(currentVersion);
+
+        updates.push({
+          name,
+          currentVersion,
+          newVersion: latestVersion,
+          hasBreakingChanges,
+        });
+      }
+    } catch (error) {
+      logger.warn(`Failed to check ${name}: ${error}`);
+    }
+  }
+
+  return updates;
 }

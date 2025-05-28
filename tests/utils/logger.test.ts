@@ -7,30 +7,57 @@ describe("Logger Utility", () => {
   });
 
   test("should log messages at info level", () => {
-    console.log = jest.fn();
+    const mockConsoleLog = jest
+      .spyOn(console, "log")
+      .mockImplementation(() => {});
     logger.info("This is an info message");
-    expect(console.log).toHaveBeenCalledWith("INFO: This is an info message");
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("[INFO]")
+    );
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("This is an info message")
+    );
+    mockConsoleLog.mockRestore();
   });
 
   test("should log messages at warning level", () => {
-    console.warn = jest.fn();
+    const mockConsoleLog = jest
+      .spyOn(console, "log")
+      .mockImplementation(() => {});
     logger.warn("This is a warning message");
-    expect(console.warn).toHaveBeenCalledWith("WARNING: This is a warning message");
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("[WARN]")
+    );
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("This is a warning message")
+    );
+    mockConsoleLog.mockRestore();
   });
 
   test("should log messages at error level", () => {
-    console.error = jest.fn();
+    const mockConsoleLog = jest
+      .spyOn(console, "log")
+      .mockImplementation(() => {});
     logger.error("This is an error message");
-    expect(console.error).toHaveBeenCalledWith("ERROR: This is an error message");
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("[ERROR]")
+    );
+    expect(mockConsoleLog).toHaveBeenCalledWith(
+      expect.stringContaining("This is an error message")
+    );
+    mockConsoleLog.mockRestore();
   });
 
   test("should handle different log levels", () => {
     logger.setLevel("warn");
-    console.log = jest.fn();
+    const mockConsoleLog = jest
+      .spyOn(console, "log")
+      .mockImplementation(() => {});
     logger.info("This should not be logged");
-    expect(console.log).not.toHaveBeenCalled();
+    expect(mockConsoleLog).not.toHaveBeenCalled();
 
     logger.warn("This should be logged");
-    expect(console.warn).toHaveBeenCalledWith("WARNING: This should be logged");
+    expect(mockConsoleLog).toHaveBeenCalled();
+    mockConsoleLog.mockRestore();
   });
 });

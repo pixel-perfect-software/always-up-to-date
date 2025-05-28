@@ -1,0 +1,72 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *" # Daily at 6 AM UTC
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-project:
+          - name: "npm-project"
+            setup: "npm init -y && npm install lodash express"
+            package-manager: "npm"
+          - name: "yarn-project"
+            setup: "yarn init -y && yarn add lodash express"
+            package-manager: "yarn"
+          - name: "pnpm-project"
+            setup: "pnpm init && pnpm add lodash express"
+            package-manager: "pnpm"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install tool dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the tool
+        run: pnpm run build
+
+      - name: Setup test project (${{ matrix.test-project.name }})
+        run: |
+          mkdir -p test-projects/${{ matrix.test-project.name }}
+          cd test-projects/${{ matrix.test-project.name }}
+          ${{ matrix.test-project.setup }}
+
+      - name: Test check command
+        run: |
+          cd test-projects/${{ matrix.test-project.name }}
+          npx alwaysuptodate check --verbose
+
+      - name: Test audit command
+        run: |
+          cd test-projects/${{ matrix.test-project.name }}
+          npx alwaysuptodate audit --verbose
+
+      - name: Test diff command
+        run: |
+          cd test-projects/${{ matrix.test-project.name }}
+          npx alwaysuptodate diff --format json
+
+      - name: Test dry-run auto command
+        run: |
+          cd test-projects/${{ matrix.test-project.name }}
+          npx alwaysuptodate auto --dry-run --verbose

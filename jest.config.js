@@ -1,0 +1,26 @@
+module.exports = {
+  preset: "ts-jest",
+  testEnvironment: "node",
+  roots: ["<rootDir>/src", "<rootDir>/tests"],
+  testMatch: ["**/tests/**/*.test.ts"],
+  transform: {
+    "^.+\\.ts$": [
+      "ts-jest",
+      {
+        useESM: true,
+      },
+    ],
+  },
+  collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
+  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
+  setupFilesAfterEnv: [],
+  clearMocks: true,
+  restoreMocks: true,
+  transformIgnorePatterns: ["node_modules/(?!(@octokit|@inquirer)/)"],
+  extensionsToTreatAsEsm: [".ts"],
+  moduleNameMapper: {
+    "^@octokit/rest$": "<rootDir>/tests/mocks/github-api.ts",
+    "^(\\.{1,2}/.*)\\.js$": "$1",
+  },
+  testTimeout: 15000,
+};
