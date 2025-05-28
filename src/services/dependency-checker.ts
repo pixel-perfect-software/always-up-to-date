@@ -1,9 +1,18 @@
-// filepath: /always-up-to-date/always-up-to-date/src/services/dependency-checker.ts
 import { execSync } from "child_process";
 import { promises as fs } from "fs";
 import path from "path";
-import npmWrapper from "../utils/npm-wrapper";
+import {
+  PackageManagerDetector,
+  PackageManagerInterface,
+} from "../utils/package-manager";
 import { logger } from "../utils/logger";
+import {
+  wrapError,
+  DependencyError,
+  NetworkError,
+  withRetry,
+} from "../utils/errors";
+import { ConfigManager, AlwaysUpToDateConfig } from "../utils/config";
 import semver from "semver";
 
 interface DependencyUpdate {
@@ -16,7 +25,13 @@ interface DependencyUpdate {
 }
 
 export class DependencyChecker {
-  constructor(private projectPath: string = process.cwd()) {}
+  private packageManager: PackageManagerInterface;
+  private config: ConfigManager;
+
+  constructor(private projectPath: string = process.cwd()) {
+    this.packageManager = PackageManagerDetector.detect(this.projectPath);
+    this.config = new ConfigManager(this.projectPath);
+  }
 
   /**
    * Checks for available updates for all dependencies
@@ -27,13 +42,21 @@ export class DependencyChecker {
     breakingChanges: DependencyUpdate[];
   }> {
     try {
-      const dependencies = await npmWrapper.getDependencies(this.projectPath);
+      const dependencies = await this.packageManager.getDependencies(
+        this.projectPath
+      );
       const updatable: DependencyUpdate[] = [];
       const breakingChanges: DependencyUpdate[] = [];
 
       for (const [pkg, currentVersion] of Object.entries(dependencies)) {
+        // Skip ignored packages
+        if (this.config.shouldIgnorePackage(pkg)) {
+          logger.debug(`Skipping ignored package: ${pkg}`);
+          continue;
+        }
+
         const latestVersion = await this.getLatestVersion(pkg);
-        const installedVersion = await npmWrapper.getInstalledVersion(
+        const installedVersion = await this.packageManager.getInstalledVersion(
           this.projectPath,
           pkg
         );
@@ -51,11 +74,27 @@ export class DependencyChecker {
             this.canUpdate(cleanInstalledVersion, latestVersion));
 
         if (needsUpdate) {
-          if (
+          const hasMajorChange =
             this.hasBreakingChanges(cleanCurrentVersion, latestVersion) ||
             (cleanInstalledVersion &&
-              this.hasBreakingChanges(cleanInstalledVersion, latestVersion))
-          ) {
+              this.hasBreakingChanges(cleanInstalledVersion, latestVersion));
+
+          // Skip major updates if not allowed by config
+          if (hasMajorChange && !this.config.shouldAllowMajorUpdate()) {
+            const instructions = await this.getMigrationInstructions(
+              pkg,
+              cleanCurrentVersion,
+              latestVersion
+            );
+            breakingChanges.push({
+              name: pkg,
+              currentVersion: cleanCurrentVersion,
+              installedVersion: cleanInstalledVersion || undefined,
+              newVersion: latestVersion,
+              hasBreakingChanges: true,
+              migrationInstructions: instructions,
+            });
+          } else if (hasMajorChange) {
             const instructions = await this.getMigrationInstructions(
               pkg,
               cleanCurrentVersion,
@@ -100,7 +139,7 @@ export class DependencyChecker {
         logger.info(
           `Updating ${dep.name} from ${dep.currentVersion} to ${dep.newVersion}`
         );
-        await npmWrapper.updateDependency(
+        await this.packageManager.updateDependency(
           this.projectPath,
           dep.name,
           dep.newVersion
@@ -130,11 +169,22 @@ export class DependencyChecker {
    */
   private async getLatestVersion(pkg: string): Promise<string> {
     try {
-      const command = `npm show ${pkg} version`;
-      return execSync(command).toString().trim();
+      const retryConfig = this.config.getRetryConfig();
+      return await withRetry(
+        async () => {
+          const command = `npm show ${pkg} version`;
+          return execSync(command, { stdio: "pipe" }).toString().trim();
+        },
+        retryConfig.attempts,
+        retryConfig.delay
+      );
     } catch (error) {
       logger.error(
-        `Error getting latest version for ${pkg}: ${(error as Error).message}`
+        new DependencyError(
+          `Error getting latest version for ${pkg}`,
+          pkg,
+          error as Error
+        )
       );
       return "0.0.0"; // Return a fallback version that won't trigger updates
     }

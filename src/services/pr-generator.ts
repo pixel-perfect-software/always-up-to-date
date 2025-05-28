@@ -34,6 +34,7 @@ export class PRGenerator {
     try {
       // Make sure we're on the right branch first
       const currentBranch = this.getCurrentBranch();
+      const originalBranch = currentBranch;
 
       if (currentBranch !== options.branch) {
         this.createAndCheckoutBranch(options.branch);
@@ -42,20 +43,36 @@ export class PRGenerator {
       // Check if there are any changes to commit
       if (!this.hasChangesToCommit()) {
         logger.info("No changes to commit for PR.");
+        // Switch back to original branch if we switched
+        if (originalBranch !== options.branch) {
+          execSync(`git checkout ${originalBranch}`, { stdio: "pipe" });
+        }
         return;
       }
 
       // Stage all changes
-      execSync("git add .", { stdio: "inherit" });
+      execSync("git add .", { stdio: "pipe" });
 
-      // Commit the changes
-      execSync(`git commit -m "${options.title}"`, { stdio: "inherit" });
+      // Commit the changes with proper escaping
+      const commitMessage = options.title.replace(/"/g, '\\"');
+      execSync(`git commit -m "${commitMessage}"`, { stdio: "pipe" });
 
       // Push the changes
-      execSync(`git push origin ${options.branch}`, { stdio: "inherit" });
+      execSync(`git push -u origin ${options.branch}`, { stdio: "pipe" });
+
+      // Check if PR already exists
+      const existingPR = await this.checkExistingPR(
+        options.branch,
+        options.baseBranch || "main"
+      );
+
+      if (existingPR) {
+        logger.info(`Pull request already exists: ${existingPR.html_url}`);
+        return;
+      }
 
       // Create PR
-      await this.octokit.pulls.create({
+      const pr = await this.octokit.pulls.create({
         owner: this.repoOwner,
         repo: this.repoName,
         title: options.title,
@@ -64,7 +81,7 @@ export class PRGenerator {
         base: options.baseBranch || "main",
       });
 
-      logger.info(`Pull request created successfully: ${options.title}`);
+      logger.info(`Pull request created successfully: ${pr.data.html_url}`);
     } catch (error) {
       logger.error(`Error creating PR: ${(error as Error).message}`);
       throw error;
@@ -127,15 +144,42 @@ export class PRGenerator {
     return execSync("git branch --show-current").toString().trim();
   }
 
+  private async checkExistingPR(head: string, base: string): Promise<any> {
+    try {
+      const { data: prs } = await this.octokit.pulls.list({
+        owner: this.repoOwner,
+        repo: this.repoName,
+        head: `${this.repoOwner}:${head}`,
+        base,
+        state: "open",
+      });
+      return prs.length > 0 ? prs[0] : null;
+    } catch (error) {
+      logger.error(`Error checking existing PR: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
   private createAndCheckoutBranch(branch: string): void {
     try {
-      // Check if branch exists
-      const branches = execSync("git branch").toString();
+      // Check if branch exists locally
+      const branches = execSync("git branch --list", {
+        stdio: "pipe",
+      }).toString();
 
       if (branches.includes(branch)) {
-        execSync(`git checkout ${branch}`, { stdio: "inherit" });
+        execSync(`git checkout ${branch}`, { stdio: "pipe" });
       } else {
-        execSync(`git checkout -b ${branch}`, { stdio: "inherit" });
+        // Check if branch exists on remote
+        try {
+          execSync(`git fetch origin ${branch}`, { stdio: "pipe" });
+          execSync(`git checkout -b ${branch} origin/${branch}`, {
+            stdio: "pipe",
+          });
+        } catch {
+          // Branch doesn't exist on remote, create new
+          execSync(`git checkout -b ${branch}`, { stdio: "pipe" });
+        }
       }
     } catch (error) {
       logger.error(

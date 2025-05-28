@@ -1,0 +1,15 @@
+{
+  "autoUpdate": false,
+  "createPRs": true,
+  "ignoredPackages": [
+    "@types/node",
+    "typescript"
+  ],
+  "includeDev": true,
+  "onlyDirect": false,
+  "baseBranch": "main",
+  "allowMajorUpdates": false,
+  "allowPrerelease": false,
+  "retryAttempts": 3,
+  "retryDelay": 1000
+}

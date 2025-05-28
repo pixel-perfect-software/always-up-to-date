@@ -3,6 +3,7 @@ import { parseArgs } from "./utils/args";
 import { checkDependencies } from "./commands/check";
 import { auditDependencies } from "./commands/audit";
 import { autoUpdateDependencies } from "./commands/auto";
+import { ConfigManager } from "./utils/config";
 import { logger } from "./utils/logger";
 
 // Create a program instance
@@ -86,6 +87,25 @@ program
     }
 
     autoUpdateDependencies(mergedOptions);
+  });
+
+program
+  .command("init")
+  .description("Create a sample configuration file")
+  .option(
+    "-p, --projectPath <path>",
+    "Path to the project directory",
+    process.cwd()
+  )
+  .action((options) => {
+    try {
+      ConfigManager.createSampleConfig(options.projectPath);
+    } catch (error) {
+      logger.error(
+        `Failed to create configuration: ${(error as Error).message}`
+      );
+      process.exit(1);
+    }
   });
 
 // Export a function that runs the CLI

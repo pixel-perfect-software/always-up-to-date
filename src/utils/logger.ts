@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { createColors } from "colorette";
+import { AlwaysUpToDateError } from "./errors";
 
 // Force enable colors
 const colorette = createColors({ useColor: true });
@@ -36,10 +37,40 @@ class Logger {
       const formattedLevel = colorFn(
         colorette.bold(`[${level.toUpperCase()}]`)
       );
+
+      let formattedMessage = message;
+      if (message instanceof Error) {
+        formattedMessage = this.formatError(message);
+      } else if (typeof message === "object") {
+        formattedMessage = JSON.stringify(message, null, 2);
+      }
+
       console.log(
-        `${colorette.gray(`[${timestamp}]`)} ${formattedLevel}: ${message}`
+        `${colorette.gray(
+          `[${timestamp}]`
+        )} ${formattedLevel}: ${formattedMessage}`
       );
     }
+  }
+
+  private formatError(error: Error): string {
+    if (error instanceof AlwaysUpToDateError) {
+      let message = `${error.message}`;
+      if (error.code) {
+        message += ` [${error.code}]`;
+      }
+      if (error.originalError && this.logLevel === "debug") {
+        message += `\nOriginal error: ${error.originalError.message}`;
+        if (error.originalError.stack) {
+          message += `\nStack: ${error.originalError.stack}`;
+        }
+      }
+      return message;
+    }
+
+    return this.logLevel === "debug" && error.stack
+      ? `${error.message}\nStack: ${error.stack}`
+      : error.message;
   }
 
   error(message: any): void {
