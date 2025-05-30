@@ -18,26 +18,10 @@ A smart CLI tool that automatically keeps your npm dependencies up to date with 
 - 🎯 **GitHub Integration** - Auto-creates PRs with detailed migration guides
 - 📦 **Universal Support** - Works with npm, yarn, pnpm, and bun
 - ⚙️ **Highly Configurable** - Granular control over update strategies
-- 🧠 **Smart Migration Advisor** - Provides detailed migration instructions for popular packages (React, Next.js, TypeScript, ESLint, Jest, Prettier)
+- 🧠 **Smart Migration Advisor** - Detailed migration instructions for popular packages
 - 🔄 **Interactive Mode** - Choose exactly which packages to update
 - 📊 **Multiple Output Formats** - Table, JSON, or detailed diff views
 - 🔍 **Preview Mode** - See detailed update plans before applying changes
-
-## 🚨 Safety Features
-
-- **Automatic Backups** - Creates `package.json.backup` before changes
-- **Smart Rollback** - `npx alwaysuptodate rollback` to undo changes
-- **Package Manager Detection** - Works with npm, yarn, pnpm, bun
-- **Vulnerability Scanning** - Security audit integration
-- **Migration Advisor** - Detailed upgrade instructions for popular packages:
-  - React (17→18, etc.)
-  - Next.js (13→14, etc.)
-  - TypeScript (4→5, etc.)
-  - ESLint (8→9, etc.)
-  - Jest (28→29, etc.)
-  - Prettier (2→3, etc.)
-- **Breaking Change Detection** - Identifies major version updates requiring manual review
-- **Interactive Selection** - Choose exactly which updates to apply
 
 ## 💸 Support this package's development & maintenance
 
@@ -45,96 +29,65 @@ A smart CLI tool that automatically keeps your npm dependencies up to date with 
 
 ## 🚀 Quick Start
 
-### Installation
-
 ```bash
 # Global installation (recommended)
 npm install -g always-up-to-date
 
-# Or use npx for one-time usage
-npx always-up-to-date check
-```
-
-### Basic Usage
-
-```bash
 # Check for outdated dependencies
 npx alwaysuptodate check
 
-# Audit for vulnerabilities
-npx alwaysuptodate audit
-
 # Auto-update with GitHub PR creation
 npx alwaysuptodate auto --createIssue
-
-# Interactive mode with prompts
-npx alwaysuptodate check --interactive
 ```
 
-## 🔧 GitHub Authentication
+## 📖 Documentation
 
-Authentication is handled automatically! The tool detects credentials from:
+- 📦 **[Installation Guide](./docs/installation.md)** - Detailed installation instructions and troubleshooting
+- 🚀 **[Quick Start Guide](./docs/quick-start.md)** - Get up and running in minutes
+- 🛠️ **[Commands Reference](./docs/commands.md)** - Complete command documentation with examples
+- ⚙️ **[Configuration Guide](./docs/configuration.md)** - Advanced configuration options and examples
+- 🔒 **[Safety Features](./docs/safety-features.md)** - Backup, rollback, and security features
+- 🐙 **[GitHub Integration](./docs/github-integration.md)** - PR creation and CI/CD setup
+- 🛠️ **[Troubleshooting Guide](./docs/troubleshooting.md)** - Common issues and solutions
+- 🤝 **[Contributing Guide](./docs/contributing.md)** - How to contribute to the project
 
-1. Command line (`--token` flag)
-2. VS Code GitHub authentication
-3. Environment variables (`GITHUB_TOKEN`)
-4. Environment files (`.env`)
-
-### Quick Setup
+## 🔧 Basic Usage Examples
 
 ```bash
-# Option 1: Use environment variable
-export GITHUB_TOKEN="your_token_here"
+# Interactive mode - choose which packages to update
+npx alwaysuptodate check --interactive
 
-# Option 2: Create .env file
-echo "GITHUB_TOKEN=your_token_here" > .env
+# Preview changes without applying them
+npx alwaysuptodate check --preview
 
-# Option 3: Pass token directly
-npx alwaysuptodate auto --createIssue --token your_token_here
+# Audit for security vulnerabilities
+npx alwaysuptodate audit
+
+# Rollback recent changes
+npx alwaysuptodate rollback
 ```
 
-[Create a GitHub token](https://github.com/settings/tokens) with `repo` and `workflow` scopes.
+## 🚨 Safety Features
 
-## 📚 Commands
+- **Automatic Backups** - Creates `package.json.backup` before changes
+- **Smart Rollback** - Easy undo with `rollback` command
+- **Breaking Change Detection** - Identifies major version updates
+- **Vulnerability Scanning** - Built-in security audit
+- **Interactive Selection** - Choose exactly which updates to apply
 
-| Command    | Description                           | Example                                  |
-| ---------- | ------------------------------------- | ---------------------------------------- |
-| `check`    | Check for outdated dependencies       | `npx alwaysuptodate check --preview`     |
-| `audit`    | Scan for security vulnerabilities     | `npx alwaysuptodate audit`               |
-| `auto`     | Auto-update with optional PR creation | `npx alwaysuptodate auto --createIssue`  |
-| `diff`     | Show detailed version differences     | `npx alwaysuptodate diff --format table` |
-| `rollback` | Undo recent changes                   | `npx alwaysuptodate rollback`            |
-| `init`     | Create configuration file             | `npx alwaysuptodate init`                |
+**[→ Learn more about safety features](./docs/safety-features.md)**
 
-### Common Options
+## 🔧 GitHub Integration
 
-- `-p, --projectPath <path>` - Specify project directory
-- `-v, --verbose` - Show detailed output
-- `--dry-run` - Preview changes without applying
-- `--interactive` - Enable interactive prompts
+Set up automated dependency updates with GitHub PR creation:
 
-### Command-Specific Options
+```bash
+# Quick setup with environment variable
+export GITHUB_TOKEN="your_token_here"
+npx alwaysuptodate auto --createIssue
+```
 
-#### `check` Command
-
-- `--preview` - Show detailed report without making changes
-- `--interactive` - Select specific packages to update
-
-#### `auto` Command
-
-- `-c, --createIssue` - Create GitHub PR with updates
-- `-t, --token <token>` - GitHub token (auto-detected if not provided)
-- `-r, --repository <owner/repo>` - GitHub repository (auto-detected if not provided)
-- `--batch-size <size>` - Number of packages to update per batch (default: 10)
-- `--separate-prs` - Create separate PRs for each major update
-
-#### `diff` Command
-
-- `--format <format>` - Output format: `table`, `json`, or `detailed` (default: detailed)
-
-#### `rollback` Command
-
-- `--keep-backup` - Keep backup file after rollback
+**[→ Complete GitHub integration guide](./docs/github-integration.md)**
 
 ## ⚙️ Configuration
 
@@ -142,68 +95,23 @@ Create `.alwaysuptodate.json` for advanced customization:
 
 ```json
 {
-  "autoUpdate": false,
-  "createPRs": true,
   "updateStrategy": "minor",
-  "ignoredPackages": ["@types/node", "typescript"],
-  "includeDev": true,
-  "onlyDirect": false,
+  "ignoredPackages": ["@types/node"],
   "packageRules": [
     {
       "name": "react",
       "updateStrategy": "minor",
-      "autoUpdate": false,
-      "ignoredVersions": ["19.0.0-beta.1"]
-    },
-    {
-      "name": "@types/*",
-      "updateStrategy": "patch",
-      "autoUpdate": true
+      "autoUpdate": false
     }
-  ],
-  "baseBranch": "main",
-  "batchSize": 10,
-  "parallelUpdates": false,
-  "createSeparatePRs": false,
-  "confirmBeforeUpdate": false
+  ]
 }
 ```
 
-### Configuration Options
-
-- `autoUpdate` - Enable automatic updates without prompts
-- `createPRs` - Automatically create GitHub PRs
-- `updateStrategy` - Default strategy: `major`, `minor`, `patch`
-- `ignoredPackages` - Packages to skip during updates
-- `packageRules` - Package-specific update rules with pattern matching
-- `batchSize` - Number of packages to update simultaneously
-- `parallelUpdates` - Enable parallel processing
-- `createSeparatePRs` - Create individual PRs for major updates
-
-## 🔄 CI/CD Integration
-
-Add to your GitHub Actions workflow:
-
-```yaml
-name: Update Dependencies
-on:
-  schedule:
-    - cron: "0 9 * * 1" # Weekly on Monday
-
-jobs:
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-      - run: npx always-up-to-date auto --createIssue
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
+**[→ See full configuration options](./docs/configuration.md)**
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please fork the repository, create a feature branch, and submit a pull request.
+Contributions are welcome! Please see our [Contributing Guide](./docs/contributing.md) for details on how to get started.
 
 ## 📝 License
 
