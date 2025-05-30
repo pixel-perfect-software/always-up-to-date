@@ -12,6 +12,7 @@ module.exports = {
     ],
   },
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
+  coveragePathIgnorePatterns: ["node_modules/"],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
   setupFilesAfterEnv: [],
   clearMocks: true,
