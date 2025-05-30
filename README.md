@@ -1,3 +1,7 @@
+<center>
+  <img src="./assets/logo.svg" />
+</center>
+
 # Always Up To Date
 
 [![CI](https://github.com/pixel-perfect-software/always-up-to-date/workflows/CI/badge.svg)](https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/ci.yml)
