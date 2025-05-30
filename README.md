@@ -34,7 +34,7 @@ A smart CLI tool that automatically keeps your npm dependencies up to date with 
 - **Breaking Change Detection** - Identifies major version updates requiring manual review
 - **Interactive Selection** - Choose exactly which updates to apply
 
-### Support this package's development & maintenance
+## 💸 Support this package's development & maintenance
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/tylernrobertson)
 
