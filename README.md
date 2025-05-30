@@ -410,7 +410,3 @@ Contributions are welcome! Please:
 
 MIT © [Tyler Robertson](https://github.com/TylerNRobertson)
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-Thanks to all contributors and the open-source community for their support and inspiration in building this project.

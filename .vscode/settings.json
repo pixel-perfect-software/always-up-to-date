@@ -1,0 +1,17 @@
+{
+  "github.copilot.chat.completionContext.typescript.mode": "on",
+  "chat.instructionsFilesLocations": [".copilot"],
+  "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+  "github.copilot.chat.codeGeneration.instructions": [
+    { "file": ".copilot/code.instructions.md" }
+  ],
+  "github.copilot.chat.commitMessageGeneration.instructions": [
+    { "file": ".copilot/commit.instructions.md" }
+  ],
+  "github.copilot.chat.pullRequestDescriptionGeneration.instructions": [
+    { "file": ".copilot/pr-desc.instructions.md" }
+  ],
+  "github.copilot.chat.testGeneration.instructions": [
+    { "file": ".copilot/testing.instructions.md" }
+  ]
+}
