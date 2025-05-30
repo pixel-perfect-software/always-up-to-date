@@ -155,10 +155,9 @@ Create `.alwaysuptodate.json` for advanced customization:
 - `parallelUpdates` - Enable parallel processing
 - `createSeparatePRs` - Create individual PRs for major updates
 
-````
-
 ## 🚨 Safety Features
 
+```
 - **Automatic Backups** - Creates `package.json.backup` before changes
 - **Smart Rollback** - `npx alwaysuptodate rollback` to undo changes
 - **Package Manager Detection** - Works with npm, yarn, pnpm, bun
@@ -172,6 +171,7 @@ Create `.alwaysuptodate.json` for advanced customization:
   - Prettier (2→3, etc.)
 - **Breaking Change Detection** - Identifies major version updates requiring manual review
 - **Interactive Selection** - Choose exactly which updates to apply
+```
 
 ## 🔄 CI/CD Integration
 
@@ -192,7 +192,7 @@ jobs:
       - run: npx always-up-to-date auto --createIssue
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-````
+```
 
 ## 🤝 Contributing
 
