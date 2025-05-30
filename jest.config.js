@@ -13,6 +13,7 @@ module.exports = {
   },
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
   coveragePathIgnorePatterns: ["node_modules/"],
+  coverageReporters: ["text", "lcov", "html", "json-summary"],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
   setupFilesAfterEnv: [],
   clearMocks: true,

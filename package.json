@@ -45,6 +45,8 @@
     "prepublishOnly": "pnpm run build && pnpm test",
     "prepack": "pnpm run build",
     "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:badges": "npm run test:coverage && jest-coverage-badges --output ./badges",
     "clean": "rm -rf dist",
     "dev": "tsc --watch",
     "audit": "node dist/cli.js audit",
@@ -57,6 +59,7 @@
     "axios": "^1.9.0",
     "colorette": "^2.0.20",
     "commander": "^14.0.0",
+    "jest-coverage-badges": "^1.1.2",
     "semver": "^7.7.2",
     "ts-command-line-args": "^2.5.1"
   },
