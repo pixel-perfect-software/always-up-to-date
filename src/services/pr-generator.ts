@@ -3,6 +3,7 @@ import { execSync } from "child_process";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { logger } from "../utils/logger";
+import { getGitHubToken } from "../utils/auth";
 
 interface PullRequestOptions {
   title: string;
@@ -201,10 +202,12 @@ export async function createPullRequest(
   updates: DependencyUpdate[]
 ): Promise<void> {
   try {
-    const token = process.env.GITHUB_TOKEN;
+    // Use the new auth service to get token
+    const token = await getGitHubToken();
 
     if (!token) {
-      logger.error("GITHUB_TOKEN environment variable is not set");
+      logger.error("No GitHub token available. Cannot create pull request.");
+      logger.info("Please set up GitHub authentication to use this feature.");
       return;
     }
 
@@ -228,6 +231,9 @@ export async function createPullRequest(
 
     if (!repoOwner || !repoName) {
       logger.error("Could not determine repository owner and name");
+      logger.info(
+        "Make sure you're in a git repository or set REPO_OWNER and REPO_NAME environment variables"
+      );
       return;
     }
 

@@ -1,7 +1,8 @@
 import { createPullRequest } from "../../src/services/pr-generator";
 import { execSync } from "child_process";
+import { getGitHubToken } from "../../src/utils/auth";
 
-// Mock child_process and logger
+// Mock child_process, logger, and auth
 jest.mock("child_process");
 jest.mock("../../src/utils/logger", () => ({
   logger: {
@@ -10,8 +11,14 @@ jest.mock("../../src/utils/logger", () => ({
     warn: jest.fn(),
   },
 }));
+jest.mock("../../src/utils/auth", () => ({
+  getGitHubToken: jest.fn(),
+}));
 
 const mockExecSync = execSync as jest.MockedFunction<typeof execSync>;
+const mockGetGitHubToken = getGitHubToken as jest.MockedFunction<
+  typeof getGitHubToken
+>;
 
 describe("PR Generator Service", () => {
   const originalEnv = process.env;
@@ -29,6 +36,9 @@ describe("PR Generator Service", () => {
   test("should handle missing GITHUB_TOKEN gracefully", async () => {
     delete process.env.GITHUB_TOKEN;
 
+    // Mock getGitHubToken to return null (no token found)
+    mockGetGitHubToken.mockResolvedValue(null);
+
     const updates = [
       {
         name: "package1",
@@ -43,12 +53,14 @@ describe("PR Generator Service", () => {
 
     const { logger } = require("../../src/utils/logger");
     expect(logger.error).toHaveBeenCalledWith(
-      "GITHUB_TOKEN environment variable is not set"
+      "No GitHub token available. Cannot create pull request."
     );
   });
 
   test("should handle missing repository info gracefully", async () => {
-    process.env.GITHUB_TOKEN = "test-token";
+    // Mock getGitHubToken to return a valid token
+    mockGetGitHubToken.mockResolvedValue("test-token");
+
     mockExecSync.mockImplementation(() => {
       throw new Error("No git remote");
     });
@@ -72,7 +84,9 @@ describe("PR Generator Service", () => {
   });
 
   test("should attempt to create PR with proper environment", async () => {
-    process.env.GITHUB_TOKEN = "test-token";
+    // Mock getGitHubToken to return a valid token
+    mockGetGitHubToken.mockResolvedValue("test-token");
+
     process.env.REPO_OWNER = "test-owner";
     process.env.REPO_NAME = "test-repo";
 

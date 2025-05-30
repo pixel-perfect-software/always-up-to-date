@@ -9,6 +9,7 @@ import { showDependencyDiff } from "./commands/diff";
 import { rollbackDependencies } from "./commands/rollback";
 import { ConfigManager } from "./utils/config";
 import { logger } from "./utils/logger";
+import { getGitHubToken } from "./utils/auth";
 
 // Create a program instance
 const program = new Command();
@@ -68,10 +69,13 @@ program
   .description("Automatically update dependencies and create PRs if necessary")
   .option("-p, --projectPath <path>", "Path to the project directory")
   .option("-c, --createIssue", "Create a pull request with the updates", false)
-  .option("-t, --token <token>", "GitHub token for creating PRs")
+  .option(
+    "-t, --token <token>",
+    "GitHub token for creating PRs (optional - will auto-detect)"
+  )
   .option(
     "-r, --repository <owner/repo>",
-    "GitHub repository in format owner/repo"
+    "GitHub repository in format owner/repo (optional - will auto-detect)"
   )
   .option("-v, --verbose", "Show verbose output", false)
   .option(
@@ -85,11 +89,11 @@ program
     "10"
   )
   .option("--separate-prs", "Create separate PRs for each major update", false)
-  .action((options, command) => {
+  .action(async (options, command) => {
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
 
-    // Set environment variables if provided via options
+    // Set environment variables if provided via options (for backward compatibility)
     if (mergedOptions.token) {
       process.env.GITHUB_TOKEN = mergedOptions.token;
     }
@@ -99,6 +103,20 @@ program
       if (owner && repo) {
         process.env.REPO_OWNER = owner;
         process.env.REPO_NAME = repo;
+      }
+    }
+
+    // Pre-load authentication if creating PRs
+    if (mergedOptions.createIssue) {
+      logger.info("🔑 Setting up GitHub authentication...");
+      const token = await getGitHubToken(mergedOptions.token);
+      if (!token) {
+        logger.warn(
+          "GitHub authentication not available. PR creation will be skipped."
+        );
+        mergedOptions.createIssue = false;
+      } else {
+        logger.info("✅ GitHub authentication ready");
       }
     }
 

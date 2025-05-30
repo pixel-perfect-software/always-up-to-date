@@ -2,6 +2,7 @@ import { Octokit } from "@octokit/rest";
 import { logger } from "../utils/logger";
 import { NetworkError, DependencyError, withRetry } from "../utils/errors";
 import { execSync } from "child_process";
+import { getGitHubToken } from "../utils/auth";
 
 interface MigrationRule {
   fromVersion: string;
@@ -23,10 +24,26 @@ export class MigrationAdvisor {
   private migrationRules: Map<string, PackageMigrationInfo> = new Map();
 
   constructor(githubToken?: string) {
-    this.octokit = new Octokit({
-      auth: githubToken || process.env.GITHUB_TOKEN,
-    });
+    // Initialize with provided token or use auth service
+    if (githubToken) {
+      this.octokit = new Octokit({ auth: githubToken });
+    } else {
+      // Will be initialized lazily when needed
+      this.octokit = new Octokit();
+    }
     this.initializeKnownMigrations();
+  }
+
+  /**
+   * Initialize Octokit with token from auth service if not already done
+   */
+  private async ensureAuthenticated(): Promise<void> {
+    if (!this.octokit.rest.repos) {
+      const token = await getGitHubToken();
+      if (token) {
+        this.octokit = new Octokit({ auth: token });
+      }
+    }
   }
 
   /**
@@ -426,6 +443,8 @@ export class MigrationAdvisor {
     toVersion: string
   ): Promise<string | null> {
     try {
+      await this.ensureAuthenticated();
+
       const packageInfo = await this.getPackageRepository(packageName);
       if (!packageInfo.githubRepo) {
         return null;
@@ -649,6 +668,8 @@ ${content}
       if (!repositoryUrl.includes("github.com")) {
         return null;
       }
+
+      await this.ensureAuthenticated();
 
       const githubMatch = repositoryUrl.match(
         /github\.com[\/:]([^\/]+\/[^\/\.]+)/
