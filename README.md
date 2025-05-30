@@ -18,6 +18,22 @@ A smart CLI tool that automatically keeps your npm dependencies up to date with 
 - 📊 **Multiple Output Formats** - Table, JSON, or detailed diff views
 - 🔍 **Preview Mode** - See detailed update plans before applying changes
 
+## 🚨 Safety Features
+
+- **Automatic Backups** - Creates `package.json.backup` before changes
+- **Smart Rollback** - `npx alwaysuptodate rollback` to undo changes
+- **Package Manager Detection** - Works with npm, yarn, pnpm, bun
+- **Vulnerability Scanning** - Security audit integration
+- **Migration Advisor** - Detailed upgrade instructions for popular packages:
+  - React (17→18, etc.)
+  - Next.js (13→14, etc.)
+  - TypeScript (4→5, etc.)
+  - ESLint (8→9, etc.)
+  - Jest (28→29, etc.)
+  - Prettier (2→3, etc.)
+- **Breaking Change Detection** - Identifies major version updates requiring manual review
+- **Interactive Selection** - Choose exactly which updates to apply
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -154,24 +170,6 @@ Create `.alwaysuptodate.json` for advanced customization:
 - `batchSize` - Number of packages to update simultaneously
 - `parallelUpdates` - Enable parallel processing
 - `createSeparatePRs` - Create individual PRs for major updates
-
-## 🚨 Safety Features
-
-```
-- **Automatic Backups** - Creates `package.json.backup` before changes
-- **Smart Rollback** - `npx alwaysuptodate rollback` to undo changes
-- **Package Manager Detection** - Works with npm, yarn, pnpm, bun
-- **Vulnerability Scanning** - Security audit integration
-- **Migration Advisor** - Detailed upgrade instructions for popular packages:
-  - React (17→18, etc.)
-  - Next.js (13→14, etc.)
-  - TypeScript (4→5, etc.)
-  - ESLint (8→9, etc.)
-  - Jest (28→29, etc.)
-  - Prettier (2→3, etc.)
-- **Breaking Change Detection** - Identifies major version updates requiring manual review
-- **Interactive Selection** - Choose exactly which updates to apply
-```
 
 ## 🔄 CI/CD Integration
 
