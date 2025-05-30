@@ -1,7 +1,7 @@
 # Always Up To Date
 
-[![CI](https://github.com/TylerNRobertson/always-up-to-date/workflows/CI/badge.svg)](https://github.com/TylerNRobertson/always-up-to-date/actions/workflows/ci.yml)
-[![Security](https://github.com/TylerNRobertson/always-up-to-date/workflows/Security/badge.svg)](https://github.com/TylerNRobertson/always-up-to-date/actions/workflows/security.yml)
+[![CI](https://github.com/pixel-perfect-software/always-up-to-date/workflows/CI/badge.svg)](https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/ci.yml)
+[![Security](https://github.com/pixel-perfect-software/always-up-to-date/workflows/Security/badge.svg)](https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A highly customizable and reusable dependency checker that keeps your npm dependencies always up to date. This CLI tool automatically manages dependency updates, handles breaking changes gracefully, and integrates seamlessly with your development workflow.
