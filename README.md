@@ -36,7 +36,7 @@ A smart CLI tool that automatically keeps your npm dependencies up to date with 
 
 ## 💸 Support this package's development & maintenance
 
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/tylernrobertson)
+<a href="https://www.buymeacoffee.com/tylernrobertson" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 217px !important;" ></a>
 
 ## 🚀 Quick Start
 
