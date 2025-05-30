@@ -3,35 +3,69 @@ import { logger } from "../utils/logger";
 import { NetworkError, DependencyError, withRetry } from "../utils/errors";
 import { execSync } from "child_process";
 import { getGitHubToken } from "../utils/auth";
-
-interface MigrationRule {
-  fromVersion: string;
-  toVersion: string;
-  instructions: string;
-  breakingChanges: string[];
-  automatedFixes?: string[];
-}
-
-interface PackageMigrationInfo {
-  name: string;
-  rules: MigrationRule[];
-  repositoryUrl?: string;
-  changelogUrl?: string;
-}
+import {
+  MigrationRuleRegistry,
+  MigrationPluginLoader,
+  MigrationRule,
+  PackageMigrationInfo,
+  MigrationRuleProvider,
+} from "./migration-rules";
 
 export class MigrationAdvisor {
   private octokit: Octokit;
-  private migrationRules: Map<string, PackageMigrationInfo> = new Map();
+  private ruleRegistry: MigrationRuleRegistry;
+  private pluginLoader: MigrationPluginLoader;
 
-  constructor(githubToken?: string) {
+  constructor(githubToken?: string, customRulesPath?: string) {
     // Initialize with provided token or use auth service
     if (githubToken) {
       this.octokit = new Octokit({ auth: githubToken });
     } else {
-      // Will be initialized lazily when needed
       this.octokit = new Octokit();
     }
-    this.initializeKnownMigrations();
+
+    this.ruleRegistry = new MigrationRuleRegistry();
+    this.pluginLoader = new MigrationPluginLoader(this.ruleRegistry);
+
+    // Load custom rules if path provided
+    if (customRulesPath) {
+      this.loadCustomRules(customRulesPath);
+    }
+  }
+
+  private async loadCustomRules(rulesPath: string): Promise<void> {
+    try {
+      await this.pluginLoader.loadFromDirectory(rulesPath);
+
+      // Also try to load from config file
+      const configPath = `${rulesPath}/migration-rules.json`;
+      await this.pluginLoader.loadFromConfig(configPath);
+    } catch (error) {
+      logger.warn(`Failed to load custom migration rules: ${error}`);
+    }
+  }
+
+  /**
+   * Register a custom migration rule provider
+   */
+  registerCustomProvider(provider: MigrationRuleProvider): void {
+    this.ruleRegistry.registerProvider(provider);
+  }
+
+  /**
+   * Get list of supported packages
+   */
+  getSupportedPackages(): string[] {
+    return this.ruleRegistry.listSupportedPackages();
+  }
+
+  /**
+   * Search for providers by tag (e.g., 'framework', 'testing')
+   */
+  searchProvidersByTag(tag: string): string[] {
+    return this.ruleRegistry
+      .searchProvidersByTag(tag)
+      .map((provider) => provider.getPackageName());
   }
 
   /**
@@ -111,266 +145,6 @@ export class MigrationAdvisor {
   }
 
   /**
-   * Initialize known migration rules for popular packages
-   */
-  private initializeKnownMigrations(): void {
-    // React
-    this.migrationRules.set("react", {
-      name: "react",
-      rules: [
-        {
-          fromVersion: "17.x.x",
-          toVersion: "18.x.x",
-          instructions: `## React 18 Migration Guide
-
-### Key Changes:
-1. **Automatic Batching**: Updates are now batched by default
-2. **Strict Mode**: New behaviors for useEffect in development
-3. **New Root API**: ReactDOM.render is deprecated
-
-### Migration Steps:
-1. Update your root element:
-   \`\`\`jsx
-   // Before
-   ReactDOM.render(<App />, document.getElementById('root'));
-
-   // After
-   const root = ReactDOM.createRoot(document.getElementById('root'));
-   root.render(<App />);
-   \`\`\`
-
-2. Update your tests to use the new testing utilities
-3. Review useEffect dependencies for double-execution in Strict Mode
-
-### Resources:
-- [React 18 Upgrade Guide](https://react.dev/blog/2022/03/08/react-18-upgrade-guide)`,
-          breakingChanges: [
-            "ReactDOM.render deprecated",
-            "Automatic batching changes",
-            "Strict Mode behavior changes",
-          ],
-        },
-      ],
-      repositoryUrl: "https://github.com/facebook/react",
-      changelogUrl: "https://github.com/facebook/react/blob/main/CHANGELOG.md",
-    });
-
-    // Next.js
-    this.migrationRules.set("next", {
-      name: "next",
-      rules: [
-        {
-          fromVersion: "13.x.x",
-          toVersion: "14.x.x",
-          instructions: `## Next.js 14 Migration Guide
-
-### Key Changes:
-1. **App Router Stable**: App Router is now stable
-2. **Server Actions**: Server Actions are now stable
-3. **Image Component**: Improved Image component with better performance
-
-### Migration Steps:
-1. Update your \`next.config.js\` if using experimental features:
-   \`\`\`js
-   // Remove experimental flags that are now stable
-   const nextConfig = {
-     experimental: {
-       // Remove: appDir, serverActions, etc.
-     }
-   }
-   \`\`\`
-
-2. Update imports for moved APIs
-3. Review and update any deprecated APIs
-
-### Resources:
-- [Next.js 14 Upgrade Guide](https://nextjs.org/docs/upgrading)`,
-          breakingChanges: [
-            "Some experimental APIs moved to stable",
-            "Deprecated APIs removed",
-            "Image component changes",
-          ],
-        },
-      ],
-      repositoryUrl: "https://github.com/vercel/next.js",
-      changelogUrl: "https://github.com/vercel/next.js/releases",
-    });
-
-    // TypeScript
-    this.migrationRules.set("typescript", {
-      name: "typescript",
-      rules: [
-        {
-          fromVersion: "4.x.x",
-          toVersion: "5.x.x",
-          instructions: `## TypeScript 5 Migration Guide
-
-### Key Changes:
-1. **New Decorators**: ES Decorators implementation
-2. **Module Resolution**: Improved module resolution
-3. **Performance**: Better performance for large projects
-
-### Migration Steps:
-1. Update your \`tsconfig.json\`:
-   \`\`\`json
-   {
-     "compilerOptions": {
-       "target": "ES2022",
-       "experimentalDecorators": false, // Remove if using new decorators
-       "useDefineForClassFields": true
-     }
-   }
-   \`\`\`
-
-2. Update decorator syntax if used:
-   \`\`\`ts
-   // Before (experimental)
-   @decorator
-   class MyClass {}
-
-   // After (standard)
-   @decorator
-   class MyClass {}
-   \`\`\`
-
-3. Review and fix any new strict type checking errors
-
-### Resources:
-- [TypeScript 5.0 Release Notes](https://devblogs.microsoft.com/typescript/announcing-typescript-5-0/)`,
-          breakingChanges: [
-            "Decorator changes",
-            "Stricter type checking",
-            "Module resolution changes",
-          ],
-        },
-      ],
-      repositoryUrl: "https://github.com/microsoft/TypeScript",
-      changelogUrl: "https://github.com/Microsoft/TypeScript/releases",
-    });
-
-    // Add more popular packages...
-    this.addEslintMigration();
-    this.addPrettierMigration();
-    this.addJestMigration();
-  }
-
-  private addEslintMigration(): void {
-    this.migrationRules.set("eslint", {
-      name: "eslint",
-      rules: [
-        {
-          fromVersion: "8.x.x",
-          toVersion: "9.x.x",
-          instructions: `## ESLint 9 Migration Guide
-
-### Key Changes:
-1. **Flat Config**: New flat config format is now default
-2. **Removed Rules**: Some deprecated rules removed
-3. **Node.js Support**: Requires Node.js 18.18.0+
-
-### Migration Steps:
-1. Migrate to flat config (\`eslint.config.js\`):
-   \`\`\`js
-   // eslint.config.js
-   export default [
-     {
-       files: ["**/*.js"],
-       rules: {
-         // Your rules here
-       }
-     }
-   ];
-   \`\`\`
-
-2. Update your package.json scripts
-3. Review and update any custom plugins
-
-### Resources:
-- [ESLint 9 Migration Guide](https://eslint.org/docs/latest/use/migrate-to-9.0.0)`,
-          breakingChanges: [
-            "Flat config format required",
-            "Deprecated rules removed",
-            "Node.js version requirement",
-          ],
-        },
-      ],
-      repositoryUrl: "https://github.com/eslint/eslint",
-    });
-  }
-
-  private addPrettierMigration(): void {
-    this.migrationRules.set("prettier", {
-      name: "prettier",
-      rules: [
-        {
-          fromVersion: "2.x.x",
-          toVersion: "3.x.x",
-          instructions: `## Prettier 3 Migration Guide
-
-### Key Changes:
-1. **Node.js Support**: Requires Node.js 14+
-2. **Configuration**: Some config options changed
-3. **Plugins**: Plugin API updated
-
-### Migration Steps:
-1. Update Node.js version to 14+
-2. Review configuration options in \`.prettierrc\`
-3. Update any custom plugins
-
-### Resources:
-- [Prettier 3.0 Release Notes](https://prettier.io/blog/2023/07/05/3.0.0.html)`,
-          breakingChanges: [
-            "Node.js version requirement",
-            "Configuration changes",
-            "Plugin API changes",
-          ],
-        },
-      ],
-      repositoryUrl: "https://github.com/prettier/prettier",
-    });
-  }
-
-  private addJestMigration(): void {
-    this.migrationRules.set("jest", {
-      name: "jest",
-      rules: [
-        {
-          fromVersion: "28.x.x",
-          toVersion: "29.x.x",
-          instructions: `## Jest 29 Migration Guide
-
-### Key Changes:
-1. **Node.js Support**: Requires Node.js 14.15.0+
-2. **Default Export**: Package now uses default export
-3. **Snapshot Testing**: Improved snapshot testing
-
-### Migration Steps:
-1. Update Node.js version
-2. Update import statements:
-   \`\`\`js
-   // Before
-   const jest = require('jest');
-
-   // After
-   import jest from 'jest';
-   \`\`\`
-
-3. Review jest configuration
-
-### Resources:
-- [Jest 29 Release Notes](https://jestjs.io/blog/2022/08/25/jest-29)`,
-          breakingChanges: [
-            "Node.js version requirement",
-            "Module system changes",
-            "API changes",
-          ],
-        },
-      ],
-      repositoryUrl: "https://github.com/facebook/jest",
-    });
-  }
-
-  /**
    * Check known migration rules for specific package and version range
    */
   private async getKnownMigrationInstructions(
@@ -378,13 +152,18 @@ export class MigrationAdvisor {
     fromVersion: string,
     toVersion: string
   ): Promise<string | null> {
-    const packageInfo = this.migrationRules.get(packageName);
+    const packageInfo = this.ruleRegistry.getPackageMigrationInfo(packageName);
     if (!packageInfo) {
       return null;
     }
 
+    // Sort rules by priority (higher first)
+    const sortedRules = packageInfo.rules.sort(
+      (a, b) => (b.priority || 0) - (a.priority || 0)
+    );
+
     // Find applicable migration rule
-    for (const rule of packageInfo.rules) {
+    for (const rule of sortedRules) {
       if (
         this.versionMatchesRange(fromVersion, rule.fromVersion) &&
         this.versionMatchesRange(toVersion, rule.toVersion)

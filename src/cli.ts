@@ -7,6 +7,7 @@ import { auditDependencies } from "./commands/audit";
 import { autoUpdateDependencies } from "./commands/auto";
 import { showDependencyDiff } from "./commands/diff";
 import { rollbackDependencies } from "./commands/rollback";
+import { migrateCommand } from "./commands/migrate";
 import { ConfigManager } from "./utils/config";
 import { logger } from "./utils/logger";
 import { getGitHubToken } from "./utils/auth";
@@ -187,6 +188,44 @@ program
     }
 
     showDependencyDiff(mergedOptions);
+  });
+
+program
+  .command("migrate")
+  .description("Get migration instructions for package updates")
+  .option(
+    "-p, --projectPath <path>",
+    "Path to the project directory",
+    process.cwd()
+  )
+  .option(
+    "--package <package>",
+    "Specific package to get migration instructions for"
+  )
+  .option("--from-version <version>", "Current version of the package")
+  .option("--to-version <version>", "Target version for migration")
+  .option("-v, --verbose", "Show verbose output", false)
+  .option("--list-supported", "List all packages with migration support", false)
+  .option(
+    "--search-tag <tag>",
+    "Search packages by tag (framework, testing, etc.)"
+  )
+  .option(
+    "--custom-rules <path>",
+    "Path to directory with custom migration rules"
+  )
+  .action((options) => {
+    const args = parseArgs();
+    const mergedOptions = { ...args, ...options };
+
+    if (mergedOptions.verbose) {
+      const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
+      logger.info(
+        `Running migrate command with options: ${mergedOptionsString}`
+      );
+    }
+
+    migrateCommand(mergedOptions);
   });
 
 // Export a function that runs the CLI
