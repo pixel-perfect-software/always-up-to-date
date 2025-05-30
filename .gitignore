@@ -3,3 +3,5 @@ node_modules
 dist
 *.backup
 *.log
+coverage
+DS_Store
