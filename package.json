@@ -3,12 +3,20 @@
   "version": "1.0.0",
   "description": "A highly customizable and reusable dependency checker that keeps npm dependencies always up to date.",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "alwaysuptodate": "dist/cli.js",
+    "always-up-to-date": "dist/cli.js"
+  },
   "scripts": {
-    "audit": "node dist/index.js audit",
     "build": "tsc",
-    "check": "node dist/index.js check",
-    "prebuild": "rm -rf dist; mkdir dist;",
-    "test": "jest"
+    "prepublishOnly": "pnpm run build && pnpm test",
+    "prepack": "pnpm run build",
+    "test": "jest",
+    "clean": "rm -rf dist",
+    "dev": "tsc --watch",
+    "audit": "node dist/cli.js audit",
+    "check": "node dist/cli.js check"
   },
   "repository": {
     "type": "git",
@@ -17,9 +25,15 @@
   "keywords": [
     "npm",
     "dependencies",
-    "checker",
     "updater",
-    "automation"
+    "automation",
+    "cli",
+    "package-manager",
+    "dependency-management",
+    "maintenance",
+    "pnpm",
+    "yarn",
+    "checker"
   ],
   "author": "Tyler Robertson <@tylernrobertson> (https://github.com/TylerNRobertson)",
   "license": "MIT",
@@ -40,10 +54,19 @@
     "typescript": "^5.8.3"
   },
   "files": [
-    "dist",
-    "README.md"
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.0.0"
+  },
+  "preferGlobal": true,
+  "bugs": {
+    "url": "https://github.com/TylerNRobertson/always-up-to-date/issues"
+  },
+  "homepage": "https://github.com/TylerNRobertson/always-up-to-date#readme",
+  "pnpm": {
+    "overrides": {}
   }
 }

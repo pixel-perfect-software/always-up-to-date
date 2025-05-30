@@ -22,6 +22,39 @@ A highly customizable and reusable dependency checker that keeps your npm depend
 ### Installation
 
 ```bash
+# Global installation (recommended)
+npm install -g always-up-to-date
+
+# Or using other package managers
+yarn global add always-up-to-date
+pnpm add -g always-up-to-date
+
+# Or use npx for one-time usage
+npx always-up-to-date check
+```
+
+### Basic Usage
+
+```bash
+# Check for outdated dependencies
+alwaysuptodate check
+
+# Or use the full command name
+always-up-to-date check
+
+# Audit for vulnerabilities
+alwaysuptodate audit
+
+# Auto-update with PR creation
+alwaysuptodate auto --create-pr
+
+# Show help
+alwaysuptodate --help
+```
+
+### Installation
+
+```bash
 # Install globally
 npm install -g always-up-to-date
 
