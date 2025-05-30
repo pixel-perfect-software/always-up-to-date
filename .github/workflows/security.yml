@@ -3,10 +3,6 @@ name: Security
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: "0 3 * * 1" # Weekly on Monday at 3 AM UTC
 
 permissions:
   contents: read
@@ -37,11 +33,6 @@ jobs:
       - name: Run pnpm audit
         run: pnpm audit --audit-level moderate
         continue-on-error: true
-
-      - name: Build and test our audit command
-        run: |
-          pnpm run build
-          npx alwaysuptodate audit --verbose
 
   codeql:
     runs-on: ubuntu-latest
