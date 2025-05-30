@@ -1,6 +1,7 @@
-<center>
+<p align="center">
   <img src="./assets/logo.svg" />
-</center>
+</p>
+<hr />
 
 # Always Up To Date
 
