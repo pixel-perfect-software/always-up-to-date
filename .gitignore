@@ -4,4 +4,4 @@ dist
 *.backup
 *.log
 coverage
-DS_Store
+.DS_Store

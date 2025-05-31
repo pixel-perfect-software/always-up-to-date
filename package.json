@@ -46,7 +46,7 @@
     "prepack": "pnpm run build",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "test:badges": "npm run test:coverage && jest-coverage-badges --output ./badges",
+    "test:badges": "pnpm test:coverage && jest-coverage-badges --output ./badges",
     "clean": "rm -rf dist",
     "dev": "tsc --watch",
     "audit": "node dist/cli.js audit",
