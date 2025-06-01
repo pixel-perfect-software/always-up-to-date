@@ -9,11 +9,6 @@
 [![Security](https://github.com/pixel-perfect-software/always-up-to-date/workflows/Security/badge.svg)](https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![Test Coverage](./badges/badge-branches.svg)
-![Test Coverage](./badges/badge-functions.svg)
-![Test Coverage](./badges/badge-lines.svg)
-![Test Coverage](./badges/badge-statements.svg)
-
 A smart CLI tool that automatically keeps your npm dependencies up to date with vulnerability scanning, GitHub integration, and intelligent rollback capabilities.
 
 ## ✨ Features
