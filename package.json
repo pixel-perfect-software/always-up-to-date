@@ -1,5 +1,5 @@
 {
-  "name": "always-up-to-date",
+  "name": "@pixel-perfect-software/always-up-to-date",
   "version": "1.0.0",
   "author": "Tyler Robertson <@tylernrobertson> (https://github.com/TylerNRobertson)",
   "description": "A highly customizable and reusable dependency checker that keeps npm dependencies always up to date.",
@@ -73,5 +73,10 @@
   "overrides": {
     "minimist@<0.2.1": ">=0.2.1",
     "minimist@<0.2.4": ">=0.2.4"
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
   }
 }
