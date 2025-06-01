@@ -21,11 +21,13 @@ A smart CLI tool that automatically keeps your npm dependencies up to date with 
 - 🧠 **Smart Migration Advisor** - Detailed migration instructions for popular packages
 - 🔄 **Interactive Mode** - Choose exactly which packages to update
 - 📊 **Multiple Output Formats** - Table, JSON, or detailed diff views
-- 🔍 **Preview Mode** - See detailed update plans before applying changes
+- 🔍 **Preview Mode** - See detailed update plans before applying changes>
 
-## 💸 Support this package's development & maintenance
+## 🔜 Coming Soon
 
-<a href="https://www.buymeacoffee.com/tylernrobertson" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 217px !important;" ></a>
+- Monorepo support (turborepo, lerna, rush, etc)
+- Workspace dependencies
+- PNPM Catalog support
 
 ## 🚀 Quick Start
 
@@ -112,6 +114,10 @@ Create `.alwaysuptodate.json` for advanced customization:
 ## 🤝 Contributing
 
 Contributions are welcome! Please see our [Contributing Guide](./docs/contributing.md) for details on how to get started.
+
+## 💸 Support this package's development & maintenance
+
+<a href="https://www.buymeacoffee.com/tylernrobertson" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 217px !important;" ></a
 
 ## 📝 License
 
