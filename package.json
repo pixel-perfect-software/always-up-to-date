@@ -1,16 +1,16 @@
 {
   "name": "@pixel-perfect-software/always-up-to-date",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Tyler Robertson <@tylernrobertson> (https://github.com/TylerNRobertson)",
   "description": "A highly customizable and reusable dependency checker that keeps npm dependencies always up to date.",
   "bugs": {
-    "url": "https://github.com/TylerNRobertson/always-up-to-date/issues"
+    "url": "https://github.com/pixel-perfect-software/always-up-to-date/issues"
   },
-  "homepage": "https://github.com/TylerNRobertson/always-up-to-date#readme",
+  "homepage": "https://github.com/pixel-perfect-software/always-up-to-date#readme",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TylerNRobertson/always-up-to-date.git"
+    "url": "git+https://github.com/pixel-perfect-software/always-up-to-date.git"
   },
   "directories": {
     "doc": "docs",
