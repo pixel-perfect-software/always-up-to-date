@@ -24,7 +24,7 @@ export class MigrationPluginLoader {
       for (const file of files) {
         try {
           const filePath = path.join(directory, file);
-          const module = await import(filePath);
+          const module = await this.importModule(filePath);
 
           // Look for exported providers
           Object.values(module).forEach((exportedValue: any) => {
@@ -40,6 +40,13 @@ export class MigrationPluginLoader {
     } catch (error) {
       logger.error(`Error loading migration plugins: ${error}`);
     }
+  }
+
+  /**
+   * Wrapper for dynamic imports to make testing easier
+   */
+  protected async importModule(filePath: string): Promise<any> {
+    return import(filePath);
   }
 
   /**
