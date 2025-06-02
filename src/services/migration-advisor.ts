@@ -1,13 +1,11 @@
 import { Octokit } from "@octokit/rest";
 import { logger } from "../utils/logger";
-import { NetworkError, DependencyError, withRetry } from "../utils/errors";
+import { DependencyError, withRetry } from "../utils/errors";
 import { execSync } from "child_process";
 import { getGitHubToken } from "../utils/auth";
 import {
   MigrationRuleRegistry,
   MigrationPluginLoader,
-  MigrationRule,
-  PackageMigrationInfo,
   MigrationRuleProvider,
 } from "./migration-rules";
 

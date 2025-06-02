@@ -22,6 +22,7 @@ export interface PackageManagerInterface {
   install(packageName: string, version?: string): Promise<void>;
   uninstall(packageName: string): Promise<void>;
   checkOutdated(): Promise<string>;
+  checkWorkspaceOutdated?(): Promise<string>;
   getDependencies(projectPath: string): Promise<Record<string, string>>;
   updateDependency(
     projectPath: string,
@@ -253,6 +254,10 @@ class NpmPackageManager extends BasePackageManager {
     return "npm outdated --json";
   }
 
+  protected getWorkspaceOutdatedCommand(): string {
+    return "npm outdated --json --workspaces";
+  }
+
   protected getUpdateCommand(packageName: string, version: string): string {
     return `npm install ${packageName}@${version} --save-exact`;
   }
@@ -263,6 +268,22 @@ class NpmPackageManager extends BasePackageManager {
 
   protected isWarningOnly(stderr: string): boolean {
     return stderr.includes("npm WARN");
+  }
+
+  async checkWorkspaceOutdated(): Promise<string> {
+    try {
+      const { stdout } = await withRetry(
+        () => this.runCommand(this.getWorkspaceOutdatedCommand()),
+        2
+      );
+      return stdout;
+    } catch (error) {
+      throw new PackageManagerError(
+        "Failed to check for outdated packages in workspaces",
+        this.constructor.name,
+        error as Error
+      );
+    }
   }
 }
 
@@ -279,6 +300,10 @@ class YarnPackageManager extends BasePackageManager {
     return "yarn outdated --json";
   }
 
+  protected getWorkspaceOutdatedCommand(): string {
+    return "yarn outdated --json";
+  }
+
   protected getUpdateCommand(packageName: string, version: string): string {
     return `yarn add ${packageName}@${version} --exact`;
   }
@@ -289,6 +314,22 @@ class YarnPackageManager extends BasePackageManager {
 
   protected isWarningOnly(stderr: string): boolean {
     return stderr.includes("warning");
+  }
+
+  async checkWorkspaceOutdated(): Promise<string> {
+    try {
+      const { stdout } = await withRetry(
+        () => this.runCommand(this.getWorkspaceOutdatedCommand()),
+        2
+      );
+      return stdout;
+    } catch (error) {
+      throw new PackageManagerError(
+        "Failed to check for outdated packages in workspaces",
+        this.constructor.name,
+        error as Error
+      );
+    }
   }
 }
 
@@ -305,6 +346,10 @@ class PnpmPackageManager extends BasePackageManager {
     return "pnpm outdated --format json";
   }
 
+  protected getWorkspaceOutdatedCommand(): string {
+    return "pnpm outdated --format json --recursive";
+  }
+
   protected getUpdateCommand(packageName: string, version: string): string {
     return `pnpm add ${packageName}@${version} --save-exact`;
   }
@@ -315,6 +360,22 @@ class PnpmPackageManager extends BasePackageManager {
 
   protected isWarningOnly(stderr: string): boolean {
     return stderr.includes("WARN");
+  }
+
+  async checkWorkspaceOutdated(): Promise<string> {
+    try {
+      const { stdout } = await withRetry(
+        () => this.runCommand(this.getWorkspaceOutdatedCommand()),
+        2
+      );
+      return stdout;
+    } catch (error) {
+      throw new PackageManagerError(
+        "Failed to check for outdated packages in workspaces",
+        this.constructor.name,
+        error as Error
+      );
+    }
   }
 }
 

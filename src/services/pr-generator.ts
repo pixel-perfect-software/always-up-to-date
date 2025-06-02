@@ -1,7 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { execSync } from "child_process";
-import { readFileSync } from "fs";
-import { join } from "path";
+
 import { logger } from "../utils/logger";
 import { getGitHubToken } from "../utils/auth";
 

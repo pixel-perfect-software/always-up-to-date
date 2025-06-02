@@ -2,7 +2,7 @@ import { MigrationAdvisor } from "../services/migration-advisor";
 import { logger } from "../utils/logger";
 import * as fs from "fs";
 import * as path from "path";
-import { green, blue, yellow, cyan, magenta, bold, gray } from "colorette";
+import { green, blue, yellow, cyan, bold, gray } from "colorette";
 
 interface MigrateOptions {
   projectPath: string;

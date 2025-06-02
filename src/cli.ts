@@ -39,7 +39,7 @@ program
     false
   )
   .option("--interactive", "Interactive mode - ask before each update", false)
-  .action((options, command) => {
+  .action((options) => {
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
     const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
@@ -54,7 +54,7 @@ program
   .description("Audit dependencies for vulnerabilities")
   .option("-p, --projectPath <path>", "Path to the project directory")
   .option("-v, --verbose", "Show verbose output", false)
-  .action((options, command) => {
+  .action((options) => {
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
     const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
@@ -90,7 +90,7 @@ program
     "10"
   )
   .option("--separate-prs", "Create separate PRs for each major update", false)
-  .action(async (options, command) => {
+  .action(async (options) => {
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
 

@@ -1,11 +1,8 @@
-import {
-  checkForUpdates,
-  updateDependencies,
-} from "../services/dependency-checker";
+import { checkForUpdates } from "../services/dependency-checker";
 import { PackageManagerDetector } from "../utils/package-manager";
 import { logger } from "../utils/logger";
-import { select, checkbox, confirm, input } from "@inquirer/prompts";
-import { blue, green, yellow, red, cyan, magenta, bold } from "colorette";
+import { checkbox, confirm } from "@inquirer/prompts";
+import { green, yellow, red, cyan, magenta, bold } from "colorette";
 
 export interface CheckResult {
   updatable: Array<{

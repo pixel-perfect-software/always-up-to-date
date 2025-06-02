@@ -15,7 +15,7 @@ export function parseArgs(): Args {
     // Remove the first arguments which are typically node and script path
     // Also filter out any subcommands (check, audit, auto) that Commander handles
     const filteredArgs = process.argv
-      .filter((arg, index) => index > 1) // Skip node and script path
+      .filter((_, index) => index > 1) // Skip node and script path
       .filter((arg) => !["check", "audit", "auto"].includes(arg)); // Skip Commander subcommands
 
     const args = parse<Args>(

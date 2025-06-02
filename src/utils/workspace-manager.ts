@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from "fs";
-import { promises as fs } from "fs";
 import { join, resolve, relative } from "path";
 import { glob } from "glob";
 import { logger } from "./logger";

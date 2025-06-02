@@ -1,6 +1,4 @@
 import { execSync } from "child_process";
-import { promises as fs } from "fs";
-import path from "path";
 
 // Performance optimization constants
 const MAX_CONCURRENT_REQUESTS = 10;
@@ -15,24 +13,11 @@ import {
   PackageManagerInterface,
 } from "../utils/package-manager";
 import { logger } from "../utils/logger";
-import {
-  wrapError,
-  DependencyError,
-  NetworkError,
-  withRetry,
-} from "../utils/errors";
-import {
-  ConfigManager,
-  AlwaysUpToDateConfig,
-  UpdateStrategy,
-} from "../utils/config";
+import { DependencyError, withRetry } from "../utils/errors";
+import { ConfigManager, UpdateStrategy } from "../utils/config";
 import { MigrationAdvisor } from "./migration-advisor";
 import { WorkspaceManager } from "../utils/workspace-manager";
-import {
-  WorkspaceInfo,
-  WorkspacePackage,
-  WorkspaceDependencyUpdate,
-} from "../types/workspace";
+import { WorkspaceInfo } from "../types/workspace";
 import semver from "semver";
 
 interface DependencyUpdate {
@@ -411,7 +396,7 @@ export class DependencyChecker {
   }
 
   /**
-   * Gets the latest version of a package
+   * Gets the latest version of a package using bulk operations when possible
    * @param pkg Package name
    * @returns Latest version string
    */
@@ -420,6 +405,13 @@ export class DependencyChecker {
       const config = this.config.getConfig();
       return await withRetry(
         async () => {
+          // Try to use package manager's bulk outdated command first
+          const bulkResult = await this.getBulkVersionInfo([pkg]);
+          if (bulkResult.has(pkg)) {
+            return bulkResult.get(pkg)!;
+          }
+
+          // Fallback to individual npm show command
           const command = `npm show ${pkg} version`;
           return execSync(command, { stdio: "pipe" }).toString().trim();
         },
@@ -436,6 +428,49 @@ export class DependencyChecker {
       );
       return "0.0.0"; // Return a fallback version that won't trigger updates
     }
+  }
+
+  /**
+   * Gets bulk version information using package manager specific commands
+   * @param packages Array of package names
+   * @returns Map of package names to their latest versions
+   */
+  private async getBulkVersionInfo(
+    packages: string[]
+  ): Promise<Map<string, string>> {
+    const versionMap = new Map<string, string>();
+
+    if (packages.length === 0) {
+      return versionMap;
+    }
+
+    try {
+      // Use workspace-aware command for monorepos if available
+      let stdout: string;
+      if (
+        this.workspaceInfo?.isMonorepo &&
+        this.packageManager.checkWorkspaceOutdated
+      ) {
+        stdout = await this.packageManager.checkWorkspaceOutdated();
+      } else {
+        stdout = await this.packageManager.checkOutdated();
+      }
+
+      const outdatedData = JSON.parse(stdout || "{}");
+
+      // Parse npm outdated format
+      for (const [pkg, info] of Object.entries(
+        outdatedData as Record<string, any>
+      )) {
+        if (packages.includes(pkg) && info?.latest) {
+          versionMap.set(pkg, info.latest);
+        }
+      }
+    } catch (error) {
+      logger.debug(`Bulk version check failed: ${(error as Error).message}`);
+    }
+
+    return versionMap;
   }
 
   /**

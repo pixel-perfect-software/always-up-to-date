@@ -1,4 +1,3 @@
-import { PackageManagerDetector } from "../utils/package-manager";
 import { logger } from "../utils/logger";
 import { bold, green, yellow, red, cyan } from "colorette";
 import { readFileSync, writeFileSync, existsSync } from "fs";
@@ -76,7 +75,6 @@ export const rollbackDependencies = async (
 
     // Reinstall dependencies
     logger.info(cyan("📦 Reinstalling dependencies..."));
-    const packageManager = PackageManagerDetector.detect(projectPath);
 
     try {
       // Run npm install to restore dependencies based on the restored package.json
