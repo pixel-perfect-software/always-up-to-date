@@ -1,7 +1,5 @@
 # Monorepo Support
 
-This document describes the monorepo features added to `always-up-to-date`.
-
 ## Overview
 
 `always-up-to-date` now automatically detects and supports monorepos using standard workspace patterns. It works seamlessly with:
