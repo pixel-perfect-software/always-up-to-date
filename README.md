@@ -117,7 +117,7 @@ Contributions are welcome! Please see our [Contributing Guide](./docs/contributi
 
 ## 💸 Support this package's development & maintenance
 
-<a href="https://www.buymeacoffee.com/tylernrobertson" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 217px !important;" ></a
+<a href="https://www.buymeacoffee.com/tylernrobertson" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 217px !important;" >
 
 ## 📝 License
 
