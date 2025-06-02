@@ -1,0 +1,19 @@
+{
+  "name": "@test-monorepo/shared-utils",
+  "version": "1.0.0",
+  "description": "Shared utilities for the test monorepo",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'Building shared-utils...'",
+    "test": "echo 'Testing shared-utils...'"
+  },
+  "dependencies": {
+    "lodash": "^4.17.20",
+    "axios": "^1.4.0",
+    "date-fns": "^2.29.3"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0",
+    "@types/lodash": "^4.14.195"
+  }
+}

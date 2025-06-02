@@ -1,0 +1,15 @@
+{
+  "name": "@pnpm-test/api",
+  "version": "1.0.0",
+  "description": "API service for pnpm test monorepo",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.18.1",
+    "lodash": "^4.17.21",
+    "@pnpm-test/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.17",
+    "@types/node": "^20.4.5"
+  }
+}

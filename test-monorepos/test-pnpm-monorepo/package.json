@@ -1,0 +1,15 @@
+{
+  "name": "test-pnpm-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test pnpm monorepo for always-up-to-date CLI",
+  "scripts": {
+    "build": "echo 'Building pnpm monorepo...'",
+    "test": "echo 'Testing pnpm monorepo...'"
+  },
+  "devDependencies": {
+    "typescript": "^4.8.4",
+    "vitest": "^0.32.2"
+  },
+  "packageManager": "pnpm@8.6.12"
+}

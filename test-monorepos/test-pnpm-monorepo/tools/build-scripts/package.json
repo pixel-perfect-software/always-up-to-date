@@ -1,0 +1,13 @@
+{
+  "name": "@pnpm-test/build-scripts",
+  "version": "1.0.0",
+  "description": "Build scripts for pnpm test monorepo",
+  "main": "index.js",
+  "dependencies": {
+    "esbuild": "^0.18.11",
+    "@pnpm-test/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.2"
+  }
+}

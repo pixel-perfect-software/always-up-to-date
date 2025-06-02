@@ -1,0 +1,25 @@
+{
+  "name": "@test-monorepo/web-app",
+  "version": "1.0.0",
+  "description": "Web application for the test monorepo",
+  "main": "index.js",
+  "scripts": {
+    "dev": "echo 'Starting web app dev server...'",
+    "build": "echo 'Building web app...'",
+    "test": "echo 'Testing web app...'"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "next": "^13.4.8",
+    "@test-monorepo/ui-components": "^1.0.0",
+    "@test-monorepo/shared-utils": "^1.0.0",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.14",
+    "@types/react-dom": "^18.2.6",
+    "@types/node": "^20.4.0",
+    "webpack": "^5.88.1"
+  }
+}

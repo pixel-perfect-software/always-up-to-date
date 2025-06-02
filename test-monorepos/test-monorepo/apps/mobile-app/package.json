@@ -1,0 +1,22 @@
+{
+  "name": "@test-monorepo/mobile-app",
+  "version": "1.0.0",
+  "description": "Mobile application for the test monorepo",
+  "main": "index.js",
+  "scripts": {
+    "start": "echo 'Starting mobile app...'",
+    "build": "echo 'Building mobile app...'",
+    "test": "echo 'Testing mobile app...'"
+  },
+  "dependencies": {
+    "react-native": "^0.72.3",
+    "@test-monorepo/shared-utils": "^1.0.0",
+    "lodash": "^4.17.19",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.14",
+    "@types/react-native": "^0.72.2",
+    "metro": "^0.76.7"
+  }
+}

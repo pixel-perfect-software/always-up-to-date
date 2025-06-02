@@ -1,0 +1,26 @@
+{
+  "name": "@test-monorepo/ui-components",
+  "version": "1.0.0",
+  "description": "UI components for the test monorepo",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'Building ui-components...'",
+    "test": "echo 'Testing ui-components...'"
+  },
+  "dependencies": {
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "styled-components": "^5.3.11",
+    "@test-monorepo/shared-utils": "^1.0.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "@types/react": "^17.0.62",
+    "@types/react-dom": "^17.0.20",
+    "@types/styled-components": "^5.1.26"
+  },
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "react-dom": ">=16.8.0"
+  }
+}

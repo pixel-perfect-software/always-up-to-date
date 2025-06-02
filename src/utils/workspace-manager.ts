@@ -10,6 +10,38 @@ import { ConfigurationError } from "./errors";
 const WORKSPACE_DETECTION_TIMEOUT = 30000; // 30 seconds
 const GLOB_TIMEOUT = 10000; // 10 seconds per glob pattern
 
+const PATHS_TO_IGNORE = [
+  "**/node_modules/**",
+  "**/.git/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/coverage/**",
+  "**/.next/**",
+  "**/.nuxt/**",
+  "**/.vercel/**",
+  "**/.output/**",
+  "**/.cache-loader/**",
+  "**/.cache-babel-loader/**",
+  "**/.cache-webpack/**",
+  "**/.cache-vite/**",
+  "**/.cache-rollup/**",
+  "**/.cache-esbuild/**",
+  "**/.cache-swc/**",
+  "**/.cache/**",
+  "**/tmp/**",
+  "**/temp/**",
+  "**/logs/**",
+  "**/log/**",
+  "**/.turbo/**",
+  "**/.cache/**",
+  "**/bower_components/**",
+  "**/jspm_packages/**",
+  "**/vendor/**",
+  "**/public/**",
+  "**/static/**",
+  "**/assets/**",
+];
+
 export class WorkspaceManager {
   /**
    * Detects if the given path is a monorepo and returns workspace information
@@ -171,8 +203,8 @@ export class WorkspaceManager {
         const globPromise = glob(pattern + "/package.json", {
           cwd: rootPath,
           absolute: false,
-          ignore: ["**/node_modules/**", "**/.git/**"],
-          maxDepth: 5, // Prevent deep recursion
+          ignore: PATHS_TO_IGNORE,
+          maxDepth: 3, // Reduced from 5 to 3 for better performance
         });
 
         const timeoutPromise = new Promise<never>((_, reject) => {
@@ -200,7 +232,7 @@ export class WorkspaceManager {
         );
 
         // Process packages in batches to avoid overwhelming the system
-        const batchSize = 5;
+        const batchSize = 10; // Increased from 5 to 10 for better performance
         for (let i = 0; i < directories.length; i += batchSize) {
           // Check if operation was aborted between batches
           if (signal?.aborted) {

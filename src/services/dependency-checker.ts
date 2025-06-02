@@ -1,6 +1,15 @@
 import { execSync } from "child_process";
 import { promises as fs } from "fs";
 import path from "path";
+
+// Performance optimization constants
+const MAX_CONCURRENT_REQUESTS = 10;
+const VERSION_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+interface CachedVersion {
+  version: string;
+  timestamp: number;
+}
 import {
   PackageManagerDetector,
   PackageManagerInterface,
@@ -40,6 +49,7 @@ export class DependencyChecker {
   private config: ConfigManager;
   private migrationAdvisor: MigrationAdvisor;
   private workspaceInfo?: WorkspaceInfo;
+  private versionCache = new Map<string, CachedVersion>();
 
   constructor(private projectPath: string = process.cwd()) {
     this.packageManager = PackageManagerDetector.detect(this.projectPath);
@@ -130,67 +140,102 @@ export class DependencyChecker {
       }
     }
 
-    // Check each unique external dependency
-    for (const [pkg, versions] of allDependencies) {
-      if (this.config.shouldIgnorePackage(pkg)) {
-        continue;
-      }
+    const totalPackages = allDependencies.size;
+    logger.info(`Found ${totalPackages} unique external dependencies to check`);
 
-      const latestVersion = await this.getLatestVersion(pkg);
-      if (this.config.shouldIgnoreVersion(pkg, latestVersion)) {
-        continue;
-      }
+    // Convert to array for parallel processing
+    const packagesToCheck = Array.from(allDependencies.entries()).filter(
+      ([pkg]) => !this.config.shouldIgnorePackage(pkg)
+    );
 
-      // Find the highest current version across workspaces
-      const sortedVersions = Array.from(versions)
-        .map((v) => this.cleanVersionString(v))
-        .filter((v) => semver.valid(v))
-        .sort((a, b) => semver.compare(b, a)); // descending
+    logger.info(
+      `Processing ${packagesToCheck.length} packages (${
+        totalPackages - packagesToCheck.length
+      } ignored)`
+    );
 
-      if (sortedVersions.length === 0) continue;
+    const startTime = Date.now();
 
-      const highestCurrentVersion = sortedVersions[0];
+    // Process packages in parallel batches
+    const batchSize = MAX_CONCURRENT_REQUESTS;
+    let processed = 0;
 
-      if (this.canUpdate(highestCurrentVersion, latestVersion)) {
-        const updateStrategy = this.config.getUpdateStrategyForPackage(pkg);
-        if (
-          !this.isUpdateAllowed(
-            highestCurrentVersion,
-            latestVersion,
-            updateStrategy
-          )
-        ) {
-          continue;
+    const processPackage = async (pkg: string, versions: Set<string>) => {
+      try {
+        const latestVersion = await this.getLatestVersionCached(pkg);
+        if (this.config.shouldIgnoreVersion(pkg, latestVersion)) {
+          return;
         }
 
-        const hasMajorChange = this.hasBreakingChanges(
-          highestCurrentVersion,
-          latestVersion
-        );
-        const instructions = hasMajorChange
-          ? await this.getMigrationInstructions(
-              pkg,
+        // Find the highest current version across workspaces
+        const sortedVersions = Array.from(versions)
+          .map((v) => this.cleanVersionString(v))
+          .filter((v) => semver.valid(v))
+          .sort((a, b) => semver.compare(b, a)); // descending
+
+        if (sortedVersions.length === 0) return;
+
+        const highestCurrentVersion = sortedVersions[0];
+
+        if (this.canUpdate(highestCurrentVersion, latestVersion)) {
+          const updateStrategy = this.config.getUpdateStrategyForPackage(pkg);
+          if (
+            !this.isUpdateAllowed(
               highestCurrentVersion,
-              latestVersion
+              latestVersion,
+              updateStrategy
             )
-          : undefined;
+          ) {
+            return;
+          }
 
-        const update: DependencyUpdate = {
-          name: pkg,
-          currentVersion: highestCurrentVersion,
-          newVersion: latestVersion,
-          hasBreakingChanges: hasMajorChange,
-          migrationInstructions: instructions,
-        };
+          const hasMajorChange = this.hasBreakingChanges(
+            highestCurrentVersion,
+            latestVersion
+          );
+          const instructions = hasMajorChange
+            ? await this.getMigrationInstructions(
+                pkg,
+                highestCurrentVersion,
+                latestVersion
+              )
+            : undefined;
 
-        if (hasMajorChange && !this.config.shouldAllowMajorUpdate()) {
-          allBreakingChanges.push(update);
-        } else if (hasMajorChange) {
-          allBreakingChanges.push(update);
-        } else {
-          allUpdatable.push(update);
+          const update: DependencyUpdate = {
+            name: pkg,
+            currentVersion: highestCurrentVersion,
+            newVersion: latestVersion,
+            hasBreakingChanges: hasMajorChange,
+            migrationInstructions: instructions,
+          };
+
+          if (hasMajorChange && !this.config.shouldAllowMajorUpdate()) {
+            allBreakingChanges.push(update);
+          } else if (hasMajorChange) {
+            allBreakingChanges.push(update);
+          } else {
+            allUpdatable.push(update);
+          }
+        }
+      } catch (error) {
+        logger.warn(`Failed to check ${pkg}: ${(error as Error).message}`);
+      } finally {
+        processed++;
+        if (processed % 10 === 0 || processed === packagesToCheck.length) {
+          logger.info(
+            `Progress: ${processed}/${packagesToCheck.length} packages checked`
+          );
         }
       }
+    };
+
+    // Process in parallel batches
+    for (let i = 0; i < packagesToCheck.length; i += batchSize) {
+      const batch = packagesToCheck.slice(i, i + batchSize);
+      const promises = batch.map(([pkg, versions]) =>
+        processPackage(pkg, versions)
+      );
+      await Promise.allSettled(promises);
     }
 
     // Report version conflicts
@@ -203,6 +248,12 @@ export class DependencyChecker {
         logger.warn(`  ${pkg}: ${conflictVersions.join(", ")}`);
       }
     }
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(1);
+    logger.info(
+      `Dependency check complete in ${duration}s: ${allUpdatable.length} updatable, ${allBreakingChanges.length} breaking changes`
+    );
 
     return { updatable: allUpdatable, breakingChanges: allBreakingChanges };
   }
@@ -385,6 +436,24 @@ export class DependencyChecker {
       );
       return "0.0.0"; // Return a fallback version that won't trigger updates
     }
+  }
+
+  /**
+   * Gets the latest version of a package with caching
+   * @param pkg Package name
+   * @returns Latest version string
+   */
+  private async getLatestVersionCached(pkg: string): Promise<string> {
+    const now = Date.now();
+    const cached = this.versionCache.get(pkg);
+
+    if (cached && now - cached.timestamp < VERSION_CACHE_TTL) {
+      return cached.version;
+    }
+
+    const version = await this.getLatestVersion(pkg);
+    this.versionCache.set(pkg, { version, timestamp: now });
+    return version;
   }
 
   /**
