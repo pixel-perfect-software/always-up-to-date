@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { logger } from "./logger";
 import { ConfigurationError } from "./errors";
+import { WorkspaceConfig } from "../types/workspace";
 
 export type UpdateStrategy = "major" | "minor" | "patch" | "none";
 
@@ -70,6 +71,9 @@ export interface AlwaysUpToDateConfig {
   // Preview and safety
   dryRun: boolean;
   confirmBeforeUpdate: boolean;
+
+  // Workspace configuration
+  workspace?: WorkspaceConfig;
 }
 
 const DEFAULT_CONFIG: AlwaysUpToDateConfig = {
@@ -235,6 +239,77 @@ export class ConfigManager {
    */
   public shouldCreateSeparatePRs(): boolean {
     return this.config.createSeparatePRs;
+  }
+
+  /**
+   * Get workspace configuration
+   */
+  public getWorkspaceConfig(): WorkspaceConfig {
+    return (
+      this.config.workspace || {
+        processAllWorkspaces: true,
+        syncVersionsAcrossWorkspaces: true,
+        createSeparatePRsPerWorkspace: true,
+        workspaceRules: [],
+        updateInternalDependencies: false,
+        maintainWorkspaceVersionSync: true,
+      }
+    );
+  }
+
+  /**
+   * Check if all workspaces should be processed
+   */
+  public shouldProcessAllWorkspaces(): boolean {
+    return this.getWorkspaceConfig().processAllWorkspaces;
+  }
+
+  /**
+   * Check if versions should be synced across workspaces
+   */
+  public shouldSyncVersionsAcrossWorkspaces(): boolean {
+    return this.getWorkspaceConfig().syncVersionsAcrossWorkspaces;
+  }
+
+  /**
+   * Check if separate PRs should be created per workspace
+   */
+  public shouldCreateSeparatePRsPerWorkspace(): boolean {
+    return this.getWorkspaceConfig().createSeparatePRsPerWorkspace;
+  }
+
+  /**
+   * Check if internal dependencies should be updated
+   */
+  public shouldUpdateInternalDependencies(): boolean {
+    return this.getWorkspaceConfig().updateInternalDependencies;
+  }
+
+  /**
+   * Get configuration for a specific workspace
+   */
+  public getConfigForWorkspace(
+    workspaceName: string
+  ): Partial<AlwaysUpToDateConfig> {
+    const workspaceConfig = this.getWorkspaceConfig();
+    const matchingRule = workspaceConfig.workspaceRules.find((rule) =>
+      this.matchesPattern(rule.pattern, workspaceName)
+    );
+
+    if (matchingRule) {
+      return {
+        ignoredPackages:
+          matchingRule.ignoredPackages || this.config.ignoredPackages,
+        defaultUpdateStrategy:
+          matchingRule.updateStrategy || this.config.defaultUpdateStrategy,
+        autoUpdate:
+          matchingRule.autoUpdate !== undefined
+            ? matchingRule.autoUpdate
+            : this.config.autoUpdate,
+      };
+    }
+
+    return {};
   }
 
   /**

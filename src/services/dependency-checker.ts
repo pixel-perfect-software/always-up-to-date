@@ -18,6 +18,12 @@ import {
   UpdateStrategy,
 } from "../utils/config";
 import { MigrationAdvisor } from "./migration-advisor";
+import { WorkspaceManager } from "../utils/workspace-manager";
+import {
+  WorkspaceInfo,
+  WorkspacePackage,
+  WorkspaceDependencyUpdate,
+} from "../types/workspace";
 import semver from "semver";
 
 interface DependencyUpdate {
@@ -33,6 +39,7 @@ export class DependencyChecker {
   private packageManager: PackageManagerInterface;
   private config: ConfigManager;
   private migrationAdvisor: MigrationAdvisor;
+  private workspaceInfo?: WorkspaceInfo;
 
   constructor(private projectPath: string = process.cwd()) {
     this.packageManager = PackageManagerDetector.detect(this.projectPath);
@@ -41,10 +48,154 @@ export class DependencyChecker {
   }
 
   /**
-   * Checks for available updates for all dependencies
+   * Initialize workspace information if not already done
+   */
+  private async initializeWorkspace(): Promise<void> {
+    if (!this.workspaceInfo) {
+      this.workspaceInfo = await WorkspaceManager.detect(this.projectPath);
+      if (this.workspaceInfo.isMonorepo) {
+        logger.info(
+          `Detected monorepo with ${this.workspaceInfo.packages.length} packages`
+        );
+      }
+    }
+  }
+
+  /**
+   * Checks for available updates for all dependencies (workspace-aware)
    * @returns Object containing updatable dependencies and breaking changes
    */
   async checkForUpdates(): Promise<{
+    updatable: DependencyUpdate[];
+    breakingChanges: DependencyUpdate[];
+  }> {
+    await this.initializeWorkspace();
+
+    if (this.workspaceInfo?.isMonorepo) {
+      return this.checkWorkspaceUpdates();
+    }
+
+    return this.checkSinglePackageUpdates();
+  }
+
+  /**
+   * Check updates for all workspaces in a monorepo
+   */
+  private async checkWorkspaceUpdates(): Promise<{
+    updatable: DependencyUpdate[];
+    breakingChanges: DependencyUpdate[];
+  }> {
+    const allUpdatable: DependencyUpdate[] = [];
+    const allBreakingChanges: DependencyUpdate[] = [];
+
+    if (!this.workspaceInfo?.packages) {
+      return { updatable: [], breakingChanges: [] };
+    }
+
+    // Collect all external dependencies and their versions across workspaces
+    const allDependencies = new Map<string, Set<string>>();
+    const packageDependencies = new Map<string, Record<string, string>>();
+
+    for (const workspace of this.workspaceInfo.packages) {
+      const deps = { ...workspace.dependencies, ...workspace.devDependencies };
+      packageDependencies.set(workspace.name, deps);
+
+      for (const [pkg, version] of Object.entries(deps)) {
+        if (
+          !WorkspaceManager.isInternalDependency(
+            pkg,
+            this.workspaceInfo.packages
+          )
+        ) {
+          if (!allDependencies.has(pkg)) {
+            allDependencies.set(pkg, new Set());
+          }
+          allDependencies.get(pkg)!.add(version);
+        }
+      }
+    }
+
+    // Check each unique external dependency
+    for (const [pkg, versions] of allDependencies) {
+      if (this.config.shouldIgnorePackage(pkg)) {
+        continue;
+      }
+
+      const latestVersion = await this.getLatestVersion(pkg);
+      if (this.config.shouldIgnoreVersion(pkg, latestVersion)) {
+        continue;
+      }
+
+      // Find the highest current version across workspaces
+      const sortedVersions = Array.from(versions)
+        .map((v) => this.cleanVersionString(v))
+        .filter((v) => semver.valid(v))
+        .sort((a, b) => semver.compare(b, a)); // descending
+
+      if (sortedVersions.length === 0) continue;
+
+      const highestCurrentVersion = sortedVersions[0];
+
+      if (this.canUpdate(highestCurrentVersion, latestVersion)) {
+        const updateStrategy = this.config.getUpdateStrategyForPackage(pkg);
+        if (
+          !this.isUpdateAllowed(
+            highestCurrentVersion,
+            latestVersion,
+            updateStrategy
+          )
+        ) {
+          continue;
+        }
+
+        const hasMajorChange = this.hasBreakingChanges(
+          highestCurrentVersion,
+          latestVersion
+        );
+        const instructions = hasMajorChange
+          ? await this.getMigrationInstructions(
+              pkg,
+              highestCurrentVersion,
+              latestVersion
+            )
+          : undefined;
+
+        const update: DependencyUpdate = {
+          name: pkg,
+          currentVersion: highestCurrentVersion,
+          newVersion: latestVersion,
+          hasBreakingChanges: hasMajorChange,
+          migrationInstructions: instructions,
+        };
+
+        if (hasMajorChange && !this.config.shouldAllowMajorUpdate()) {
+          allBreakingChanges.push(update);
+        } else if (hasMajorChange) {
+          allBreakingChanges.push(update);
+        } else {
+          allUpdatable.push(update);
+        }
+      }
+    }
+
+    // Report version conflicts
+    const conflicts = WorkspaceManager.findVersionConflicts(
+      this.workspaceInfo.packages
+    );
+    if (Object.keys(conflicts).length > 0) {
+      logger.warn("Version conflicts detected across workspaces:");
+      for (const [pkg, conflictVersions] of Object.entries(conflicts)) {
+        logger.warn(`  ${pkg}: ${conflictVersions.join(", ")}`);
+      }
+    }
+
+    return { updatable: allUpdatable, breakingChanges: allBreakingChanges };
+  }
+
+  /**
+   * Check updates for a single package (non-monorepo)
+   */
+  private async checkSinglePackageUpdates(): Promise<{
     updatable: DependencyUpdate[];
     breakingChanges: DependencyUpdate[];
   }> {

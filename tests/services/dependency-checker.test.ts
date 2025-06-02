@@ -16,6 +16,7 @@ jest.mock("../../src/utils/package-manager");
 jest.mock("../../src/utils/config");
 jest.mock("../../src/services/migration-advisor");
 jest.mock("../../src/utils/errors");
+jest.mock("../../src/utils/workspace-manager");
 jest.mock("../../src/utils/logger", () => ({
   logger: {
     warn: jest.fn(),
@@ -35,6 +36,12 @@ const mockConfigManager = ConfigManager as jest.MockedClass<
 >;
 const mockMigrationAdvisor = MigrationAdvisor as jest.MockedClass<
   typeof MigrationAdvisor
+>;
+
+// Import and mock WorkspaceManager
+import { WorkspaceManager } from "../../src/utils/workspace-manager";
+const mockWorkspaceManager = WorkspaceManager as jest.Mocked<
+  typeof WorkspaceManager
 >;
 
 describe("Dependency Checker Service", () => {
@@ -76,6 +83,24 @@ describe("Dependency Checker Service", () => {
 
     // Setup withRetry mock to just execute the function
     mockWithRetry.mockImplementation(async (fn) => await fn());
+
+    // Setup WorkspaceManager mock to return single package workspace
+    mockWorkspaceManager.detect.mockResolvedValue({
+      isMonorepo: false,
+      rootPath: "/test/project",
+      packages: [
+        {
+          name: "test-package",
+          path: "/test/project",
+          packageJson: {},
+          dependencies: {},
+          devDependencies: {},
+          isRoot: true,
+        },
+      ],
+      workspacePatterns: [],
+      packageManager: "npm",
+    });
   });
 
   describe("checkDependencies helper function", () => {
