@@ -52,11 +52,26 @@ export class DependencyChecker {
    */
   private async initializeWorkspace(): Promise<void> {
     if (!this.workspaceInfo) {
-      this.workspaceInfo = await WorkspaceManager.detect(this.projectPath);
-      if (this.workspaceInfo.isMonorepo) {
-        logger.info(
-          `Detected monorepo with ${this.workspaceInfo.packages.length} packages`
-        );
+      try {
+        logger.debug("Initializing workspace detection...");
+        this.workspaceInfo = await WorkspaceManager.detect(this.projectPath);
+        if (this.workspaceInfo.isMonorepo) {
+          logger.info(
+            `Detected monorepo with ${this.workspaceInfo.packages.length} packages`
+          );
+        } else {
+          logger.debug("Single package project detected");
+        }
+      } catch (error) {
+        logger.error(`Failed to detect workspace: ${(error as Error).message}`);
+        // Fallback to single package mode
+        this.workspaceInfo = {
+          isMonorepo: false,
+          rootPath: this.projectPath,
+          packages: [],
+          workspacePatterns: [],
+          packageManager: "npm",
+        };
       }
     }
   }

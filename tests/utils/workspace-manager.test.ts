@@ -6,16 +6,38 @@ import { tmpdir } from "os";
 
 describe("WorkspaceManager", () => {
   let testDir: string;
+  const testDirs: string[] = [];
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `workspace-test-${Date.now()}`);
+    testDir = join(
+      tmpdir(),
+      `workspace-test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    );
+    testDirs.push(testDir);
     mkdirSync(testDir, { recursive: true });
   });
 
   afterEach(() => {
     if (existsSync(testDir)) {
-      rmSync(testDir, { recursive: true, force: true });
+      try {
+        rmSync(testDir, { recursive: true, force: true });
+      } catch (error) {
+        console.warn(`Failed to cleanup test directory ${testDir}:`, error);
+      }
     }
+  });
+
+  afterAll(() => {
+    // Ensure all test directories are cleaned up
+    testDirs.forEach((dir) => {
+      if (existsSync(dir)) {
+        try {
+          rmSync(dir, { recursive: true, force: true });
+        } catch (error) {
+          console.warn(`Failed to cleanup test directory ${dir}:`, error);
+        }
+      }
+    });
   });
 
   describe("Single Package Detection", () => {

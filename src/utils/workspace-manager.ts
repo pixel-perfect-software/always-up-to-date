@@ -1,9 +1,14 @@
 import { existsSync, readFileSync } from "fs";
+import { promises as fs } from "fs";
 import { join, resolve, relative } from "path";
 import { glob } from "glob";
 import { logger } from "./logger";
 import { WorkspaceInfo, WorkspacePackage } from "../types/workspace";
 import { ConfigurationError } from "./errors";
+
+// Timeout for workspace detection operations
+const WORKSPACE_DETECTION_TIMEOUT = 30000; // 30 seconds
+const GLOB_TIMEOUT = 10000; // 10 seconds per glob pattern
 
 export class WorkspaceManager {
   /**
@@ -55,8 +60,8 @@ export class WorkspaceManager {
         };
       }
 
-      // Discover workspace packages
-      const packages = await this.getWorkspacePackages(
+      // Discover workspace packages with timeout protection
+      const packages = await this.getWorkspacePackagesWithTimeout(
         workspacePatterns,
         rootPath
       );
@@ -96,58 +101,121 @@ export class WorkspaceManager {
   }
 
   /**
+   * Discovers all packages matching the workspace patterns with timeout protection
+   */
+  private async getWorkspacePackagesWithTimeout(
+    patterns: string[],
+    rootPath: string
+  ): Promise<WorkspacePackage[]> {
+    const abortController = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          abortController.abort();
+          reject(
+            new Error(
+              `Workspace detection timeout after ${WORKSPACE_DETECTION_TIMEOUT}ms`
+            )
+          );
+        }, WORKSPACE_DETECTION_TIMEOUT);
+      });
+
+      const workspacePromise = this.getWorkspacePackages(
+        patterns,
+        rootPath,
+        abortController.signal
+      );
+
+      return await Promise.race([workspacePromise, timeoutPromise]);
+    } catch (error) {
+      logger.warn(
+        `Workspace detection timed out or failed: ${(error as Error).message}`
+      );
+      return [];
+    } finally {
+      // Clean up timeout and abort controller
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (!abortController.signal.aborted) {
+        abortController.abort();
+      }
+    }
+  }
+
+  /**
    * Discovers all packages matching the workspace patterns
    */
   async getWorkspacePackages(
     patterns: string[],
-    rootPath: string
+    rootPath: string,
+    signal?: AbortSignal
   ): Promise<WorkspacePackage[]> {
     const packages: WorkspacePackage[] = [];
+    logger.debug(`Processing ${patterns.length} workspace patterns`);
 
     for (const pattern of patterns) {
+      // Check if operation was aborted
+      if (signal?.aborted) {
+        throw new Error("Workspace detection aborted");
+      }
+
+      let globTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
       try {
-        // Use glob to find all matching directories
-        const matches = await glob(pattern + "/package.json", {
+        logger.debug(`Processing workspace pattern: ${pattern}`);
+
+        // Use glob to find all matching directories with timeout protection
+        const globPromise = glob(pattern + "/package.json", {
           cwd: rootPath,
           absolute: false,
+          ignore: ["**/node_modules/**", "**/.git/**"],
+          maxDepth: 5, // Prevent deep recursion
         });
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          globTimeoutId = setTimeout(
+            () => reject(new Error(`Glob timeout for pattern: ${pattern}`)),
+            GLOB_TIMEOUT
+          );
+        });
+
+        const matches = (await Promise.race([
+          globPromise,
+          timeoutPromise,
+        ])) as string[];
+        logger.debug(`Pattern ${pattern} found ${matches.length} matches`);
+
+        // Clear the timeout since glob completed successfully
+        if (globTimeoutId) {
+          clearTimeout(globTimeoutId);
+          globTimeoutId = null;
+        }
 
         // Extract directory paths from package.json matches
         const directories = matches.map((match) =>
           match.replace("/package.json", "")
         );
 
-        for (const directory of directories) {
-          const packagePath = join(rootPath, directory);
-          const packageJsonPath = join(packagePath, "package.json");
+        // Process packages in batches to avoid overwhelming the system
+        const batchSize = 5;
+        for (let i = 0; i < directories.length; i += batchSize) {
+          // Check if operation was aborted between batches
+          if (signal?.aborted) {
+            throw new Error("Workspace detection aborted");
+          }
 
-          if (existsSync(packageJsonPath)) {
-            try {
-              const packageJson = JSON.parse(
-                readFileSync(packageJsonPath, "utf8")
-              );
+          const batch = directories.slice(i, i + batchSize);
+          const batchPromises = batch.map(async (directory) => {
+            return this.loadPackageFromDirectory(directory, rootPath);
+          });
 
-              const workspacePackage: WorkspacePackage = {
-                name: packageJson.name || directory,
-                path: packagePath,
-                packageJson,
-                dependencies: packageJson.dependencies || {},
-                devDependencies: packageJson.devDependencies || {},
-                isRoot: false,
-              };
-
-              packages.push(workspacePackage);
-              logger.debug(
-                `Found workspace package: ${
-                  workspacePackage.name
-                } at ${relative(rootPath, packagePath)}`
-              );
-            } catch (error) {
-              logger.warn(
-                `Failed to parse package.json at ${packageJsonPath}: ${
-                  (error as Error).message
-                }`
-              );
+          const batchResults = await Promise.allSettled(batchPromises);
+          for (const result of batchResults) {
+            if (result.status === "fulfilled" && result.value) {
+              packages.push(result.value);
             }
           }
         }
@@ -157,10 +225,60 @@ export class WorkspaceManager {
             (error as Error).message
           }`
         );
+        // Continue with other patterns even if one fails
+      } finally {
+        // Clean up glob timeout
+        if (globTimeoutId) {
+          clearTimeout(globTimeoutId);
+        }
       }
     }
 
     return packages;
+  }
+
+  /**
+   * Load a package from a directory
+   */
+  private async loadPackageFromDirectory(
+    directory: string,
+    rootPath: string
+  ): Promise<WorkspacePackage | null> {
+    const packagePath = join(rootPath, directory);
+    const packageJsonPath = join(packagePath, "package.json");
+
+    if (!existsSync(packageJsonPath)) {
+      return null;
+    }
+
+    try {
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+
+      const workspacePackage: WorkspacePackage = {
+        name: packageJson.name || directory,
+        path: packagePath,
+        packageJson,
+        dependencies: packageJson.dependencies || {},
+        devDependencies: packageJson.devDependencies || {},
+        isRoot: false,
+      };
+
+      logger.debug(
+        `Found workspace package: ${workspacePackage.name} at ${relative(
+          rootPath,
+          packagePath
+        )}`
+      );
+
+      return workspacePackage;
+    } catch (error) {
+      logger.warn(
+        `Failed to parse package.json at ${packageJsonPath}: ${
+          (error as Error).message
+        }`
+      );
+      return null;
+    }
   }
 
   /**

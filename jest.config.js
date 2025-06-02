@@ -15,7 +15,7 @@ module.exports = {
   coveragePathIgnorePatterns: ["node_modules/", "index.ts"],
   coverageReporters: ["text", "lcov", "html", "json-summary"],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
-  setupFilesAfterEnv: [],
+  setupFilesAfterEnv: ["<rootDir>/tests/setup.ts"],
   clearMocks: true,
   restoreMocks: true,
   transformIgnorePatterns: ["node_modules/(?!(@octokit|@inquirer)/)"],
