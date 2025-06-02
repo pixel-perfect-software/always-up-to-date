@@ -36,6 +36,7 @@ export class DependencyChecker {
   private workspaceInfo?: WorkspaceInfo;
   private versionCache = new Map<string, CachedVersion>();
 
+  // eslint-disable-next-line no-unused-vars
   constructor(private projectPath: string = process.cwd()) {
     this.packageManager = PackageManagerDetector.detect(this.projectPath);
     this.config = new ConfigManager(this.projectPath);
