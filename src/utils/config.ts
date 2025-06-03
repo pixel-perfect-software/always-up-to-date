@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { logger } from "./logger";
 import { ConfigurationError } from "./errors";
-import { WorkspaceConfig } from "../types/workspace";
 
 export type UpdateStrategy = "major" | "minor" | "patch" | "none";
 
@@ -17,6 +16,32 @@ export interface PackageRule {
   ignoredVersions?: string[];
   /** Minimum Node.js version required for updates */
   requiredNodeVersion?: string;
+}
+
+export interface WorkspaceRule {
+  /** Glob pattern to match workspace names */
+  pattern: string;
+  /** Packages to ignore for this workspace */
+  ignoredPackages?: string[];
+  /** Update strategy for this workspace */
+  updateStrategy?: UpdateStrategy;
+  /** Whether to auto-update packages in this workspace */
+  autoUpdate?: boolean;
+}
+
+export interface WorkspaceConfig {
+  /** Process all detected workspaces */
+  processAllWorkspaces: boolean;
+  /** Keep versions synchronized across workspaces */
+  syncVersionsAcrossWorkspaces: boolean;
+  /** Create individual PRs per workspace */
+  createSeparatePRsPerWorkspace: boolean;
+  /** Workspace-specific rules */
+  workspaceRules: WorkspaceRule[];
+  /** Update internal workspace dependencies */
+  updateInternalDependencies: boolean;
+  /** Maintain version consistency */
+  maintainWorkspaceVersionSync: boolean;
 }
 
 export interface ScheduleConfig {

@@ -16,6 +16,8 @@ Welcome to the Always Up To Date documentation! Choose a topic below to get star
 ## Advanced Usage
 
 - 🐙 **[GitHub Integration](./github-integration.md)** - Automated PR creation and CI/CD workflows
+- 📦 **[Monorepo Support](./monorepo_support.md)** - Support for npm, yarn, and pnpm workspaces
+- 🗂️ **[pnpm Catalog Support](./pnpm-catalog.md)** - Centralized dependency management with pnpm catalogs
 - 🤝 **[Contributing Guide](./contributing.md)** - Help improve the project
 
 ## Support

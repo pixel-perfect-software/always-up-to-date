@@ -1,6 +1,6 @@
 {
   "autoUpdate": false,
-  "createPRs": true,
+  "createPRs": false,
   "ignoredPackages": ["@types/node", "typescript"],
   "includeDev": true,
   "onlyDirect": false,

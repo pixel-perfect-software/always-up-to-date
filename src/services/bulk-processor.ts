@@ -5,6 +5,7 @@ import {
 } from "../utils/package-manager";
 import { WorkspaceInfo } from "../types/workspace";
 import { WorkspaceManager } from "../utils/workspace-manager";
+import { CatalogResolver } from "../utils/catalog-resolver";
 import semver from "semver";
 
 interface BulkDependencyInfo {
@@ -90,7 +91,22 @@ export class BulkProcessor {
         }
 
         const depInfo = dependencyMap.get(depName)!;
-        depInfo.currentVersions.add(this.cleanVersionString(version));
+
+        // Resolve catalog references to actual versions
+        let resolvedVersion = version;
+        if (version.startsWith("catalog:")) {
+          const catalogVersion = this.workspaceInfo.catalog?.[depName];
+          if (catalogVersion) {
+            resolvedVersion = catalogVersion;
+          } else {
+            logger.warn(
+              `Catalog reference for ${depName} found but no catalog entry exists`
+            );
+            continue;
+          }
+        }
+
+        depInfo.currentVersions.add(this.cleanVersionString(resolvedVersion));
         depInfo.workspaces.push(workspace.name);
       }
     }
@@ -308,6 +324,14 @@ export class BulkProcessor {
     const startTime = Date.now();
     logger.info(`Starting bulk updates for ${updatesToApply.length} packages`);
 
+    // For pnpm with catalog, separate catalog and direct updates
+    if (
+      this.workspaceInfo.packageManager === "pnpm" &&
+      this.workspaceInfo.catalog
+    ) {
+      return this.performCatalogAwareUpdates(updatesToApply);
+    }
+
     // Convert to PackageUpdate format
     const packageUpdates: PackageUpdate[] = updatesToApply.map((update) => ({
       name: update.name,
@@ -350,6 +374,132 @@ export class BulkProcessor {
   }
 
   /**
+   * Perform catalog-aware updates for pnpm workspaces
+   */
+  private async performCatalogAwareUpdates(
+    updatesToApply: Array<{
+      name: string;
+      currentVersion: string;
+      newVersion: string;
+      hasBreakingChanges: boolean;
+    }>
+  ): Promise<number> {
+    const catalogUpdates: Array<{ name: string; version: string }> = [];
+    const directUpdates: PackageUpdate[] = [];
+
+    // Separate updates based on whether they should update catalog or direct dependencies
+    for (const update of updatesToApply) {
+      const shouldUpdateCatalog = CatalogResolver.shouldUpdateCatalog(
+        update.name,
+        this.workspaceInfo
+      );
+
+      if (shouldUpdateCatalog) {
+        catalogUpdates.push({
+          name: update.name,
+          version: update.newVersion,
+        });
+      } else {
+        // Get workspaces that need direct updates
+        const directWorkspaces = CatalogResolver.getDirectUpdateWorkspaces(
+          update.name,
+          this.workspaceInfo
+        );
+
+        if (directWorkspaces.length > 0) {
+          directUpdates.push({
+            name: update.name,
+            version: update.newVersion,
+          });
+        }
+      }
+    }
+
+    let successCount = 0;
+
+    // Update catalog entries if any
+    if (catalogUpdates.length > 0) {
+      logger.info(`Updating ${catalogUpdates.length} catalog entries`);
+      const catalogSuccess = await this.updatePnpmCatalog(catalogUpdates);
+      if (catalogSuccess) {
+        successCount += catalogUpdates.length;
+      }
+    }
+
+    // Update direct dependencies if any
+    if (directUpdates.length > 0) {
+      logger.info(`Updating ${directUpdates.length} direct dependencies`);
+      try {
+        await this.packageManager.bulkUpdateWorkspaceDependencies!(
+          this.workspaceInfo.rootPath,
+          directUpdates
+        );
+        successCount += directUpdates.length;
+      } catch (error) {
+        logger.error(
+          `Failed to update direct dependencies: ${(error as Error).message}`
+        );
+      }
+    }
+
+    return successCount;
+  }
+
+  /**
+   * Update pnpm catalog entries
+   */
+  private async updatePnpmCatalog(
+    updates: Array<{ name: string; version: string }>
+  ): Promise<boolean> {
+    try {
+      const { readFileSync, writeFileSync } = await import("fs");
+      const { join } = await import("path");
+
+      const workspacePath = join(
+        this.workspaceInfo.rootPath,
+        "pnpm-workspace.yaml"
+      );
+      const content = readFileSync(workspacePath, "utf8");
+
+      let updatedContent = content;
+
+      // Update each catalog entry
+      for (const update of updates) {
+        const regex = new RegExp(
+          `(catalog:\\s*\\n(?:.*\\n)*?\\s*${update.name}:\\s*)([^\\n]+)`,
+          "m"
+        );
+
+        if (regex.test(updatedContent)) {
+          updatedContent = updatedContent.replace(regex, `$1${update.version}`);
+          logger.info(
+            `Updated catalog entry: ${update.name} -> ${update.version}`
+          );
+        } else {
+          logger.warn(`Catalog entry not found for ${update.name}`);
+        }
+      }
+
+      // Write back the updated content
+      writeFileSync(workspacePath, updatedContent, "utf8");
+
+      // Run pnpm install to apply catalog changes
+      const { execSync } = await import("child_process");
+      execSync("pnpm install", {
+        cwd: this.workspaceInfo.rootPath,
+        stdio: "inherit",
+      });
+
+      return true;
+    } catch (error) {
+      logger.error(
+        `Failed to update pnpm catalog: ${(error as Error).message}`
+      );
+      return false;
+    }
+  }
+
+  /**
    * Fallback method for updating individual workspaces
    */
   private async updateWorkspacesFallback(
@@ -368,7 +518,9 @@ export class BulkProcessor {
         );
       } catch (error) {
         logger.warn(
-          `Failed to update workspace ${workspacePath}: ${(error as Error).message}`
+          `Failed to update workspace ${workspacePath}: ${
+            (error as Error).message
+          }`
         );
         // Continue with other workspaces
       }

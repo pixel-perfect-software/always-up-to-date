@@ -13,36 +13,19 @@ export interface WorkspaceInfo {
   packages: WorkspacePackage[];
   workspacePatterns: string[];
   packageManager: "npm" | "yarn" | "pnpm";
+  catalog?: Record<string, string>; // pnpm catalog versions
 }
 
-export interface WorkspaceDependencyUpdate {
+export interface ResolvedDependency {
   name: string;
-  currentVersion: string;
-  installedVersion?: string;
-  newVersion: string;
-  hasBreakingChanges: boolean;
-  migrationInstructions?: string;
-  workspaceName: string;
-  workspacePath: string;
-  affectsOtherWorkspaces: boolean;
-  internalDependency: boolean;
+  version: string;
+  source: "direct" | "catalog";
+  originalSpecifier: string;
 }
 
-export interface WorkspaceConfig {
-  // Monorepo behavior
-  processAllWorkspaces: boolean;
-  syncVersionsAcrossWorkspaces: boolean;
-  createSeparatePRsPerWorkspace: boolean;
-
-  // Workspace-specific rules
-  workspaceRules: {
-    pattern: string; // workspace name pattern
-    ignoredPackages?: string[];
-    updateStrategy?: "major" | "minor" | "patch" | "none";
-    autoUpdate?: boolean;
-  }[];
-
-  // Internal dependency handling
-  updateInternalDependencies: boolean;
-  maintainWorkspaceVersionSync: boolean;
+export interface VersionInfo {
+  specified: string;
+  resolved: string;
+  source: "direct" | "catalog";
+  workspace: string;
 }

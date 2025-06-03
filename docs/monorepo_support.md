@@ -164,6 +164,13 @@ packages:
   - "tools/*"
 ```
 
+**pnpm Catalog Support**: Always Up To Date now fully supports pnpm's catalog feature for centralized dependency management. See our [pnpm Catalog documentation](./pnpm-catalog.md) for details on:
+
+- Automatic catalog detection
+- Mixed catalog and direct version handling
+- Priority-based version resolution
+- Catalog-aware updates
+
 ### Lerna
 
 ```json

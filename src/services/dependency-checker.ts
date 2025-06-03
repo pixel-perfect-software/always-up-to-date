@@ -18,6 +18,7 @@ import { MigrationAdvisor } from "./migration-advisor";
 import { WorkspaceManager } from "../utils/workspace-manager";
 import { WorkspaceInfo } from "../types/workspace";
 import { CacheManager } from "./cache-manager";
+import { CatalogResolver } from "../utils/catalog-resolver";
 import semver from "semver";
 
 interface DependencyUpdate {

@@ -117,12 +117,19 @@ export class WorkspaceManager {
 
       logger.debug(`Detected monorepo with ${packages.length} packages`);
 
+      // Parse pnpm catalog if using pnpm
+      let catalog: Record<string, string> | undefined;
+      if (packageManager === "pnpm") {
+        catalog = this.parsePnpmCatalog(rootPath);
+      }
+
       return {
         isMonorepo: true,
         rootPath,
         packages,
         workspacePatterns,
         packageManager,
+        catalog,
       };
     } catch (error) {
       throw new ConfigurationError(
@@ -429,6 +436,78 @@ export class WorkspaceManager {
     return [...new Set(patterns)].filter(
       (pattern) => pattern && typeof pattern === "string"
     );
+  }
+
+  /**
+   * Parses the pnpm catalog from pnpm-workspace.yaml
+   */
+  private parsePnpmCatalog(rootPath: string): Record<string, string> {
+    const catalog: Record<string, string> = {};
+    const pnpmWorkspacePath = join(rootPath, "pnpm-workspace.yaml");
+
+    if (!existsSync(pnpmWorkspacePath)) {
+      return catalog;
+    }
+
+    try {
+      const content = readFileSync(pnpmWorkspacePath, "utf8");
+      const lines = content.split("\n");
+      let inCatalogSection = false;
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+
+        if (trimmed === "catalog:") {
+          inCatalogSection = true;
+          continue;
+        }
+
+        if (inCatalogSection) {
+          // Check if we've left the catalog section
+          if (
+            trimmed &&
+            !trimmed.startsWith("#") &&
+            !line.startsWith(" ") &&
+            !line.startsWith("\t")
+          ) {
+            break;
+          }
+
+          // Parse catalog entry: "  packageName: version"
+          if (trimmed && !trimmed.startsWith("#")) {
+            const colonIndex = trimmed.indexOf(":");
+            if (colonIndex > 0) {
+              let packageName = trimmed.substring(0, colonIndex).trim();
+              let version = trimmed.substring(colonIndex + 1).trim();
+
+              // Remove quotes from package name if present
+              packageName = packageName.replace(/^["']|["']$/g, "");
+
+              // Remove quotes from version
+              version = version.replace(/^["']|["']$/g, "");
+
+              if (packageName && version) {
+                catalog[packageName] = version;
+              }
+            }
+          }
+        }
+      }
+
+      if (Object.keys(catalog).length > 0) {
+        logger.debug(
+          `Parsed pnpm catalog with ${Object.keys(catalog).length} entries`
+        );
+      }
+    } catch (error) {
+      logger.warn(
+        `Failed to parse catalog from pnpm-workspace.yaml: ${
+          (error as Error).message
+        }`
+      );
+    }
+
+    return catalog;
   }
 
   /**

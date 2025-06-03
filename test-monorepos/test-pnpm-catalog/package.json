@@ -1,0 +1,18 @@
+{
+  "name": "test-pnpm-catalog-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test monorepo with pnpm catalog support",
+  "scripts": {
+    "test": "echo \"No tests yet\""
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
