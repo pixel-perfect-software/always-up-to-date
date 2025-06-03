@@ -214,7 +214,7 @@ export class WorkspaceManager {
           cwd: rootPath,
           absolute: false,
           ignore: PATHS_TO_IGNORE,
-          maxDepth: 2, // Further reduced from 3 to 2 for better performance
+          maxDepth: 3, // Optimized depth for monorepo structure
         });
 
         const timeoutPromise = new Promise<never>((_, reject) => {
