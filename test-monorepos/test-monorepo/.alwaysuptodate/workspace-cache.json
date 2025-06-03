@@ -1,0 +1,14 @@
+{
+  "packages": [
+    "packages/ui-components",
+    "packages/shared-utils",
+    "apps/web-app",
+    "apps/mobile-app"
+  ],
+  "patterns": [
+    "packages/*",
+    "apps/*"
+  ],
+  "timestamp": 1748959965906,
+  "rootPath": "/Users/tylerrobertson/personal_dev/always-up-to-date/test-monorepos/test-monorepo"
+}

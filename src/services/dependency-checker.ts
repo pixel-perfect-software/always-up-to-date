@@ -465,25 +465,65 @@ export class DependencyChecker {
   }
 
   /**
-   * Updates dependencies that don't have breaking changes
+   * Updates dependencies that don't have breaking changes using bulk operations
    * @returns Array of updated dependencies
    */
   async updateDependencies(): Promise<DependencyUpdate[]> {
     try {
+      await this.initializeWorkspace();
       const { updatable } = await this.checkForUpdates();
 
-      for (const dep of updatable) {
-        logger.info(
-          `Updating ${dep.name} from ${dep.currentVersion} to ${dep.newVersion}`
-        );
-        await this.packageManager.updateDependency(
-          this.projectPath,
-          dep.name,
-          dep.newVersion
-        );
+      if (updatable.length === 0) {
+        logger.info("No dependencies need updating");
+        return [];
       }
 
-      return updatable;
+      // Use bulk processing for significantly better performance
+      if (this.workspaceInfo) {
+        const bulkProcessor = new (
+          await import("./bulk-processor")
+        ).BulkProcessor(this.packageManager, this.workspaceInfo);
+
+        const updatesApplied = await bulkProcessor.performBulkUpdates(
+          updatable.map((dep) => ({
+            name: dep.name,
+            currentVersion: dep.currentVersion,
+            newVersion: dep.newVersion,
+            hasBreakingChanges: dep.hasBreakingChanges,
+          }))
+        );
+
+        logger.info(
+          `Successfully updated ${updatesApplied} dependencies using bulk operations`
+        );
+        return updatable.slice(0, updatesApplied);
+      } else {
+        // Fallback to individual updates (should rarely happen)
+        logger.warn(
+          "Workspace info not available, falling back to individual updates"
+        );
+        const successfulUpdates: DependencyUpdate[] = [];
+
+        for (const dep of updatable) {
+          try {
+            logger.info(
+              `Updating ${dep.name} from ${dep.currentVersion} to ${dep.newVersion}`
+            );
+            await this.packageManager.updateDependency(
+              this.projectPath,
+              dep.name,
+              dep.newVersion
+            );
+            successfulUpdates.push(dep);
+          } catch (error) {
+            logger.error(
+              `Failed to update ${dep.name}: ${(error as Error).message}`
+            );
+          }
+        }
+
+        return successfulUpdates;
+      }
     } catch (error) {
       logger.error(`Error updating dependencies: ${(error as Error).message}`);
       return [];

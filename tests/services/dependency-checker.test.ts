@@ -481,7 +481,7 @@ describe("Dependency Checker Service", () => {
 
         const { logger } = require("../../src/utils/logger");
         expect(logger.info).toHaveBeenCalledWith(
-          "Updating test-package from 1.0.0 to 1.1.0"
+          "Updated test-package from 1.0.0 to 1.1.0"
         );
       });
 

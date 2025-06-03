@@ -1,0 +1,14 @@
+{
+  "packages": [
+    "packages/core",
+    "tools/build-scripts",
+    "services/api"
+  ],
+  "patterns": [
+    "packages/*",
+    "tools/*",
+    "services/*"
+  ],
+  "timestamp": 1748959861946,
+  "rootPath": "/Users/tylerrobertson/personal_dev/always-up-to-date/test-monorepos/test-pnpm-monorepo"
+}

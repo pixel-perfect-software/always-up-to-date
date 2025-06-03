@@ -1,5 +1,8 @@
 import { logger } from "../utils/logger";
-import { PackageManagerInterface } from "../utils/package-manager";
+import {
+  PackageManagerInterface,
+  PackageUpdate,
+} from "../utils/package-manager";
 import { WorkspaceInfo } from "../types/workspace";
 import { WorkspaceManager } from "../utils/workspace-manager";
 import semver from "semver";
@@ -284,5 +287,162 @@ export class BulkProcessor {
     } catch (error) {
       return null;
     }
+  }
+
+  /**
+   * Perform bulk updates using native package manager commands
+   */
+  async performBulkUpdates(
+    updatesToApply: Array<{
+      name: string;
+      currentVersion: string;
+      newVersion: string;
+      hasBreakingChanges: boolean;
+    }>
+  ): Promise<number> {
+    if (updatesToApply.length === 0) {
+      logger.info("No updates to apply");
+      return 0;
+    }
+
+    const startTime = Date.now();
+    logger.info(`Starting bulk updates for ${updatesToApply.length} packages`);
+
+    // Convert to PackageUpdate format
+    const packageUpdates: PackageUpdate[] = updatesToApply.map((update) => ({
+      name: update.name,
+      version: update.newVersion,
+    }));
+
+    try {
+      if (this.workspaceInfo.isMonorepo) {
+        // Use workspace-aware bulk update
+        if (this.packageManager.bulkUpdateWorkspaceDependencies) {
+          await this.packageManager.bulkUpdateWorkspaceDependencies(
+            this.workspaceInfo.rootPath,
+            packageUpdates
+          );
+        } else {
+          // Fallback to individual workspace updates
+          await this.updateWorkspacesFallback(packageUpdates);
+        }
+      } else {
+        // Single package project
+        await this.packageManager.bulkUpdateDependencies(
+          this.workspaceInfo.rootPath,
+          packageUpdates
+        );
+      }
+
+      const endTime = Date.now();
+      const duration = ((endTime - startTime) / 1000).toFixed(1);
+      logger.info(
+        `Bulk updates completed in ${duration}s for ${updatesToApply.length} packages`
+      );
+
+      return updatesToApply.length;
+    } catch (error) {
+      logger.error(`Bulk update failed: ${(error as Error).message}`);
+      // Fallback to individual updates
+      logger.info("Falling back to individual package updates...");
+      return this.performIndividualUpdates(updatesToApply);
+    }
+  }
+
+  /**
+   * Fallback method for updating individual workspaces
+   */
+  private async updateWorkspacesFallback(
+    packageUpdates: PackageUpdate[]
+  ): Promise<void> {
+    const uniqueWorkspaces = new Set(
+      this.workspaceInfo.packages.map((pkg) => pkg.path)
+    );
+
+    for (const workspacePath of uniqueWorkspaces) {
+      try {
+        logger.debug(`Updating workspace at ${workspacePath}`);
+        await this.packageManager.bulkUpdateDependencies(
+          workspacePath,
+          packageUpdates
+        );
+      } catch (error) {
+        logger.warn(
+          `Failed to update workspace ${workspacePath}: ${(error as Error).message}`
+        );
+        // Continue with other workspaces
+      }
+    }
+  }
+
+  /**
+   * Ultimate fallback: update packages one by one
+   */
+  private async performIndividualUpdates(
+    updatesToApply: Array<{
+      name: string;
+      currentVersion: string;
+      newVersion: string;
+      hasBreakingChanges: boolean;
+    }>
+  ): Promise<number> {
+    let successCount = 0;
+    const batchSize = 5; // Process 5 packages at a time to avoid overwhelming the system
+
+    for (let i = 0; i < updatesToApply.length; i += batchSize) {
+      const batch = updatesToApply.slice(i, i + batchSize);
+
+      const batchPromises = batch.map(async (update) => {
+        try {
+          if (this.workspaceInfo.isMonorepo) {
+            // Update in each workspace that contains this dependency
+            const workspacesWithDep = this.workspaceInfo.packages.filter(
+              (pkg) =>
+                pkg.dependencies?.[update.name] ||
+                pkg.devDependencies?.[update.name]
+            );
+
+            for (const workspace of workspacesWithDep) {
+              await this.packageManager.updateDependency(
+                workspace.path,
+                update.name,
+                update.newVersion
+              );
+            }
+          } else {
+            await this.packageManager.updateDependency(
+              this.workspaceInfo.rootPath,
+              update.name,
+              update.newVersion
+            );
+          }
+
+          logger.info(
+            `Updated ${update.name} from ${update.currentVersion} to ${update.newVersion}`
+          );
+          return true;
+        } catch (error) {
+          logger.error(
+            `Failed to update ${update.name}: ${(error as Error).message}`
+          );
+          return false;
+        }
+      });
+
+      const results = await Promise.allSettled(batchPromises);
+      successCount += results.filter(
+        (result) => result.status === "fulfilled" && result.value === true
+      ).length;
+
+      // Small delay between batches
+      if (i + batchSize < updatesToApply.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+
+    logger.info(
+      `Individual updates completed: ${successCount}/${updatesToApply.length} successful`
+    );
+    return successCount;
   }
 }

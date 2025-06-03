@@ -18,6 +18,12 @@ interface ExecError extends Error {
   code?: number;
 }
 
+export interface PackageUpdate {
+  name: string;
+  version: string;
+  type?: "dependencies" | "devDependencies";
+}
+
 export interface PackageManagerInterface {
   install(packageName: string, version?: string): Promise<void>;
   uninstall(packageName: string): Promise<void>;
@@ -29,6 +35,17 @@ export interface PackageManagerInterface {
     packageName: string,
     version: string
   ): Promise<void>;
+  // New bulk operations
+  bulkUpdateDependencies(
+    projectPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void>;
+  bulkUpdateWorkspaceDependencies?(
+    rootPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void>;
+  updateAllDependencies?(projectPath: string): Promise<void>;
+  updateAllWorkspaceDependencies?(rootPath: string): Promise<void>;
   audit(): Promise<any>;
   getInstalledVersion(
     projectPath: string,
@@ -37,6 +54,27 @@ export interface PackageManagerInterface {
 }
 
 abstract class BasePackageManager implements PackageManagerInterface {
+  checkWorkspaceOutdated?(): Promise<string> {
+    throw new Error("Method not implemented.");
+  }
+  bulkUpdateDependencies(
+    projectPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
+  bulkUpdateWorkspaceDependencies?(
+    rootPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
+  updateAllDependencies?(projectPath: string): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
+  updateAllWorkspaceDependencies?(rootPath: string): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
   protected abstract getInstallCommand(
     packageName: string,
     version?: string
@@ -47,6 +85,12 @@ abstract class BasePackageManager implements PackageManagerInterface {
     packageName: string,
     version: string
   ): string;
+  protected abstract getBulkUpdateCommand(updates: PackageUpdate[]): string;
+  protected abstract getBulkWorkspaceUpdateCommand?(
+    updates: PackageUpdate[]
+  ): string;
+  protected abstract getUpdateAllCommand?(): string;
+  protected abstract getUpdateAllWorkspaceCommand?(): string;
   protected abstract getAuditCommand(): string;
 
   async install(packageName: string, version?: string): Promise<void> {
@@ -262,12 +306,102 @@ class NpmPackageManager extends BasePackageManager {
     return `npm install ${packageName}@${version} --save-exact`;
   }
 
+  protected getBulkUpdateCommand(updates: PackageUpdate[]): string {
+    const packages = updates
+      .map((update) => `${update.name}@${update.version}`)
+      .join(" ");
+    return `npm install ${packages} --save-exact`;
+  }
+
+  protected getBulkWorkspaceUpdateCommand(updates: PackageUpdate[]): string {
+    const packages = updates
+      .map((update) => `${update.name}@${update.version}`)
+      .join(" ");
+    return `npm install ${packages} --save-exact --workspaces`;
+  }
+
+  protected getUpdateAllCommand(): string {
+    return "npm update";
+  }
+
+  protected getUpdateAllWorkspaceCommand(): string {
+    return "npm update --workspaces";
+  }
+
   protected getAuditCommand(): string {
     return "npm audit --json";
   }
 
   protected isWarningOnly(stderr: string): boolean {
     return stderr.includes("npm WARN");
+  }
+
+  async bulkUpdateDependencies(
+    projectPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void> {
+    if (updates.length === 0) return;
+
+    const command = this.getBulkUpdateCommand(updates);
+    try {
+      logger.info(`Bulk updating ${updates.length} packages with npm`);
+      await withRetry(() => this.runCommand(command, { cwd: projectPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to bulk update dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
+  }
+
+  async bulkUpdateWorkspaceDependencies(
+    rootPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void> {
+    if (updates.length === 0) return;
+
+    const command = this.getBulkWorkspaceUpdateCommand(updates);
+    try {
+      logger.info(
+        `Bulk updating ${updates.length} packages across workspaces with npm`
+      );
+      await withRetry(() => this.runCommand(command, { cwd: rootPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to bulk update workspace dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
+  }
+
+  async updateAllDependencies(projectPath: string): Promise<void> {
+    const command = this.getUpdateAllCommand();
+    try {
+      logger.info("Updating all dependencies with npm");
+      await withRetry(() => this.runCommand(command, { cwd: projectPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to update all dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
+  }
+
+  async updateAllWorkspaceDependencies(rootPath: string): Promise<void> {
+    const command = this.getUpdateAllWorkspaceCommand();
+    try {
+      logger.info("Updating all workspace dependencies with npm");
+      await withRetry(() => this.runCommand(command, { cwd: rootPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to update all workspace dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
   }
 
   async checkWorkspaceOutdated(): Promise<string> {
@@ -308,12 +442,102 @@ class YarnPackageManager extends BasePackageManager {
     return `yarn add ${packageName}@${version} --exact`;
   }
 
+  protected getBulkUpdateCommand(updates: PackageUpdate[]): string {
+    const packages = updates
+      .map((update) => `${update.name}@${update.version}`)
+      .join(" ");
+    return `yarn add ${packages} --exact`;
+  }
+
+  protected getBulkWorkspaceUpdateCommand(updates: PackageUpdate[]): string {
+    const packages = updates
+      .map((update) => `${update.name}@${update.version}`)
+      .join(" ");
+    return `yarn workspaces foreach add ${packages} --exact`;
+  }
+
+  protected getUpdateAllCommand(): string {
+    return "yarn upgrade";
+  }
+
+  protected getUpdateAllWorkspaceCommand(): string {
+    return "yarn workspaces foreach upgrade";
+  }
+
   protected getAuditCommand(): string {
     return "yarn audit --json";
   }
 
   protected isWarningOnly(stderr: string): boolean {
     return stderr.includes("warning");
+  }
+
+  async bulkUpdateDependencies(
+    projectPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void> {
+    if (updates.length === 0) return;
+
+    const command = this.getBulkUpdateCommand(updates);
+    try {
+      logger.info(`Bulk updating ${updates.length} packages with yarn`);
+      await withRetry(() => this.runCommand(command, { cwd: projectPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to bulk update dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
+  }
+
+  async bulkUpdateWorkspaceDependencies(
+    rootPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void> {
+    if (updates.length === 0) return;
+
+    const command = this.getBulkWorkspaceUpdateCommand(updates);
+    try {
+      logger.info(
+        `Bulk updating ${updates.length} packages across workspaces with yarn`
+      );
+      await withRetry(() => this.runCommand(command, { cwd: rootPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to bulk update workspace dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
+  }
+
+  async updateAllDependencies(projectPath: string): Promise<void> {
+    const command = this.getUpdateAllCommand();
+    try {
+      logger.info("Updating all dependencies with yarn");
+      await withRetry(() => this.runCommand(command, { cwd: projectPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to update all dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
+  }
+
+  async updateAllWorkspaceDependencies(rootPath: string): Promise<void> {
+    const command = this.getUpdateAllWorkspaceCommand();
+    try {
+      logger.info("Updating all workspace dependencies with yarn");
+      await withRetry(() => this.runCommand(command, { cwd: rootPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to update all workspace dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
   }
 
   async checkWorkspaceOutdated(): Promise<string> {
@@ -354,12 +578,102 @@ class PnpmPackageManager extends BasePackageManager {
     return `pnpm add ${packageName}@${version} --save-exact`;
   }
 
+  protected getBulkUpdateCommand(updates: PackageUpdate[]): string {
+    const packages = updates
+      .map((update) => `${update.name}@${update.version}`)
+      .join(" ");
+    return `pnpm add ${packages} --save-exact`;
+  }
+
+  protected getBulkWorkspaceUpdateCommand(updates: PackageUpdate[]): string {
+    const packages = updates
+      .map((update) => `${update.name}@${update.version}`)
+      .join(" ");
+    return `pnpm add ${packages} --save-exact --recursive`;
+  }
+
+  protected getUpdateAllCommand(): string {
+    return "pnpm update";
+  }
+
+  protected getUpdateAllWorkspaceCommand(): string {
+    return "pnpm update --recursive";
+  }
+
   protected getAuditCommand(): string {
     return "pnpm audit --json";
   }
 
   protected isWarningOnly(stderr: string): boolean {
     return stderr.includes("WARN");
+  }
+
+  async bulkUpdateDependencies(
+    projectPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void> {
+    if (updates.length === 0) return;
+
+    const command = this.getBulkUpdateCommand(updates);
+    try {
+      logger.info(`Bulk updating ${updates.length} packages with pnpm`);
+      await withRetry(() => this.runCommand(command, { cwd: projectPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to bulk update dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
+  }
+
+  async bulkUpdateWorkspaceDependencies(
+    rootPath: string,
+    updates: PackageUpdate[]
+  ): Promise<void> {
+    if (updates.length === 0) return;
+
+    const command = this.getBulkWorkspaceUpdateCommand(updates);
+    try {
+      logger.info(
+        `Bulk updating ${updates.length} packages across workspaces with pnpm`
+      );
+      await withRetry(() => this.runCommand(command, { cwd: rootPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to bulk update workspace dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
+  }
+
+  async updateAllDependencies(projectPath: string): Promise<void> {
+    const command = this.getUpdateAllCommand();
+    try {
+      logger.info("Updating all dependencies with pnpm");
+      await withRetry(() => this.runCommand(command, { cwd: projectPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to update all dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
+  }
+
+  async updateAllWorkspaceDependencies(rootPath: string): Promise<void> {
+    const command = this.getUpdateAllWorkspaceCommand();
+    try {
+      logger.info("Updating all workspace dependencies with pnpm");
+      await withRetry(() => this.runCommand(command, { cwd: rootPath }), 2);
+    } catch (error) {
+      throw new PackageManagerError(
+        `Failed to update all workspace dependencies`,
+        this.constructor.name,
+        error as Error
+      );
+    }
   }
 
   async checkWorkspaceOutdated(): Promise<string> {
