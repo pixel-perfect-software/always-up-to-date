@@ -1,7 +1,6 @@
 import { execSync } from "child_process";
 
 // Performance optimization constants
-const MAX_CONCURRENT_REQUESTS = 10;
 const VERSION_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface CachedVersion {
@@ -18,6 +17,7 @@ import { ConfigManager, UpdateStrategy } from "../utils/config";
 import { MigrationAdvisor } from "./migration-advisor";
 import { WorkspaceManager } from "../utils/workspace-manager";
 import { WorkspaceInfo } from "../types/workspace";
+import { CacheManager } from "./cache-manager";
 import semver from "semver";
 
 interface DependencyUpdate {
@@ -90,7 +90,7 @@ export class DependencyChecker {
   }
 
   /**
-   * Check updates for all workspaces in a monorepo
+   * Check updates for all workspaces in a monorepo using bulk processing
    */
   private async checkWorkspaceUpdates(): Promise<{
     updatable: DependencyUpdate[];
@@ -103,13 +103,152 @@ export class DependencyChecker {
       return { updatable: [], breakingChanges: [] };
     }
 
+    const startTime = Date.now();
+    logger.info(
+      `Starting bulk dependency check for monorepo with ${this.workspaceInfo.packages.length} packages`
+    );
+
+    try {
+      // Use bulk processor for efficient dependency checking
+      const bulkProcessor = new (
+        await import("./bulk-processor")
+      ).BulkProcessor(this.packageManager, this.workspaceInfo);
+
+      const bulkDependencyInfo = await bulkProcessor.processBulkDependencies();
+
+      logger.info(`Processing ${bulkDependencyInfo.size} unique dependencies`);
+
+      // Process bulk results with enhanced parallel processing
+      const processPromises = Array.from(bulkDependencyInfo.entries()).map(
+        async ([pkg, depInfo]) => {
+          try {
+            // Skip ignored packages
+            if (this.config.shouldIgnorePackage(pkg)) {
+              return null;
+            }
+
+            // Skip if no latest version found or should be ignored
+            if (
+              !depInfo.latestVersion ||
+              this.config.shouldIgnoreVersion(pkg, depInfo.latestVersion)
+            ) {
+              return null;
+            }
+
+            // Get the highest current version
+            const highestCurrentVersion = (
+              await import("./bulk-processor")
+            ).BulkProcessor.getHighestVersion(depInfo.currentVersions);
+
+            if (!this.canUpdate(highestCurrentVersion, depInfo.latestVersion)) {
+              return null;
+            }
+
+            // Check if update is allowed based on strategy
+            const updateStrategy = this.config.getUpdateStrategyForPackage(pkg);
+            if (
+              !this.isUpdateAllowed(
+                highestCurrentVersion,
+                depInfo.latestVersion,
+                updateStrategy
+              )
+            ) {
+              return null;
+            }
+
+            // Get migration instructions if breaking changes
+            const instructions = depInfo.hasBreakingChanges
+              ? await this.getMigrationInstructions(
+                  pkg,
+                  highestCurrentVersion,
+                  depInfo.latestVersion
+                )
+              : undefined;
+
+            const update: DependencyUpdate = {
+              name: pkg,
+              currentVersion: highestCurrentVersion,
+              newVersion: depInfo.latestVersion,
+              hasBreakingChanges: depInfo.hasBreakingChanges,
+              migrationInstructions: instructions,
+            };
+
+            return update;
+          } catch (error) {
+            logger.warn(
+              `Failed to process ${pkg}: ${(error as Error).message}`
+            );
+            return null;
+          }
+        }
+      );
+
+      // Wait for all processing to complete
+      const results = await Promise.allSettled(processPromises);
+
+      // Categorize results
+      for (const result of results) {
+        if (result.status === "fulfilled" && result.value) {
+          const update = result.value;
+
+          if (
+            update.hasBreakingChanges &&
+            !this.config.shouldAllowMajorUpdate()
+          ) {
+            allBreakingChanges.push(update);
+          } else if (update.hasBreakingChanges) {
+            allBreakingChanges.push(update);
+          } else {
+            allUpdatable.push(update);
+          }
+        }
+      }
+
+      // Report version conflicts
+      const conflicts = WorkspaceManager.findVersionConflicts(
+        this.workspaceInfo.packages
+      );
+      if (Object.keys(conflicts).length > 0) {
+        logger.warn("Version conflicts detected across workspaces:");
+        for (const [pkg, conflictVersions] of Object.entries(conflicts)) {
+          logger.warn(`  ${pkg}: ${conflictVersions.join(", ")}`);
+        }
+      }
+
+      const endTime = Date.now();
+      const duration = ((endTime - startTime) / 1000).toFixed(1);
+      logger.info(
+        `Bulk dependency check complete in ${duration}s: ${allUpdatable.length} updatable, ${allBreakingChanges.length} breaking changes`
+      );
+
+      return { updatable: allUpdatable, breakingChanges: allBreakingChanges };
+    } catch (error) {
+      logger.error(`Bulk dependency check failed: ${(error as Error).message}`);
+      // Fallback to original method if bulk processing fails
+      logger.info("Falling back to individual package checking...");
+      return this.checkWorkspaceUpdatesFallback();
+    }
+  }
+
+  /**
+   * Fallback method for workspace updates if bulk processing fails
+   */
+  private async checkWorkspaceUpdatesFallback(): Promise<{
+    updatable: DependencyUpdate[];
+    breakingChanges: DependencyUpdate[];
+  }> {
+    const allUpdatable: DependencyUpdate[] = [];
+    const allBreakingChanges: DependencyUpdate[] = [];
+
+    if (!this.workspaceInfo?.packages) {
+      return { updatable: [], breakingChanges: [] };
+    }
+
     // Collect all external dependencies and their versions across workspaces
     const allDependencies = new Map<string, Set<string>>();
-    const packageDependencies = new Map<string, Record<string, string>>();
 
     for (const workspace of this.workspaceInfo.packages) {
       const deps = { ...workspace.dependencies, ...workspace.devDependencies };
-      packageDependencies.set(workspace.name, deps);
 
       for (const [pkg, version] of Object.entries(deps)) {
         if (
@@ -126,40 +265,29 @@ export class DependencyChecker {
       }
     }
 
-    const totalPackages = allDependencies.size;
-    logger.info(`Found ${totalPackages} unique external dependencies to check`);
-
-    // Convert to array for parallel processing
+    // Filter out ignored packages
     const packagesToCheck = Array.from(allDependencies.entries()).filter(
       ([pkg]) => !this.config.shouldIgnorePackage(pkg)
     );
 
     logger.info(
-      `Processing ${packagesToCheck.length} packages (${
-        totalPackages - packagesToCheck.length
-      } ignored)`
+      `Fallback: Processing ${packagesToCheck.length} packages with increased concurrency`
     );
 
-    const startTime = Date.now();
-
-    // Process packages in parallel batches
-    const batchSize = MAX_CONCURRENT_REQUESTS;
-    let processed = 0;
-
-    const processPackage = async (pkg: string, versions: Set<string>) => {
+    // Process all packages in parallel with high concurrency
+    const processPromises = packagesToCheck.map(async ([pkg, versions]) => {
       try {
         const latestVersion = await this.getLatestVersionCached(pkg);
         if (this.config.shouldIgnoreVersion(pkg, latestVersion)) {
-          return;
+          return null;
         }
 
-        // Find the highest current version across workspaces
         const sortedVersions = Array.from(versions)
           .map((v) => this.cleanVersionString(v))
           .filter((v) => semver.valid(v))
-          .sort((a, b) => semver.compare(b, a)); // descending
+          .sort((a, b) => semver.compare(b, a));
 
-        if (sortedVersions.length === 0) return;
+        if (sortedVersions.length === 0) return null;
 
         const highestCurrentVersion = sortedVersions[0];
 
@@ -172,7 +300,7 @@ export class DependencyChecker {
               updateStrategy
             )
           ) {
-            return;
+            return null;
           }
 
           const hasMajorChange = this.hasBreakingChanges(
@@ -187,59 +315,34 @@ export class DependencyChecker {
               )
             : undefined;
 
-          const update: DependencyUpdate = {
+          return {
             name: pkg,
             currentVersion: highestCurrentVersion,
             newVersion: latestVersion,
             hasBreakingChanges: hasMajorChange,
             migrationInstructions: instructions,
           };
-
-          if (hasMajorChange && !this.config.shouldAllowMajorUpdate()) {
-            allBreakingChanges.push(update);
-          } else if (hasMajorChange) {
-            allBreakingChanges.push(update);
-          } else {
-            allUpdatable.push(update);
-          }
         }
+        return null;
       } catch (error) {
-        logger.warn(`Failed to check ${pkg}: ${(error as Error).message}`);
-      } finally {
-        processed++;
-        if (processed % 10 === 0 || processed === packagesToCheck.length) {
-          logger.info(
-            `Progress: ${processed}/${packagesToCheck.length} packages checked`
-          );
+        logger.warn(`Fallback failed for ${pkg}: ${(error as Error).message}`);
+        return null;
+      }
+    });
+
+    // Process all packages in parallel
+    const results = await Promise.allSettled(processPromises);
+
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
+        const update = result.value;
+        if (update.hasBreakingChanges) {
+          allBreakingChanges.push(update);
+        } else {
+          allUpdatable.push(update);
         }
       }
-    };
-
-    // Process in parallel batches
-    for (let i = 0; i < packagesToCheck.length; i += batchSize) {
-      const batch = packagesToCheck.slice(i, i + batchSize);
-      const promises = batch.map(([pkg, versions]) =>
-        processPackage(pkg, versions)
-      );
-      await Promise.allSettled(promises);
     }
-
-    // Report version conflicts
-    const conflicts = WorkspaceManager.findVersionConflicts(
-      this.workspaceInfo.packages
-    );
-    if (Object.keys(conflicts).length > 0) {
-      logger.warn("Version conflicts detected across workspaces:");
-      for (const [pkg, conflictVersions] of Object.entries(conflicts)) {
-        logger.warn(`  ${pkg}: ${conflictVersions.join(", ")}`);
-      }
-    }
-
-    const endTime = Date.now();
-    const duration = ((endTime - startTime) / 1000).toFixed(1);
-    logger.info(
-      `Dependency check complete in ${duration}s: ${allUpdatable.length} updatable, ${allBreakingChanges.length} breaking changes`
-    );
 
     return { updatable: allUpdatable, breakingChanges: allBreakingChanges };
   }
@@ -475,20 +578,43 @@ export class DependencyChecker {
   }
 
   /**
-   * Gets the latest version of a package with caching
+   * Gets the latest version of a package with persistent caching
    * @param pkg Package name
    * @returns Latest version string
    */
   private async getLatestVersionCached(pkg: string): Promise<string> {
-    const now = Date.now();
-    const cached = this.versionCache.get(pkg);
+    const cacheManager = new CacheManager(this.projectPath);
+    const packageManagerType = this.workspaceInfo?.packageManager || "npm";
 
-    if (cached && now - cached.timestamp < VERSION_CACHE_TTL) {
-      return cached.version;
+    // Check persistent cache first
+    const cachedVersion = cacheManager.getCachedVersion(
+      pkg,
+      packageManagerType
+    );
+    if (cachedVersion) {
+      return cachedVersion;
     }
 
+    // Check in-memory cache as fallback
+    const now = Date.now();
+    const inMemoryCached = this.versionCache.get(pkg);
+    if (inMemoryCached && now - inMemoryCached.timestamp < VERSION_CACHE_TTL) {
+      // Update persistent cache
+      cacheManager.setCachedVersion(
+        pkg,
+        inMemoryCached.version,
+        packageManagerType
+      );
+      return inMemoryCached.version;
+    }
+
+    // Fetch new version
     const version = await this.getLatestVersion(pkg);
+
+    // Cache in both locations
     this.versionCache.set(pkg, { version, timestamp: now });
+    cacheManager.setCachedVersion(pkg, version, packageManagerType);
+
     return version;
   }
 

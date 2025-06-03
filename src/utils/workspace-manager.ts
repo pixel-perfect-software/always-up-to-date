@@ -4,10 +4,11 @@ import { glob } from "glob";
 import { logger } from "./logger";
 import { WorkspaceInfo, WorkspacePackage } from "../types/workspace";
 import { ConfigurationError } from "./errors";
+import { CacheManager } from "../services/cache-manager";
 
 // Timeout for workspace detection operations
 const WORKSPACE_DETECTION_TIMEOUT = 30000; // 30 seconds
-const GLOB_TIMEOUT = 10000; // 10 seconds per glob pattern
+const GLOB_TIMEOUT = 5000; // 5 seconds per glob pattern
 
 const PATHS_TO_IGNORE = [
   "**/node_modules/**",
@@ -177,23 +178,33 @@ export class WorkspaceManager {
   }
 
   /**
-   * Discovers all packages matching the workspace patterns
+   * Discovers all packages matching the workspace patterns with caching and parallel processing
    */
   async getWorkspacePackages(
     patterns: string[],
     rootPath: string,
     signal?: AbortSignal
   ): Promise<WorkspacePackage[]> {
-    const packages: WorkspacePackage[] = [];
-    logger.debug(`Processing ${patterns.length} workspace patterns`);
+    // Check cache first
+    const cacheManager = new CacheManager(rootPath);
+    if (cacheManager.isWorkspaceCacheValid(rootPath)) {
+      const cachedWorkspace = cacheManager.getCachedWorkspace(rootPath);
+      if (cachedWorkspace) {
+        logger.debug("Using cached workspace structure");
+        return this.loadCachedPackages(cachedWorkspace.packages, rootPath);
+      }
+    }
 
-    for (const pattern of patterns) {
-      // Check if operation was aborted
+    const packages: WorkspacePackage[] = [];
+    logger.debug(
+      `Processing ${patterns.length} workspace patterns in parallel`
+    );
+
+    // Process all patterns in parallel instead of sequentially
+    const patternPromises = patterns.map(async (pattern) => {
       if (signal?.aborted) {
         throw new Error("Workspace detection aborted");
       }
-
-      let globTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
       try {
         logger.debug(`Processing workspace pattern: ${pattern}`);
@@ -203,11 +214,11 @@ export class WorkspaceManager {
           cwd: rootPath,
           absolute: false,
           ignore: PATHS_TO_IGNORE,
-          maxDepth: 3, // Reduced from 5 to 3 for better performance
+          maxDepth: 2, // Further reduced from 3 to 2 for better performance
         });
 
         const timeoutPromise = new Promise<never>((_, reject) => {
-          globTimeoutId = setTimeout(
+          setTimeout(
             () => reject(new Error(`Glob timeout for pattern: ${pattern}`)),
             GLOB_TIMEOUT
           );
@@ -217,51 +228,80 @@ export class WorkspaceManager {
           globPromise,
           timeoutPromise,
         ])) as string[];
-        logger.debug(`Pattern ${pattern} found ${matches.length} matches`);
 
-        // Clear the timeout since glob completed successfully
-        if (globTimeoutId) {
-          clearTimeout(globTimeoutId);
-          globTimeoutId = null;
-        }
+        logger.debug(`Pattern ${pattern} found ${matches.length} matches`);
 
         // Extract directory paths from package.json matches
         const directories = matches.map((match) =>
           match.replace("/package.json", "")
         );
 
-        // Process packages in batches to avoid overwhelming the system
-        const batchSize = 10; // Increased from 5 to 10 for better performance
-        for (let i = 0; i < directories.length; i += batchSize) {
-          // Check if operation was aborted between batches
-          if (signal?.aborted) {
-            throw new Error("Workspace detection aborted");
-          }
-
-          const batch = directories.slice(i, i + batchSize);
-          const batchPromises = batch.map(async (directory) => {
-            return this.loadPackageFromDirectory(directory, rootPath);
-          });
-
-          const batchResults = await Promise.allSettled(batchPromises);
-          for (const result of batchResults) {
-            if (result.status === "fulfilled" && result.value) {
-              packages.push(result.value);
-            }
-          }
-        }
+        return directories;
       } catch (error) {
         logger.warn(
           `Failed to process workspace pattern "${pattern}": ${
             (error as Error).message
           }`
         );
-        // Continue with other patterns even if one fails
-      } finally {
-        // Clean up glob timeout
-        if (globTimeoutId) {
-          clearTimeout(globTimeoutId);
-        }
+        return [];
+      }
+    });
+
+    // Wait for all pattern searches to complete
+    const allDirectoriesArrays = await Promise.allSettled(patternPromises);
+    const allDirectories = allDirectoriesArrays
+      .filter((result) => result.status === "fulfilled")
+      .flatMap((result) => result.value)
+      .filter((dir, index, arr) => arr.indexOf(dir) === index); // Remove duplicates
+
+    logger.debug(`Found ${allDirectories.length} unique workspace directories`);
+
+    // Process all packages in parallel with increased concurrency
+    const packagePromises = allDirectories.map(async (directory) => {
+      if (signal?.aborted) {
+        throw new Error("Workspace detection aborted");
+      }
+      return this.loadPackageFromDirectory(directory, rootPath);
+    });
+
+    const packageResults = await Promise.allSettled(packagePromises);
+    for (const result of packageResults) {
+      if (result.status === "fulfilled" && result.value) {
+        packages.push(result.value);
+      }
+    }
+
+    // Cache the discovered workspace structure
+    try {
+      const packagePaths = packages.map((pkg) => relative(rootPath, pkg.path));
+      cacheManager.setCachedWorkspace(packagePaths, patterns, rootPath);
+    } catch (error) {
+      logger.debug(
+        `Failed to cache workspace structure: ${(error as Error).message}`
+      );
+    }
+
+    return packages;
+  }
+
+  /**
+   * Load packages from cached paths
+   */
+  private async loadCachedPackages(
+    packagePaths: string[],
+    rootPath: string
+  ): Promise<WorkspacePackage[]> {
+    const packages: WorkspacePackage[] = [];
+
+    // Process cached packages in parallel
+    const packagePromises = packagePaths.map(async (relativePath) => {
+      return this.loadPackageFromDirectory(relativePath, rootPath);
+    });
+
+    const results = await Promise.allSettled(packagePromises);
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
+        packages.push(result.value);
       }
     }
 

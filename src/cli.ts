@@ -8,6 +8,7 @@ import { autoUpdateDependencies } from "./commands/auto";
 import { showDependencyDiff } from "./commands/diff";
 import { rollbackDependencies } from "./commands/rollback";
 import { migrateCommand } from "./commands/migrate";
+import { manageCache } from "./commands/cache";
 import { ConfigManager } from "./utils/config";
 import { logger } from "./utils/logger";
 import { getGitHubToken } from "./utils/auth";
@@ -226,6 +227,26 @@ program
     }
 
     migrateCommand(mergedOptions);
+  });
+
+program
+  .command("cache")
+  .description("Manage dependency cache")
+  .option("-p, --projectPath <path>", "Path to the project directory")
+  .option("--clear", "Clear all cached data", false)
+  .option("--stats", "Show cache statistics", false)
+  .option("--clean", "Clean expired cache entries", false)
+  .option("-v, --verbose", "Show verbose output", false)
+  .action((options) => {
+    const args = parseArgs();
+    const mergedOptions = { ...args, ...options };
+
+    if (mergedOptions.verbose) {
+      const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
+      logger.info(`Running cache command with options: ${mergedOptionsString}`);
+    }
+
+    manageCache(mergedOptions, mergedOptions.projectPath);
   });
 
 // Export a function that runs the CLI

@@ -20,6 +20,6 @@
       "*": ["node_modules/*", "*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "tests/test-performance.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "tests/**/*"]
 }
