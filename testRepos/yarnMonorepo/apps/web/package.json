@@ -1,0 +1,14 @@
+{
+  "name": "@yarn-monorepo/web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web app for yarn monorepo",
+  "main": "index.js",
+  "dependencies": {
+    "react": "^18.2.0",
+    "@yarn-monorepo/core": "*"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.25"
+  }
+}
