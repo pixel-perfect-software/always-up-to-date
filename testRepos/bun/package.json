@@ -1,0 +1,13 @@
+{
+  "name": "bun",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test bun repo for always-up-to-date CLI",
+  "engines": {
+    "bun": ">=1.2.15"
+  },
+  "devDependencies": {
+    "typescript": "^4.8.4",
+    "vitest": "^0.32.2"
+  }
+}

@@ -106,6 +106,44 @@ class Logger {
   }
 
   /**
+   * Updating packages header
+   */
+  updatingHeader(): void {
+    if (!this.quiet) {
+      console.log(`${blue("🔄")} ${bold("Updating packages...")}`)
+    }
+  }
+
+  /**
+   * Updating package message
+   */
+  updatingPackage(packageName: string, current: string, latest: string): void {
+    if (!this.quiet) {
+      const arrow = gray("→")
+      console.log(
+        `  ${yellow("🔄")} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)} (updating...)`,
+      )
+    }
+  }
+
+  /**
+   * Skipping package update message
+   */
+  skippingPackage(
+    packageName: string,
+    current: string,
+    latest: string,
+    updateType: "major" | "minor" | "patch",
+  ): void {
+    if (!this.quiet) {
+      const arrow = gray("→")
+      console.log(
+        `  ${yellow("⏭️")} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)} (${updateType} update skipped)`,
+      )
+    }
+  }
+
+  /**
    * Starting operation message
    */
   starting(operation: string, manager: string): void {

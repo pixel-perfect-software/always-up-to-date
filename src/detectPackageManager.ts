@@ -14,7 +14,7 @@ const lockFileNames: Record<string, string> = {
   npm: "package-lock.json",
   yarn: "yarn.lock",
   pnpm: "pnpm-lock.yaml",
-  bun: "bun.lockb",
+  bun: "bun.lock",
 }
 
 const detectPackageManager = (cwd: string): SupportedPackageManager => {

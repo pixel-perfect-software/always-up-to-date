@@ -1,9 +1,13 @@
 import fs from "fs"
-import { execAsync, logger } from "@/utils"
 
-import type { PackageInfo } from "@/types"
+import CommandRunner from "@/commandRunner"
+import { logger, updateChecker } from "@/utils"
 
-class PNPMManager {
+import type { PackageInfo, SupportedPackageManager } from "@/types"
+
+class PNPMManager extends CommandRunner {
+  public readonly packageManager: SupportedPackageManager = "pnpm"
+
   checkPackageVersions = async (cwd: string): Promise<object> => {
     logger.starting("Checking package versions", "PNPM")
 
@@ -15,7 +19,11 @@ class PNPMManager {
       ? "outdated --json -r"
       : "outdated --json"
 
-    const commandResult = await this.runCommand(command, cwd)
+    const commandResult = await this.runCommand(
+      this.packageManager,
+      command,
+      cwd,
+    )
     const result: object = JSON.parse(commandResult || "{}")
 
     if (Object.keys(result).length === 0) {
@@ -45,13 +53,17 @@ class PNPMManager {
       }
       const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
 
-      Object.entries(outdatedPackages).forEach(async ([packageName]) => {
-        const command = isRunningInWorkspace
-          ? `update ${packageName} -r`
-          : `update ${packageName}`
+      logger.updatingHeader()
 
-        await this.runCommand(command, cwd)
-      })
+      Object.entries(outdatedPackages)
+        .filter(([, packageInfo]) => updateChecker(packageInfo))
+        .forEach(async ([packageName]) => {
+          const command = isRunningInWorkspace
+            ? `update ${packageName} -r`
+            : `update ${packageName}`
+
+          await this.runCommand(this.packageManager, command, cwd)
+        })
     } catch {
       logger.error("An error occurred while checking for outdated packages.")
       return
@@ -70,30 +82,6 @@ class PNPMManager {
       return !!workspaceFile
     } catch {
       return false
-    }
-  }
-
-  runCommand = async (
-    command: string,
-    cwd: string,
-  ): Promise<string | undefined> => {
-    logger.command(`pnpm ${command}`)
-
-    try {
-      const { stdout } = await execAsync(`pnpm ${command}`, {
-        cwd,
-        encoding: "utf8",
-      })
-      return stdout
-    } catch (error) {
-      const { stdout, stderr } = error as { stdout: string; stderr: string }
-
-      if (stdout && stderr?.length === 0) return stdout
-      else if (stderr) {
-        throw new Error("An unknown error occurred while running the command.")
-      }
-
-      return undefined
     }
   }
 }

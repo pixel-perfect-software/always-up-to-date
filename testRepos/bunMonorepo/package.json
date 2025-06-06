@@ -1,0 +1,17 @@
+{
+  "name": "bun-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test bun monorepo for always-up-to-date CLI",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "bun": ">=1.2.15"
+  },
+  "devDependencies": {
+    "typescript": "^4.8.4",
+    "vitest": "^0.32.2"
+  }
+}
