@@ -1,16 +1,16 @@
 import fs from "fs"
-import { execAsync } from "@/utils"
+import { execAsync, logger } from "@/utils"
 
 import type { PackageInfo } from "@/types"
 
 class PNPMManager {
-  checkPackageVersions = async (cwd: string): Promise<void> => {
-    console.log("Checking package versions with PNPM...")
+  checkPackageVersions = async (cwd: string): Promise<object> => {
+    logger.starting("Checking package versions", "PNPM")
+
     // Check if the current working directory supports PNPM workspaces
     // If it does, we can use the `pnpm outdated -r` command to check for outdated packages recursively
     // If it doesn't, we can use the `pnpm outdated` command to check for outdated packages in the current directory
     const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-
     const command = isRunningInWorkspace
       ? "outdated --json -r"
       : "outdated --json"
@@ -18,23 +18,44 @@ class PNPMManager {
     const commandResult = await this.runCommand(command, cwd)
     const result: object = JSON.parse(commandResult || "{}")
 
-    if (Object.keys(result).length === 0)
-      return console.log("All packages are up to date.")
+    if (Object.keys(result).length === 0) {
+      logger.allUpToDate()
+      return {}
+    }
 
-    console.log("Outdated packages found:")
+    logger.outdatedHeader()
 
     Object.entries(result).forEach(([packageName, packageInfo]) => {
       const { current, latest } = packageInfo as PackageInfo
-      console.log(
-        `${packageName}: current version is ${current}, latest version is ${latest}`,
-      )
+      logger.outdatedPackage(packageName, current, latest)
     })
+
+    return result
   }
 
-  updatePackages = async (): Promise<void> => {
-    console.log("Updating packages with PNPM...")
-    // Implement the logic to update packages using PNPM
-    // This could involve running `PNPM upgrade` or similar commands
+  updatePackages = async (cwd: string): Promise<void> => {
+    logger.starting("Updating packages", "PNPM")
+
+    try {
+      const outdatedPackages = await this.checkPackageVersions(cwd)
+
+      if (Object.keys(outdatedPackages).length === 0) {
+        logger.allUpToDate()
+        return
+      }
+      const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
+
+      Object.entries(outdatedPackages).forEach(async ([packageName]) => {
+        const command = isRunningInWorkspace
+          ? `update ${packageName} -r`
+          : `update ${packageName}`
+
+        await this.runCommand(command, cwd)
+      })
+    } catch {
+      logger.error("An error occurred while checking for outdated packages.")
+      return
+    }
   }
 
   checkIfInWorkspace = async (cwd: string): Promise<boolean> => {
@@ -44,9 +65,7 @@ class PNPMManager {
         "utf8",
       )
 
-      console.log(
-        "Detected PNPM workspace file. Treating this project as a PNPM workspace.",
-      )
+      logger.workspace("PNPM")
 
       return !!workspaceFile
     } catch {
@@ -58,7 +77,7 @@ class PNPMManager {
     command: string,
     cwd: string,
   ): Promise<string | undefined> => {
-    console.log(`Running command "pnpm ${command}"...`)
+    logger.command(`pnpm ${command}`)
 
     try {
       const { stdout } = await execAsync(`pnpm ${command}`, {
