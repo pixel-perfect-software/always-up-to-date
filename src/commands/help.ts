@@ -1,3 +1,4 @@
+import logger from "@/utils/logger"
 import type { Command } from "commander"
 
 /**
@@ -9,12 +10,17 @@ const helpCommand = (program: Command) =>
     .command("help")
     .description("Show this help message.")
     .action(() => {
-      console.log("Available commands:")
-      console.log("  check - Check the dependencies of the project.")
-      console.log(
-        "  update - Update the update-able dependencies of the project.",
+      logger.info(" Available commands:")
+      logger.clean("  📋 check - Check the dependencies of the project.")
+      logger.clean(
+        "  🔄 update - Update the update-able dependencies of the project.",
       )
-      console.log("  help - Show this help message.")
+      logger.clean("  📝 migrate - Migrate dependencies with breaking changes.")
+      logger.clean("  ❓ help - Show this help message.")
+      logger.clean("")
+      logger.info(
+        " Use 'always-up-to-date <command>' to run a specific command.",
+      )
     })
 
 export default helpCommand
