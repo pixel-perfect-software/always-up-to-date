@@ -1,6 +1,6 @@
 {
   "name": "@pixel-perfect-software/always-up-to-date",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "author": "Tyler Robertson <@tylernrobertson> (https://github.com/TylerNRobertson)",
   "description": "A highly customizable and reusable dependency checker that keeps npm dependencies always up to date.",
   "bugs": {
@@ -81,8 +81,10 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.33.1"
   },
-  "overrides": {
-    "minimist@<0.2.1": ">=0.2.1",
-    "minimist@<0.2.4": ">=0.2.4"
+  "pnpm": {
+    "overrides": {
+      "minimist@<0.2.1": ">=0.2.1",
+      "minimist@<0.2.4": ">=0.2.4"
+    }
   }
 }
