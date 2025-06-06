@@ -16,7 +16,7 @@ catalogs:
       specifier: ^8.50.0
       version: 8.57.1
     prettier:
-      specifier: ^3.0.0
+      specifier: 3.5.3
       version: 3.5.3
     react:
       specifier: ^18.2.0

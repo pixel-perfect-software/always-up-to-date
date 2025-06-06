@@ -33,13 +33,13 @@ export class BulkProcessor {
    */
   async processBulkDependencies(): Promise<Map<string, BulkDependencyInfo>> {
     const startTime = Date.now();
-    logger.info("Starting bulk dependency processing...");
+    logger.debug("Starting bulk dependency processing...");
 
     // Step 1: Collect all unique external dependencies
     const dependencyMap = this.collectUniqueDependencies();
     const totalPackages = dependencyMap.size;
 
-    logger.info(
+    logger.progress(
       `Found ${totalPackages} unique external dependencies across ${this.workspaceInfo.packages.length} workspaces`
     );
 
@@ -51,7 +51,7 @@ export class BulkProcessor {
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(1);
-    logger.info(
+    logger.debug(
       `Bulk processing completed in ${duration}s for ${totalPackages} packages`
     );
 
@@ -127,10 +127,14 @@ export class BulkProcessor {
         this.packageManager.checkWorkspaceOutdated
       ) {
         logger.debug("Using workspace-aware outdated check");
-        stdout = await this.packageManager.checkWorkspaceOutdated();
+        stdout = await this.packageManager.checkWorkspaceOutdated(
+          this.workspaceInfo.rootPath
+        );
       } else {
         logger.debug("Using standard outdated check");
-        stdout = await this.packageManager.checkOutdated();
+        stdout = await this.packageManager.checkOutdated(
+          this.workspaceInfo.rootPath
+        );
       }
 
       if (!stdout || stdout.trim() === "") {
@@ -140,6 +144,25 @@ export class BulkProcessor {
 
       return JSON.parse(stdout);
     } catch (error) {
+      // Special handling for pnpm which returns exit code 1 when outdated packages are found
+      // but still provides valid JSON output in stdout
+      if (error instanceof Error) {
+        const execError = error as any;
+        if (execError.stdout && typeof execError.stdout === "string") {
+          try {
+            const parsed = JSON.parse(execError.stdout);
+            logger.debug("Successfully parsed outdated info from error stdout");
+            return parsed;
+          } catch (parseError) {
+            logger.warn(
+              `Failed to parse JSON from error stdout: ${
+                (parseError as Error).message
+              }`
+            );
+          }
+        }
+      }
+
       logger.warn(`Bulk outdated check failed: ${(error as Error).message}`);
       return {};
     }
@@ -182,7 +205,7 @@ export class BulkProcessor {
    * Extract latest version from package manager specific outdated format
    */
   private extractLatestVersion(outdatedPackage: any): string | null {
-    // npm format: { latest: "1.2.3", ... }
+    // pnpm format: { current: "1.2.3", latest: "1.3.0", wanted: "1.2.3", ... }
     if (outdatedPackage.latest) {
       return outdatedPackage.latest;
     }
@@ -192,7 +215,7 @@ export class BulkProcessor {
       return outdatedPackage;
     }
 
-    // pnpm format: { latestVersion: "1.2.3", ... }
+    // Alternative pnpm format: { latestVersion: "1.2.3", ... }
     if (outdatedPackage.latestVersion) {
       return outdatedPackage.latestVersion;
     }
@@ -201,6 +224,13 @@ export class BulkProcessor {
     if (outdatedPackage.version) {
       return outdatedPackage.version;
     }
+
+    // Log what we got for debugging
+    logger.debug(
+      `Could not extract latest version from: ${JSON.stringify(
+        outdatedPackage
+      )}`
+    );
 
     return null;
   }
@@ -485,10 +515,39 @@ export class BulkProcessor {
 
       // Run pnpm install to apply catalog changes
       const { execSync } = await import("child_process");
-      execSync("pnpm install", {
-        cwd: this.workspaceInfo.rootPath,
-        stdio: "inherit",
-      });
+      logger.progress("Installing updated catalog dependencies...");
+
+      try {
+        const output = execSync("pnpm install", {
+          cwd: this.workspaceInfo.rootPath,
+          stdio: "pipe",
+          encoding: "utf8",
+        });
+
+        // Only show important output lines (errors, warnings, completion)
+        const lines = output.split("\n");
+        const importantLines = lines.filter(
+          (line) =>
+            line.includes("WARN") ||
+            line.includes("ERROR") ||
+            line.includes("Done in") ||
+            line.includes("deprecated")
+        );
+
+        if (importantLines.length > 0) {
+          logger.debug("Package manager output:");
+          importantLines.forEach((line) => logger.debug(line.trim()));
+        }
+      } catch (error: any) {
+        // Show error output if install fails
+        if (error.stdout) {
+          logger.debug(`Package manager stdout: ${error.stdout}`);
+        }
+        if (error.stderr) {
+          logger.warn(`Package manager stderr: ${error.stderr}`);
+        }
+        throw error;
+      }
 
       return true;
     } catch (error) {

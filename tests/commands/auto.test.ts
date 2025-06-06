@@ -62,19 +62,20 @@ describe("Auto Command", () => {
 
       const result = await autoUpdateDependencies({ createIssue: true });
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Starting automatic dependency update..."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Starting automatic dependency update...",
+        "🚀"
       );
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.progress).toHaveBeenCalledWith(
         "Creating backup before updates..."
       );
       expect(mockCreateBackup).toHaveBeenCalledWith(undefined);
       expect(mockUpdateDependencies).toHaveBeenCalledWith(undefined);
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.success).toHaveBeenCalledWith(
         "2 dependencies updated successfully"
       );
       expect(mockCreatePullRequest).toHaveBeenCalledWith(mockUpdates);
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.success).toHaveBeenCalledWith(
         "Pull request created for dependency updates."
       );
 
@@ -100,16 +101,17 @@ describe("Auto Command", () => {
 
       const result = await autoUpdateDependencies();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Starting automatic dependency update..."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Starting automatic dependency update...",
+        "🚀"
       );
       expect(mockCreateBackup).toHaveBeenCalledWith(undefined);
       expect(mockUpdateDependencies).toHaveBeenCalledWith(undefined);
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.success).toHaveBeenCalledWith(
         "1 dependencies updated successfully"
       );
       expect(mockCreatePullRequest).toHaveBeenCalledWith(mockUpdates);
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.success).toHaveBeenCalledWith(
         "Pull request created for dependency updates."
       );
 
@@ -133,17 +135,19 @@ describe("Auto Command", () => {
 
       const result = await autoUpdateDependencies();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Starting automatic dependency update..."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Starting automatic dependency update...",
+        "🚀"
       );
       expect(mockCreateBackup).toHaveBeenCalledWith(undefined);
       expect(mockUpdateDependencies).toHaveBeenCalledWith(undefined);
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.success).toHaveBeenCalledWith(
         "1 dependencies updated successfully"
       );
       expect(mockCreatePullRequest).not.toHaveBeenCalled();
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Skipping PR creation. Run with --createIssue flag or set CREATE_PR=true to create PRs."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Skipping PR creation. Run with --createIssue flag or set CREATE_PR=true to create PRs.",
+        "ℹ"
       );
 
       expect(result).toEqual({
@@ -157,13 +161,15 @@ describe("Auto Command", () => {
 
       const result = await autoUpdateDependencies();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Starting automatic dependency update..."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Starting automatic dependency update...",
+        "🚀"
       );
       expect(mockCreateBackup).toHaveBeenCalledWith(undefined);
       expect(mockUpdateDependencies).toHaveBeenCalledWith(undefined);
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "No dependencies need updating."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "No dependencies need updating.",
+        "✅"
       );
       expect(mockCreatePullRequest).not.toHaveBeenCalled();
 
@@ -187,12 +193,13 @@ describe("Auto Command", () => {
 
       const result = await autoUpdateDependencies({ dryRun: true });
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Starting automatic dependency update..."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Starting automatic dependency update...",
+        "🚀"
       );
       expect(mockCreateBackup).not.toHaveBeenCalled();
       expect(mockUpdateDependencies).toHaveBeenCalledWith(undefined);
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.success).toHaveBeenCalledWith(
         "1 dependencies updated successfully"
       );
 
@@ -232,10 +239,11 @@ describe("Auto Command", () => {
 
       const result = await autoUpdateDependencies();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Starting automatic dependency update..."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Starting automatic dependency update...",
+        "🚀"
       );
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.progress).toHaveBeenCalledWith(
         "Creating backup before updates..."
       );
       expect(mockCreateBackup).toHaveBeenCalledWith(undefined);
@@ -256,8 +264,9 @@ describe("Auto Command", () => {
 
       const result = await autoUpdateDependencies();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Starting automatic dependency update..."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Starting automatic dependency update...",
+        "🚀"
       );
       expect(mockCreateBackup).toHaveBeenCalledWith(undefined);
       expect(mockUpdateDependencies).toHaveBeenCalledWith(undefined);
@@ -287,12 +296,13 @@ describe("Auto Command", () => {
 
       const result = await autoUpdateDependencies({ createIssue: true });
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Starting automatic dependency update..."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Starting automatic dependency update...",
+        "🚀"
       );
       expect(mockCreateBackup).toHaveBeenCalledWith(undefined);
       expect(mockUpdateDependencies).toHaveBeenCalledWith(undefined);
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.success).toHaveBeenCalledWith(
         "1 dependencies updated successfully"
       );
       expect(mockCreatePullRequest).toHaveBeenCalledWith(mockUpdates);
@@ -357,8 +367,9 @@ describe("Auto Command", () => {
 
       const result = await autoUpdate({ createIssue: true });
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Starting automatic dependency update..."
+      expect(mockLogger.status).toHaveBeenCalledWith(
+        "Starting automatic dependency update...",
+        "🚀"
       );
       expect(mockCreatePullRequest).toHaveBeenCalledWith(mockUpdates);
 

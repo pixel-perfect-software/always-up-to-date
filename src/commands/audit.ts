@@ -7,16 +7,17 @@ export interface AuditResult {
 
 export const auditDependencies = async (): Promise<AuditResult | undefined> => {
   try {
+    logger.status("Auditing dependencies for vulnerabilities...", "🔍");
     const vulnerabilities = await getVulnerabilities();
 
     if (vulnerabilities.length === 0) {
-      logger.info("No vulnerabilities found in dependencies.");
+      logger.success("No vulnerabilities found in dependencies.");
       return { vulnerabilities: [] };
     } else {
-      logger.warn(`${vulnerabilities.length} vulnerabilities found:`);
+      logger.status(`${vulnerabilities.length} vulnerabilities found:`, "⚠️");
       vulnerabilities.forEach((vuln) => {
         logger.warn(
-          `- ${vuln.name}@${vuln.version}: ${vuln.severity} severity. ${vuln.recommendation}`
+          `  • ${vuln.name}@${vuln.version}: ${vuln.severity} severity. ${vuln.recommendation}`
         );
       });
       return { vulnerabilities };
@@ -27,7 +28,7 @@ export const auditDependencies = async (): Promise<AuditResult | undefined> => {
         (error as Error).message
       }`
     );
-    console.error(error);
+    logger.debug((error as Error).stack);
     return undefined;
   }
 };

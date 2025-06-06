@@ -105,7 +105,7 @@ export class DependencyChecker {
     }
 
     const startTime = Date.now();
-    logger.info(
+    logger.debug(
       `Starting bulk dependency check for monorepo with ${this.workspaceInfo.packages.length} packages`
     );
 
@@ -128,11 +128,26 @@ export class DependencyChecker {
               return null;
             }
 
-            // Skip if no latest version found or should be ignored
-            if (
-              !depInfo.latestVersion ||
-              this.config.shouldIgnoreVersion(pkg, depInfo.latestVersion)
-            ) {
+            // If no latest version found in bulk processing, try individual lookup
+            let latestVersion = depInfo.latestVersion;
+            if (!latestVersion) {
+              logger.debug(
+                `No bulk version found for ${pkg}, trying individual lookup`
+              );
+              try {
+                latestVersion = await this.getLatestVersionCached(pkg);
+              } catch (error) {
+                logger.warn(
+                  `Failed to get latest version for ${pkg}: ${
+                    (error as Error).message
+                  }`
+                );
+                return null;
+              }
+            }
+
+            // Skip if version should be ignored
+            if (this.config.shouldIgnoreVersion(pkg, latestVersion)) {
               return null;
             }
 
@@ -141,7 +156,7 @@ export class DependencyChecker {
               await import("./bulk-processor")
             ).BulkProcessor.getHighestVersion(depInfo.currentVersions);
 
-            if (!this.canUpdate(highestCurrentVersion, depInfo.latestVersion)) {
+            if (!this.canUpdate(highestCurrentVersion, latestVersion)) {
               return null;
             }
 
@@ -150,27 +165,33 @@ export class DependencyChecker {
             if (
               !this.isUpdateAllowed(
                 highestCurrentVersion,
-                depInfo.latestVersion,
+                latestVersion,
                 updateStrategy
               )
             ) {
               return null;
             }
 
+            // Recalculate breaking changes with the correct latest version
+            const hasBreakingChanges = this.hasBreakingChanges(
+              highestCurrentVersion,
+              latestVersion
+            );
+
             // Get migration instructions if breaking changes
-            const instructions = depInfo.hasBreakingChanges
+            const instructions = hasBreakingChanges
               ? await this.getMigrationInstructions(
                   pkg,
                   highestCurrentVersion,
-                  depInfo.latestVersion
+                  latestVersion
                 )
               : undefined;
 
             const update: DependencyUpdate = {
               name: pkg,
               currentVersion: highestCurrentVersion,
-              newVersion: depInfo.latestVersion,
-              hasBreakingChanges: depInfo.hasBreakingChanges,
+              newVersion: latestVersion,
+              hasBreakingChanges: hasBreakingChanges,
               migrationInstructions: instructions,
             };
 

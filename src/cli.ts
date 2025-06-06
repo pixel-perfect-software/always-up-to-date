@@ -43,10 +43,19 @@ program
   .action((options) => {
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
-    const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
+
+    // Set logger level based on verbose flag
     if (mergedOptions.verbose) {
-      logger.info(`Running check command with options: ${mergedOptionsString}`);
+      logger.setLevel("debug");
+      logger.debug(
+        `Running check command with options: ${JSON.stringify(
+          mergedOptions,
+          null,
+          2
+        )}`
+      );
     }
+
     checkDependencies(mergedOptions);
   });
 
@@ -58,9 +67,17 @@ program
   .action((options) => {
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
-    const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
+
+    // Set logger level based on verbose flag
     if (mergedOptions.verbose) {
-      logger.info(`Running audit command with options: ${mergedOptionsString}`);
+      logger.setLevel("debug");
+      logger.debug(
+        `Running audit command with options: ${JSON.stringify(
+          mergedOptions,
+          null,
+          2
+        )}`
+      );
     }
 
     auditDependencies();
@@ -122,9 +139,16 @@ program
       }
     }
 
+    // Set logger level based on verbose flag
     if (mergedOptions.verbose) {
-      const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
-      logger.info(`Running auto command with options: ${mergedOptionsString}`);
+      logger.setLevel("debug");
+      logger.debug(
+        `Running auto command with options: ${JSON.stringify(
+          mergedOptions,
+          null,
+          2
+        )}`
+      );
     }
 
     autoUpdateDependencies(mergedOptions);
@@ -159,10 +183,15 @@ program
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
 
+    // Set logger level based on verbose flag
     if (mergedOptions.verbose) {
-      const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
-      logger.info(
-        `Running rollback command with options: ${mergedOptionsString}`
+      logger.setLevel("debug");
+      logger.debug(
+        `Running rollback command with options: ${JSON.stringify(
+          mergedOptions,
+          null,
+          2
+        )}`
       );
     }
 
@@ -183,9 +212,16 @@ program
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
 
+    // Set logger level based on verbose flag
     if (mergedOptions.verbose) {
-      const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
-      logger.info(`Running diff command with options: ${mergedOptionsString}`);
+      logger.setLevel("debug");
+      logger.debug(
+        `Running diff command with options: ${JSON.stringify(
+          mergedOptions,
+          null,
+          2
+        )}`
+      );
     }
 
     showDependencyDiff(mergedOptions);
@@ -219,10 +255,15 @@ program
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
 
+    // Set logger level based on verbose flag
     if (mergedOptions.verbose) {
-      const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
-      logger.info(
-        `Running migrate command with options: ${mergedOptionsString}`
+      logger.setLevel("debug");
+      logger.debug(
+        `Running migrate command with options: ${JSON.stringify(
+          mergedOptions,
+          null,
+          2
+        )}`
       );
     }
 
@@ -241,9 +282,16 @@ program
     const args = parseArgs();
     const mergedOptions = { ...args, ...options };
 
+    // Set logger level based on verbose flag
     if (mergedOptions.verbose) {
-      const mergedOptionsString = JSON.stringify(mergedOptions, null, 2);
-      logger.info(`Running cache command with options: ${mergedOptionsString}`);
+      logger.setLevel("debug");
+      logger.debug(
+        `Running cache command with options: ${JSON.stringify(
+          mergedOptions,
+          null,
+          2
+        )}`
+      );
     }
 
     manageCache(mergedOptions, mergedOptions.projectPath);

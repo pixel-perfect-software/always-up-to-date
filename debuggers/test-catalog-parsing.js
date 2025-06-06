@@ -1,8 +1,8 @@
-const { WorkspaceManager } = require("./dist/utils/workspace-manager");
+const { WorkspaceManager } = require("../dist/utils/workspace-manager");
 const path = require("path");
 
 async function testCatalogParsing() {
-  const testPath = path.join(__dirname, "test-monorepos/test-pnpm-catalog");
+  const testPath = path.join(__dirname, "../test-monorepos/test-pnpm-catalog");
 
   try {
     const workspaceInfo = await WorkspaceManager.detect(testPath);

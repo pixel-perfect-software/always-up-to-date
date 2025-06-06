@@ -27,8 +27,8 @@ export interface PackageUpdate {
 export interface PackageManagerInterface {
   install(packageName: string, version?: string): Promise<void>;
   uninstall(packageName: string): Promise<void>;
-  checkOutdated(): Promise<string>;
-  checkWorkspaceOutdated?(): Promise<string>;
+  checkOutdated(cwd?: string): Promise<string>;
+  checkWorkspaceOutdated?(cwd?: string): Promise<string>;
   getDependencies(projectPath: string): Promise<Record<string, string>>;
   updateDependency(
     projectPath: string,
@@ -119,10 +119,10 @@ abstract class BasePackageManager implements PackageManagerInterface {
     }
   }
 
-  async checkOutdated(): Promise<string> {
+  async checkOutdated(cwd?: string): Promise<string> {
     try {
       const { stdout } = await withRetry(
-        () => this.runCommand(this.getOutdatedCommand()),
+        () => this.runCommand(this.getOutdatedCommand(), cwd ? { cwd } : {}),
         2
       );
       return stdout;
@@ -404,10 +404,14 @@ class NpmPackageManager extends BasePackageManager {
     }
   }
 
-  async checkWorkspaceOutdated(): Promise<string> {
+  async checkWorkspaceOutdated(cwd?: string): Promise<string> {
     try {
       const { stdout } = await withRetry(
-        () => this.runCommand(this.getWorkspaceOutdatedCommand()),
+        () =>
+          this.runCommand(
+            this.getWorkspaceOutdatedCommand(),
+            cwd ? { cwd } : {}
+          ),
         2
       );
       return stdout;
@@ -540,10 +544,14 @@ class YarnPackageManager extends BasePackageManager {
     }
   }
 
-  async checkWorkspaceOutdated(): Promise<string> {
+  async checkWorkspaceOutdated(cwd?: string): Promise<string> {
     try {
       const { stdout } = await withRetry(
-        () => this.runCommand(this.getWorkspaceOutdatedCommand()),
+        () =>
+          this.runCommand(
+            this.getWorkspaceOutdatedCommand(),
+            cwd ? { cwd } : {}
+          ),
         2
       );
       return stdout;
@@ -676,10 +684,14 @@ class PnpmPackageManager extends BasePackageManager {
     }
   }
 
-  async checkWorkspaceOutdated(): Promise<string> {
+  async checkWorkspaceOutdated(cwd?: string): Promise<string> {
     try {
       const { stdout } = await withRetry(
-        () => this.runCommand(this.getWorkspaceOutdatedCommand()),
+        () =>
+          this.runCommand(
+            this.getWorkspaceOutdatedCommand(),
+            cwd ? { cwd } : {}
+          ),
         2
       );
       return stdout;

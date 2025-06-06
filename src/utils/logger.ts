@@ -12,7 +12,10 @@ const colorette = createColors({ useColor: true });
 class Logger {
   private logLevel: string;
   private logLevels: Record<string, number>;
-  private colorMap: Record<string, Function>;
+  private colorMap: Record<string, (text: string) => string>;
+  private quiet: boolean = false;
+  private lastMessage: string = "";
+  private messageCount: Map<string, number> = new Map();
 
   constructor(logLevel = "info") {
     this.logLevel = logLevel;
@@ -32,6 +35,65 @@ class Logger {
 
   setLevel(level: string): void {
     this.logLevel = level;
+  }
+
+  setQuiet(quiet: boolean): void {
+    this.quiet = quiet;
+  }
+
+  /**
+   * Log a message only if it hasn't been logged recently (deduplication)
+   */
+  logOnce(message: any, level = "info"): void {
+    const messageKey = `${level}:${message}`;
+    const count = this.messageCount.get(messageKey) || 0;
+
+    if (count === 0) {
+      this.log(message, level);
+      this.messageCount.set(messageKey, 1);
+
+      // Clean up old messages after some time
+      setTimeout(() => {
+        this.messageCount.delete(messageKey);
+      }, 30000); // 30 seconds
+    }
+  }
+
+  /**
+   * Log a clean message without timestamp and level for user-facing output
+   */
+  clean(message: string): void {
+    if (!this.quiet) {
+      console.log(message);
+    }
+  }
+
+  /**
+   * Log a status message with icon
+   */
+  status(message: string, icon = "ℹ"): void {
+    if (!this.quiet) {
+      console.log(`${colorette.blue(icon)} ${message}`);
+    }
+  }
+
+  /**
+   * Log a success message
+   */
+  success(message: string): void {
+    if (!this.quiet) {
+      console.log(`${colorette.green("✅")} ${message}`);
+    }
+  }
+
+  /**
+   * Log a progress message that can be updated
+   */
+  progress(message: string): void {
+    if (!this.quiet && this.logLevel !== "debug") {
+      // Only show progress in non-debug mode to avoid clutter
+      console.log(`${colorette.yellow("⏳")} ${message}`);
+    }
   }
 
   log(message: any, level = "info"): void {

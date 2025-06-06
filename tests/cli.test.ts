@@ -146,7 +146,7 @@ describe("CLI", () => {
 
       await run();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining("Running check command with options:")
       );
     });
@@ -168,7 +168,7 @@ describe("CLI", () => {
 
       await run();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining("Running audit command with options:")
       );
       expect(mockAuditDependencies).toHaveBeenCalled();

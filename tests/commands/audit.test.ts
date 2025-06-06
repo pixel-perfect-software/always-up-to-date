@@ -8,6 +8,9 @@ jest.mock("../../src/utils/logger", () => ({
     info: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
+    debug: jest.fn(),
+    status: jest.fn(),
+    success: jest.fn(),
   },
 }));
 
@@ -52,7 +55,7 @@ describe("Audit Command", () => {
     }
 
     const { logger } = require("../../src/utils/logger");
-    expect(logger.info).toHaveBeenCalledWith(
+    expect(logger.success).toHaveBeenCalledWith(
       "No vulnerabilities found in dependencies."
     );
   });
@@ -60,20 +63,13 @@ describe("Audit Command", () => {
   test("should handle errors gracefully", async () => {
     mockGetVulnerabilities.mockRejectedValue(new Error("Test error"));
 
-    const consoleSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
     const result = await auditDependencies();
 
-    expect(consoleSpy).toHaveBeenCalled();
     expect(result).toBeUndefined();
 
     const { logger } = require("../../src/utils/logger");
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining("Test error")
     );
-
-    consoleSpy.mockRestore();
   });
 });
