@@ -25,4 +25,4 @@ module.exports = {
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
   testTimeout: 15000,
-};
+}

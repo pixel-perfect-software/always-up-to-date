@@ -1,0 +1,14 @@
+{
+  "name": "pnpm-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test pnpm monorepo for always-up-to-date CLI",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^4.8.4",
+    "vitest": "^0.32.2"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@test-catalog/core",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "react": "catalog:ui"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:types",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@test-catalog/web",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@test-catalog/core": "workspace:*",
+    "react": "catalog:ui"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:types",
+    "@types/react": "catalog:types",
+    "typescript": "catalog:",
+    "eslint": "catalog:repo"
+  }
+}

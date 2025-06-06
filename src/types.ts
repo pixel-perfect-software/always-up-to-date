@@ -1,10 +1,6 @@
-// Type definitions for always-up-to-date
-// Export all public types from the library
+export type SupportedPackageManager = "npm" | "yarn" | "pnpm" | "bun"
 
-export type {
-  UpdateStrategy,
-  PackageRule,
-  ScheduleConfig,
-  AlwaysUpToDateConfig,
-} from "./utils/config";
-export type { PackageManagerInterface } from "./utils/package-manager";
+export interface PackageInfo {
+  current: string
+  latest: string
+}

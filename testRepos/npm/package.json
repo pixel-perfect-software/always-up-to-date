@@ -1,0 +1,14 @@
+{
+  "name": "npm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test npm repo for always-up-to-date CLI",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^4.8.4",
+    "vitest": "^0.32.2"
+  }
+}

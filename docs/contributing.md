@@ -127,13 +127,13 @@ pnpm test check.test.ts
 Use Jest with the existing patterns:
 
 ```typescript
-import { checkCommand } from "../src/commands/check";
+import { checkCommand } from "../src/commands/check"
 
 describe("check command", () => {
   it("should detect outdated dependencies", async () => {
     // Test implementation
-  });
-});
+  })
+})
 ```
 
 ## Adding New Features
@@ -166,7 +166,7 @@ export const reactMigrationRules = {
       learnMore: "https://react.dev/blog/2022/03/29/react-v18",
     },
   },
-};
+}
 ```
 
 3. Register the rule in the migration advisor
