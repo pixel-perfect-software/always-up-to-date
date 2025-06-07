@@ -4,12 +4,7 @@ module.exports = {
   roots: ["<rootDir>/src", "<rootDir>/tests"],
   testMatch: ["**/tests/**/*.test.ts"],
   transform: {
-    "^.+\\.ts$": [
-      "ts-jest",
-      {
-        useESM: true,
-      },
-    ],
+    "^.+\\.ts$": ["ts-jest", { useESM: true }],
   },
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
   coveragePathIgnorePatterns: ["node_modules/", "index.ts"],
