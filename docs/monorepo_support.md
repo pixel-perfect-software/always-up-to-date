@@ -53,7 +53,7 @@ No additional configuration or CLI flags are needed - it just works!
 ```bash
 # Works automatically in npm workspace monorepos
 cd my-npm-monorepo
-npx alwaysuptodate check
+autd check
 ```
 
 For an npm workspace with this structure:

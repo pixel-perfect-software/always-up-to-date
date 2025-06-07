@@ -2,12 +2,12 @@
 
 ## Overview
 
-| Command   | Description                     | Example                      |
-| --------- | ------------------------------- | ---------------------------- |
-| `check`   | Check for outdated dependencies | `npx alwaysuptodate check`   |
-| `update`  | Update outdated dependencies    | `npx alwaysuptodate update`  |
-| `migrate` | Migrate packages (coming soon)  | `npx alwaysuptodate migrate` |
-| `help`    | Show help information           | `npx alwaysuptodate help`    |
+| Command   | Description                     | Example        |
+| --------- | ------------------------------- | -------------- |
+| `check`   | Check for outdated dependencies | `autd check`   |
+| `update`  | Update outdated dependencies    | `autd update`  |
+| `migrate` | Migrate packages (coming soon)  | `autd migrate` |
+| `help`    | Show help information           | `autd help`    |
 
 ## `check` Command
 
@@ -16,7 +16,7 @@ Check for outdated dependencies in your project. Automatically detects your pack
 ### Usage
 
 ```bash
-npx alwaysuptodate check
+autd check
 ```
 
 ### What it does
@@ -30,12 +30,12 @@ npx alwaysuptodate check
 
 ```bash
 # Check for outdated dependencies
-npx alwaysuptodate check
+autd check
 
 # Works in any project with npm, yarn, pnpm, or bun
-cd my-npm-project && npx alwaysuptodate check
-cd my-yarn-workspace && npx alwaysuptodate check
-cd my-pnpm-monorepo && npx alwaysuptodate check
+cd my-npm-project && autd check
+cd my-yarn-workspace && autd check
+cd my-pnpm-monorepo && autd check
 ```
 
 ## `update` Command
@@ -45,7 +45,7 @@ Update all outdated dependencies in your project, respecting workspace configura
 ### Usage
 
 ```bash
-npx alwaysuptodate update
+autd update
 ```
 
 ### What it does
@@ -59,11 +59,11 @@ npx alwaysuptodate update
 
 ```bash
 # Update all outdated dependencies
-npx alwaysuptodate update
+autd update
 
 # Works with all package managers and workspace configurations
-cd my-npm-workspace && npx alwaysuptodate update
-cd my-pnpm-monorepo && npx alwaysuptodate update
+cd my-npm-workspace && autd update
+cd my-pnpm-monorepo && autd update
 ```
 
 ## `migrate` Command
@@ -73,7 +73,7 @@ Apply migration rules for packages with breaking changes.
 ### Usage
 
 ```bash
-npx alwaysuptodate migrate
+autd migrate
 ```
 
 ### Status
@@ -92,9 +92,9 @@ Display help information and available commands.
 ### Usage
 
 ```bash
-npx alwaysuptodate help
-npx alwaysuptodate --help
-npx alwaysuptodate -h
+autd help
+autd --help
+autd -h
 ```
 
 ## Package Manager Support

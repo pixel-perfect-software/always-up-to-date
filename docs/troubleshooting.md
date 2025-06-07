@@ -21,13 +21,13 @@ echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
 
 ### Package Not Found
 
-**Problem**: `command not found: alwaysuptodate`
+**Problem**: `command not found: autd`
 
 **Solutions**:
 
-1. **Use npx**: `npx alwaysuptodate check`
+1. **Use npx**: `npx @pixel-perfect-software/always-up-to-date check`
 2. **Check PATH**: Ensure global npm bin is in PATH
-3. **Reinstall**: `npm uninstall -g always-up-to-date && npm install -g always-up-to-date`
+3. **Reinstall**: `npm uninstall -g @pixel-perfect-software/always-up-to-date && npm install -g @pixel-perfect-software/always-up-to-date`
 
 ## Package Manager Detection Issues
 
@@ -224,7 +224,7 @@ When reporting issues, include:
 # System information
 node --version
 npm --version
-npx alwaysuptodate --version
+autd --version
 
 # Project information
 ls -la package*.json *.lock *.yaml

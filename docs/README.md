@@ -23,16 +23,16 @@ Welcome to the Always Up To Date documentation! Choose a topic below to get star
 
 ```bash
 # Check for outdated dependencies
-npx alwaysuptodate check
+autd check
 
 # Update outdated dependencies
-npx alwaysuptodate update
+autd update
 
 # Show help information
-npx alwaysuptodate help
+autd help
 
 # Apply migrations (coming soon)
-npx alwaysuptodate migrate
+autd migrate
 ```
 
 ### Package Manager Support

@@ -24,19 +24,19 @@ We welcome contributions to Always Up To Date! This guide will help you get star
 3. **Install dependencies**:
 
    ```bash
-   npm install
-   # or yarn, pnpm, bun
+   pnpm install
+   # or npm, yarn, bun
    ```
 
 4. **Run tests**:
 
    ```bash
-   npm test
+   pnpm test
    ```
 
 5. **Build the project**:
    ```bash
-   npm run build
+   pnpm run build
    ```
 
 ## Development Workflow
@@ -56,8 +56,8 @@ We welcome contributions to Always Up To Date! This guide will help you get star
 4. Ensure all tests pass:
 
    ```bash
-   npm test
-   npm run lint
+   pnpm test
+   pnpm run lint
    ```
 
 5. Commit with conventional commits:
@@ -146,13 +146,13 @@ Tests are located in the same directory structure as the source code but with `.
 
 ```bash
 # All tests
-npm test
+pnpm test
 
 # Watch mode
-npm run test:watch
+pnpm run test:watch
 
 # Coverage report (if configured)
-npm run test:coverage
+pnpm run test:coverage
 ```
 
 ### Writing Tests

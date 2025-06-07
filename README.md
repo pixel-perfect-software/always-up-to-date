@@ -41,16 +41,16 @@ The tool is built with a modular architecture:
 
 ```bash
 # Global installation (recommended)
-npm install -g always-up-to-date
+npm install -g @pixel-perfect-software/always-up-to-date
 
 # Check for outdated dependencies
-npx alwaysuptodate check
+autd check
 
 # Update outdated dependencies
-npx alwaysuptodate update
+autd update
 
 # Migrate packages with breaking changes (coming soon)
-npx alwaysuptodate migrate
+autd migrate
 ```
 
 ## 📖 Documentation
@@ -67,13 +67,13 @@ npx alwaysuptodate migrate
 
 ```bash
 # Check for outdated dependencies
-npx alwaysuptodate check
+autd check
 
 # Update all outdated dependencies
-npx alwaysuptodate update
+autd update
 
 # Get help and see all available commands
-npx alwaysuptodate help
+autd help
 ```
 
 ## 📦 Package Manager Detection

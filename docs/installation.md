@@ -3,19 +3,19 @@
 ## Global Installation (Recommended)
 
 ```bash
-npm install -g always-up-to-date
+npm install -g @pixel-perfect-software/always-up-to-date
 ```
 
 ## One-time Usage
 
 ```bash
-npx alwaysuptodate check
+npx @pixel-perfect-software/always-up-to-date check
 ```
 
 ## Verify Installation
 
 ```bash
-alwaysuptodate --version
+autd --version
 ```
 
 ## Prerequisites

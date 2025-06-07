@@ -6,10 +6,10 @@ Get up and running with Always Up To Date in minutes.
 
 ```bash
 # Global installation (recommended)
-npm install -g always-up-to-date
+npm install -g @pixel-perfect-software/always-up-to-date
 
 # Or use directly with npx
-npx alwaysuptodate --help
+npx @pixel-perfect-software/always-up-to-date --help
 ```
 
 ## Basic Commands
@@ -18,7 +18,7 @@ npx alwaysuptodate --help
 
 ```bash
 # Check what packages can be updated
-npx alwaysuptodate check
+autd check
 ```
 
 This command will:
@@ -31,7 +31,7 @@ This command will:
 
 ```bash
 # Update all outdated dependencies
-npx alwaysuptodate update
+autd update
 ```
 
 This command will:
@@ -44,7 +44,7 @@ This command will:
 
 ```bash
 # Show available commands
-npx alwaysuptodate help
+autd help
 ```
 
 ## Your First Update
@@ -58,7 +58,7 @@ npx alwaysuptodate help
 2. **Check what's outdated**:
 
    ```bash
-   npx alwaysuptodate check
+   autd check
    ```
 
 3. **Review the output** to see which packages can be updated
@@ -66,7 +66,7 @@ npx alwaysuptodate help
 4. **Update the packages**:
 
    ```bash
-   npx alwaysuptodate update
+   autd update
    ```
 
 5. **Test your application** after updates to ensure everything works correctly
@@ -95,16 +95,16 @@ Works seamlessly with monorepos and workspaces:
 
 ```bash
 cd my-react-app
-npx alwaysuptodate check
-npx alwaysuptodate update
+autd check
+autd update
 ```
 
 ### Monorepo/Workspace Project
 
 ```bash
 cd my-monorepo
-npx alwaysuptodate check    # Checks all workspaces
-npx alwaysuptodate update   # Updates across all workspaces
+autd check    # Checks all workspaces
+autd update   # Updates across all workspaces
 ```
 
 ## Coming Soon
@@ -113,7 +113,7 @@ npx alwaysuptodate update   # Updates across all workspaces
 
 ```bash
 # Apply smart migration rules (in development)
-npx alwaysuptodate migrate
+autd migrate
 ```
 
 This will provide:
