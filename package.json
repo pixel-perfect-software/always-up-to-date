@@ -1,6 +1,6 @@
 {
   "name": "@pixel-perfect-software/always-up-to-date",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "author": "Tyler Robertson <@tylernrobertson> (https://github.com/TylerNRobertson)",
   "description": "A highly customizable and reusable dependency checker that keeps npm dependencies always up to date.",
   "bugs": {
@@ -42,9 +42,9 @@
     "LICENSE"
   ],
   "bin": {
-    "autd": "dist/cli.js",
-    "alwaysuptodate": "dist/cli.js",
-    "always-up-to-date": "dist/cli.js"
+    "autd": "dist/index.js",
+    "alwaysuptodate": "dist/index.js",
+    "always-up-to-date": "dist/index.js"
   },
   "scripts": {
     "build": "tsc && tsc-alias",
