@@ -2,149 +2,61 @@
 
 ## Overview
 
-`always-up-to-date` now automatically detects and supports monorepos using standard workspace patterns. It works seamlessly with:
+Always Up To Date automatically detects and supports monorepos and workspaces. It works with:
 
 - **npm workspaces**
 - **Yarn workspaces**
 - **pnpm workspaces**
-- **Lerna** (via workspace patterns)
-- **Nx** (via workspace patterns)
+- **Bun workspaces**
 
 ## Auto-Detection
 
 The tool automatically detects monorepos by looking for:
 
-1. `workspaces` field in `package.json` (npm/yarn)
-2. `pnpm-workspace.yaml` file (pnpm)
-3. Lock files to determine package manager
+1. `workspaces` field in `package.json` (npm)
+2. Lock files to determine package manager
 
 No additional configuration or CLI flags are needed - it just works!
 
-## Key Features
+## Current Features
 
-### 🔄 Version Synchronization
+### ✅ Full Package Manager Support
 
-- Automatically syncs dependency versions across all workspaces
-- Detects and reports version conflicts
-- Ensures consistent dependency versions throughout the monorepo
+#### npm Workspaces
 
-### 📦 Workspace-Aware Updates
+- Automatically detects npm workspaces from `package.json`
+- Uses `--workspaces` flag when running npm commands
+- Processes all workspace packages in a single operation
 
-- Processes all workspaces automatically
-- Skips internal workspace dependencies
-- Handles cross-workspace impact analysis
+#### Yarn Workspaces
 
-### 🔀 Separate PRs Per Workspace
+- Automatically detects yarn workspaces from `package.json`
+- Uses `--recursive` flag for workspace operations
+- Parses yarn's table-based outdated output format
 
-- Creates individual PRs for each workspace by default
-- Clear, focused changes per workspace
-- Easy to review and manage
+#### pnpm Workspaces
 
-### ⚙️ Flexible Configuration
+- Automatically detects pnpm workspaces from `pnpm-workspace.yaml`
+- Uses `-r` (recursive) flag for workspace operations
+- Full support for pnpm's workspace configuration
 
-- Workspace-specific rules and settings
-- Pattern-based workspace targeting
-- Inherit from root configuration with overrides
+#### Bun Workspaces
+
+- Automatically detects bun workspaces from `package.json`
+- Uses `--filter '*'` for workspace operations
+- Parses bun's table-based output format
 
 ## Example Usage
 
+### npm Workspaces
+
 ```bash
-# Works automatically in any monorepo
-cd my-monorepo
-alwaysuptodate check
+# Works automatically in npm workspace monorepos
+cd my-npm-monorepo
+npx alwaysuptodate check
 ```
 
-**Output:**
-
-```
-📦 Detected monorepo with 5 packages
-
-Workspace: @myapp/frontend
-  - react: 17.0.2 → 18.2.0 (breaking changes)
-  - lodash: 4.17.20 → 4.17.21 ✅
-
-Workspace: @myapp/backend
-  - express: 4.17.1 → 4.18.2 ✅
-  - lodash: 4.17.20 → 4.17.21 ✅ (synced across workspaces)
-
-⚠️  Version conflicts detected:
-  lodash: 4.17.20, 4.17.21
-```
-
-## Configuration
-
-### Basic Workspace Config
-
-```json
-{
-  "workspace": {
-    "processAllWorkspaces": true,
-    "syncVersionsAcrossWorkspaces": true,
-    "createSeparatePRsPerWorkspace": true,
-    "updateInternalDependencies": false,
-    "maintainWorkspaceVersionSync": true
-  }
-}
-```
-
-### Workspace-Specific Rules
-
-```json
-{
-  "workspace": {
-    "workspaceRules": [
-      {
-        "pattern": "@myapp/frontend*",
-        "ignoredPackages": ["webpack"],
-        "updateStrategy": "minor",
-        "autoUpdate": false
-      },
-      {
-        "pattern": "@myapp/backend*",
-        "updateStrategy": "patch",
-        "autoUpdate": true
-      },
-      {
-        "pattern": "*-tools",
-        "ignoredPackages": ["eslint"],
-        "updateStrategy": "minor"
-      }
-    ]
-  }
-}
-```
-
-### Pattern Matching
-
-Workspace rules support glob-style patterns:
-
-- `@myapp/*` - Matches all packages in @myapp scope
-- `*-frontend` - Matches packages ending with -frontend
-- `tools-*` - Matches packages starting with tools-
-- `@company/app-*` - Matches scoped packages with prefix
-
-## Configuration Options
-
-| Option                          | Description                         | Default |
-| ------------------------------- | ----------------------------------- | ------- |
-| `processAllWorkspaces`          | Process all detected workspaces     | `true`  |
-| `syncVersionsAcrossWorkspaces`  | Keep versions synchronized          | `true`  |
-| `createSeparatePRsPerWorkspace` | Create individual PRs per workspace | `true`  |
-| `updateInternalDependencies`    | Update internal workspace deps      | `false` |
-| `maintainWorkspaceVersionSync`  | Maintain version consistency        | `true`  |
-
-## Workspace Rules
-
-Each workspace rule can specify:
-
-- `pattern` - Glob pattern to match workspace names
-- `ignoredPackages` - Packages to ignore for this workspace
-- `updateStrategy` - Update strategy (`major`, `minor`, `patch`, `none`)
-- `autoUpdate` - Whether to auto-update packages
-
-## Supported Monorepo Tools
-
-### npm/Yarn Workspaces
+For an npm workspace with this structure:
 
 ```json
 {
@@ -154,107 +66,112 @@ Each workspace rule can specify:
 }
 ```
 
-### pnpm Workspaces
+The tool will:
 
-```yaml
-# pnpm-workspace.yaml
-packages:
-  - "packages/*"
-  - "apps/*"
-  - "tools/*"
+1. Detect the workspace configuration
+2. Run `npm outdated --json --workspaces` to check all packages
+3. Use `npm update <package> --workspaces` to update across all workspaces
+
+## Package Manager Detection
+
+The tool detects your setup by looking for:
+
+- **npm workspaces** - `package.json` with `workspaces` field + `package-lock.json`
+- **yarn workspaces** - `package.json` with `workspaces` field + `yarn.lock`
+- **pnpm workspaces** - `pnpm-workspace.yaml` + `pnpm-lock.yaml`
+- **bun workspaces** - `package.json` with `workspaces` field + `bun.lock`
+
+## Current Implementation
+
+The current workspace detection logic:
+
+```typescript
+// Example from npm manager
+const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
+const command = isRunningInWorkspace
+  ? "outdated --json --workspaces"
+  : "outdated --json"
 ```
 
-**pnpm Catalog Support**: Always Up To Date now fully supports pnpm's catalog feature for centralized dependency management. See our [pnpm Catalog documentation](./pnpm-catalog.md) for details on:
+## Directory Structure Examples
 
-- Automatic catalog detection
-- Mixed catalog and direct version handling
-- Priority-based version resolution
-- Catalog-aware updates
-
-### Lerna
-
-```json
-{
-  "packages": ["packages/*"],
-  "version": "independent"
-}
-```
-
-## Backward Compatibility
-
-- Single-package projects continue to work unchanged
-- All existing configuration options are preserved
-- No breaking changes to existing functionality
-
-## Version Conflict Detection
-
-The tool automatically detects when different workspaces use different versions of the same dependency:
+### Supported: npm Workspaces
 
 ```
-⚠️  Version conflicts detected across workspaces:
-  lodash: ^4.17.20, ^4.17.21
-  react: ^17.0.0, ^18.0.0
+my-monorepo/
+├── package.json          # Contains "workspaces": ["packages/*"]
+├── package-lock.json     # npm lock file
+├── packages/
+│   ├── core/
+│   │   └── package.json
+│   └── utils/
+│       └── package.json
+└── apps/
+    └── web/
+        └── package.json
 ```
 
-When `syncVersionsAcrossWorkspaces` is enabled, all workspaces will be updated to use the same (latest) version.
+### Coming Soon: pnpm Workspaces
 
-## Internal Dependencies
+```
+my-monorepo/
+├── package.json
+├── pnpm-workspace.yaml   # pnpm workspace config
+├── pnpm-lock.yaml        # pnpm lock file
+└── packages/
+    ├── core/
+    └── utils/
+```
 
-Internal workspace dependencies (packages within the monorepo) are:
+## Benefits
 
-- Automatically detected and excluded from updates
-- Not considered for version synchronization
-- Handled separately from external dependencies
-
-## PR Creation Strategy
-
-With `createSeparatePRsPerWorkspace: true`:
-
-- Each workspace gets its own PR
-- PR titles: `chore(workspace-name): update dependencies`
-- Clear separation of concerns
-- Easier review and testing per workspace
-
-Example PRs:
-
-- `chore(@myapp/frontend): update dependencies`
-- `chore(@myapp/backend): update dependencies`
-- `chore(@myapp/shared-utils): update dependencies`
+1. **Automatic Detection** - No configuration needed
+2. **Unified Updates** - Updates dependencies across all workspace packages
+3. **Package Manager Aware** - Uses the correct commands for your setup
+4. **Simple Interface** - Same commands work for single packages and workspaces
 
 ## Best Practices
 
-1. **Use workspace rules** for different update strategies per workspace type
-2. **Enable version sync** to maintain consistency
-3. **Create separate PRs** for easier review and testing
-4. **Ignore internal deps** to avoid circular updates
-5. **Test in dry-run mode** first with large monorepos
-
-## Migration from Single Package
-
-No migration needed! The tool automatically detects monorepos and enables workspace features. Your existing configuration continues to work as the base configuration for all workspaces.
+1. **Use workspace patterns** consistently in your `package.json`
+2. **Test updates** in smaller workspaces first
+3. **Keep workspace packages** focused and well-defined
+4. **Commit lock files** to maintain consistency
 
 ## Limitations
 
-- Does not currently support parallel processing (sequential for reliability)
-- Internal dependency updates are disabled by default
-- Complex dependency graphs may require manual intervention
+- No workspace-specific configuration yet
+- Sequential processing only (no parallel updates)
+- Advanced features like version synchronization are planned
 
 ## Troubleshooting
 
 ### Workspace Not Detected
 
-1. Ensure `package.json` has `workspaces` field or `pnpm-workspace.yaml` exists
-2. Check workspace patterns match your directory structure
-3. Verify each workspace has a valid `package.json`
+1. Ensure `package.json` has `workspaces` field for npm
+2. Check that `package-lock.json` exists for npm detection
+3. Verify workspace patterns match your directory structure
+4. Ensure each workspace has a valid `package.json`
 
-### Version Conflicts
+### Updates Not Working
 
-1. Review conflicting versions in the output
-2. Enable `syncVersionsAcrossWorkspaces` to auto-resolve
-3. Add specific version rules for problematic packages
+1. Verify all workspace packages have valid `package.json` files
+2. Check that workspace patterns are correctly defined
+3. Ensure you have proper permissions to update all packages
 
-### Performance Issues
+## Roadmap
 
-1. Use `batchSize` to limit concurrent operations
-2. Consider workspace-specific rules to reduce scope
-3. Use `dryRun` mode for testing configuration changes
+### Phase 1 (Completed ✅)
+
+- ✅ npm workspace detection and support
+- ✅ yarn workspace detection and support
+- ✅ pnpm workspace detection and support
+- ✅ bun workspace detection and support
+- ✅ Basic workspace update commands for all package managers
+
+### Phase 2 (Planned)
+
+- 📋 Workspace-specific configuration
+- 📋 Version synchronization across workspaces
+- 📋 Parallel workspace processing
+- 📋 Advanced workspace rules and patterns
+- 📋 Interactive workspace selection

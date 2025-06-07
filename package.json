@@ -42,6 +42,7 @@
     "LICENSE"
   ],
   "bin": {
+    "autd": "dist/cli.js",
     "alwaysuptodate": "dist/cli.js",
     "always-up-to-date": "dist/cli.js"
   },
@@ -56,10 +57,8 @@
     "test:coverage": "jest --coverage --silent",
     "test:badges": "pnpm test:coverage && jest-coverage-badges --output ./badges",
     "clean": "rm -rf dist",
-    "dev": "tsc --watch",
-    "audit": "node dist/cli.js audit",
-    "auto": "node dist/cli.js auto",
-    "check": "node dist/cli.js check"
+    "check": "node dist/cli.js check",
+    "update": "node dist/cli.js update"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.5.3",

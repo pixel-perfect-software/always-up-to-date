@@ -1,83 +1,134 @@
 # Quick Start Guide
 
+Get up and running with Always Up To Date in minutes.
+
+## Installation
+
+```bash
+# Global installation (recommended)
+npm install -g always-up-to-date
+
+# Or use directly with npx
+npx alwaysuptodate --help
+```
+
 ## Basic Commands
 
 ### Check for Outdated Dependencies
 
 ```bash
-# Simple check
+# Check what packages can be updated
 npx alwaysuptodate check
-
-# With preview details
-npx alwaysuptodate check --preview
-
-# Interactive mode
-npx alwaysuptodate check --interactive
 ```
 
-### Security Audit
+This command will:
+
+- Automatically detect your package manager (npm, yarn, pnpm, bun)
+- Check for workspace configurations
+- Show you all outdated dependencies
+
+### Update Dependencies
 
 ```bash
-# Basic audit
-npx alwaysuptodate audit
-
-# With detailed output
-npx alwaysuptodate audit --verbose
+# Update all outdated dependencies
+npx alwaysuptodate update
 ```
 
-### Auto-update Dependencies
+This command will:
+
+- Check for outdated packages first
+- Update packages that are safe to upgrade
+- Respect workspace configurations for monorepos
+
+### Get Help
 
 ```bash
-# Simple auto-update
-npx alwaysuptodate auto
-
-# With GitHub PR creation
-npx alwaysuptodate auto --createIssue
-
-# Dry run to preview changes
-npx alwaysuptodate auto --dry-run
+# Show available commands
+npx alwaysuptodate help
 ```
 
 ## Your First Update
 
-1. **Check what's outdated**:
+1. **Navigate to your project**:
 
    ```bash
-   npx alwaysuptodate check --preview
+   cd your-project-directory
    ```
 
-2. **Review the changes** in the detailed output
-
-3. **Apply updates interactively**:
+2. **Check what's outdated**:
 
    ```bash
-   npx alwaysuptodate check --interactive
+   npx alwaysuptodate check
    ```
 
-4. **Test your application** after updates
+3. **Review the output** to see which packages can be updated
 
-5. **Rollback if needed**:
+4. **Update the packages**:
+
    ```bash
-   npx alwaysuptodate rollback
+   npx alwaysuptodate update
    ```
 
-## Safety First
+5. **Test your application** after updates to ensure everything works correctly
 
-Always Up To Date includes several safety features:
+## Package Manager Detection
 
-- **Automatic Backups**: Creates `package.json.backup` before changes
-- **Smart Rollback**: Easy undo with `rollback` command
-- **Preview Mode**: See changes before applying
-- **Interactive Selection**: Choose exactly which packages to update
+The tool automatically works with:
+
+- **npm projects** - Detects `package-lock.json`
+- **Yarn projects** - Detects `yarn.lock`
+- **pnpm projects** - Detects `pnpm-lock.yaml`
+- **Bun projects** - Detects `bun.lock`
+
+## Workspace Support
+
+Works seamlessly with monorepos and workspaces:
+
+- **npm workspaces** - Automatically detected from `package.json`
+- **Yarn workspaces** - Full support for workspace configurations
+- **pnpm workspaces** - Supports pnpm workspace setups
+- **Bun workspaces** - Supports bun workspace configurations
+
+## Examples
+
+### Single Package Project
+
+```bash
+cd my-react-app
+npx alwaysuptodate check
+npx alwaysuptodate update
+```
+
+### Monorepo/Workspace Project
+
+```bash
+cd my-monorepo
+npx alwaysuptodate check    # Checks all workspaces
+npx alwaysuptodate update   # Updates across all workspaces
+```
+
+## Coming Soon
+
+### Migration Support
+
+```bash
+# Apply smart migration rules (in development)
+npx alwaysuptodate migrate
+```
+
+This will provide:
+
+- Automated migration rules for popular packages
+- Breaking change guidance
+- Code transformation assistance
 
 ## Next Steps
 
-- Set up [GitHub Integration](./github-integration.md) for automated PRs
-- Configure [Update Rules](./configuration.md) for your project
-- Learn about [Advanced Usage](./commands.md) patterns
-- Check [Safety Features](./safety-features.md) for backup and rollback options
+- **[Commands Reference](./commands.md)** - Detailed command documentation
+- **[Installation Guide](./installation.md)** - Advanced installation options
+- **[Contributing](./contributing.md)** - How to contribute to the project
 
 ## Need Help?
 
 - **[Troubleshooting Guide](./troubleshooting.md)** - Common issues and solutions
-- **[Full Documentation](./README.md)** - Complete documentation index
+- **[GitHub Issues](https://github.com/pixel-perfect-software/always-up-to-date/issues)** - Report bugs or request features

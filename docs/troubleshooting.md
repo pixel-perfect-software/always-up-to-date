@@ -25,33 +25,48 @@ echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
 
 **Solutions**:
 
-1. **Use npx**: `npx always-up-to-date check`
+1. **Use npx**: `npx alwaysuptodate check`
 2. **Check PATH**: Ensure global npm bin is in PATH
 3. **Reinstall**: `npm uninstall -g always-up-to-date && npm install -g always-up-to-date`
 
-## Authentication Issues
+## Package Manager Detection Issues
 
-### GitHub Token Problems
+### Wrong Package Manager Detected
 
-**Problem**: `Authentication failed` or `Bad credentials`
-
-**Solutions**:
-
-1. **Verify token**: Check token exists and has correct scopes
-2. **Test token**: `curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/user`
-3. **Regenerate token**: Create new token with `repo` and `workflow` scopes
-
-### Token Detection Issues
-
-**Problem**: Tool doesn't find your GitHub token
+**Problem**: Tool detects wrong package manager or fails to detect
 
 **Solutions**:
 
-1. **Check environment**: `echo $GITHUB_TOKEN`
-2. **Check .env file**: Ensure `.env` exists and contains `GITHUB_TOKEN=...`
-3. **Use explicit flag**: `--token your_token_here`
+1. **Check lock files**: Ensure only one type of lock file exists:
+   - `package-lock.json` for npm
+   - `yarn.lock` for yarn
+   - `pnpm-lock.yaml` for pnpm
+   - `bun.lock` for bun
+2. **Remove conflicting lock files**: Delete unused lock files
+3. **Verify package.json**: Ensure valid package.json exists
+
+### No Package Manager Detected
+
+**Problem**: "No package manager detected in the current directory"
+
+**Solutions**:
+
+1. **Check working directory**: Ensure you're in a Node.js project directory
+2. **Verify lock file exists**: At least one lock file must be present
+3. **Check file permissions**: Ensure lock files are readable
 
 ## Update Issues
+
+### Command Execution Fails
+
+**Problem**: Package manager commands fail during check/update
+
+**Solutions**:
+
+1. **Check package manager installation**: Verify npm/yarn/pnpm/bun is installed
+2. **Test manually**: Try running the same command manually
+3. **Check permissions**: Ensure you have write permissions to the project
+4. **Clear cache**: Clear your package manager's cache
 
 ### Dependency Resolution Errors
 
@@ -63,49 +78,97 @@ echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
 2. **Clear cache**: `npm cache clean --force`
 3. **Delete node_modules**: `rm -rf node_modules package-lock.json && npm install`
 
-### Package Lock Conflicts
+### Network Issues
 
-**Problem**: Lock file conflicts after updates
-
-**Solutions**:
-
-1. **Delete lock file**: Remove and regenerate lock file
-2. **Use correct package manager**: Ensure using the same manager (npm/yarn/pnpm)
-3. **Rollback**: `npx alwaysuptodate rollback`
-
-## Configuration Issues
-
-### Config File Not Found
-
-**Problem**: Configuration not being applied
+**Problem**: Package manager cannot reach registry
 
 **Solutions**:
 
-1. **Check location**: Ensure `.alwaysuptodate.json` is in project root
-2. **Validate JSON**: Use JSON validator to check syntax
-3. **Check spelling**: Ensure config keys are spelled correctly
+1. **Check network connection**: Verify internet connectivity
+2. **Check registry**: `npm config get registry`
+3. **Try different registry**: `npm config set registry https://registry.npmjs.org/`
 
-### Package Rules Not Working
+## Workspace Issues
 
-**Problem**: Package-specific rules not being applied
+### Workspace Not Detected
+
+**Problem**: npm workspace not detected even though it exists
 
 **Solutions**:
 
-1. **Check patterns**: Ensure package names/patterns are correct
-2. **Test patterns**: Use glob tester to verify patterns
-3. **Check priority**: Later rules override earlier ones
+1. **Check package.json**: Ensure `workspaces` field is present and valid
+2. **Verify workspace structure**: Ensure workspace packages have valid package.json files
+3. **Test workspace**: Run `npm ls --workspaces` to verify workspace setup
+
+### Workspace Updates Fail
+
+**Problem**: Updates fail in workspace environment
+
+**Solutions**:
+
+1. **Check workspace permissions**: Ensure write access to all workspace packages
+2. **Verify workspace patterns**: Check that workspace patterns in package.json are correct
+3. **Test individual packages**: Try updating individual workspace packages manually
+
+## Command Issues
+
+### Check Command Shows No Output
+
+**Problem**: `check` command runs but shows no outdated packages
+
+**Solutions**:
+
+1. **All packages up to date**: This may be normal - all dependencies are current
+2. **Check command execution**: Verify the underlying package manager command works
+3. **Manual verification**: Run `npm outdated` (or equivalent) manually
+
+### Update Command Does Nothing
+
+**Problem**: `update` command runs but doesn't update packages
+
+**Solutions**:
+
+1. **No outdated packages**: Check command first to see if updates are available
+2. **Update filtering**: The tool filters updates for safety - some may be skipped
+3. **Check permissions**: Ensure write permissions to package.json and lock files
+
+## Common Error Messages
+
+### `ENOENT: no such file or directory`
+
+**Cause**: Missing package.json or working in wrong directory
+
+**Solution**: Ensure you're in a valid Node.js project directory with package.json
+
+### `Command execution failed`
+
+**Cause**: Underlying package manager command failed
+
+**Solution**: Check the error message and try running the package manager command manually
+
+### `An error occurred while checking for outdated packages`
+
+**Cause**: Package manager command failed or returned invalid output
+
+**Solution**: Verify package manager installation and project structure
+
+### `An unknown error occurred while running the command`
+
+**Cause**: Unexpected error during command execution
+
+**Solution**: Check the detailed error message and verify project setup
 
 ## Performance Issues
 
-### Slow Updates
+### Slow Command Execution
 
-**Problem**: Updates taking too long
+**Problem**: Commands take a long time to complete
 
 **Solutions**:
 
-1. **Reduce batch size**: `--batch-size 5`
-2. **Disable parallel**: Set `"parallelUpdates": false`
-3. **Use specific registry**: Configure npm registry
+1. **Network speed**: Package manager needs to check registry for latest versions
+2. **Large projects**: More dependencies = longer check times
+3. **Registry issues**: Try different npm registry if available
 
 ### Memory Issues
 
@@ -114,89 +177,46 @@ echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
 **Solutions**:
 
 1. **Increase memory**: `NODE_OPTIONS="--max-old-space-size=4096"`
-2. **Reduce scope**: Use `--only-direct` flag
-3. **Process in batches**: Smaller batch sizes
+2. **Large monorepos**: Consider checking smaller subsets of packages
 
-## GitHub Integration Issues
+## Getting Debug Information
 
-### PR Creation Fails
+### Enable Verbose Output
 
-**Problem**: Cannot create pull requests
+Currently, the tool provides basic logging. For debugging:
 
-**Solutions**:
+1. **Check command output**: Look for error messages in the console
+2. **Test manually**: Run the underlying package manager commands manually
+3. **Verify project structure**: Ensure valid package.json and lock files
 
-1. **Check permissions**: Ensure token has `repo` scope
-2. **Verify repository**: Confirm repository exists and accessible
-3. **Check branch protection**: Ensure base branch allows PR creation
+### Manual Testing
 
-### Repository Detection Fails
+Test the underlying commands that the tool uses:
 
-**Problem**: Cannot detect GitHub repository
+```bash
+# For npm projects
+npm outdated --json
+npm outdated --json --workspaces  # For workspaces
 
-**Solutions**:
+# For yarn projects (coming soon)
+yarn outdated --json
 
-1. **Check git remote**: `git remote -v`
-2. **Use explicit flag**: `--repository owner/repo`
-3. **Check package.json**: Ensure repository field is set
+# For pnpm projects (coming soon)
+pnpm outdated --format json
 
-## Package Manager Issues
-
-### Wrong Package Manager Detected
-
-**Problem**: Tool uses wrong package manager
-
-**Solutions**:
-
-1. **Remove other lock files**: Delete unused lock files
-2. **Use explicit flag**: `--package-manager npm`
-3. **Check detection logic**: Verify which lock files exist
-
-### Lock File Corruption
-
-**Problem**: Package manager complains about lock file
-
-**Solutions**:
-
-1. **Regenerate lock file**: Delete and reinstall
-2. **Use package manager repair**: `npm audit fix` or `yarn install --check-files`
-3. **Rollback changes**: `npx alwaysuptodate rollback`
-
-## Common Error Messages
-
-### `ENOENT: no such file or directory`
-
-**Cause**: Missing package.json or invalid project path
-
-**Solution**: Ensure you're in a valid Node.js project directory
-
-### `Request failed with status code 404`
-
-**Cause**: Package not found on npm registry
-
-**Solution**: Check package name spelling or availability
-
-### `EPERM: operation not permitted`
-
-**Cause**: Permission issues on Windows
-
-**Solution**: Run terminal as administrator or use different installation method
-
-### `Cannot read property 'version' of undefined`
-
-**Cause**: Malformed package.json
-
-**Solution**: Validate package.json syntax and structure
+# For bun projects (coming soon)
+bun outdated
+```
 
 ## Getting Help
 
 If you're still experiencing issues:
 
-1. **Check existing issues**: [GitHub Issues](https://github.com/your-repo/always-up-to-date/issues)
-2. **Create new issue**: Include error message, OS, Node.js version
-3. **Enable verbose logging**: Use `--verbose` flag for detailed output
-4. **Community support**: Join our Discord or discussions
+1. **Check existing issues**: [GitHub Issues](https://github.com/pixel-perfect-software/always-up-to-date/issues)
+2. **Create new issue**: Include error message, OS, Node.js version, and package manager
+3. **Provide context**: Include your project structure and relevant config files
 
-### Useful Debug Information
+### Useful Information for Bug Reports
 
 When reporting issues, include:
 
@@ -207,9 +227,22 @@ npm --version
 npx alwaysuptodate --version
 
 # Project information
-ls -la package*.json
+ls -la package*.json *.lock *.yaml
 cat package.json | head -20
 
-# Error with verbose output
-npx alwaysuptodate check --verbose
+# Package manager test
+npm outdated --json  # or yarn/pnpm equivalent
 ```
+
+## Feature Limitations
+
+Current limitations of the tool:
+
+- Only npm workspaces are fully supported (yarn, pnpm, bun coming soon)
+- No configuration file support yet
+- No GitHub integration yet
+- No interactive selection mode yet
+- No rollback functionality yet
+- Basic error handling and logging
+
+These features are planned for future releases.

@@ -9,7 +9,7 @@ npm install -g always-up-to-date
 ## One-time Usage
 
 ```bash
-npx always-up-to-date check
+npx alwaysuptodate check
 ```
 
 ## Verify Installation
@@ -22,7 +22,6 @@ alwaysuptodate --version
 
 - Node.js 16 or higher
 - npm, yarn, pnpm, or bun package manager
-- Git (for GitHub integration features)
 
 ## Troubleshooting
 
@@ -43,9 +42,7 @@ The tool automatically detects your package manager based on lock files:
 - `package-lock.json` → npm
 - `yarn.lock` → yarn
 - `pnpm-lock.yaml` → pnpm
-- `bun.lockb` → bun
-
-You can override detection with the `--packageManager` flag.
+- `bun.lock` → bun
 
 ## Need Help?
 

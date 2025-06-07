@@ -6,8 +6,8 @@ We welcome contributions to Always Up To Date! This guide will help you get star
 
 ### Prerequisites
 
-- Node.js 18 or higher
-- pnpm (preferred) or npm
+- Node.js 16 or higher
+- npm, yarn, pnpm, or bun
 - Git
 
 ### Setup
@@ -24,18 +24,19 @@ We welcome contributions to Always Up To Date! This guide will help you get star
 3. **Install dependencies**:
 
    ```bash
-   pnpm install
+   npm install
+   # or yarn, pnpm, bun
    ```
 
 4. **Run tests**:
 
    ```bash
-   pnpm test
+   npm test
    ```
 
 5. **Build the project**:
    ```bash
-   pnpm build
+   npm run build
    ```
 
 ## Development Workflow
@@ -55,14 +56,14 @@ We welcome contributions to Always Up To Date! This guide will help you get star
 4. Ensure all tests pass:
 
    ```bash
-   pnpm test
-   pnpm lint
+   npm test
+   npm run lint
    ```
 
 5. Commit with conventional commits:
 
    ```bash
-   git commit -m "feat: add new migration rule for package X"
+   git commit -m "feat: add yarn workspace support"
    ```
 
 6. Push and create a pull request
@@ -82,44 +83,76 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
 src/
-├── cli.ts              # CLI entry point
-├── commands/           # Command implementations
-│   ├── check.ts
-│   ├── audit.ts
-│   ├── auto.ts
-│   └── ...
-├── services/           # Core business logic
-│   ├── dependency-checker.ts
-│   ├── migration-advisor.ts
-│   └── ...
-└── utils/              # Utility functions
-    ├── logger.ts
-    ├── config.ts
-    └── ...
+├── cli.ts                  # CLI entry point using Commander.js
+├── index.ts               # Main entry point
+├── commandRunner.ts       # Base class for running package manager commands
+├── detectPackageManager.ts # Auto-detect package manager logic
+├── types.ts               # TypeScript type definitions
+├── commands/              # Command implementations
+│   ├── index.ts          # Command exports
+│   ├── check.ts          # Check for outdated dependencies
+│   ├── update.ts         # Update dependencies
+│   ├── migrate.ts        # Migration command (in development)
+│   └── help.ts           # Help command
+├── managers/              # Package manager implementations
+│   ├── index.ts          # Manager exports
+│   ├── packageManager.ts # Manager factory class
+│   ├── npm/              # npm implementation
+│   ├── yarn/             # yarn implementation (coming soon)
+│   ├── pnpm/             # pnpm implementation (coming soon)
+│   └── bun/              # bun implementation (coming soon)
+├── migrator/              # Migration system (in development)
+│   ├── index.ts
+│   └── rules/            # Migration rules for packages
+├── prGenerator/           # PR generation system (in development)
+│   └── index.ts
+└── utils/                 # Utility functions
+    ├── index.ts
+    ├── logger.ts          # Logging utilities
+    └── updateChecker.ts   # Update filtering logic
 ```
+
+## Current Implementation Status
+
+### ✅ Implemented
+
+- Basic CLI structure with Commander.js
+- Package manager auto-detection (npm, yarn, pnpm, bun)
+- npm support with workspace detection
+- Basic check and update commands
+- Modular architecture for extensibility
+
+### 🚧 In Development
+
+- yarn, pnpm, bun package manager support
+- Migration system with smart rules
+- PR generation system
+
+### 📋 Planned
+
+- Advanced configuration options
+- GitHub integration
+- Interactive update selection
+- Rollback functionality
+- Enhanced error handling and logging
 
 ## Testing
 
-### Test Types
+### Test Setup
 
-- **Unit tests**: Test individual functions and classes
-- **Integration tests**: Test command interactions
-- **E2E tests**: Test full CLI workflows
+Tests are located in the same directory structure as the source code but with `.test.ts` extension.
 
 ### Running Tests
 
 ```bash
 # All tests
-pnpm test
+npm test
 
 # Watch mode
-pnpm test:watch
+npm run test:watch
 
-# Coverage report
-pnpm test:coverage
-
-# Specific test file
-pnpm test check.test.ts
+# Coverage report (if configured)
+npm run test:coverage
 ```
 
 ### Writing Tests
@@ -127,10 +160,10 @@ pnpm test check.test.ts
 Use Jest with the existing patterns:
 
 ```typescript
-import { checkCommand } from "../src/commands/check"
+import { detectPackageManager } from "../detectPackageManager"
 
-describe("check command", () => {
-  it("should detect outdated dependencies", async () => {
+describe("detectPackageManager", () => {
+  it("should detect npm from package-lock.json", () => {
     // Test implementation
   })
 })
@@ -138,75 +171,65 @@ describe("check command", () => {
 
 ## Adding New Features
 
-### Adding a New Command
+### Adding Package Manager Support
 
-1. Create command file in `src/commands/`
-2. Implement the command logic
-3. Add CLI argument parsing
-4. Write tests
-5. Update documentation
-
-### Adding Migration Rules
-
-1. Add rule to `src/services/migration-rules/`
-2. Follow the existing pattern:
+1. Create a new manager in `src/managers/[package-manager]/index.ts`
+2. Extend the `CommandRunner` class
+3. Implement required methods:
 
 ```typescript
-export const reactMigrationRules = {
-  "17.0.0": {
-    "18.0.0": {
-      breakingChanges: [
-        "Automatic batching behavior changed",
-        "New JSX transform required",
-      ],
-      migrationSteps: [
-        "Update React types",
-        "Review component lifecycle methods",
-      ],
-      learnMore: "https://react.dev/blog/2022/03/29/react-v18",
-    },
-  },
+import CommandRunner from "@/commandRunner"
+
+class YarnManager extends CommandRunner {
+  public readonly packageManager: SupportedPackageManager = "yarn"
+
+  checkPackageVersions = async (cwd: string): Promise<object> => {
+    // Implementation
+  }
+
+  updatePackages = async (cwd: string): Promise<void> => {
+    // Implementation
+  }
+
+  checkIfInWorkspace = async (cwd: string): Promise<boolean> => {
+    // Implementation
+  }
 }
 ```
 
-3. Register the rule in the migration advisor
-4. Write tests for the new rules
+4. Add to `PackageManager` factory in `src/managers/packageManager.ts`
+5. Update lock file detection in `src/detectPackageManager.ts`
+6. Write tests for the new package manager
 
-### Adding Package Manager Support
+### Adding Migration Rules
 
-1. Create handler in `src/services/package-managers/`
-2. Implement the `PackageManager` interface
-3. Add detection logic to `src/utils/package-manager.ts`
-4. Write tests for the new package manager
+1. Create rule files in `src/migrator/rules/[package-name]/`
+2. Follow the planned migration rule structure
+3. Register rules with the migrator system
+4. Write tests for migration rules
 
-## Documentation
+### Adding New Commands
 
-### Types of Documentation
+1. Create command file in `src/commands/`
+2. Implement using Commander.js pattern:
 
-- **README**: Main project overview
-- **API Documentation**: Code documentation
-- **User Guides**: How-to documentation
-- **Examples**: Usage examples
+```typescript
+import type { Command } from "commander"
 
-### Writing Documentation
+const newCommand = (program: Command) =>
+  program
+    .command("new-command")
+    .description("Description of the new command")
+    .action(async () => {
+      // Command implementation
+    })
 
-- Use clear, concise language
-- Include code examples
-- Add screenshots for UI features
-- Test all code examples
-
-### Documentation Structure
-
+export default newCommand
 ```
-docs/
-├── installation.md
-├── quick-start.md
-├── commands.md
-├── configuration.md
-├── safety-features.md
-├── github-integration.md
-└── contributing.md
-```
+
+3. Export from `src/commands/index.ts`
+4. Register in `src/cli.ts`
+5. Write tests for the command
 
 ## Code Style
 
@@ -215,18 +238,18 @@ docs/
 - Use strict TypeScript configuration
 - Prefer interfaces over types for object shapes
 - Use proper typing (avoid `any`)
-- Document complex types
+- Follow existing patterns for imports using `@/` alias
 
 ### Code Formatting
 
-We use Prettier for code formatting:
+The project uses Prettier for code formatting:
 
 ```bash
-# Format code
-pnpm format
+# Format code (if configured)
+npm run format
 
 # Check formatting
-pnpm format:check
+npm run format:check
 ```
 
 ### Linting
@@ -235,10 +258,33 @@ ESLint is used for code linting:
 
 ```bash
 # Lint code
-pnpm lint
+npm run lint
 
 # Auto-fix linting issues
-pnpm lint:fix
+npm run lint:fix
+```
+
+## Documentation
+
+### Updating Documentation
+
+When adding features:
+
+1. Update relevant documentation in `docs/`
+2. Update the main README.md if needed
+3. Add examples to demonstrate new functionality
+4. Ensure all code examples are tested
+
+### Documentation Structure
+
+```
+docs/
+├── commands.md           # Command reference
+├── quick-start.md        # Getting started guide
+├── installation.md       # Installation instructions
+├── monorepo_support.md   # Workspace/monorepo documentation
+├── troubleshooting.md    # Common issues and solutions
+└── contributing.md       # This file
 ```
 
 ## Pull Request Process
@@ -247,9 +293,9 @@ pnpm lint:fix
 
 1. Ensure all tests pass
 2. Update documentation if needed
-3. Add or update tests for new features
+3. Add tests for new features
 4. Run linting and formatting
-5. Write a clear PR description
+5. Test with different package managers if applicable
 
 ### PR Template
 
@@ -268,8 +314,8 @@ Brief description of changes
 ## Testing
 
 - [ ] Unit tests added/updated
-- [ ] Integration tests added/updated
 - [ ] Manual testing completed
+- [ ] Tested with multiple package managers (if applicable)
 
 ## Documentation
 
@@ -277,24 +323,27 @@ Brief description of changes
 - [ ] Examples added/updated
 ```
 
-### Review Process
+## Areas for Contribution
 
-1. Automated checks must pass
-2. Code review by maintainers
-3. Address feedback
-4. Final approval and merge
+### High Priority
 
-## Release Process
+1. **Package Manager Support**: Complete yarn, pnpm, and bun implementations
+2. **Migration System**: Build out the migration rule system
+3. **Error Handling**: Improve error messages and handling
+4. **Testing**: Add comprehensive tests for existing functionality
 
-Releases are automated using semantic versioning:
+### Medium Priority
 
-1. Merge PRs to `main`
-2. GitHub Actions automatically:
-   - Runs tests
-   - Builds the package
-   - Publishes to npm
-   - Creates GitHub release
-   - Updates changelog
+1. **PR Generation**: Build the GitHub integration system
+2. **Configuration**: Add configuration file support
+3. **Interactive Mode**: Add interactive package selection
+4. **Logging**: Enhance logging and debugging capabilities
+
+### Low Priority
+
+1. **Performance**: Optimize for large projects
+2. **CI/CD**: Improve build and release processes
+3. **Documentation**: Expand examples and guides
 
 ## Getting Help
 
@@ -302,29 +351,22 @@ Releases are automated using semantic versioning:
 
 - **Issues**: Report bugs or request features
 - **Discussions**: Ask questions or share ideas
-- **Discord**: Join our community chat
-- **Email**: Contact maintainers directly
+- **Documentation**: Check existing docs first
 
 ### Issue Templates
 
-Use appropriate issue templates:
+When creating issues:
 
-- **Bug Report**: For reporting bugs
-- **Feature Request**: For requesting new features
-- **Documentation**: For documentation improvements
-
-### Support Channels
-
-1. **GitHub Issues**: Primary support channel
-2. **GitHub Discussions**: Community Q&A
-3. **Email**: For security issues or private matters
+- **Bug Report**: Include error messages, OS, Node.js version, package manager
+- **Feature Request**: Describe the use case and expected behavior
+- **Documentation**: Suggest improvements or report unclear sections
 
 ## Recognition
 
 Contributors are recognized in:
 
-- **CHANGELOG.md**: For each release
-- **README.md**: All-time contributors
+- **README.md**: All contributors
+- **Release notes**: For each release
 - **GitHub**: Contributor graphs and stats
 
 Thank you for contributing to Always Up To Date! 🎉

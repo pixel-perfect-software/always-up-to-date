@@ -9,25 +9,33 @@
 [![Security](https://github.com/pixel-perfect-software/always-up-to-date/workflows/Security/badge.svg)](https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A smart CLI tool that automatically keeps your npm dependencies up to date with vulnerability scanning, GitHub integration, and intelligent rollback capabilities.
+A smart CLI tool that automatically keeps your dependencies up to date with intelligent package manager detection and workspace support.
 
 ## ✨ Features
 
-- 🚀 **Automatic Updates** - Smart dependency management with breaking change detection
-- 🔒 **Security First** - Built-in vulnerability scanning and safe rollback
-- 🎯 **GitHub Integration** - Auto-creates PRs with detailed migration guides
-- 📦 **Universal Support** - Works with npm, yarn, pnpm, and bun
-- ⚙️ **Highly Configurable** - Granular control over update strategies
-- 🧠 **Smart Migration Advisor** - Detailed migration instructions for popular packages
-- 🔄 **Interactive Mode** - Choose exactly which packages to update
-- 📊 **Multiple Output Formats** - Table, JSON, or detailed diff views
-- 🔍 **Preview Mode** - See detailed update plans before applying changes>
+- 📦 **Universal Package Manager Support** - Automatically detects and works with npm, yarn, pnpm, and bun
+- 🔍 **Dependency Checking** - Check for outdated packages across your project
+- 🚀 **Smart Updates** - Update packages while respecting workspace configurations
+- 🏢 **Workspace Support** - Full support for npm workspaces and monorepo structures
+- 🎯 **Intelligent Detection** - Automatically detects your package manager from lock files
+- 🛠️ **Extensible Architecture** - Modular design with dedicated managers, migrators, and PR generators
+
+## 🏗️ Architecture
+
+The tool is built with a modular architecture:
+
+- **Managers** - Package manager specific implementations (npm, yarn, pnpm, bun)
+- **Migrators** - Smart migration rules for popular packages (React, Next.js, etc.)
+- **PR Generators** - Automated pull request creation with detailed migration guides
+- **Command Runner** - Unified command execution across all package managers
 
 ## 🔜 Coming Soon
 
-- Monorepo support (turborepo, lerna, rush, etc)
-- Workspace dependencies
-- PNPM Catalog support
+- Enhanced migration rules for popular frameworks
+- GitHub integration with automated PR creation
+- Advanced configuration options
+- Security vulnerability scanning
+- Interactive update selection
 
 ## 🚀 Quick Start
 
@@ -38,8 +46,11 @@ npm install -g always-up-to-date
 # Check for outdated dependencies
 npx alwaysuptodate check
 
-# Auto-update with GitHub PR creation
-npx alwaysuptodate auto --createIssue
+# Update outdated dependencies
+npx alwaysuptodate update
+
+# Migrate packages with breaking changes (coming soon)
+npx alwaysuptodate migrate
 ```
 
 ## 📖 Documentation
@@ -47,69 +58,60 @@ npx alwaysuptodate auto --createIssue
 - 📦 **[Installation Guide](./docs/installation.md)** - Detailed installation instructions and troubleshooting
 - 🚀 **[Quick Start Guide](./docs/quick-start.md)** - Get up and running in minutes
 - 🛠️ **[Commands Reference](./docs/commands.md)** - Complete command documentation with examples
-- ⚙️ **[Configuration Guide](./docs/configuration.md)** - Advanced configuration options and examples
-- 🔒 **[Safety Features](./docs/safety-features.md)** - Backup, rollback, and security features
-- 🐙 **[GitHub Integration](./docs/github-integration.md)** - PR creation and CI/CD setup
+- 🏢 **[Monorepo Support](./docs/monorepo_support.md)** - Workspace and monorepo documentation
 - 🛠️ **[Troubleshooting Guide](./docs/troubleshooting.md)** - Common issues and solutions
 - 🤝 **[Contributing Guide](./docs/contributing.md)** - How to contribute to the project
+- � **[Documentation Index](./docs/README.md)** - Complete documentation overview
 
 ## 🔧 Basic Usage Examples
 
 ```bash
-# Interactive mode - choose which packages to update
-npx alwaysuptodate check --interactive
+# Check for outdated dependencies
+npx alwaysuptodate check
 
-# Preview changes without applying them
-npx alwaysuptodate check --preview
+# Update all outdated dependencies
+npx alwaysuptodate update
 
-# Audit for security vulnerabilities
-npx alwaysuptodate audit
-
-# Rollback recent changes
-npx alwaysuptodate rollback
+# Get help and see all available commands
+npx alwaysuptodate help
 ```
 
-## 🚨 Safety Features
+## 📦 Package Manager Detection
 
-- **Automatic Backups** - Creates `package.json.backup` before changes
-- **Smart Rollback** - Easy undo with `rollback` command
-- **Breaking Change Detection** - Identifies major version updates
-- **Vulnerability Scanning** - Built-in security audit
-- **Interactive Selection** - Choose exactly which updates to apply
+The tool automatically detects your package manager by looking for lock files:
 
-**[→ Learn more about safety features](./docs/safety-features.md)**
+- **npm** - `package-lock.json`
+- **yarn** - `yarn.lock`
+- **pnpm** - `pnpm-lock.yaml`
+- **bun** - `bun.lock`
 
-## 🔧 GitHub Integration
+## 🏢 Workspace Support
 
-Set up automated dependency updates with GitHub PR creation:
+Full support for workspaces and monorepos:
 
-```bash
-# Quick setup with environment variable
-export GITHUB_TOKEN="your_token_here"
-npx alwaysuptodate auto --createIssue
-```
+- **npm workspaces** - Automatically detected from `package.json` workspaces field
+- **yarn workspaces** - Automatically detected from `package.json` workspaces field
+- **pnpm workspaces** - Automatically detected from `pnpm-workspace.yaml`
+- **bun workspaces** - Automatically detected from `package.json` workspaces field
 
-**[→ Complete GitHub integration guide](./docs/github-integration.md)**
+## 🛠️ Available Commands
 
-## ⚙️ Configuration
+- `check` - Check for outdated dependencies in your project
+- `update` - Update all outdated dependencies
+- `migrate` - Migrate packages with breaking changes (coming soon)
+- `help` - Display help information
 
-Create `.alwaysuptodate.json` for advanced customization:
+## ⚙️ Current Implementation
 
-```json
-{
-  "updateStrategy": "minor",
-  "ignoredPackages": ["@types/node"],
-  "packageRules": [
-    {
-      "name": "react",
-      "updateStrategy": "minor",
-      "autoUpdate": false
-    }
-  ]
-}
-```
+The current implementation provides:
 
-**[→ See full configuration options](./docs/configuration.md)**
+- ✅ Package manager auto-detection
+- ✅ Dependency version checking
+- ✅ Package updating with workspace support
+- ✅ Modular architecture for extensibility
+- 🚧 Migration system (in development)
+- 🚧 PR generation (in development)
+- 🚧 Advanced configuration (planned)
 
 ## 🤝 Contributing
 
