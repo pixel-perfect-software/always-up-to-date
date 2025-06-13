@@ -43,6 +43,9 @@ The tool is built with a modular architecture:
 # Global installation (recommended)
 npm install -g @pixel-perfect-software/always-up-to-date
 
+# Initialize the library
+autd init
+
 # Check for outdated dependencies
 autd check
 
@@ -52,16 +55,6 @@ autd update
 # Migrate packages with breaking changes (coming soon)
 autd migrate
 ```
-
-## 📖 Documentation
-
-- 📦 **[Installation Guide](./docs/installation.md)** - Detailed installation instructions and troubleshooting
-- 🚀 **[Quick Start Guide](./docs/quick-start.md)** - Get up and running in minutes
-- 🛠️ **[Commands Reference](./docs/commands.md)** - Complete command documentation with examples
-- 🏢 **[Monorepo Support](./docs/monorepo_support.md)** - Workspace and monorepo documentation
-- 🛠️ **[Troubleshooting Guide](./docs/troubleshooting.md)** - Common issues and solutions
-- 🤝 **[Contributing Guide](./docs/contributing.md)** - How to contribute to the project
-- � **[Documentation Index](./docs/README.md)** - Complete documentation overview
 
 ## 🔧 Basic Usage Examples
 

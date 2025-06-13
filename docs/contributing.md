@@ -361,12 +361,4 @@ When creating issues:
 - **Feature Request**: Describe the use case and expected behavior
 - **Documentation**: Suggest improvements or report unclear sections
 
-## Recognition
-
-Contributors are recognized in:
-
-- **README.md**: All contributors
-- **Release notes**: For each release
-- **GitHub**: Contributor graphs and stats
-
 Thank you for contributing to Always Up To Date! 🎉
