@@ -106,6 +106,33 @@ class Logger {
   }
 
   /**
+   * Package group header (e.g., "@babel packages:", "Other packages:")
+   */
+  packageGroupHeader(groupName: string): void {
+    if (!this.quiet) {
+      const displayName =
+        groupName === "unscoped" ? "Other packages" : `${groupName} packages`
+      console.log(`\n${cyan("🏷️")}  ${bold(displayName)}:`)
+    }
+  }
+
+  /**
+   * Individual outdated package within a group (with extra indentation)
+   */
+  outdatedPackageInGroup(
+    packageName: string,
+    current: string,
+    latest: string,
+  ): void {
+    if (!this.quiet) {
+      const arrow = gray("→")
+      console.log(
+        `  ${yellow("📋")} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)}`,
+      )
+    }
+  }
+
+  /**
    * Updating packages header
    */
   updatingHeader(): void {

@@ -5,3 +5,5 @@ export const execAsync = promisify(exec)
 
 export { default as logger } from "./logger"
 export { default as updateChecker } from "./updateChecker"
+export { groupAndSortPackages, getSortedGroupNames } from "./packageGrouper"
+export type { GroupedPackages } from "./packageGrouper"

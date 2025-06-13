@@ -1,7 +1,12 @@
 import fs from "fs"
 
 import CommandRunner from "@/commandRunner"
-import { logger, updateChecker } from "@/utils"
+import {
+  logger,
+  updateChecker,
+  groupAndSortPackages,
+  getSortedGroupNames,
+} from "@/utils"
 
 import type { PackageInfo, SupportedPackageManager } from "@/types"
 
@@ -33,9 +38,17 @@ class NPMManager extends CommandRunner {
 
     logger.outdatedHeader()
 
-    Object.entries(result).forEach(([packageName, packageInfo]) => {
-      const { current, latest } = packageInfo as PackageInfo
-      logger.outdatedPackage(packageName, current, latest)
+    // Group and sort packages for better readability
+    const groupedPackages = groupAndSortPackages(
+      result as Record<string, PackageInfo>,
+    )
+    const sortedGroupNames = getSortedGroupNames(groupedPackages)
+
+    sortedGroupNames.forEach((groupName) => {
+      logger.packageGroupHeader(groupName)
+      groupedPackages[groupName].forEach(({ name, info }) => {
+        logger.outdatedPackageInGroup(name, info.current, info.latest)
+      })
     })
 
     return result
