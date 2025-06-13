@@ -6,6 +6,9 @@ const allowMajorUpdates = Boolean(process.env.ALLOW_MAJOR_UPDATES === "true")
 const allowMinorUpdates =
   Boolean(process.env.ALLOW_MINOR_UPDATES === "true") || allowMajorUpdates
 
+const updateAllowList = process.env.UPDATE_ALLOW_LIST
+const updateDenyList = process.env.UPDATE_DENY_LIST
+
 const updateChecker = ({ name, current, latest }: PackageInfo): boolean => {
   // Validate version strings
   if (!semver.valid(current) || !semver.valid(latest)) {
@@ -15,10 +18,21 @@ const updateChecker = ({ name, current, latest }: PackageInfo): boolean => {
     return false
   }
 
-  // Check if there's actually an update available
-  if (!semver.gt(latest, current)) {
-    return false
+  if (updateAllowList) {
+    const allowList = updateAllowList.split(",").map((pkg) => pkg.trim())
+
+    if (allowList.includes(name)) return true
   }
+
+  console.log(updateDenyList)
+  if (updateDenyList) {
+    const denyList = updateDenyList.split(",").map((pkg) => pkg.trim())
+
+    if (denyList.includes(name)) return false
+  }
+
+  // Check if there's actually an update available
+  if (!semver.gt(latest, current)) return false
 
   // Determine the type of update
   const updateType = semver.diff(current, latest)
