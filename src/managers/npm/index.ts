@@ -8,6 +8,7 @@ import {
   getSortedGroupNames,
 } from "@/utils"
 
+import messages from "@/messages/en.json"
 import type { PackageInfo, SupportedPackageManager } from "@/types"
 
 class NPMManager extends CommandRunner {
@@ -60,23 +61,32 @@ class NPMManager extends CommandRunner {
     try {
       const outdatedPackages = await this.checkPackageVersions(cwd)
 
-      if (Object.keys(outdatedPackages).length === 0) {
-        logger.allUpToDate()
-        return
-      }
+      if (Object.keys(outdatedPackages).length === 0)
+        return logger.allUpToDate()
+
       const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
 
       logger.updatingHeader()
 
-      Object.entries(outdatedPackages)
-        .filter(([, packageInfo]) => updateChecker(packageInfo))
-        .forEach(async ([packageName]) => {
-          const command = isRunningInWorkspace
-            ? `update ${packageName} --workspaces`
-            : `update ${packageName}`
+      const packagesToUpdate = Object.entries(outdatedPackages)
+        .filter(([name, packageInfo]) =>
+          updateChecker({ name, ...packageInfo }),
+        )
+        .map(([packageName]) => packageName)
 
-          await this.runCommand(this.packageManager, command, cwd)
-        })
+      if (
+        packagesToUpdate.length === 0 &&
+        Object.keys(outdatedPackages)?.length > 0
+      )
+        return logger.info(messages.noPackagesToUpdate)
+
+      if (packagesToUpdate.length > 0) {
+        const command = isRunningInWorkspace
+          ? `update ${packagesToUpdate.join(" ")} --workspaces` // npm example
+          : `update ${packagesToUpdate.join(" ")}`
+
+        await this.runCommand(this.packageManager, command, cwd)
+      }
     } catch {
       logger.error("An error occurred while checking for outdated packages.")
       return

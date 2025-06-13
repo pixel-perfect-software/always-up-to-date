@@ -1,8 +1,8 @@
 import type { PackageInfo } from "@/types"
 import logger from "./logger"
 
-const allowMajorUpdates = false
-const allowMinorUpdates = false
+const allowMajorUpdates = Boolean(process.env.ALLOW_MAJOR_UPDATES === "true")
+const allowMinorUpdates = Boolean(process.env.ALLOW_MINOR_UPDATES === "true")
 
 const isMajorUpdate = (current: string, latest: string): boolean => {
   const currentParts = current.split(".")

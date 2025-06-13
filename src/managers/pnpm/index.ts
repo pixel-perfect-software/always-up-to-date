@@ -8,6 +8,7 @@ import {
   getSortedGroupNames,
 } from "@/utils"
 
+import messages from "@/messages/en.json"
 import type { PackageInfo, SupportedPackageManager } from "@/types"
 
 class PNPMManager extends CommandRunner {
@@ -68,15 +69,25 @@ class PNPMManager extends CommandRunner {
 
       logger.updatingHeader()
 
-      Object.entries(outdatedPackages)
-        .filter(([, packageInfo]) => updateChecker(packageInfo))
-        .forEach(async ([packageName]) => {
-          const command = isRunningInWorkspace
-            ? `update ${packageName} -r`
-            : `update ${packageName}`
+      const packagesToUpdate = Object.entries(outdatedPackages)
+        .filter(([name, packageInfo]) =>
+          updateChecker({ name, ...packageInfo }),
+        )
+        .map(([packageName]) => packageName)
 
-          await this.runCommand(this.packageManager, command, cwd)
-        })
+      if (
+        packagesToUpdate.length === 0 &&
+        Object.keys(outdatedPackages)?.length > 0
+      )
+        return logger.info(messages.noPackagesToUpdate)
+
+      if (packagesToUpdate.length > 0) {
+        const command = isRunningInWorkspace
+          ? `update ${packagesToUpdate.join(" ")} -r`
+          : `update ${packagesToUpdate.join(" ")}`
+
+        await this.runCommand(this.packageManager, command, cwd)
+      }
     } catch {
       logger.error("An error occurred while checking for outdated packages.")
       return

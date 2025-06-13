@@ -62,6 +62,7 @@
     "update": "node dist/index.js update"
   },
   "dependencies": {
+    "@dotenvx/dotenvx": "^1.44.2",
     "@inquirer/prompts": "^7.5.3",
     "@octokit/rest": "^22.0.0",
     "axios": "^1.9.0",

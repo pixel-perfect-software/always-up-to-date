@@ -1,10 +1,15 @@
+import { config } from "@dotenvx/dotenvx"
+
 import { blue, green, yellow, red, cyan, magenta, gray, bold } from "colorette"
+
+// Load the .always-up-to-date configuration file
+config({ path: ".always-up-to-date", quiet: true })
 
 /**
  * Reusable Logger class with emojis and colors for consistent output across package managers
  */
 class Logger {
-  private quiet: boolean = false
+  private quiet: boolean = Boolean(process.env.SILENT === "true")
 
   setQuiet(quiet: boolean): void {
     this.quiet = quiet
@@ -89,7 +94,9 @@ class Logger {
    */
   outdatedHeader(): void {
     if (!this.quiet) {
-      console.log(`${yellow("📈")} ${bold("Outdated packages found:")}`)
+      console.log(
+        `${yellow("📈")} ${bold("Some outdated packaged were found!")}`,
+      )
     }
   }
 
@@ -165,7 +172,7 @@ class Logger {
     if (!this.quiet) {
       const arrow = gray("→")
       console.log(
-        `  ${yellow("⏭️")} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)} (${updateType} update skipped)`,
+        `  ${yellow("⏭️")}  ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)} (${updateType} update skipped)`,
       )
     }
   }

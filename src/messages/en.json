@@ -1,0 +1,3 @@
+{
+  "noPackagesToUpdate": " There are outdated packages, but none of them need to be updated based on your configuration. Always-up-to-date by default does not update major & minor versions. This is to prevent breaking changes in your project. However, if you know you want them upgraded, you can enable it in the configuration file."
+}
