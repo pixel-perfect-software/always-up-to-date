@@ -10,6 +10,7 @@ import {
 
 import messages from "@/messages/en.json"
 import type { PackageInfo, SupportedPackageManager } from "@/types"
+import { updatePackageJson, updatePNPMWorkspaceYAML } from "@/utils/files"
 
 class PNPMManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = "pnpm"
@@ -82,6 +83,20 @@ class PNPMManager extends CommandRunner {
         return logger.info(messages.noPackagesToUpdate)
 
       if (packagesToUpdate.length > 0) {
+        if (isRunningInWorkspace) {
+          updatePNPMWorkspaceYAML(
+            cwd,
+            packagesToUpdate,
+            outdatedPackages as Record<string, PackageInfo>,
+          )
+        } else {
+          updatePackageJson(
+            cwd,
+            packagesToUpdate,
+            outdatedPackages as Record<string, PackageInfo>,
+          )
+        }
+
         const command = isRunningInWorkspace
           ? `update ${packagesToUpdate.join(" ")} -r`
           : `update ${packagesToUpdate.join(" ")}`

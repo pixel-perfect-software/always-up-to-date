@@ -1,9 +1,16 @@
+import type SemVer from "semver"
 import { config } from "@dotenvx/dotenvx"
 
 import { blue, green, yellow, red, cyan, magenta, gray, bold } from "colorette"
 
 // Load the .always-up-to-date configuration file
-config({ path: ".always-up-to-date", quiet: true })
+config({
+  path: ".always-up-to-date",
+  debug: false,
+  quiet: true,
+  ignore: ["MISSING_ENV_FILE"],
+  strict: false,
+})
 
 /**
  * Reusable Logger class with emojis and colors for consistent output across package managers
@@ -167,7 +174,7 @@ class Logger {
     packageName: string,
     current: string,
     latest: string,
-    updateType: "major" | "minor" | "patch",
+    updateType: SemVer.ReleaseType | null,
   ): void {
     if (!this.quiet) {
       const arrow = gray("→")

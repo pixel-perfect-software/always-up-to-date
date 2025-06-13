@@ -11,6 +11,9 @@ const helpCommand = (program: Command) =>
     .description("Show this help message.")
     .action(() => {
       logger.info(" Available commands:")
+      logger.clean(
+        "  🆕 init - Initialize 'always-up-to-date' with a basic setup.",
+      )
       logger.clean("  📋 check - Check the dependencies of the project.")
       logger.clean(
         "  🔄 update - Update the update-able dependencies of the project.",

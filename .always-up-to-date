@@ -1,5 +1,2 @@
+# Configuration for 'always-up-to-date'
 ALLOW_MINOR_UPDATES=true
-ALLOW_MAJOR_UPDATES=false
-DEBUG=false
-SILENT=false
-UPDATE_ALLOWLIST=[]

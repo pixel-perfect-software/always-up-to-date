@@ -1,0 +1,3 @@
+# Configuration for 'always-up-to-date'
+ALLOW_MAJOR_UPDATES=true
+ALLOW_MINOR_UPDATES=false

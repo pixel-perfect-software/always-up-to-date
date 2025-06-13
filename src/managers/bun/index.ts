@@ -10,6 +10,7 @@ import {
 
 import messages from "@/messages/en.json"
 import type { PackageInfo, SupportedPackageManager } from "@/types"
+import { updatePackageJson } from "@/utils/files"
 
 class BunManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = "bun"
@@ -80,6 +81,12 @@ class BunManager extends CommandRunner {
         return logger.info(messages.noPackagesToUpdate)
 
       if (packagesToUpdate.length > 0) {
+        updatePackageJson(
+          cwd,
+          packagesToUpdate,
+          outdatedPackages as Record<string, PackageInfo>,
+        )
+
         const command = isRunningInWorkspace
           ? `update ${packagesToUpdate.join(" ")} --filter '*'`
           : `update ${packagesToUpdate.join(" ")}`

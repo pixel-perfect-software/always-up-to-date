@@ -10,6 +10,7 @@ import {
 
 import messages from "@/messages/en.json"
 import type { PackageInfo, SupportedPackageManager } from "@/types"
+import { updatePackageJson } from "@/utils/files"
 
 class NPMManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = "npm"
@@ -81,6 +82,12 @@ class NPMManager extends CommandRunner {
         return logger.info(messages.noPackagesToUpdate)
 
       if (packagesToUpdate.length > 0) {
+        updatePackageJson(
+          cwd,
+          packagesToUpdate,
+          outdatedPackages as Record<string, PackageInfo>,
+        )
+
         const command = isRunningInWorkspace
           ? `update ${packagesToUpdate.join(" ")} --workspaces` // npm example
           : `update ${packagesToUpdate.join(" ")}`

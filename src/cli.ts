@@ -13,6 +13,7 @@ import {
   updateCommand,
 } from "@/commands"
 import packageJson from "../package.json"
+import initCommand from "@/commands/init"
 
 // Create a program instance
 const program = new Command()
@@ -24,10 +25,11 @@ program
   .version(packageJson.version)
 
 // Register commands
-helpCommand(program)
 checkCommand(program)
-updateCommand(program)
+helpCommand(program)
+initCommand(program)
 migrateCommand(program)
+updateCommand(program)
 
 /**
  * Run the CLI program.
