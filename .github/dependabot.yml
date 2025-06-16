@@ -1,0 +1,40 @@
+version: 2
+updates:
+  # Monitor the root package.json for npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Halifax"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "TylerNRobertson"
+    labels:
+      - "dependencies"
+      - "automated"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      # Group production dependencies together
+      production-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@types/*"
+          - "*eslint*"
+          - "jest*"
+          - "prettier"
+          - "typescript*"
+          - "ts-*"
+      # Group development dependencies together
+      development-dependencies:
+        patterns:
+          - "@types/*"
+          - "*eslint*"
+          - "jest*"
+          - "prettier"
+          - "typescript*"
+          - "ts-*"
