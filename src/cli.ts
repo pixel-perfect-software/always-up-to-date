@@ -1,17 +1,13 @@
 /**
  * Basic CLI for the package.
  * Commands:
+ * - init - Initialize the project with a JSON configuration file.
  * - check - Check the dependencies of the project.
  * - update - Update the update-able dependencies of the project.
  * - help - Show this help message.
  */
 import { Command } from "commander"
-import {
-  checkCommand,
-  helpCommand,
-  migrateCommand,
-  updateCommand,
-} from "@/commands"
+import { checkCommand, helpCommand, updateCommand } from "@/commands"
 import packageJson from "../package.json"
 import initCommand from "@/commands/init"
 
@@ -28,7 +24,6 @@ program
 checkCommand(program)
 helpCommand(program)
 initCommand(program)
-migrateCommand(program)
 updateCommand(program)
 
 /**

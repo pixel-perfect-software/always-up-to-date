@@ -25,8 +25,8 @@ A smart CLI tool that automatically keeps your dependencies up to date with inte
 The tool is built with a modular architecture:
 
 - **Managers** - Package manager specific implementations (npm, yarn, pnpm, bun)
-- **Migrators** - Smart migration rules for popular packages (React, Next.js, etc.)
-- **PR Generators** - Automated pull request creation with detailed migration guides
+- **Migrators** - Smart migration rules for popular packages (React, Next.js, etc.) (Coming Soon!)
+- **PR Generators** - Automated pull request creation with detailed migration guides (Coming Soon!)
 - **Command Runner** - Unified command execution across all package managers
 
 ## 🔜 Coming Soon
@@ -51,9 +51,6 @@ autd check
 
 # Update outdated dependencies
 autd update
-
-# Migrate packages with breaking changes (coming soon)
-autd migrate
 ```
 
 ## 🔧 Basic Usage Examples
@@ -91,7 +88,7 @@ Full support for workspaces and monorepos:
 
 - `check` - Check for outdated dependencies in your project
 - `update` - Update all outdated dependencies
-- `migrate` - Migrate packages with breaking changes (coming soon)
+- `migrate` - Migrate packages with breaking changes (coming soon!)
 - `help` - Display help information
 
 ## ⚙️ Current Implementation

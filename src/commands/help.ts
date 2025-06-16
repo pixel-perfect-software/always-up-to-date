@@ -18,7 +18,6 @@ const helpCommand = (program: Command) =>
       logger.clean(
         "  🔄 update - Update the update-able dependencies of the project.",
       )
-      logger.clean("  📝 migrate - Migrate dependencies with breaking changes.")
       logger.clean("  ❓ help - Show this help message.")
       logger.clean("")
       logger.info(

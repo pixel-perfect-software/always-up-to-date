@@ -1,15 +1,16 @@
 import semver from "semver"
 import type { PackageInfo } from "@/types"
 import logger from "./logger"
+import { loadConfig } from "./config"
 
-const allowMajorUpdates = Boolean(process.env.ALLOW_MAJOR_UPDATES === "true")
-const allowMinorUpdates =
-  Boolean(process.env.ALLOW_MINOR_UPDATES === "true") || allowMajorUpdates
-
-const updateAllowList = process.env.UPDATE_ALLOW_LIST
-const updateDenyList = process.env.UPDATE_DENY_LIST
+const config = loadConfig()
 
 const updateChecker = ({ name, current, latest }: PackageInfo): boolean => {
+  const allowMajorUpdates = config.allowMajorUpdates
+  const allowMinorUpdates = config.allowMinorUpdates || allowMajorUpdates
+  const updateAllowList = config.updateAllowlist
+  const updateDenyList = config.updateDenylist
+
   // Validate version strings
   if (!semver.valid(current) || !semver.valid(latest)) {
     logger.error(
@@ -18,17 +19,12 @@ const updateChecker = ({ name, current, latest }: PackageInfo): boolean => {
     return false
   }
 
-  if (updateAllowList) {
-    const allowList = updateAllowList.split(",").map((pkg) => pkg.trim())
-
-    if (allowList.includes(name)) return true
+  if (updateAllowList.length > 0) {
+    if (updateAllowList.includes(name)) return true
   }
 
-  console.log(updateDenyList)
-  if (updateDenyList) {
-    const denyList = updateDenyList.split(",").map((pkg) => pkg.trim())
-
-    if (denyList.includes(name)) return false
+  if (updateDenyList.length > 0) {
+    if (updateDenyList.includes(name)) return false
   }
 
   // Check if there's actually an update available

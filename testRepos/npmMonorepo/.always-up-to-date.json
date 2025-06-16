@@ -1,0 +1,8 @@
+{
+  "allowMinorUpdates": false,
+  "allowMajorUpdates": false,
+  "debug": false,
+  "silent": false,
+  "updateAllowlist": [],
+  "updateDenylist": []
+}

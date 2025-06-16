@@ -61,11 +61,9 @@
     "check": "node dist/index.js check",
     "help": "node dist/index.js help",
     "initLib": "node dist/index.js init",
-    "migrate": "node dist/index.js migrate",
     "updateLib": "node dist/index.js update"
   },
   "dependencies": {
-    "@dotenvx/dotenvx": "^1.44.2",
     "@inquirer/prompts": "^7.5.3",
     "@octokit/rest": "^22.0.0",
     "axios": "^1.9.0",

@@ -1,22 +1,15 @@
 import type SemVer from "semver"
-import { config } from "@dotenvx/dotenvx"
-
 import { blue, green, yellow, red, cyan, magenta, gray, bold } from "colorette"
+import { loadConfig } from "./config"
 
-// Load the .always-up-to-date configuration file
-config({
-  path: ".always-up-to-date",
-  debug: false,
-  quiet: true,
-  ignore: ["MISSING_ENV_FILE"],
-  strict: false,
-})
+// Load the configuration (JSON format only)
+const config = loadConfig()
 
 /**
  * Reusable Logger class with emojis and colors for consistent output across package managers
  */
 class Logger {
-  private quiet: boolean = Boolean(process.env.SILENT === "true")
+  private quiet: boolean = config.silent
 
   setQuiet(quiet: boolean): void {
     this.quiet = quiet
