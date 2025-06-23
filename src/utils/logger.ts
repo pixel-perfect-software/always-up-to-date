@@ -95,7 +95,13 @@ class Logger {
   outdatedHeader(): void {
     if (!this.quiet) {
       console.log(
-        `${yellow("📈")} ${bold("Some outdated packaged were found!")}`,
+        `${yellow("📈")} ${bold("Some outdated packaged were found!")} \n`,
+      )
+      console.log(
+        `${red("Ignored")} - Ignored due to the updateDenyList in your config.`,
+      )
+      console.log(
+        `${green("Allowed")} - Allowed due to the updateAllowList in your config.`,
       )
     }
   }
@@ -133,9 +139,17 @@ class Logger {
   ): void {
     if (!this.quiet) {
       const arrow = gray("→")
-      console.log(
-        `  ${yellow("📋")} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)}`,
-      )
+
+      let message = `  ${yellow("📋")} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)}`
+
+      // Indicate if the package is ignored or allowed via denylist/allowlist
+      if (config.updateDenylist?.includes(packageName)) {
+        message += ` - (${red("Ignored")})`
+      } else if (config.updateAllowlist?.includes(packageName)) {
+        message += ` - (${green("Allowed")})`
+      }
+
+      console.log(message)
     }
   }
 
