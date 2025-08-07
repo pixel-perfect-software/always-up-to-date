@@ -63,9 +63,9 @@
     "updateLib": "node dist/index.js update"
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.5.3",
+    "@inquirer/prompts": "^7.8.0",
     "@octokit/rest": "^22.0.0",
-    "axios": "^1.10.0",
+    "axios": "^1.11.0",
     "colorette": "^2.0.20",
     "commander": "^14.0.0",
     "glob": "^11.0.3",
@@ -73,26 +73,27 @@
     "ts-command-line-args": "^2.5.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.29.0",
+    "@eslint/js": "^9.32.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.0.3",
+    "@types/node": "^24.2.0",
     "@types/semver": "^7.7.0",
-    "eslint": "^9.29.0",
-    "eslint-config-prettier": "^10.1.5",
-    "globals": "^16.2.0",
-    "jest": "^30.0.0",
+    "eslint": "^9.32.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.3.0",
+    "jest": "^30.0.5",
     "jest-coverage-badges": "^1.1.2",
-    "prettier": "^3.5.3",
-    "ts-jest": "^29.4.0",
+    "prettier": "^3.6.2",
+    "ts-jest": "^29.4.1",
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.16",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.34.1"
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.39.0"
   },
   "pnpm": {
     "overrides": {
       "minimist@<0.2.1": ">=0.2.1",
-      "minimist@<0.2.4": ">=0.2.4"
+      "minimist@<0.2.4": ">=0.2.4",
+      "tmp@<=0.2.3": ">=0.2.4"
     },
     "onlyBuiltDependencies": [
       "unrs-resolver"
