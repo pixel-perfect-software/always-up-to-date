@@ -57,13 +57,13 @@
     "test:coverage": "jest --coverage --silent",
     "test:badges": "pnpm test:coverage && jest-coverage-badges --output ./badges",
     "clean": "rm -rf dist",
-    "check": "node dist/index.js check",
+    "check-deps": "node dist/index.js check",
     "help": "node dist/index.js help",
-    "initLib": "node dist/index.js init",
-    "updateLib": "node dist/index.js update"
+    "init": "node dist/index.js init",
+    "update-deps": "node dist/index.js update"
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.8.0",
+    "@inquirer/prompts": "^7.8.4",
     "@octokit/rest": "^22.0.0",
     "axios": "^1.11.0",
     "colorette": "^2.0.20",
@@ -73,30 +73,29 @@
     "ts-command-line-args": "^2.5.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.32.0",
+    "@eslint/js": "^9.35.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.2.0",
-    "@types/semver": "^7.7.0",
-    "eslint": "^9.32.0",
+    "@types/node": "^24.3.1",
+    "@types/semver": "^7.7.1",
+    "eslint": "^9.35.0",
     "eslint-config-prettier": "^10.1.8",
-    "globals": "^16.3.0",
-    "jest": "^30.0.5",
+    "globals": "^16.4.0",
+    "jest": "^30.1.3",
     "jest-coverage-badges": "^1.1.2",
     "prettier": "^3.6.2",
     "ts-jest": "^29.4.1",
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.16",
     "typescript": "^5.9.2",
-    "typescript-eslint": "^8.39.0"
+    "typescript-eslint": "^8.43.0"
   },
   "pnpm": {
-    "overrides": {
-      "minimist@<0.2.1": ">=0.2.1",
-      "minimist@<0.2.4": ">=0.2.4",
-      "tmp@<=0.2.3": ">=0.2.4"
-    },
     "onlyBuiltDependencies": [
       "unrs-resolver"
-    ]
+    ],
+    "overrides": {
+      "minimist@<0.2.1": ">=0.2.1",
+      "minimist@<0.2.4": ">=0.2.4"
+    }
   }
 }
