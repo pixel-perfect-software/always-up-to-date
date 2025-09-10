@@ -9,8 +9,6 @@ updates:
       time: "09:00"
       timezone: "America/Halifax"
     open-pull-requests-limit: 10
-    reviewers:
-      - "TylerNRobertson"
     labels:
       - "dependencies"
       - "automated"
