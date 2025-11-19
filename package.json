@@ -3,11 +3,43 @@
   "version": "1.0.22",
   "author": "Tyler Robertson <@tylernrobertson> (https://github.com/TylerNRobertson)",
   "description": "A highly customizable and reusable dependency checker that keeps npm dependencies always up to date.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.1.0",
+    "pnpm": ">=10.22.0"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && tsc-alias",
+    "check-types": "tsc --noEmit",
+    "format": "prettier --write .",
+    "lint": "eslint . --ext .ts",
+    "prepublishOnly": "pnpm run build && pnpm test",
+    "prepack": "pnpm run build",
+    "test": "jest --silent",
+    "test:coverage": "jest --coverage --silent",
+    "test:badges": "pnpm test:coverage && jest-coverage-badges --output ./badges",
+    "clean": "rm -rf dist",
+    "check-deps": "node dist/index.js check",
+    "help": "node dist/index.js help",
+    "init": "node dist/index.js init",
+    "update-deps": "node dist/index.js update"
+  },
+  "bin": {
+    "autd": "dist/index.js",
+    "alwaysuptodate": "dist/index.js",
+    "always-up-to-date": "dist/index.js"
+  },
   "bugs": {
     "url": "https://github.com/pixel-perfect-software/always-up-to-date/issues"
   },
   "homepage": "https://github.com/pixel-perfect-software/always-up-to-date#readme",
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pixel-perfect-software/always-up-to-date.git"
@@ -30,38 +62,6 @@
     "yarn",
     "checker"
   ],
-  "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=10.12.0"
-  },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist/**/*",
-    "README.md",
-    "LICENSE"
-  ],
-  "bin": {
-    "autd": "dist/index.js",
-    "alwaysuptodate": "dist/index.js",
-    "always-up-to-date": "dist/index.js"
-  },
-  "scripts": {
-    "build": "tsc && tsc-alias",
-    "check-types": "tsc --noEmit",
-    "format": "prettier --write .",
-    "lint": "eslint . --ext .ts",
-    "prepublishOnly": "pnpm run build && pnpm test",
-    "prepack": "pnpm run build",
-    "test": "jest --silent",
-    "test:coverage": "jest --coverage --silent",
-    "test:badges": "pnpm test:coverage && jest-coverage-badges --output ./badges",
-    "clean": "rm -rf dist",
-    "check-deps": "node dist/index.js check",
-    "help": "node dist/index.js help",
-    "init": "node dist/index.js init",
-    "update-deps": "node dist/index.js update"
-  },
   "dependencies": {
     "@inquirer/prompts": "^8.0.1",
     "@octokit/rest": "^22.0.1",
@@ -88,14 +88,5 @@
     "tsc-alias": "^1.8.16",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.47.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "unrs-resolver"
-    ],
-    "overrides": {
-      "minimist@<0.2.1": ">=0.2.1",
-      "minimist@<0.2.4": ">=0.2.4"
-    }
   }
 }

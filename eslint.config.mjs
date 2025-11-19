@@ -1,9 +1,13 @@
 import eslint from "@eslint/js"
+import { defineConfig } from "eslint/config"
 import tseslint from "typescript-eslint"
 import globals from "globals"
 import eslintConfigPrettier from "eslint-config-prettier/flat"
 
-export default tseslint.config(
+export default defineConfig(
+  {
+    ignores: ["dist/**", "node_modules/**", "coverage/**"],
+  },
   eslint.configs.recommended,
   tseslint.configs.recommended,
   eslintConfigPrettier,
