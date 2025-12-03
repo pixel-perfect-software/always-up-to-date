@@ -1,13 +1,9 @@
 {
   "name": "@pixel-perfect-software/always-up-to-date",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "author": "Tyler Robertson <@tylernrobertson> (https://github.com/TylerNRobertson)",
   "description": "A highly customizable and reusable dependency checker that keeps npm dependencies always up to date.",
   "license": "MIT",
-  "engines": {
-    "node": ">=22.1.0",
-    "pnpm": ">=10.22.0"
-  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
