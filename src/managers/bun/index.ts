@@ -10,7 +10,11 @@ import {
 
 import messages from "@/messages/en.json"
 import type { PackageInfo, SupportedPackageManager } from "@/types"
-import { updatePackageJson } from "@/utils/files"
+import {
+  updatePackageJson,
+  updateBunCatalogs,
+  identifyCatalogPackages,
+} from "@/utils/files"
 
 class BunManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = "bun"
@@ -21,8 +25,8 @@ class BunManager extends CommandRunner {
     // Check if the current working directory supports Bun workspaces
     // If it does, we can use the `bun outdated --json --filter '*'` command to check for outdated packages recursively
     // If it doesn't, we can use the `bun outdated --json` command to check for outdated packages in the current directory
-    const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-    const command = isRunningInWorkspace ? "outdated --filter '*'" : "outdated"
+    const { isWorkspace } = await this.checkIfInWorkspace(cwd)
+    const command = isWorkspace ? "outdated --filter '*'" : "outdated"
 
     const commandResult = await this.runCommand(
       this.packageManager,
@@ -64,7 +68,9 @@ class BunManager extends CommandRunner {
         logger.allUpToDate()
         return
       }
-      const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
+
+      // Get workspace and catalog info
+      const { isWorkspace, hasCatalogs } = await this.checkIfInWorkspace(cwd)
 
       logger.updatingHeader()
 
@@ -81,17 +87,56 @@ class BunManager extends CommandRunner {
         return logger.info(messages.noPackagesToUpdate)
 
       if (packagesToUpdate.length > 0) {
-        updatePackageJson(
-          cwd,
-          packagesToUpdate,
-          outdatedPackages as Record<string, PackageInfo>,
-        )
+        // If workspace with catalogs, separate catalog vs root packages
+        if (isWorkspace && hasCatalogs) {
+          const { catalogPackages, rootPackages } = identifyCatalogPackages(
+            cwd,
+            outdatedPackages as Record<string, PackageInfo>,
+          )
 
-        const command = isRunningInWorkspace
-          ? `update ${packagesToUpdate.join(" ")} --filter '*'`
-          : `update ${packagesToUpdate.join(" ")}`
+          // Filter based on packagesToUpdate
+          const catalogsToUpdate = catalogPackages.filter((pkg) =>
+            packagesToUpdate.includes(pkg),
+          )
+          const rootToUpdate = rootPackages.filter((pkg) =>
+            packagesToUpdate.includes(pkg),
+          )
 
-        await this.runCommand(this.packageManager, command, cwd)
+          // Update catalogs in root package.json
+          if (catalogsToUpdate.length > 0) {
+            await updateBunCatalogs(
+              cwd,
+              catalogsToUpdate,
+              outdatedPackages as Record<string, PackageInfo>,
+            )
+          }
+
+          // Update root dependencies (non-catalog packages)
+          if (rootToUpdate.length > 0) {
+            updatePackageJson(
+              cwd,
+              rootToUpdate,
+              outdatedPackages as Record<string, PackageInfo>,
+            )
+          }
+
+          // Run bun install to apply catalog changes across workspace
+          // Don't use 'bun update' as it tries to add packages to root
+          await this.runCommand(this.packageManager, "install", cwd)
+        } else {
+          // Non-catalog workspace or single package
+          updatePackageJson(
+            cwd,
+            packagesToUpdate,
+            outdatedPackages as Record<string, PackageInfo>,
+          )
+
+          const command = isWorkspace
+            ? `update ${packagesToUpdate.join(" ")} --filter '*'`
+            : `update ${packagesToUpdate.join(" ")}`
+
+          await this.runCommand(this.packageManager, command, cwd)
+        }
       }
     } catch {
       logger.error("An error occurred while checking for outdated packages.")
@@ -99,7 +144,13 @@ class BunManager extends CommandRunner {
     }
   }
 
-  checkIfInWorkspace = async (cwd: string): Promise<boolean> => {
+  checkIfInWorkspace = async (
+    cwd: string,
+  ): Promise<{
+    isWorkspace: boolean
+    hasCatalogs: boolean
+    catalogNames: string[]
+  }> => {
     try {
       const packageJsonPath = `${cwd}/package.json`
       const packageJsonContent = fs.readFileSync(packageJsonPath, "utf8")
@@ -112,13 +163,36 @@ class BunManager extends CommandRunner {
           (typeof packageJson.workspaces === "object" &&
             packageJson.workspaces.packages))
 
-      if (hasWorkspaces) {
-        logger.workspace("Bun")
+      // Check for catalogs (Bun's centralized dependency management)
+      // Can be "catalog" (singular, default) or "catalogs" (plural, named)
+      const hasDefaultCatalog =
+        !!packageJson.catalog && typeof packageJson.catalog === "object"
+      const hasNamedCatalogs =
+        !!packageJson.catalogs && typeof packageJson.catalogs === "object"
+      const hasCatalogs = hasDefaultCatalog || hasNamedCatalogs
+
+      const catalogNames: string[] = []
+      if (hasDefaultCatalog) {
+        catalogNames.push("catalog")
+      }
+      if (hasNamedCatalogs) {
+        catalogNames.push(...Object.keys(packageJson.catalogs))
       }
 
-      return !!hasWorkspaces
+      if (hasWorkspaces) {
+        logger.workspace("Bun")
+        if (hasCatalogs) {
+          logger.info(`Detected Bun catalogs: ${catalogNames.join(", ")}`)
+        }
+      }
+
+      return {
+        isWorkspace: !!hasWorkspaces,
+        hasCatalogs,
+        catalogNames,
+      }
     } catch {
-      return false
+      return { isWorkspace: false, hasCatalogs: false, catalogNames: [] }
     }
   }
 

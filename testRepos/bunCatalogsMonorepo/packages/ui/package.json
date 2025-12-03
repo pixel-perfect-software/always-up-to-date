@@ -1,0 +1,13 @@
+{
+  "name": "@bun-catalog/ui",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:types",
+    "typescript": "catalog:",
+    "prettier": "catalog:repo"
+  }
+}

@@ -170,3 +170,119 @@ export const updatePNPMWorkspaceYAML = async (
 
   fs.writeFileSync(pnpmWorkspaceYamlPath, updatedLines.join("\n"), "utf8")
 }
+
+export const updateBunCatalogs = async (
+  cwd: string,
+  packagesToUpdate: string[],
+  outdatedPackages: Record<string, PackageInfo>,
+): Promise<void> => {
+  const packageJsonPath = `${cwd}/package.json`
+  const packageJsonContent = fs.readFileSync(packageJsonPath, "utf8")
+  const packageJson = JSON.parse(packageJsonContent)
+
+  let catalogsUpdated = false
+
+  // Handle the default "catalog" field (singular)
+  if (packageJson.catalog && typeof packageJson.catalog === "object") {
+    for (const packageName of packagesToUpdate) {
+      if (packageJson.catalog[packageName]) {
+        const currentVersion = packageJson.catalog[packageName]
+        const latestVersion = outdatedPackages[packageName].latest
+
+        // Parse version decorator (^, ~, >=, etc.)
+        const { decorator } = parseVersionString(currentVersion)
+        const newVersion = applyVersionDecorator(
+          decorator || "^", // Default to ^ if no decorator found
+          latestVersion,
+        )
+
+        // Update the catalog entry
+        packageJson.catalog[packageName] = newVersion
+        catalogsUpdated = true
+      }
+    }
+  }
+
+  // Handle named catalogs (plural)
+  if (packageJson.catalogs && typeof packageJson.catalogs === "object") {
+    // Iterate through each catalog (e.g., "repo", "types", "ui")
+    for (const catalogName of Object.keys(packageJson.catalogs)) {
+      const catalog = packageJson.catalogs[catalogName]
+
+      if (!catalog || typeof catalog !== "object") {
+        continue
+      }
+
+      // Update packages in this catalog
+      for (const packageName of packagesToUpdate) {
+        if (catalog[packageName]) {
+          const currentVersion = catalog[packageName]
+          const latestVersion = outdatedPackages[packageName].latest
+
+          // Parse version decorator (^, ~, >=, etc.)
+          const { decorator } = parseVersionString(currentVersion)
+          const newVersion = applyVersionDecorator(
+            decorator || "^", // Default to ^ if no decorator found
+            latestVersion,
+          )
+
+          // Update the catalog entry
+          packageJson.catalogs[catalogName][packageName] = newVersion
+          catalogsUpdated = true
+        }
+      }
+    }
+  }
+
+  // Only write if something was updated
+  if (catalogsUpdated) {
+    fs.writeFileSync(
+      packageJsonPath,
+      JSON.stringify(packageJson, null, 2),
+      "utf8",
+    )
+  }
+}
+
+export const identifyCatalogPackages = (
+  cwd: string,
+  outdatedPackages: Record<string, PackageInfo>,
+): { catalogPackages: string[]; rootPackages: string[] } => {
+  const packageJsonPath = `${cwd}/package.json`
+  const packageJsonContent = fs.readFileSync(packageJsonPath, "utf8")
+  const packageJson = JSON.parse(packageJsonContent)
+
+  const catalogPackages: string[] = []
+  const rootPackages: string[] = []
+
+  // Build a set of all packages defined in catalogs
+  const catalogDefinedPackages = new Set<string>()
+
+  // Check the default "catalog" field (singular)
+  if (packageJson.catalog && typeof packageJson.catalog === "object") {
+    Object.keys(packageJson.catalog).forEach((pkg) =>
+      catalogDefinedPackages.add(pkg),
+    )
+  }
+
+  // Check named catalogs (plural)
+  if (packageJson.catalogs && typeof packageJson.catalogs === "object") {
+    for (const catalogName of Object.keys(packageJson.catalogs)) {
+      const catalog = packageJson.catalogs[catalogName]
+      if (catalog && typeof catalog === "object") {
+        Object.keys(catalog).forEach((pkg) => catalogDefinedPackages.add(pkg))
+      }
+    }
+  }
+
+  // Categorize outdated packages
+  for (const packageName of Object.keys(outdatedPackages)) {
+    if (catalogDefinedPackages.has(packageName)) {
+      catalogPackages.push(packageName)
+    } else {
+      rootPackages.push(packageName)
+    }
+  }
+
+  return { catalogPackages, rootPackages }
+}
