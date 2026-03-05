@@ -20,8 +20,8 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - Single test: `pnpm test -- tests/path/to/test.test.ts`
 
 ### Code Quality
-- `pnpm run lint` - Lint TypeScript files with ESLint
-- `pnpm run format` - Format all files with Prettier
+- `pnpm run format-and-lint` - Check formatting and linting with Biome
+- `pnpm run format-and-lint:fix` - Auto-fix formatting and linting issues with Biome
 
 ### Local Development
 - `pnpm run init` - Initialize config in the current directory
@@ -95,6 +95,15 @@ TypeScript paths are configured with `@/*` mapping to `src/*`:
 
 - Node.js: >=22.1.0
 - pnpm: >=10.22.0
+
+## Documentation System
+
+This project uses a 3-tier AI-optimized context system:
+- **Tier 1 (Foundational)**: This file (`CLAUDE.md`) - project overview and dev commands
+- **Tier 2 (Component-Level)**: `CONTEXT.md` files co-located in `src/` component directories
+- **Tier 3 (Feature-Specific)**: `CONTEXT.md` files in feature subdirectories (added as needed)
+
+Documentation registry: `.claude/context/ai-context/docs-overview.md`
 
 ## Testing Notes
 
