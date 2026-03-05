@@ -1,39 +1,38 @@
-import fs from "fs"
+import fs from 'fs'
 
-import CommandRunner from "@/commandRunner"
+import CommandRunner from '@/commandRunner'
+import messages from '@/messages/en.json'
+import type { PackageInfo, SupportedPackageManager } from '@/types'
 import {
+  getSortedGroupNames,
+  groupAndSortPackages,
   logger,
   updateChecker,
-  groupAndSortPackages,
-  getSortedGroupNames,
-} from "@/utils"
-
-import messages from "@/messages/en.json"
-import type { PackageInfo, SupportedPackageManager } from "@/types"
+} from '@/utils'
 import {
-  updatePackageJson,
-  updateBunCatalogs,
   identifyCatalogPackages,
-} from "@/utils/files"
+  updateBunCatalogs,
+  updatePackageJson,
+} from '@/utils/files'
 
 class BunManager extends CommandRunner {
-  public readonly packageManager: SupportedPackageManager = "bun"
+  public readonly packageManager: SupportedPackageManager = 'bun'
 
   checkPackageVersions = async (cwd: string): Promise<object> => {
-    logger.starting("Checking package versions", "Bun")
+    logger.starting('Checking package versions', 'Bun')
 
     // Check if the current working directory supports Bun workspaces
     // If it does, we can use the `bun outdated --json --filter '*'` command to check for outdated packages recursively
     // If it doesn't, we can use the `bun outdated --json` command to check for outdated packages in the current directory
     const { isWorkspace } = await this.checkIfInWorkspace(cwd)
-    const command = isWorkspace ? "outdated --filter '*'" : "outdated"
+    const command = isWorkspace ? "outdated --filter '*'" : 'outdated'
 
     const commandResult = await this.runCommand(
       this.packageManager,
       command,
       cwd,
     )
-    const result = this.parseBunOutdatedOutput(commandResult || "")
+    const result = this.parseBunOutdatedOutput(commandResult || '')
 
     if (Object.keys(result).length === 0) {
       logger.allUpToDate()
@@ -59,7 +58,7 @@ class BunManager extends CommandRunner {
   }
 
   updatePackages = async (cwd: string): Promise<void> => {
-    logger.starting("Updating packages", "Bun")
+    logger.starting('Updating packages', 'Bun')
 
     try {
       const outdatedPackages = await this.checkPackageVersions(cwd)
@@ -122,7 +121,7 @@ class BunManager extends CommandRunner {
 
           // Run bun install to apply catalog changes across workspace
           // Don't use 'bun update' as it tries to add packages to root
-          await this.runCommand(this.packageManager, "install", cwd)
+          await this.runCommand(this.packageManager, 'install', cwd)
         } else {
           // Non-catalog workspace or single package
           updatePackageJson(
@@ -132,14 +131,14 @@ class BunManager extends CommandRunner {
           )
 
           const command = isWorkspace
-            ? `update ${packagesToUpdate.join(" ")} --filter '*'`
-            : `update ${packagesToUpdate.join(" ")}`
+            ? `update ${packagesToUpdate.join(' ')} --filter '*'`
+            : `update ${packagesToUpdate.join(' ')}`
 
           await this.runCommand(this.packageManager, command, cwd)
         }
       }
     } catch {
-      logger.error("An error occurred while checking for outdated packages.")
+      logger.error('An error occurred while checking for outdated packages.')
       return
     }
   }
@@ -153,36 +152,36 @@ class BunManager extends CommandRunner {
   }> => {
     try {
       const packageJsonPath = `${cwd}/package.json`
-      const packageJsonContent = fs.readFileSync(packageJsonPath, "utf8")
+      const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
       const packageJson = JSON.parse(packageJsonContent)
 
       // Bun uses the same workspace format as NPM - workspaces can be defined as an array or an object with packages field
       const hasWorkspaces =
         packageJson.workspaces &&
         (Array.isArray(packageJson.workspaces) ||
-          (typeof packageJson.workspaces === "object" &&
+          (typeof packageJson.workspaces === 'object' &&
             packageJson.workspaces.packages))
 
       // Check for catalogs (Bun's centralized dependency management)
       // Can be "catalog" (singular, default) or "catalogs" (plural, named)
       const hasDefaultCatalog =
-        !!packageJson.catalog && typeof packageJson.catalog === "object"
+        !!packageJson.catalog && typeof packageJson.catalog === 'object'
       const hasNamedCatalogs =
-        !!packageJson.catalogs && typeof packageJson.catalogs === "object"
+        !!packageJson.catalogs && typeof packageJson.catalogs === 'object'
       const hasCatalogs = hasDefaultCatalog || hasNamedCatalogs
 
       const catalogNames: string[] = []
       if (hasDefaultCatalog) {
-        catalogNames.push("catalog")
+        catalogNames.push('catalog')
       }
       if (hasNamedCatalogs) {
         catalogNames.push(...Object.keys(packageJson.catalogs))
       }
 
       if (hasWorkspaces) {
-        logger.workspace("Bun")
+        logger.workspace('Bun')
         if (hasCatalogs) {
-          logger.info(`Detected Bun catalogs: ${catalogNames.join(", ")}`)
+          logger.info(`Detected Bun catalogs: ${catalogNames.join(', ')}`)
         }
       }
 
@@ -203,19 +202,19 @@ class BunManager extends CommandRunner {
 
     // Split output into lines and filter out header/separator lines
     const lines = output
-      .split("\n")
+      .split('\n')
       .filter(
         (line) =>
           line.trim() &&
-          !line.includes("|---") &&
-          !line.includes("Package") &&
-          line.includes("|"),
+          !line.includes('|---') &&
+          !line.includes('Package') &&
+          line.includes('|'),
       )
 
     for (const line of lines) {
       // Split by | and clean up whitespace
       const columns = line
-        .split("|")
+        .split('|')
         .map((col) => col.trim())
         .filter((col) => col)
 
@@ -226,7 +225,7 @@ class BunManager extends CommandRunner {
 
         // Extract package name (remove dev/prod indicators)
         const packageName = packageNameRaw
-          .replace(/\s*\(dev\)|\s*\(prod\)/, "")
+          .replace(/\s*\(dev\)|\s*\(prod\)/, '')
           .trim()
 
         // Only include packages that have updates available (current !== latest)

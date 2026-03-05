@@ -1,7 +1,7 @@
-import semver from "semver"
-import type { PackageInfo } from "@/types"
-import logger from "./logger"
-import { loadConfig } from "./config"
+import semver from 'semver'
+import type { PackageInfo } from '@/types'
+import { loadConfig } from './config'
+import logger from './logger'
 
 const config = loadConfig()
 
@@ -34,26 +34,27 @@ const updateChecker = ({ name, current, latest }: PackageInfo): boolean => {
   const updateType = semver.diff(current, latest)
 
   switch (updateType) {
-    case "patch":
+    case 'patch':
       return true
-    case "minor":
-    case "preminor":
+    case 'minor':
+    case 'preminor':
       if (allowMinorUpdates) return true
       break
-    case "major":
-    case "premajor":
+    case 'major':
+    case 'premajor':
       if (allowMajorUpdates) return true
       break
-    case "prerelease":
+    case 'prerelease': {
       // eslint-disable-next-line no-case-declarations
       const baseUpdateType = semver.diff(
         semver.clean(current) || current,
         semver.clean(latest) || latest,
       )
-      if (baseUpdateType === "patch") return true
-      if (baseUpdateType === "minor" && allowMinorUpdates) return true
-      if (baseUpdateType === "major" && allowMajorUpdates) return true
+      if (baseUpdateType === 'patch') return true
+      if (baseUpdateType === 'minor' && allowMinorUpdates) return true
+      if (baseUpdateType === 'major' && allowMajorUpdates) return true
       break
+    }
   }
 
   logger.skippingPackage(name, current, latest, updateType)

@@ -1,6 +1,6 @@
 class PRGenerator {
-  generatePRTitle = () => {}
-  generatePRDescription = () => {}
+  generatePRTitle = () => undefined
+  generatePRDescription = () => undefined
 }
 
 export default PRGenerator

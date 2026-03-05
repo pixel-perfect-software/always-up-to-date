@@ -1,11 +1,11 @@
-import path from "path"
+import type { Command } from 'commander'
+import path from 'path'
 import {
   checkIfFileExists,
-  logger,
   DEFAULT_CONFIG,
+  logger,
   saveJsonConfig,
-} from "@/utils"
-import type { Command } from "commander"
+} from '@/utils'
 
 const workingDir = process.cwd()
 
@@ -15,16 +15,16 @@ const workingDir = process.cwd()
  */
 const initCommand = (program: Command) =>
   program
-    .command("init")
+    .command('init')
     .description("Initialize the 'always-up-to-date' with a basic setup.")
     .action(() => {
       logger.info(` Initializing 'always-up-to-date' in ${workingDir}...`)
 
       const jsonConfigFilePath = path.join(
         workingDir,
-        ".always-up-to-date.json",
+        '.always-up-to-date.json',
       )
-      const envConfigFilePath = path.join(workingDir, ".always-up-to-date")
+      const envConfigFilePath = path.join(workingDir, '.always-up-to-date')
 
       // Check if either config file already exists
       if (

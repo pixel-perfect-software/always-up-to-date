@@ -1,6 +1,5 @@
-import { execAsync, logger } from "@/utils"
-
-import type { SupportedPackageManager } from "@/types"
+import type { SupportedPackageManager } from '@/types'
+import { execAsync, logger } from '@/utils'
 
 interface ExecError extends Error {
   stdout?: string
@@ -18,7 +17,7 @@ class CommandRunner {
     try {
       const { stdout } = await execAsync(`${packageManager} ${command}`, {
         cwd,
-        encoding: "utf8",
+        encoding: 'utf8',
       })
       return stdout
     } catch (error) {

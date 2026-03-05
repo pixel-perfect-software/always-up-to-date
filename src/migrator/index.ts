@@ -1,5 +1,5 @@
 class PackageMigrator {
-  migratePackage = () => {}
+  migratePackage = () => undefined
 }
 
 export default PackageMigrator

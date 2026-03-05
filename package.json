@@ -6,16 +6,12 @@
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": [
-    "dist/**/*",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["dist/**/*", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc && tsc-alias",
     "check-types": "tsc --noEmit",
-    "format": "prettier --write .",
-    "lint": "eslint . --ext .ts",
+    "format-and-lint": "biome check .",
+    "format-and-lint:fix": "biome check . --write",
     "prepublishOnly": "pnpm run build && pnpm test",
     "prepack": "pnpm run build",
     "test": "jest --silent",
@@ -59,30 +55,26 @@
     "checker"
   ],
   "dependencies": {
-    "@inquirer/prompts": "^8.2.0",
+    "@inquirer/prompts": "^8.3.0",
     "@octokit/rest": "^22.0.1",
-    "axios": "^1.13.2",
+    "axios": "^1.13.6",
     "colorette": "^2.0.20",
-    "commander": "^14.0.2",
-    "glob": "^13.0.0",
-    "semver": "^7.7.3",
+    "commander": "^14.0.3",
+    "glob": "^13.0.6",
+    "semver": "^7.7.4",
     "ts-command-line-args": "^2.5.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.2",
+    "@biomejs/biome": "2.4.5",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25.0.8",
+    "@types/node": "^25.3.3",
     "@types/semver": "^7.7.1",
-    "eslint": "^9.39.2",
-    "eslint-config-prettier": "^10.1.8",
-    "globals": "^17.0.0",
+    "globals": "^17.4.0",
     "jest": "^30.2.0",
     "jest-coverage-badges": "^1.1.2",
-    "prettier": "^3.8.0",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.16",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.53.0"
+    "typescript": "^5.9.3"
   }
 }

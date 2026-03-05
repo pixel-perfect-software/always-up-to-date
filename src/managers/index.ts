@@ -1,1 +1,1 @@
-export { default as PackageManager } from "./packageManager"
+export { default as PackageManager } from './packageManager'

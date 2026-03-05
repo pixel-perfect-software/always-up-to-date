@@ -1,4 +1,4 @@
-import type { PackageInfo } from "@/types"
+import type { PackageInfo } from '@/types'
 
 export interface GroupedPackages {
   [groupName: string]: Array<{
@@ -19,11 +19,11 @@ export function groupAndSortPackages(
   Object.entries(packages).forEach(([packageName, packageInfo]) => {
     let groupName: string
 
-    if (packageName.startsWith("@")) {
+    if (packageName.startsWith('@')) {
       // Extract scope from scoped package (e.g., @babel/core -> @babel)
       const scopeMatch = packageName.match(/^(@[^/]+)/)
-      groupName = scopeMatch ? scopeMatch[1] : "unscoped"
-    } else groupName = "unscoped"
+      groupName = scopeMatch ? scopeMatch[1] : 'unscoped'
+    } else groupName = 'unscoped'
 
     if (!grouped[groupName]) grouped[groupName] = []
 
@@ -45,8 +45,8 @@ export function getSortedGroupNames(
   groupedPackages: GroupedPackages,
 ): string[] {
   const groupNames = Object.keys(groupedPackages)
-  const scopedGroups = groupNames.filter((name) => name !== "unscoped").sort()
-  const unscopedGroup = groupNames.includes("unscoped") ? ["unscoped"] : []
+  const scopedGroups = groupNames.filter((name) => name !== 'unscoped').sort()
+  const unscopedGroup = groupNames.includes('unscoped') ? ['unscoped'] : []
 
   return [...scopedGroups, ...unscopedGroup]
 }

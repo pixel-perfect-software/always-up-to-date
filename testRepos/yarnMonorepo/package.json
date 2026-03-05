@@ -3,10 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Test yarn monorepo for always-up-to-date CLI",
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
+  "workspaces": ["packages/*", "apps/*"],
   "engines": {
     "node": ">=20.0.0",
     "yarn": ">=1.22.0"

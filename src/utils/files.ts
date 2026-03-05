@@ -1,5 +1,5 @@
-import type { PackageInfo } from "@/types"
-import fs from "fs"
+import fs from 'fs'
+import type { PackageInfo } from '@/types'
 
 export const checkIfFileExists = (filePath: string): boolean => {
   try {
@@ -17,9 +17,9 @@ export const checkIfFileExists = (filePath: string): boolean => {
 
 const isWorkspaceReference = (version: string): boolean => {
   return (
-    version.startsWith("catalog:") ||
-    version.startsWith("workspace:") ||
-    version === "workspace:*"
+    version.startsWith('catalog:') ||
+    version.startsWith('workspace:') ||
+    version === 'workspace:*'
   )
 }
 
@@ -32,7 +32,7 @@ const parseVersionString = (
 ): { decorator: string; version: string } => {
   // Handle workspace and catalog references
   if (isWorkspaceReference(versionString)) {
-    return { decorator: "", version: versionString }
+    return { decorator: '', version: versionString }
   }
 
   // Match common version decorators: ^, ~, >=, >, <=, <, =
@@ -40,13 +40,13 @@ const parseVersionString = (
 
   if (match) {
     return {
-      decorator: match[1] || "",
+      decorator: match[1] || '',
       version: match[2],
     }
   }
 
   // Fallback: no decorator found
-  return { decorator: "", version: versionString }
+  return { decorator: '', version: versionString }
 }
 
 /**
@@ -63,7 +63,7 @@ export const updatePackageJson = async (
   outdatedPackages: Record<string, PackageInfo>,
 ): Promise<void> => {
   const packageJsonPath = `${cwd}/package.json`
-  const packageJsonContent = fs.readFileSync(packageJsonPath, "utf8")
+  const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
 
   const packageJson = JSON.parse(packageJsonContent)
 
@@ -74,7 +74,7 @@ export const updatePackageJson = async (
       if (!isWorkspaceReference(currentVersion)) {
         const { decorator } = parseVersionString(currentVersion)
         const newVersion = applyVersionDecorator(
-          decorator || "^", // Default to ^ if no decorator found
+          decorator || '^', // Default to ^ if no decorator found
           outdatedPackages[packageName].latest,
         )
         packageJson.dependencies[packageName] = newVersion
@@ -86,7 +86,7 @@ export const updatePackageJson = async (
       if (!isWorkspaceReference(currentVersion)) {
         const { decorator } = parseVersionString(currentVersion)
         const newVersion = applyVersionDecorator(
-          decorator || "^", // Default to ^ if no decorator found
+          decorator || '^', // Default to ^ if no decorator found
           outdatedPackages[packageName].latest,
         )
         packageJson.optionalDependencies[packageName] = newVersion
@@ -98,7 +98,7 @@ export const updatePackageJson = async (
       if (!isWorkspaceReference(currentVersion)) {
         const { decorator } = parseVersionString(currentVersion)
         const newVersion = applyVersionDecorator(
-          decorator || "^", // Default to ^ if no decorator found
+          decorator || '^', // Default to ^ if no decorator found
           outdatedPackages[packageName].latest,
         )
         packageJson.peerDependencies[packageName] = newVersion
@@ -110,7 +110,7 @@ export const updatePackageJson = async (
       if (!isWorkspaceReference(currentVersion)) {
         const { decorator } = parseVersionString(currentVersion)
         const newVersion = applyVersionDecorator(
-          decorator || "^", // Default to ^ if no decorator found
+          decorator || '^', // Default to ^ if no decorator found
           outdatedPackages[packageName].latest,
         )
         packageJson.devDependencies[packageName] = newVersion
@@ -121,7 +121,7 @@ export const updatePackageJson = async (
   fs.writeFileSync(
     packageJsonPath,
     JSON.stringify(packageJson, null, 2),
-    "utf8",
+    'utf8',
   )
 }
 
@@ -133,10 +133,10 @@ export const updatePNPMWorkspaceYAML = async (
   const pnpmWorkspaceYamlPath = `${cwd}/pnpm-workspace.yaml`
   const pnpmWorkspaceYamlContent = fs.readFileSync(
     pnpmWorkspaceYamlPath,
-    "utf8",
+    'utf8',
   )
 
-  const lines = pnpmWorkspaceYamlContent.split("\n")
+  const lines = pnpmWorkspaceYamlContent.split('\n')
 
   const updatedLines = lines.map((line) => {
     const match = line.match(
@@ -151,7 +151,7 @@ export const updatePNPMWorkspaceYAML = async (
       // Parse the current version to preserve the decorator
       const { decorator } = parseVersionString(currentVersion)
       const newVersion = applyVersionDecorator(
-        decorator || "^", // Default to ^ if no decorator found
+        decorator || '^', // Default to ^ if no decorator found
         latestVersion,
       )
 
@@ -168,7 +168,7 @@ export const updatePNPMWorkspaceYAML = async (
     return line
   })
 
-  fs.writeFileSync(pnpmWorkspaceYamlPath, updatedLines.join("\n"), "utf8")
+  fs.writeFileSync(pnpmWorkspaceYamlPath, updatedLines.join('\n'), 'utf8')
 }
 
 export const updateBunCatalogs = async (
@@ -177,13 +177,13 @@ export const updateBunCatalogs = async (
   outdatedPackages: Record<string, PackageInfo>,
 ): Promise<void> => {
   const packageJsonPath = `${cwd}/package.json`
-  const packageJsonContent = fs.readFileSync(packageJsonPath, "utf8")
+  const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
   const packageJson = JSON.parse(packageJsonContent)
 
   let catalogsUpdated = false
 
   // Handle the default "catalog" field (singular)
-  if (packageJson.catalog && typeof packageJson.catalog === "object") {
+  if (packageJson.catalog && typeof packageJson.catalog === 'object') {
     for (const packageName of packagesToUpdate) {
       if (packageJson.catalog[packageName]) {
         const currentVersion = packageJson.catalog[packageName]
@@ -192,7 +192,7 @@ export const updateBunCatalogs = async (
         // Parse version decorator (^, ~, >=, etc.)
         const { decorator } = parseVersionString(currentVersion)
         const newVersion = applyVersionDecorator(
-          decorator || "^", // Default to ^ if no decorator found
+          decorator || '^', // Default to ^ if no decorator found
           latestVersion,
         )
 
@@ -204,12 +204,12 @@ export const updateBunCatalogs = async (
   }
 
   // Handle named catalogs (plural)
-  if (packageJson.catalogs && typeof packageJson.catalogs === "object") {
+  if (packageJson.catalogs && typeof packageJson.catalogs === 'object') {
     // Iterate through each catalog (e.g., "repo", "types", "ui")
     for (const catalogName of Object.keys(packageJson.catalogs)) {
       const catalog = packageJson.catalogs[catalogName]
 
-      if (!catalog || typeof catalog !== "object") {
+      if (!catalog || typeof catalog !== 'object') {
         continue
       }
 
@@ -222,7 +222,7 @@ export const updateBunCatalogs = async (
           // Parse version decorator (^, ~, >=, etc.)
           const { decorator } = parseVersionString(currentVersion)
           const newVersion = applyVersionDecorator(
-            decorator || "^", // Default to ^ if no decorator found
+            decorator || '^', // Default to ^ if no decorator found
             latestVersion,
           )
 
@@ -239,7 +239,7 @@ export const updateBunCatalogs = async (
     fs.writeFileSync(
       packageJsonPath,
       JSON.stringify(packageJson, null, 2),
-      "utf8",
+      'utf8',
     )
   }
 }
@@ -249,7 +249,7 @@ export const identifyCatalogPackages = (
   outdatedPackages: Record<string, PackageInfo>,
 ): { catalogPackages: string[]; rootPackages: string[] } => {
   const packageJsonPath = `${cwd}/package.json`
-  const packageJsonContent = fs.readFileSync(packageJsonPath, "utf8")
+  const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
   const packageJson = JSON.parse(packageJsonContent)
 
   const catalogPackages: string[] = []
@@ -259,17 +259,17 @@ export const identifyCatalogPackages = (
   const catalogDefinedPackages = new Set<string>()
 
   // Check the default "catalog" field (singular)
-  if (packageJson.catalog && typeof packageJson.catalog === "object") {
+  if (packageJson.catalog && typeof packageJson.catalog === 'object') {
     Object.keys(packageJson.catalog).forEach((pkg) =>
       catalogDefinedPackages.add(pkg),
     )
   }
 
   // Check named catalogs (plural)
-  if (packageJson.catalogs && typeof packageJson.catalogs === "object") {
+  if (packageJson.catalogs && typeof packageJson.catalogs === 'object') {
     for (const catalogName of Object.keys(packageJson.catalogs)) {
       const catalog = packageJson.catalogs[catalogName]
-      if (catalog && typeof catalog === "object") {
+      if (catalog && typeof catalog === 'object') {
         Object.keys(catalog).forEach((pkg) => catalogDefinedPackages.add(pkg))
       }
     }

@@ -1,7 +1,7 @@
-import fs from "fs"
-import path from "path"
-import type { AlwaysUpToDateConfig } from "@/types"
-import { checkIfFileExists } from "./files"
+import fs from 'fs'
+import path from 'path'
+import type { AlwaysUpToDateConfig } from '@/types'
+import { checkIfFileExists } from './files'
 
 const DEFAULT_CONFIG: AlwaysUpToDateConfig = {
   allowMinorUpdates: false,
@@ -17,7 +17,7 @@ const DEFAULT_CONFIG: AlwaysUpToDateConfig = {
  */
 const loadJsonConfig = (filePath: string): AlwaysUpToDateConfig => {
   try {
-    const content = fs.readFileSync(filePath, "utf8")
+    const content = fs.readFileSync(filePath, 'utf8')
     const jsonConfig = JSON.parse(content)
 
     // Validate and merge with defaults
@@ -49,7 +49,7 @@ const loadJsonConfig = (filePath: string): AlwaysUpToDateConfig => {
 export const loadConfig = (
   workingDir: string = process.cwd(),
 ): AlwaysUpToDateConfig => {
-  const jsonConfigPath = path.join(workingDir, ".always-up-to-date.json")
+  const jsonConfigPath = path.join(workingDir, '.always-up-to-date.json')
 
   if (checkIfFileExists(jsonConfigPath)) {
     return loadJsonConfig(jsonConfigPath)
@@ -67,7 +67,7 @@ export const saveJsonConfig = (
   filePath: string,
 ): void => {
   const jsonContent = JSON.stringify(config, null, 2)
-  fs.writeFileSync(filePath, jsonContent, "utf8")
+  fs.writeFileSync(filePath, jsonContent, 'utf8')
 }
 
 export { DEFAULT_CONFIG }

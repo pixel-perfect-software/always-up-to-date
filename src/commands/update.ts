@@ -1,6 +1,6 @@
-import detectPackageManager from "@/detectPackageManager"
-import { PackageManager } from "@/managers"
-import type { Command } from "commander"
+import type { Command } from 'commander'
+import detectPackageManager from '@/detectPackageManager'
+import { PackageManager } from '@/managers'
 
 const workingDir = process.cwd()
 
@@ -11,8 +11,8 @@ const workingDir = process.cwd()
  */
 const update = (program: Command) =>
   program
-    .command("update")
-    .description("Update the update-able dependencies of the project.")
+    .command('update')
+    .description('Update the update-able dependencies of the project.')
     .action(async () => {
       const packageManagerName = detectPackageManager(workingDir)
       const packageManager = new PackageManager(packageManagerName)

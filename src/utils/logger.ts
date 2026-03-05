@@ -1,6 +1,6 @@
-import type SemVer from "semver"
-import { blue, green, yellow, red, cyan, magenta, gray, bold } from "colorette"
-import { loadConfig } from "./config"
+import { blue, bold, cyan, gray, green, magenta, red, yellow } from 'colorette'
+import type SemVer from 'semver'
+import { loadConfig } from './config'
 
 // Load the configuration (JSON format only)
 const config = loadConfig()
@@ -20,7 +20,7 @@ class Logger {
    */
   info(message: string): void {
     if (!this.quiet) {
-      console.log(`${blue("ℹ️")} ${message}`)
+      console.log(`${blue('ℹ️')} ${message}`)
     }
   }
 
@@ -29,7 +29,7 @@ class Logger {
    */
   success(message: string): void {
     if (!this.quiet) {
-      console.log(`${green("✅")} ${green(message)}`)
+      console.log(`${green('✅')} ${green(message)}`)
     }
   }
 
@@ -38,7 +38,7 @@ class Logger {
    */
   warn(message: string): void {
     if (!this.quiet) {
-      console.log(`${yellow("⚠️")} ${yellow(message)}`)
+      console.log(`${yellow('⚠️')} ${yellow(message)}`)
     }
   }
 
@@ -47,7 +47,7 @@ class Logger {
    */
   error(message: string): void {
     if (!this.quiet) {
-      console.log(`${red("❌")} ${red(message)}`)
+      console.log(`${red('❌')} ${red(message)}`)
     }
   }
 
@@ -56,7 +56,7 @@ class Logger {
    */
   packageOperation(message: string): void {
     if (!this.quiet) {
-      console.log(`${cyan("📦")} ${cyan(message)}`)
+      console.log(`${cyan('📦')} ${cyan(message)}`)
     }
   }
 
@@ -65,7 +65,7 @@ class Logger {
    */
   command(command: string): void {
     if (!this.quiet) {
-      console.log(`${magenta("⚡")} ${gray(`Running command "${command}"...`)}`)
+      console.log(`${magenta('⚡')} ${gray(`Running command "${command}"...`)}`)
     }
   }
 
@@ -75,7 +75,7 @@ class Logger {
   workspace(manager: string): void {
     if (!this.quiet) {
       console.log(
-        `${blue("🏢")} ${blue(`Detected ${manager} workspace file. Treating this project as a ${manager} workspace.`)}`,
+        `${blue('🏢')} ${blue(`Detected ${manager} workspace file. Treating this project as a ${manager} workspace.`)}`,
       )
     }
   }
@@ -85,7 +85,7 @@ class Logger {
    */
   allUpToDate(): void {
     if (!this.quiet) {
-      console.log(`${green("🎉")} ${green("All packages are up to date.")}`)
+      console.log(`${green('🎉')} ${green('All packages are up to date.')}`)
     }
   }
 
@@ -95,13 +95,13 @@ class Logger {
   outdatedHeader(): void {
     if (!this.quiet) {
       console.log(
-        `${yellow("📈")} ${bold("Some outdated packaged were found!")} \n`,
+        `${yellow('📈')} ${bold('Some outdated packaged were found!')} \n`,
       )
       console.log(
-        `${red("Ignored")} - Ignored due to the updateDenyList in your config.`,
+        `${red('Ignored')} - Ignored due to the updateDenyList in your config.`,
       )
       console.log(
-        `${green("Allowed")} - Allowed due to the updateAllowList in your config.`,
+        `${green('Allowed')} - Allowed due to the updateAllowList in your config.`,
       )
     }
   }
@@ -111,9 +111,9 @@ class Logger {
    */
   outdatedPackage(packageName: string, current: string, latest: string): void {
     if (!this.quiet) {
-      const arrow = gray("→")
+      const arrow = gray('→')
       console.log(
-        `  ${yellow("📋")} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)}`,
+        `  ${yellow('📋')} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)}`,
       )
     }
   }
@@ -124,8 +124,8 @@ class Logger {
   packageGroupHeader(groupName: string): void {
     if (!this.quiet) {
       const displayName =
-        groupName === "unscoped" ? "Other packages" : `${groupName} packages`
-      console.log(`\n${cyan("🏷️")}  ${bold(displayName)}:`)
+        groupName === 'unscoped' ? 'Other packages' : `${groupName} packages`
+      console.log(`\n${cyan('🏷️')}  ${bold(displayName)}:`)
     }
   }
 
@@ -138,15 +138,15 @@ class Logger {
     latest: string,
   ): void {
     if (!this.quiet) {
-      const arrow = gray("→")
+      const arrow = gray('→')
 
-      let message = `  ${yellow("📋")} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)}`
+      let message = `  ${yellow('📋')} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)}`
 
       // Indicate if the package is ignored or allowed via denylist/allowlist
       if (config.updateDenylist?.includes(packageName)) {
-        message += ` - (${red("Ignored")})`
+        message += ` - (${red('Ignored')})`
       } else if (config.updateAllowlist?.includes(packageName)) {
-        message += ` - (${green("Allowed")})`
+        message += ` - (${green('Allowed')})`
       }
 
       console.log(message)
@@ -158,7 +158,7 @@ class Logger {
    */
   updatingHeader(): void {
     if (!this.quiet) {
-      console.log(`${blue("🔄")} ${bold("Updating packages...")}`)
+      console.log(`${blue('🔄')} ${bold('Updating packages...')}`)
     }
   }
 
@@ -167,9 +167,9 @@ class Logger {
    */
   updatingPackage(packageName: string, current: string, latest: string): void {
     if (!this.quiet) {
-      const arrow = gray("→")
+      const arrow = gray('→')
       console.log(
-        `  ${yellow("🔄")} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)} (updating...)`,
+        `  ${yellow('🔄')} ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)} (updating...)`,
       )
     }
   }
@@ -184,9 +184,9 @@ class Logger {
     updateType: SemVer.ReleaseType | null,
   ): void {
     if (!this.quiet) {
-      const arrow = gray("→")
+      const arrow = gray('→')
       console.log(
-        `  ${yellow("⏭️")}  ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)} (${updateType} update skipped)`,
+        `  ${yellow('⏭️')}  ${bold(packageName)}: ${red(current)} ${arrow} ${green(latest)} (${updateType} update skipped)`,
       )
     }
   }
@@ -196,7 +196,7 @@ class Logger {
    */
   starting(operation: string, manager: string): void {
     if (!this.quiet) {
-      console.log(`${blue("🚀")} ${blue(`${operation} with ${manager}...`)}`)
+      console.log(`${blue('🚀')} ${blue(`${operation} with ${manager}...`)}`)
     }
   }
 
@@ -214,7 +214,7 @@ class Logger {
    */
   debug(message: string): void {
     if (!this.quiet) {
-      console.log(`${gray("🔍")} ${gray(message)}`)
+      console.log(`${gray('🔍')} ${gray(message)}`)
     }
   }
 }

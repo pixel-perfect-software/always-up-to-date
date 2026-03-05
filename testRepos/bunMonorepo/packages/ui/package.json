@@ -3,10 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Test bun monorepo for always-up-to-date CLI",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": ["apps/*", "packages/*"],
   "engines": {
     "bun": ">=1.2.15"
   },

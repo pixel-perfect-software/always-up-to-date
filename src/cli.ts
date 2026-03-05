@@ -6,10 +6,10 @@
  * - update - Update the update-able dependencies of the project.
  * - help - Show this help message.
  */
-import { Command } from "commander"
-import { checkCommand, helpCommand, updateCommand } from "@/commands"
-import packageJson from "../package.json"
-import initCommand from "@/commands/init"
+import { Command } from 'commander'
+import { checkCommand, helpCommand, updateCommand } from '@/commands'
+import initCommand from '@/commands/init'
+import packageJson from '../package.json'
 
 // Create a program instance
 const program = new Command()
@@ -35,7 +35,7 @@ const run = async (): Promise<void> => {
   try {
     await program.parseAsync()
   } catch (error) {
-    console.error("An error occurred while running the CLI:", error)
+    console.error('An error occurred while running the CLI:', error)
     throw error
   }
 }

@@ -1,9 +1,9 @@
-import BunManager from "@/managers/bun"
-import NPMManager from "@/managers/npm"
-import PNPMManager from "@/managers/pnpm"
-import YarnManager from "@/managers/yarn"
+import BunManager from '@/managers/bun'
+import NPMManager from '@/managers/npm'
+import PNPMManager from '@/managers/pnpm'
+import YarnManager from '@/managers/yarn'
 
-import type { SupportedPackageManager } from "@/types"
+import type { SupportedPackageManager } from '@/types'
 
 class PackageManager {
   public readonly manager: NPMManager | YarnManager | PNPMManager | BunManager
@@ -16,13 +16,13 @@ class PackageManager {
     name: SupportedPackageManager,
   ): NPMManager | YarnManager | PNPMManager | BunManager {
     switch (name) {
-      case "npm":
+      case 'npm':
         return new NPMManager()
-      case "yarn":
+      case 'yarn':
         return new YarnManager()
-      case "pnpm":
+      case 'pnpm':
         return new PNPMManager()
-      case "bun":
+      case 'bun':
         return new BunManager()
       default:
         throw new Error(`Unsupported package manager: ${this.name}`)

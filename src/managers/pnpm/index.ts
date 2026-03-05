@@ -1,37 +1,36 @@
-import fs from "fs"
+import fs from 'fs'
 
-import CommandRunner from "@/commandRunner"
+import CommandRunner from '@/commandRunner'
+import messages from '@/messages/en.json'
+import type { PackageInfo, SupportedPackageManager } from '@/types'
 import {
+  getSortedGroupNames,
+  groupAndSortPackages,
   logger,
   updateChecker,
-  groupAndSortPackages,
-  getSortedGroupNames,
-} from "@/utils"
-
-import messages from "@/messages/en.json"
-import type { PackageInfo, SupportedPackageManager } from "@/types"
-import { updatePackageJson, updatePNPMWorkspaceYAML } from "@/utils/files"
+} from '@/utils'
+import { updatePackageJson, updatePNPMWorkspaceYAML } from '@/utils/files'
 
 class PNPMManager extends CommandRunner {
-  public readonly packageManager: SupportedPackageManager = "pnpm"
+  public readonly packageManager: SupportedPackageManager = 'pnpm'
 
   checkPackageVersions = async (cwd: string): Promise<object> => {
-    logger.starting("Checking package versions", "PNPM")
+    logger.starting('Checking package versions', 'PNPM')
 
     // Check if the current working directory supports PNPM workspaces
     // If it does, we can use the `pnpm outdated -r` command to check for outdated packages recursively
     // If it doesn't, we can use the `pnpm outdated` command to check for outdated packages in the current directory
     const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
     const command = isRunningInWorkspace
-      ? "outdated --json -r"
-      : "outdated --json"
+      ? 'outdated --json -r'
+      : 'outdated --json'
 
     const commandResult = await this.runCommand(
       this.packageManager,
       command,
       cwd,
     )
-    const result: object = JSON.parse(commandResult || "{}")
+    const result: object = JSON.parse(commandResult || '{}')
 
     if (Object.keys(result).length === 0) {
       logger.allUpToDate()
@@ -57,7 +56,7 @@ class PNPMManager extends CommandRunner {
   }
 
   updatePackages = async (cwd: string): Promise<void> => {
-    logger.starting("Updating packages", "PNPM")
+    logger.starting('Updating packages', 'PNPM')
 
     try {
       const outdatedPackages = await this.checkPackageVersions(cwd)
@@ -98,13 +97,13 @@ class PNPMManager extends CommandRunner {
         }
 
         const command = isRunningInWorkspace
-          ? `update ${packagesToUpdate.join(" ")} -r`
-          : `update ${packagesToUpdate.join(" ")}`
+          ? `update ${packagesToUpdate.join(' ')} -r`
+          : `update ${packagesToUpdate.join(' ')}`
 
         await this.runCommand(this.packageManager, command, cwd)
       }
     } catch {
-      logger.error("An error occurred while checking for outdated packages.")
+      logger.error('An error occurred while checking for outdated packages.')
       return
     }
   }
@@ -113,10 +112,10 @@ class PNPMManager extends CommandRunner {
     try {
       const workspaceFile = fs.readFileSync(
         `${cwd}/pnpm-workspace.yaml`,
-        "utf8",
+        'utf8',
       )
 
-      logger.workspace("PNPM")
+      logger.workspace('PNPM')
 
       return !!workspaceFile
     } catch {

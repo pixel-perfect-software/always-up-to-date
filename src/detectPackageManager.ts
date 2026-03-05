@@ -1,20 +1,20 @@
-import fs from "fs"
-import path from "path"
+import fs from 'fs'
+import path from 'path'
 
-import type { SupportedPackageManager } from "@/types"
+import type { SupportedPackageManager } from '@/types'
 
 const packageManagers: Array<SupportedPackageManager> = [
-  "npm",
-  "yarn",
-  "pnpm",
-  "bun",
+  'npm',
+  'yarn',
+  'pnpm',
+  'bun',
 ]
 
 const lockFileNames: Record<string, string> = {
-  npm: "package-lock.json",
-  yarn: "yarn.lock",
-  pnpm: "pnpm-lock.yaml",
-  bun: "bun.lock",
+  npm: 'package-lock.json',
+  yarn: 'yarn.lock',
+  pnpm: 'pnpm-lock.yaml',
+  bun: 'bun.lock',
 }
 
 const detectPackageManager = (cwd: string): SupportedPackageManager => {
@@ -27,7 +27,7 @@ const detectPackageManager = (cwd: string): SupportedPackageManager => {
   }
 
   if (!pm) {
-    console.error("No package manager detected in the current directory.")
+    console.error('No package manager detected in the current directory.')
 
     return process.exit(1)
   }

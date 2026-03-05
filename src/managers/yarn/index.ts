@@ -1,37 +1,36 @@
-import fs from "fs"
+import fs from 'fs'
 
-import CommandRunner from "@/commandRunner"
+import CommandRunner from '@/commandRunner'
+import messages from '@/messages/en.json'
+import type { PackageInfo, SupportedPackageManager } from '@/types'
 import {
+  getSortedGroupNames,
+  groupAndSortPackages,
   logger,
   updateChecker,
-  groupAndSortPackages,
-  getSortedGroupNames,
-} from "@/utils"
-
-import messages from "@/messages/en.json"
-import type { PackageInfo, SupportedPackageManager } from "@/types"
-import { updatePackageJson } from "@/utils/files"
+} from '@/utils'
+import { updatePackageJson } from '@/utils/files'
 
 class YarnManager extends CommandRunner {
-  public readonly packageManager: SupportedPackageManager = "yarn"
+  public readonly packageManager: SupportedPackageManager = 'yarn'
 
   checkPackageVersions = async (cwd: string): Promise<object> => {
-    logger.starting("Checking package versions", "Yarn")
+    logger.starting('Checking package versions', 'Yarn')
 
     // Check if the current working directory supports Yarn workspaces
     // If it does, we can use the `yarn outdated --json --recursive` command to check for outdated packages recursively
     // If it doesn't, we can use the `yarn outdated --json` command to check for outdated packages in the current directory
     const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
     const command = isRunningInWorkspace
-      ? "outdated --json --recursive"
-      : "outdated --json"
+      ? 'outdated --json --recursive'
+      : 'outdated --json'
 
     const commandResult = await this.runCommand(
       this.packageManager,
       command,
       cwd,
     )
-    const result = this.parseYarnOutdatedResult(commandResult || "")
+    const result = this.parseYarnOutdatedResult(commandResult || '')
 
     if (Object.keys(result).length === 0) {
       logger.allUpToDate()
@@ -57,7 +56,7 @@ class YarnManager extends CommandRunner {
   }
 
   updatePackages = async (cwd: string): Promise<void> => {
-    logger.starting("Updating packages", "Yarn")
+    logger.starting('Updating packages', 'Yarn')
 
     try {
       const outdatedPackages = await this.checkPackageVersions(cwd)
@@ -90,13 +89,13 @@ class YarnManager extends CommandRunner {
         )
 
         const command = isRunningInWorkspace
-          ? `update ${packagesToUpdate.join(" ")} --recursive`
-          : `update ${packagesToUpdate.join(" ")}`
+          ? `update ${packagesToUpdate.join(' ')} --recursive`
+          : `update ${packagesToUpdate.join(' ')}`
 
         await this.runCommand(this.packageManager, command, cwd)
       }
     } catch {
-      logger.error("An error occurred while checking for outdated packages.")
+      logger.error('An error occurred while checking for outdated packages.')
       return
     }
   }
@@ -104,18 +103,18 @@ class YarnManager extends CommandRunner {
   checkIfInWorkspace = async (cwd: string): Promise<boolean> => {
     try {
       const packageJsonPath = `${cwd}/package.json`
-      const packageJsonContent = fs.readFileSync(packageJsonPath, "utf8")
+      const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
       const packageJson = JSON.parse(packageJsonContent)
 
       // Yarn workspaces can be defined as an array or an object with packages field
       const hasWorkspaces =
         packageJson.workspaces &&
         (Array.isArray(packageJson.workspaces) ||
-          (typeof packageJson.workspaces === "object" &&
+          (typeof packageJson.workspaces === 'object' &&
             packageJson.workspaces.packages))
 
       if (hasWorkspaces) {
-        logger.workspace("Yarn")
+        logger.workspace('Yarn')
       }
 
       return !!hasWorkspaces
@@ -126,19 +125,19 @@ class YarnManager extends CommandRunner {
 
   // Parse multiple JSON objects from yarn outdated output
   parseYarnOutdatedResult = (output: string): object => {
-    if (!output || output.trim() === "") {
+    if (!output || output.trim() === '') {
       return {}
     }
 
     try {
       const lines = output
         .trim()
-        .split("\n")
+        .split('\n')
         .filter((line) => line.trim())
       const parsedLines = lines.map((line) => JSON.parse(line))
 
       // Find the table data from yarn outdated output
-      const tableData = parsedLines.find((item) => item.type === "table")
+      const tableData = parsedLines.find((item) => item.type === 'table')
 
       if (!tableData || !tableData.data || !tableData.data.body) {
         return {}
