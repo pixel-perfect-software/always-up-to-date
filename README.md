@@ -113,4 +113,4 @@ Contributions are welcome! Please see our [Contributing Guide](./docs/contributi
 
 ## 📝 License
 
-MIT © [Tyler Robertson](https://github.com/TylerNRobertson) - See [LICENSE](LICENSE) for details.
+MIT © [Tyler Robertson](https://github.com/TylerNRobertson) @ [Pixel Perfect Software Inc.](https://github.com/pixel-perfect-software) - See [LICENSE](LICENSE) for details.
