@@ -65,7 +65,7 @@
     "ts-command-line-args": "^2.5.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.5",
+    "@biomejs/biome": "2.4.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.3.3",
     "@types/semver": "^7.7.1",
