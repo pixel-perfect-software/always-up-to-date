@@ -17,7 +17,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - `pnpm test` - Run all tests (silent mode)
 - `pnpm run test:coverage` - Run tests with coverage report
 - `pnpm run test:badges` - Generate coverage badges in ./badges directory
-- Single test: `pnpm test -- tests/path/to/test.test.ts`
+- Single test: `pnpm test -- __tests__/path/to/test.test.ts`
 
 ### Code Quality
 - `pnpm run format-and-lint` - Check formatting and linting with Biome
@@ -108,7 +108,10 @@ Documentation registry: `.claude/context/ai-context/docs-overview.md`
 ## Testing Notes
 
 - Test framework: Jest with ts-jest
-- Tests located in `tests/` directory
+- Tests located in `__tests__/` directory (mirrors `src/` structure)
+- Global setup: `__tests__/setup.ts` (suppresses console output unless `DEBUG` env is set)
 - Test timeout: 15 seconds
 - Uses ESM transform for TypeScript
 - Mock cleanup: `clearMocks` and `restoreMocks` enabled
+- Path aliases: `moduleNameMapper` maps `@/*` to `src/*` for test imports
+- Single test: `pnpm test -- __tests__/path/to/test.test.ts`

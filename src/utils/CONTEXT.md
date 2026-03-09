@@ -19,7 +19,7 @@ utils/
   updateChecker.ts    # Semver-based update filtering
   packageGrouper.ts   # Groups packages by @scope for display
   logger.ts           # Colored logging (colorette)
-  files.ts            # checkIfFileExists(), updatePackageJson()
+  files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML(), updateBunCatalogs(), identifyCatalogPackages()
 ```
 
 ## Architectural Patterns

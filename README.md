@@ -31,9 +31,8 @@ The tool is built with a modular architecture:
 
 ## 🔜 Coming Soon
 
-- Enhanced migration rules for popular frameworks
+- Migration rules for popular frameworks (React, Next.js, etc.)
 - GitHub integration with automated PR creation
-- Advanced configuration options
 - Security vulnerability scanning
 - Interactive update selection
 
@@ -86,22 +85,36 @@ Full support for workspaces and monorepos:
 
 ## 🛠️ Available Commands
 
+- `init` - Initialize configuration in the current directory
 - `check` - Check for outdated dependencies in your project
 - `update` - Update all outdated dependencies
-- `migrate` - Migrate packages with breaking changes (coming soon!)
 - `help` - Display help information
 
-## ⚙️ Current Implementation
+## ⚙️ Configuration
 
-The current implementation provides:
+Run `autd init` to create a `.always-up-to-date.json` file in your project root:
 
-- ✅ Package manager auto-detection
-- ✅ Dependency version checking
-- ✅ Package updating with workspace support
-- ✅ Modular architecture for extensibility
-- 🚧 Migration system (in development)
-- 🚧 PR generation (in development)
-- 🚧 Advanced configuration (planned)
+```json
+{
+  "allowMinorUpdates": false,
+  "allowMajorUpdates": false,
+  "updateAllowlist": [],
+  "updateDenylist": [],
+  "debug": false,
+  "silent": false
+}
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `allowMinorUpdates` | `false` | Allow minor version updates (e.g., 1.0.0 → 1.1.0) |
+| `allowMajorUpdates` | `false` | Allow major version updates (e.g., 1.0.0 → 2.0.0). Implies `allowMinorUpdates`. |
+| `updateAllowlist` | `[]` | Packages that are always updated regardless of version type |
+| `updateDenylist` | `[]` | Packages that are never updated |
+| `debug` | `false` | Enable debug logging |
+| `silent` | `false` | Suppress all output |
+
+Patch updates (e.g., 1.0.0 → 1.0.1) are always allowed unless a package is on the deny list.
 
 ## 🤝 Contributing
 

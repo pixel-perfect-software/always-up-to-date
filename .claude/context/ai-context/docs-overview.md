@@ -52,8 +52,18 @@ src/
     CONTEXT.md
   prGenerator/              # PR automation (stub)
     CONTEXT.md
-tests/
-  index.test.ts             # Main test file
+__tests__/
+  setup.ts                  # Global test setup (console suppression)
+  commandRunner.test.ts     # CommandRunner error handling tests
+  detectPackageManager.test.ts  # Lock file detection tests
+  managers/
+    packageManager.test.ts  # Factory pattern tests
+  utils/
+    config.test.ts          # Config loading/saving tests
+    files.test.ts           # File operations and version parsing tests
+    logger.test.ts          # Logger output and quiet mode tests
+    packageGrouper.test.ts  # Package grouping tests
+    updateChecker.test.ts   # Semver update logic tests
 ```
 
 ## Tech Stack
@@ -65,4 +75,4 @@ tests/
 - **Testing:** Jest + ts-jest
 - **Linting/Formatting:** Biome
 - **Path Aliases:** `@/*` -> `src/*` (resolved by tsc-alias at build)
-- **Key Dependencies:** semver, colorette, @inquirer/prompts, @octokit/rest, axios, glob
+- **Key Dependencies:** semver, colorette, @inquirer/prompts

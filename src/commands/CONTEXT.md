@@ -14,7 +14,7 @@ Four commands implemented: `init`, `check`, `update`, `help`.
 ## Major Subsystem Organization
 ```
 commands/
-  index.ts    # Re-exports check, help, update
+  index.ts    # Re-exports check, help, init, update
   init.ts     # Creates .always-up-to-date.json with DEFAULT_CONFIG
   check.ts    # Detects package manager, lists outdated deps (grouped by scope)
   update.ts   # Detects package manager, updates packages per config rules

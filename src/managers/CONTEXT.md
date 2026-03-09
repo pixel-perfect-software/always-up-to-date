@@ -38,9 +38,9 @@ managers/
 | Manager | Method | Flag |
 |---------|--------|------|
 | npm | `package.json` `workspaces` field (array or `{packages: [...]}`) | `--workspaces` |
-| yarn | `package.json` `workspaces` field | `--workspaces` |
-| pnpm | `pnpm-workspace.yaml` file existence | `--recursive` |
-| bun | `package.json` `workspaces` field | `--workspaces` |
+| yarn | `package.json` `workspaces` field | `--recursive` |
+| pnpm | `pnpm-workspace.yaml` file existence | `-r` |
+| bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `--filter '*'` |
 
 ## Integration Points
 - `src/commands/check.ts` and `src/commands/update.ts` instantiate managers via the factory
