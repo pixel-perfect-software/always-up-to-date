@@ -39,7 +39,7 @@ No Tier 3 documents yet. As features grow in complexity, add `CONTEXT.md` files 
 src/
   index.ts                  # Entry point (shebang, calls cli)
   cli.ts                    # Commander.js program setup, registers commands
-  types.ts                  # Core types: SupportedPackageManager, PackageInfo, AlwaysUpToDateConfig
+  types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig
   commandRunner.ts          # Base class with runCommand() using execAsync
   detectPackageManager.ts   # Lock file detection logic
   commands/                 # CLI command definitions
@@ -64,6 +64,7 @@ __tests__/
     logger.test.ts          # Logger output and quiet mode tests
     packageGrouper.test.ts  # Package grouping tests
     updateChecker.test.ts   # Semver update logic tests
+    filterPackages.test.ts  # Package filtering and targeting tests
 ```
 
 ## Tech Stack

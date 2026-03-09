@@ -28,6 +28,17 @@ commands/
 2. Create `PackageManager` factory instance
 3. Call `manager.checkPackageVersions(cwd)` or `manager.updatePackages(cwd)`
 
+### Command Options
+
+#### `check`
+- `--json` - Output raw JSON instead of formatted display (suppresses logger)
+
+#### `update [packages...]`
+- Accepts optional variadic package names to target specific packages
+- `--dry-run` - Preview which packages would be updated without making changes
+- `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`)
+- `--json` - Output `UpdateResult[]` as JSON after updating
+
 ### Binary Aliases
 Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodate`, `always-up-to-date`. All point to `dist/index.js`.
 
@@ -35,3 +46,4 @@ Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodat
 - `src/detectPackageManager.ts` for package manager detection
 - `src/managers/packageManager.ts` factory for manager instantiation
 - `src/utils/config.ts` for loading/saving configuration
+- `src/utils/filterPackages.ts` for dry-run and interactive filtering

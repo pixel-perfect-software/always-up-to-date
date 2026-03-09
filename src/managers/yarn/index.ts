@@ -2,24 +2,27 @@ import fs from 'fs'
 
 import CommandRunner from '@/commandRunner'
 import messages from '@/messages/en.json'
-import type { PackageInfo, SupportedPackageManager } from '@/types'
+import type {
+  PackageInfo,
+  SupportedPackageManager,
+  UpdateResult,
+} from '@/types'
 import {
+  filterPackages,
   getSortedGroupNames,
   groupAndSortPackages,
   logger,
-  updateChecker,
 } from '@/utils'
 import { updatePackageJson } from '@/utils/files'
 
 class YarnManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = 'yarn'
 
-  checkPackageVersions = async (cwd: string): Promise<object> => {
+  checkPackageVersions = async (
+    cwd: string,
+  ): Promise<Record<string, PackageInfo>> => {
     logger.starting('Checking package versions', 'Yarn')
 
-    // Check if the current working directory supports Yarn workspaces
-    // If it does, we can use the `yarn outdated --json --recursive` command to check for outdated packages recursively
-    // If it doesn't, we can use the `yarn outdated --json` command to check for outdated packages in the current directory
     const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
     const command = isRunningInWorkspace
       ? 'outdated --json --recursive'
@@ -39,10 +42,7 @@ class YarnManager extends CommandRunner {
 
     logger.outdatedHeader()
 
-    // Group and sort packages for better readability
-    const groupedPackages = groupAndSortPackages(
-      result as Record<string, PackageInfo>,
-    )
+    const groupedPackages = groupAndSortPackages(result)
     const sortedGroupNames = getSortedGroupNames(groupedPackages)
 
     sortedGroupNames.forEach((groupName) => {
@@ -55,7 +55,10 @@ class YarnManager extends CommandRunner {
     return result
   }
 
-  updatePackages = async (cwd: string): Promise<void> => {
+  updatePackages = async (
+    cwd: string,
+    targetPackages?: string[],
+  ): Promise<UpdateResult[]> => {
     logger.starting('Updating packages', 'Yarn')
 
     try {
@@ -63,30 +66,27 @@ class YarnManager extends CommandRunner {
 
       if (Object.keys(outdatedPackages).length === 0) {
         logger.allUpToDate()
-        return
+        return []
       }
+
       const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-
-      logger.updatingHeader()
-
-      const packagesToUpdate = Object.entries(outdatedPackages)
-        .filter(([name, packageInfo]) =>
-          updateChecker({ name, ...packageInfo }),
-        )
-        .map(([packageName]) => packageName)
+      const results = filterPackages(outdatedPackages, targetPackages)
+      const packagesToUpdate = results
+        .filter((r) => r.updated)
+        .map((r) => r.name)
 
       if (
         packagesToUpdate.length === 0 &&
-        Object.keys(outdatedPackages)?.length > 0
-      )
-        return logger.info(messages.noPackagesToUpdate)
+        Object.keys(outdatedPackages).length > 0
+      ) {
+        logger.info(messages.noPackagesToUpdate)
+        return results
+      }
+
+      logger.updatingHeader()
 
       if (packagesToUpdate.length > 0) {
-        await updatePackageJson(
-          cwd,
-          packagesToUpdate,
-          outdatedPackages as Record<string, PackageInfo>,
-        )
+        await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
 
         const command = isRunningInWorkspace
           ? `update ${packagesToUpdate.join(' ')} --recursive`
@@ -94,9 +94,11 @@ class YarnManager extends CommandRunner {
 
         await this.runCommand(this.packageManager, command, cwd)
       }
+
+      return results
     } catch {
       logger.error('An error occurred while checking for outdated packages.')
-      return
+      return []
     }
   }
 
@@ -124,7 +126,7 @@ class YarnManager extends CommandRunner {
   }
 
   // Parse multiple JSON objects from yarn outdated output
-  parseYarnOutdatedResult = (output: string): object => {
+  parseYarnOutdatedResult = (output: string): Record<string, PackageInfo> => {
     if (!output || output.trim() === '') {
       return {}
     }

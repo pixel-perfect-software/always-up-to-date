@@ -2,24 +2,27 @@ import fs from 'fs'
 
 import CommandRunner from '@/commandRunner'
 import messages from '@/messages/en.json'
-import type { PackageInfo, SupportedPackageManager } from '@/types'
+import type {
+  PackageInfo,
+  SupportedPackageManager,
+  UpdateResult,
+} from '@/types'
 import {
+  filterPackages,
   getSortedGroupNames,
   groupAndSortPackages,
   logger,
-  updateChecker,
 } from '@/utils'
 import { updatePackageJson } from '@/utils/files'
 
 class NPMManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = 'npm'
 
-  checkPackageVersions = async (cwd: string): Promise<object> => {
+  checkPackageVersions = async (
+    cwd: string,
+  ): Promise<Record<string, PackageInfo>> => {
     logger.starting('Checking package versions', 'NPM')
 
-    // Check if the current working directory supports NPM workspaces
-    // If it does, we can use the `npm outdated --json --workspaces` command to check for outdated packages recursively
-    // If it doesn't, we can use the `npm outdated --json` command to check for outdated packages in the current directory
     const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
     const command = isRunningInWorkspace
       ? 'outdated --json --workspaces'
@@ -30,7 +33,9 @@ class NPMManager extends CommandRunner {
       command,
       cwd,
     )
-    const result: object = JSON.parse(commandResult || '{}')
+    const result: Record<string, PackageInfo> = JSON.parse(
+      commandResult || '{}',
+    )
 
     if (Object.keys(result).length === 0) {
       logger.allUpToDate()
@@ -39,10 +44,7 @@ class NPMManager extends CommandRunner {
 
     logger.outdatedHeader()
 
-    // Group and sort packages for better readability
-    const groupedPackages = groupAndSortPackages(
-      result as Record<string, PackageInfo>,
-    )
+    const groupedPackages = groupAndSortPackages(result)
     const sortedGroupNames = getSortedGroupNames(groupedPackages)
 
     sortedGroupNames.forEach((groupName) => {
@@ -55,47 +57,50 @@ class NPMManager extends CommandRunner {
     return result
   }
 
-  updatePackages = async (cwd: string): Promise<void> => {
+  updatePackages = async (
+    cwd: string,
+    targetPackages?: string[],
+  ): Promise<UpdateResult[]> => {
     logger.starting('Updating packages', 'NPM')
 
     try {
       const outdatedPackages = await this.checkPackageVersions(cwd)
 
-      if (Object.keys(outdatedPackages).length === 0)
-        return logger.allUpToDate()
+      if (Object.keys(outdatedPackages).length === 0) {
+        logger.allUpToDate()
+        return []
+      }
 
       const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-
-      logger.updatingHeader()
-
-      const packagesToUpdate = Object.entries(outdatedPackages)
-        .filter(([name, packageInfo]) =>
-          updateChecker({ name, ...packageInfo }),
-        )
-        .map(([packageName]) => packageName)
+      const results = filterPackages(outdatedPackages, targetPackages)
+      const packagesToUpdate = results
+        .filter((r) => r.updated)
+        .map((r) => r.name)
 
       if (
         packagesToUpdate.length === 0 &&
-        Object.keys(outdatedPackages)?.length > 0
-      )
-        return logger.info(messages.noPackagesToUpdate)
+        Object.keys(outdatedPackages).length > 0
+      ) {
+        logger.info(messages.noPackagesToUpdate)
+        return results
+      }
+
+      logger.updatingHeader()
 
       if (packagesToUpdate.length > 0) {
-        await updatePackageJson(
-          cwd,
-          packagesToUpdate,
-          outdatedPackages as Record<string, PackageInfo>,
-        )
+        await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
 
         const command = isRunningInWorkspace
-          ? `update ${packagesToUpdate.join(' ')} --workspaces` // npm example
+          ? `update ${packagesToUpdate.join(' ')} --workspaces`
           : `update ${packagesToUpdate.join(' ')}`
 
         await this.runCommand(this.packageManager, command, cwd)
       }
+
+      return results
     } catch {
       logger.error('An error occurred while checking for outdated packages.')
-      return
+      return []
     }
   }
 

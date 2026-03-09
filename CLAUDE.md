@@ -37,8 +37,8 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - `src/detectPackageManager.ts` detects the package manager by checking for lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lock)
 - `src/managers/packageManager.ts` is a factory that instantiates the correct manager based on detection
 - Each manager (npm, yarn, pnpm, bun) extends `CommandRunner` and implements:
-  - `checkPackageVersions(cwd)` - Returns outdated packages as JSON
-  - `updatePackages(cwd)` - Updates packages respecting configuration
+  - `checkPackageVersions(cwd)` - Returns `Record<string, PackageInfo>` of outdated packages
+  - `updatePackages(cwd, targetPackages?)` - Updates packages, returns `UpdateResult[]`. Optional `targetPackages` scopes to specific packages.
   - `checkIfInWorkspace(cwd)` - Detects workspace/monorepo configuration
 
 **Command Runner Pattern**
@@ -53,15 +53,16 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
   - `allowMinorUpdates` / `allowMajorUpdates` - Control update scope
   - `updateAllowlist` / `updateDenylist` - Fine-grained package control
   - `debug` / `silent` - Logging control
-- `src/utils/updateChecker.ts` validates whether a package should be updated based on config
+- `src/utils/updateChecker.ts` validates whether a single package should be updated based on config
+- `src/utils/filterPackages.ts` batch-filters outdated packages through updateChecker, returns `UpdateResult[]` with update type and reason
 
 **CLI Structure**
 - Entry point: `src/index.ts` → `src/cli.ts`
 - Uses Commander.js for command parsing
 - Commands registered in `src/commands/`:
   - `init` - Creates `.always-up-to-date.json`
-  - `check` - Lists outdated dependencies
-  - `update` - Updates packages respecting config
+  - `check` - Lists outdated dependencies. Supports `--json` for structured output.
+  - `update [packages...]` - Updates packages respecting config. Supports `--dry-run` (preview), `-i/--interactive` (checklist selection), `--json` (structured output), and optional package name arguments for targeted updates.
   - `help` - Shows help information
 - Binary aliases: `autd`, `alwaysuptodate`, `always-up-to-date`
 

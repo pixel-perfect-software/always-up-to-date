@@ -14,9 +14,10 @@ Core utilities fully implemented. Central barrel export via `index.ts`.
 ## Major Subsystem Organization
 ```
 utils/
-  index.ts            # Barrel: re-exports execAsync, config, logger, packageGrouper, updateChecker, files
+  index.ts            # Barrel: re-exports execAsync, config, logger, filterPackages, packageGrouper, updateChecker, files
   config.ts           # loadConfig(), saveJsonConfig(), DEFAULT_CONFIG
-  updateChecker.ts    # Semver-based update filtering
+  updateChecker.ts    # Semver-based update filtering (single package)
+  filterPackages.ts   # Batch filtering with targeting support, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
   logger.ts           # Colored logging (colorette)
   files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML(), updateBunCatalogs(), identifyCatalogPackages()
@@ -42,7 +43,14 @@ Priority order:
 ### Package Grouping (`packageGrouper.ts`)
 Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Groups sorted alphabetically.
 
+### Package Filtering (`filterPackages.ts`)
+- Wraps `updateChecker` for batch operations across all outdated packages
+- Returns `UpdateResult[]` with name, current, latest, updateType, updated (boolean), and reason
+- Accepts optional `targetPackages` array to scope updates to specific packages
+- Used by all manager `updatePackages()` methods, dry-run, and interactive mode
+
 ## Integration Points
 - `src/commandRunner.ts` uses `execAsync` and `logger`
-- `src/managers/*/index.ts` use `updateChecker`, `logger`, `groupAndSortPackages`, `updatePackageJson`
+- `src/managers/*/index.ts` use `filterPackages`, `logger`, `groupAndSortPackages`, `updatePackageJson`
+- `src/commands/update.ts` uses `filterPackages` for dry-run and interactive mode
 - `src/commands/init.ts` uses `saveJsonConfig` and `DEFAULT_CONFIG`

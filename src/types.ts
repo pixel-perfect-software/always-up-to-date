@@ -1,9 +1,20 @@
+import type { ReleaseType } from 'semver'
+
 export type SupportedPackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 
 export interface PackageInfo {
   name: string
   current: string
   latest: string
+}
+
+export interface UpdateResult {
+  name: string
+  current: string
+  latest: string
+  updateType: ReleaseType | null
+  updated: boolean
+  reason?: string
 }
 
 export interface AlwaysUpToDateConfig {

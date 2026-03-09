@@ -8,7 +8,7 @@
   "types": "dist/index.d.ts",
   "files": ["dist/**/*", "README.md", "LICENSE"],
   "scripts": {
-    "build": "tsc && tsc-alias",
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "check-types": "tsc --noEmit",
     "format-and-lint": "biome check .",
     "format-and-lint:fix": "biome check . --write",

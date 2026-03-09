@@ -34,7 +34,6 @@ The tool is built with a modular architecture:
 - Migration rules for popular frameworks (React, Next.js, etc.)
 - GitHub integration with automated PR creation
 - Security vulnerability scanning
-- Interactive update selection
 
 ## 🚀 Quick Start
 
@@ -52,14 +51,29 @@ autd check
 autd update
 ```
 
-## 🔧 Basic Usage Examples
+## 🔧 Usage Examples
 
 ```bash
 # Check for outdated dependencies
 autd check
 
-# Update all outdated dependencies
+# Check with JSON output (useful for CI/CD pipelines)
+autd check --json
+
+# Update all eligible dependencies
 autd update
+
+# Update specific packages only
+autd update react lodash @babel/core
+
+# Preview what would be updated without making changes
+autd update --dry-run
+
+# Interactively select which packages to update
+autd update --interactive
+
+# Combine flags: dry-run specific packages with JSON output
+autd update react --dry-run --json
 
 # Get help and see all available commands
 autd help
@@ -85,10 +99,17 @@ Full support for workspaces and monorepos:
 
 ## 🛠️ Available Commands
 
-- `init` - Initialize configuration in the current directory
-- `check` - Check for outdated dependencies in your project
-- `update` - Update all outdated dependencies
-- `help` - Display help information
+| Command | Description |
+|---------|-------------|
+| `autd init` | Initialize configuration in the current directory |
+| `autd check` | Check for outdated dependencies in your project |
+| `autd check --json` | Output outdated packages as JSON |
+| `autd update` | Update all eligible dependencies |
+| `autd update [packages...]` | Update only the specified packages |
+| `autd update --dry-run` | Preview which packages would be updated |
+| `autd update -i, --interactive` | Interactively select packages to update |
+| `autd update --json` | Output update results as JSON |
+| `autd help` | Display help information |
 
 ## ⚙️ Configuration
 

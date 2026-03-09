@@ -5,6 +5,7 @@ export const execAsync = promisify(exec)
 
 export { DEFAULT_CONFIG, loadConfig, saveJsonConfig } from './config'
 export { checkIfFileExists } from './files'
+export { default as filterPackages } from './filterPackages'
 export { default as logger } from './logger'
 export type { GroupedPackages } from './packageGrouper'
 export { getSortedGroupNames, groupAndSortPackages } from './packageGrouper'

@@ -9,6 +9,8 @@ All four package managers are fully implemented with workspace support.
 ## Component-Specific Development Guidelines
 - All managers extend `CommandRunner` base class from `src/commandRunner.ts`
 - Each manager must implement: `checkPackageVersions()`, `updatePackages()`, `checkIfInWorkspace()`
+- `checkPackageVersions()` returns `Record<string, PackageInfo>` (structured data)
+- `updatePackages()` returns `UpdateResult[]` and accepts optional `targetPackages?: string[]` for scoped updates
 - The `PackageManager` factory class (`packageManager.ts`) maps `SupportedPackageManager` to concrete instances via switch statement
 
 ## Major Subsystem Organization
@@ -44,6 +46,6 @@ managers/
 
 ## Integration Points
 - `src/commands/check.ts` and `src/commands/update.ts` instantiate managers via the factory
-- `src/utils/updateChecker.ts` filters which packages to update (used inside `updatePackages()`)
+- `src/utils/filterPackages.ts` filters and classifies packages for update (used inside `updatePackages()`)
 - `src/utils/packageGrouper.ts` groups check output by scope for display
 - `src/utils/files.ts` `updatePackageJson()` writes version updates before running the manager's update command
