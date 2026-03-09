@@ -83,13 +83,13 @@ class PNPMManager extends CommandRunner {
 
       if (packagesToUpdate.length > 0) {
         if (isRunningInWorkspace) {
-          updatePNPMWorkspaceYAML(
+          await updatePNPMWorkspaceYAML(
             cwd,
             packagesToUpdate,
             outdatedPackages as Record<string, PackageInfo>,
           )
         } else {
-          updatePackageJson(
+          await updatePackageJson(
             cwd,
             packagesToUpdate,
             outdatedPackages as Record<string, PackageInfo>,

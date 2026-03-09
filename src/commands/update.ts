@@ -17,7 +17,7 @@ const update = (program: Command) =>
       const packageManagerName = detectPackageManager(workingDir)
       const packageManager = new PackageManager(packageManagerName)
 
-      packageManager.manager.updatePackages(workingDir)
+      await packageManager.manager.updatePackages(workingDir)
     })
 
 export default update

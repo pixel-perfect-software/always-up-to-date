@@ -112,7 +112,7 @@ class BunManager extends CommandRunner {
 
           // Update root dependencies (non-catalog packages)
           if (rootToUpdate.length > 0) {
-            updatePackageJson(
+            await updatePackageJson(
               cwd,
               rootToUpdate,
               outdatedPackages as Record<string, PackageInfo>,
@@ -124,7 +124,7 @@ class BunManager extends CommandRunner {
           await this.runCommand(this.packageManager, 'install', cwd)
         } else {
           // Non-catalog workspace or single package
-          updatePackageJson(
+          await updatePackageJson(
             cwd,
             packagesToUpdate,
             outdatedPackages as Record<string, PackageInfo>,

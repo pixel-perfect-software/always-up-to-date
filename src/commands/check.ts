@@ -17,7 +17,7 @@ const checkCommand = (program: Command) =>
       const packageManagerName = detectPackageManager(workingDir)
       const packageManager = new PackageManager(packageManagerName)
 
-      packageManager.manager.checkPackageVersions(workingDir)
+      await packageManager.manager.checkPackageVersions(workingDir)
     })
 
 export default checkCommand

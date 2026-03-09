@@ -81,7 +81,7 @@ class NPMManager extends CommandRunner {
         return logger.info(messages.noPackagesToUpdate)
 
       if (packagesToUpdate.length > 0) {
-        updatePackageJson(
+        await updatePackageJson(
           cwd,
           packagesToUpdate,
           outdatedPackages as Record<string, PackageInfo>,

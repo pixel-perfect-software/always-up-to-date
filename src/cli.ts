@@ -7,8 +7,12 @@
  * - help - Show this help message.
  */
 import { Command } from 'commander'
-import { checkCommand, helpCommand, updateCommand } from '@/commands'
-import initCommand from '@/commands/init'
+import {
+  checkCommand,
+  helpCommand,
+  initCommand,
+  updateCommand,
+} from '@/commands'
 import packageJson from '../package.json'
 
 // Create a program instance

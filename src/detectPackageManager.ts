@@ -27,9 +27,7 @@ const detectPackageManager = (cwd: string): SupportedPackageManager => {
   }
 
   if (!pm) {
-    console.error('No package manager detected in the current directory.')
-
-    return process.exit(1)
+    throw new Error('No package manager detected in the current directory.')
   }
 
   return pm
