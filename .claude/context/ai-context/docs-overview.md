@@ -71,8 +71,8 @@ __tests__/
 
 - **Language:** TypeScript (ES2020 target, CommonJS output)
 - **CLI Framework:** Commander.js
-- **Package Manager:** pnpm (>=10.22.0)
-- **Node:** >=22.1.0
+- **Package Manager:** pnpm (>=10.0.0)
+- **Node:** >=24.0.0
 - **Testing:** Jest + ts-jest
 - **Linting/Formatting:** Biome
 - **Path Aliases:** `@/*` -> `src/*` (resolved by tsc-alias at build)

@@ -19,4 +19,4 @@ migrator/
 
 ## Integration Points
 - Will integrate with `src/managers/` update flow to apply codemods after version bumps
-- Will use `glob` dependency for file discovery during codemod application
+- Use Node's built-in `fs.glob` / `fsPromises.glob` for file discovery during codemod application (no `glob` package needed — project requires Node >=24.0.0, where `fs.glob` is stable)

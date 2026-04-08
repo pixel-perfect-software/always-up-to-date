@@ -35,6 +35,11 @@ The tool is built with a modular architecture:
 - GitHub integration with automated PR creation
 - Security vulnerability scanning
 
+## 📋 Requirements
+
+- **Node.js** 24 or higher
+- One of: **npm**, **yarn**, **pnpm** (10+), or **bun**
+
 ## 🚀 Quick Start
 
 ```bash
