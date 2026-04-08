@@ -4,6 +4,9 @@ packages:
 allowBuilds:
   unrs-resolver: true
 overrides:
+  brace-expansion@>=4.0.0 <5.0.5: '>=5.0.5'
   diff@>=4.0.0 <4.0.4: '>=4.0.4'
   minimist@<0.2.1: '>=0.2.1'
   minimist@<0.2.4: '>=0.2.4'
+  picomatch@<2.3.2: '>=2.3.2'
+  picomatch@>=4.0.0 <4.0.4: '>=4.0.4'
