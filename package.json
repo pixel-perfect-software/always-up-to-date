@@ -6,7 +6,11 @@
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist/**/*", "README.md", "LICENSE"],
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "check-types": "tsc --noEmit",
@@ -59,7 +63,7 @@
     "checker"
   ],
   "dependencies": {
-    "@inquirer/prompts": "^8.4.1",
+    "@inquirer/prompts": "^8.4.2",
     "colorette": "^2.0.20",
     "commander": "^14.0.3",
     "semver": "^7.7.4"
@@ -67,14 +71,14 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.10",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25.5.2",
+    "@types/node": "^25.6.0",
     "@types/semver": "^7.7.1",
-    "globals": "^17.4.0",
+    "globals": "^17.5.0",
     "jest": "^30.3.0",
     "jest-coverage-badges": "^1.1.2",
     "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.16",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.3"
   }
 }
