@@ -114,8 +114,12 @@ class PNPMManager extends CommandRunner {
           await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
         }
 
+        // For workspaces (especially with catalogs), `pnpm install`
+        // re-reads both manifest and pnpm-workspace.yaml and relinks
+        // node_modules + lockfile reliably. `pnpm update -r` can miss
+        // catalog mutations, so prefer install in workspace mode.
         const command = isRunningInWorkspace
-          ? `update ${packagesToUpdate.join(' ')} -r`
+          ? 'install'
           : `update ${packagesToUpdate.join(' ')}`
 
         await this.runCommand(this.packageManager, command, cwd)

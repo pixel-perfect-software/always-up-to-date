@@ -137,6 +137,7 @@ describe('Logger', () => {
         { name: 'a', current: '1.0.0', latest: '2.0.0' },
         { name: 'looong', current: '11.22.33', latest: '11.22.34' },
       ])
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Allow here to strip ANSI color codes for testing alignment
       const stripAnsi = (s: string) => s.replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
       expect(stripAnsi(logSpy.mock.calls[0][0])).toMatch(/a\s{6}\s+1\.0\.0\s+→/)
       expect(stripAnsi(logSpy.mock.calls[1][0])).toMatch(/looong\s+11\.22\.33/)
