@@ -15,7 +15,18 @@ export interface UpdateResult {
   updateType: ReleaseType | null
   updated: boolean
   reason?: string
+  releaseAge?: number
 }
+
+export type CooldownValue = number | string
+
+export interface CooldownByType {
+  patch?: CooldownValue
+  minor?: CooldownValue
+  major?: CooldownValue
+}
+
+export type CooldownConfig = CooldownValue | CooldownByType
 
 export interface AlwaysUpToDateConfig {
   allowMinorUpdates: boolean
@@ -24,4 +35,15 @@ export interface AlwaysUpToDateConfig {
   silent: boolean
   updateAllowlist: string[]
   updateDenylist: string[]
+  cooldown: CooldownConfig
+}
+
+export interface RegistryConfig {
+  registry: string
+  scopedRegistries: Record<string, string>
+  authTokens: Record<string, string>
+  alwaysAuth?: boolean
+  strictSSL?: boolean
+  ca?: string | string[]
+  cafile?: string
 }

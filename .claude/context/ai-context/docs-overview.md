@@ -39,7 +39,7 @@ No Tier 3 documents yet. As features grow in complexity, add `CONTEXT.md` files 
 src/
   index.ts                  # Entry point (shebang, calls cli)
   cli.ts                    # Commander.js program setup, registers commands
-  types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig
+  types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
   commandRunner.ts          # Base class with runCommand() using execAsync
   detectPackageManager.ts   # Lock file detection logic
   commands/                 # CLI command definitions
@@ -52,6 +52,8 @@ src/
     CONTEXT.md
   prGenerator/              # PR automation (stub)
     CONTEXT.md
+schema/
+  config.schema.json        # JSON schema for .always-up-to-date.json (referenced via $schema)
 __tests__/
   setup.ts                  # Global test setup (console suppression)
   commandRunner.test.ts     # CommandRunner error handling tests
@@ -59,12 +61,15 @@ __tests__/
   managers/
     packageManager.test.ts  # Factory pattern tests
   utils/
-    config.test.ts          # Config loading/saving tests
+    config.test.ts          # Config loading/saving tests (incl. cooldown variants)
+    cooldown.test.ts        # Normalize/evaluate cooldown gate
+    duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests
+    filterPackages.test.ts  # Package filtering, targeting, cooldown integration
     logger.test.ts          # Logger output and quiet mode tests
+    npmrcLoader.test.ts     # .npmrc / NPM_CONFIG_* parsing
     packageGrouper.test.ts  # Package grouping tests
     updateChecker.test.ts   # Semver update logic tests
-    filterPackages.test.ts  # Package filtering and targeting tests
 ```
 
 ## Tech Stack
@@ -76,4 +81,4 @@ __tests__/
 - **Testing:** Jest + ts-jest
 - **Linting/Formatting:** Biome
 - **Path Aliases:** `@/*` -> `src/*` (resolved by tsc-alias at build)
-- **Key Dependencies:** semver, colorette, @inquirer/prompts
+- **Key Dependencies:** semver, colorette, @inquirer/prompts, npm-registry-fetch (registry metadata for cooldown), ini (.npmrc parsing)

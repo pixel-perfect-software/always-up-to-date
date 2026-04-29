@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/schema/config.schema.json",
+  "title": "Always Up To Date Config",
+  "description": "Configuration for the always-up-to-date CLI. Lives at .always-up-to-date.json in the project root.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URL of this JSON schema. Enables IDE autocomplete and validation."
+    },
+    "allowMinorUpdates": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow minor version bumps (e.g., 1.2.x → 1.3.0). Patch updates are always allowed."
+    },
+    "allowMajorUpdates": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allow major version bumps (e.g., 1.x → 2.0.0). Implies allowMinorUpdates."
+    },
+    "debug": {
+      "type": "boolean",
+      "default": false,
+      "description": "Emit additional debug logging."
+    },
+    "silent": {
+      "type": "boolean",
+      "default": false,
+      "description": "Suppress all non-error output."
+    },
+    "updateAllowlist": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Package names that are always eligible to update, regardless of allowMinor/allowMajor settings."
+    },
+    "updateDenylist": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Package names that are never updated."
+    },
+    "cooldown": {
+      "default": 0,
+      "description": "Hold off on suggesting versions newer than this. Accepts a number (days), a duration string ('1 week', '24h', '7 days'), or a per-update-type object whose values are themselves numbers or duration strings.",
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cooldown window in days (applied to every update type)."
+        },
+        {
+          "type": "string",
+          "pattern": "^\\s*\\d+(\\.\\d+)?\\s*(s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours|d|day|days|w|wk|week|weeks|mo|month|months|y|yr|year|years)?\\s*$",
+          "description": "Duration string ('1 week', '24h', '7 days'). Bare numbers are interpreted as days."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Per-update-type cooldown windows. Missing keys default to 0.",
+          "properties": {
+            "patch": { "$ref": "#/definitions/cooldownValue" },
+            "minor": { "$ref": "#/definitions/cooldownValue" },
+            "major": { "$ref": "#/definitions/cooldownValue" }
+          }
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "cooldownValue": {
+      "oneOf": [
+        { "type": "number", "minimum": 0 },
+        {
+          "type": "string",
+          "pattern": "^\\s*\\d+(\\.\\d+)?\\s*(s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours|d|day|days|w|wk|week|weeks|mo|month|months|y|yr|year|years)?\\s*$"
+        }
+      ]
+    }
+  }
+}

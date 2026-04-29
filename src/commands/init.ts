@@ -6,6 +6,7 @@ import {
   logger,
   saveJsonConfig,
 } from '@/utils'
+import { CONFIG_SCHEMA_URL } from '@/utils/config'
 
 const workingDir = process.cwd()
 
@@ -36,8 +37,12 @@ const initCommand = (program: Command) =>
         )
       }
 
-      // Create the new JSON configuration file
-      saveJsonConfig(DEFAULT_CONFIG, jsonConfigFilePath)
+      // Create the new JSON configuration file with a $schema reference
+      // for IDE autocomplete + validation.
+      saveJsonConfig(
+        { $schema: CONFIG_SCHEMA_URL, ...DEFAULT_CONFIG },
+        jsonConfigFilePath,
+      )
 
       return logger.clean(
         `  ✅ Created configuration file at ${jsonConfigFilePath}`,

@@ -1,7 +1,10 @@
 import fs from 'fs'
 import path from 'path'
-import type { AlwaysUpToDateConfig } from '@/types'
+import type { AlwaysUpToDateConfig, CooldownConfig } from '@/types'
 import { checkIfFileExists } from './files'
+
+export const CONFIG_SCHEMA_URL =
+  'https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/schema/config.schema.json'
 
 const DEFAULT_CONFIG: AlwaysUpToDateConfig = {
   allowMinorUpdates: false,
@@ -10,6 +13,29 @@ const DEFAULT_CONFIG: AlwaysUpToDateConfig = {
   silent: false,
   updateAllowlist: [],
   updateDenylist: [],
+  cooldown: 0,
+}
+
+const isValidCooldownValue = (value: unknown): boolean => {
+  if (typeof value === 'number') return Number.isFinite(value) && value >= 0
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+const parseCooldownInput = (input: unknown): CooldownConfig => {
+  if (isValidCooldownValue(input)) return input as CooldownConfig
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const obj = input as Record<string, unknown>
+    const sanitized: Partial<
+      Record<'patch' | 'minor' | 'major', number | string>
+    > = {}
+    for (const key of ['patch', 'minor', 'major'] as const) {
+      if (isValidCooldownValue(obj[key])) {
+        sanitized[key] = obj[key] as number | string
+      }
+    }
+    return sanitized
+  }
+  return DEFAULT_CONFIG.cooldown
 }
 
 /**
@@ -36,6 +62,7 @@ const loadJsonConfig = (filePath: string): AlwaysUpToDateConfig => {
       updateDenylist: Array.isArray(jsonConfig.updateDenylist)
         ? jsonConfig.updateDenylist
         : DEFAULT_CONFIG.updateDenylist,
+      cooldown: parseCooldownInput(jsonConfig.cooldown),
     }
   } catch (error) {
     throw new Error(`Failed to load JSON config from ${filePath}: ${error}`)
@@ -63,7 +90,7 @@ export const loadConfig = (
  * Save configuration to JSON format
  */
 export const saveJsonConfig = (
-  config: AlwaysUpToDateConfig,
+  config: AlwaysUpToDateConfig & { $schema?: string },
   filePath: string,
 ): void => {
   const jsonContent = JSON.stringify(config, null, 2)

@@ -57,7 +57,6 @@ const updateChecker = ({ name, current, latest }: PackageInfo): boolean => {
     }
   }
 
-  logger.skippingPackage(name, current, latest, updateType)
   return false
 }
 

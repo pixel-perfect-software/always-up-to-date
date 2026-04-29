@@ -33,6 +33,20 @@ describe('init command', () => {
     expect(mockedSaveJsonConfig).toHaveBeenCalled()
   })
 
+  it('includes a $schema reference in the generated config', async () => {
+    mockCheckIfFileExists.mockReturnValue(false)
+    await program.parseAsync(['node', 'test', 'init'])
+
+    const writtenConfig = mockedSaveJsonConfig.mock.calls[0][0] as unknown as {
+      $schema?: string
+      allowMinorUpdates: boolean
+      cooldown: number
+    }
+    expect(writtenConfig.$schema).toMatch(/config\.schema\.json$/)
+    expect(writtenConfig.allowMinorUpdates).toBe(false)
+    expect(writtenConfig.cooldown).toBe(0)
+  })
+
   it('does not create config when one already exists', async () => {
     mockCheckIfFileExists.mockReturnValue(true)
     await program.parseAsync(['node', 'test', 'init'])

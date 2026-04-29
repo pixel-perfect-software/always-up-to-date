@@ -8,6 +8,7 @@ import type {
   UpdateResult,
 } from '@/types'
 import {
+  computeReleaseAges,
   filterPackages,
   getSortedGroupNames,
   groupAndSortPackages,
@@ -21,7 +22,7 @@ class YarnManager extends CommandRunner {
   checkPackageVersions = async (
     cwd: string,
   ): Promise<Record<string, PackageInfo>> => {
-    logger.starting('Checking package versions', 'Yarn')
+    logger.starting('Checking dependencies', 'yarn')
 
     const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
     const command = isRunningInWorkspace
@@ -42,14 +43,20 @@ class YarnManager extends CommandRunner {
 
     logger.outdatedHeader()
 
+    const releaseAges = await computeReleaseAges(result, cwd)
     const groupedPackages = groupAndSortPackages(result)
     const sortedGroupNames = getSortedGroupNames(groupedPackages)
 
     sortedGroupNames.forEach((groupName) => {
       logger.packageGroupHeader(groupName)
-      groupedPackages[groupName].forEach(({ name, info }) => {
-        logger.outdatedPackageInGroup(name, info.current, info.latest)
-      })
+      logger.printOutdatedRows(
+        groupedPackages[groupName].map(({ name, info }) => ({
+          name,
+          current: info.current,
+          latest: info.latest,
+          releaseAge: releaseAges[name],
+        })),
+      )
     })
 
     return result
@@ -59,18 +66,19 @@ class YarnManager extends CommandRunner {
     cwd: string,
     targetPackages?: string[],
   ): Promise<UpdateResult[]> => {
-    logger.starting('Updating packages', 'Yarn')
-
     try {
       const outdatedPackages = await this.checkPackageVersions(cwd)
 
       if (Object.keys(outdatedPackages).length === 0) {
-        logger.allUpToDate()
+        // checkPackageVersions already printed allUpToDate.
         return []
       }
 
       const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-      const results = filterPackages(outdatedPackages, targetPackages)
+      const results = await filterPackages(outdatedPackages, {
+        targetPackages,
+        cwd,
+      })
       const packagesToUpdate = results
         .filter((r) => r.updated)
         .map((r) => r.name)
@@ -79,11 +87,17 @@ class YarnManager extends CommandRunner {
         packagesToUpdate.length === 0 &&
         Object.keys(outdatedPackages).length > 0
       ) {
-        logger.info(messages.noPackagesToUpdate)
+        logger.noPackagesToUpdate(messages.noPackagesToUpdate)
+        logger.cooldownSummary(results)
         return results
       }
 
-      logger.updatingHeader()
+      logger.updatingHeader('yarn')
+      logger.printUpdatingRows(
+        results
+          .filter((r) => r.updated)
+          .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
+      )
 
       if (packagesToUpdate.length > 0) {
         await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
@@ -95,6 +109,7 @@ class YarnManager extends CommandRunner {
         await this.runCommand(this.packageManager, command, cwd)
       }
 
+      logger.cooldownSummary(results)
       return results
     } catch {
       logger.error('An error occurred while checking for outdated packages.')
@@ -116,7 +131,7 @@ class YarnManager extends CommandRunner {
             packageJson.workspaces.packages))
 
       if (hasWorkspaces) {
-        logger.workspace('Yarn')
+        logger.workspace('yarn')
       }
 
       return !!hasWorkspaces

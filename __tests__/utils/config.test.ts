@@ -59,6 +59,58 @@ describe('loadConfig', () => {
 
     expect(() => loadConfig('/test')).toThrow('Failed to load JSON config')
   })
+
+  describe('cooldown', () => {
+    it('defaults to 0 when missing', () => {
+      mockedCheckIfFileExists.mockReturnValue(true)
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify({}))
+      expect(loadConfig('/test').cooldown).toBe(0)
+    })
+
+    it('accepts a number', () => {
+      mockedCheckIfFileExists.mockReturnValue(true)
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify({ cooldown: 7 }))
+      expect(loadConfig('/test').cooldown).toBe(7)
+    })
+
+    it('accepts a duration string', () => {
+      mockedCheckIfFileExists.mockReturnValue(true)
+      mockedFs.readFileSync.mockReturnValue(
+        JSON.stringify({ cooldown: '1 week' }),
+      )
+      expect(loadConfig('/test').cooldown).toBe('1 week')
+    })
+
+    it('accepts a per-type object with mixed numbers and strings', () => {
+      mockedCheckIfFileExists.mockReturnValue(true)
+      mockedFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          cooldown: { patch: 0, minor: '1 week', major: 30 },
+        }),
+      )
+      expect(loadConfig('/test').cooldown).toEqual({
+        patch: 0,
+        minor: '1 week',
+        major: 30,
+      })
+    })
+
+    it('drops invalid entries from the per-type object', () => {
+      mockedCheckIfFileExists.mockReturnValue(true)
+      mockedFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          cooldown: { patch: -3, minor: '1 week', major: null },
+        }),
+      )
+      expect(loadConfig('/test').cooldown).toEqual({ minor: '1 week' })
+    })
+
+    it('falls back to default for invalid scalar values', () => {
+      mockedCheckIfFileExists.mockReturnValue(true)
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify({ cooldown: -5 }))
+      expect(loadConfig('/test').cooldown).toBe(0)
+    })
+  })
 })
 
 describe('saveJsonConfig', () => {

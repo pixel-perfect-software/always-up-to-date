@@ -64,7 +64,10 @@ const dryRun = async (
 
   if (Object.keys(outdatedPackages).length === 0) return
 
-  const results = filterPackages(outdatedPackages, targetPackages)
+  const results = await filterPackages(outdatedPackages, {
+    targetPackages,
+    cwd: workingDir,
+  })
   const wouldUpdate = results.filter((r) => r.updated)
   const wouldSkip = results.filter((r) => !r.updated)
 
@@ -74,17 +77,27 @@ const dryRun = async (
   }
 
   if (wouldUpdate.length > 0) {
-    logger.info(`${wouldUpdate.length} package(s) would be updated:`)
-    for (const pkg of wouldUpdate) {
-      logger.updatingPackage(pkg.name, pkg.current, pkg.latest)
-    }
+    logger.clean(`\nWould update (${wouldUpdate.length})`)
+    logger.printUpdatingRows(
+      wouldUpdate.map((p) => ({
+        name: p.name,
+        current: p.current,
+        latest: p.latest,
+      })),
+    )
   }
 
   if (wouldSkip.length > 0) {
-    logger.info(`\n${wouldSkip.length} package(s) would be skipped:`)
-    for (const pkg of wouldSkip) {
-      logger.skippingPackage(pkg.name, pkg.current, pkg.latest, pkg.updateType)
-    }
+    logger.clean(`\nWould skip (${wouldSkip.length})`)
+    logger.printSkippedRows(
+      wouldSkip.map((p) => ({
+        name: p.name,
+        current: p.current,
+        latest: p.latest,
+        updateType: p.updateType,
+        reason: p.reason,
+      })),
+    )
   }
 }
 
@@ -96,7 +109,7 @@ const interactiveUpdate = async (
 
   if (Object.keys(outdatedPackages).length === 0) return
 
-  const results = filterPackages(outdatedPackages)
+  const results = await filterPackages(outdatedPackages, { cwd: workingDir })
   const eligible = results.filter((r) => r.updated)
 
   if (eligible.length === 0) {
