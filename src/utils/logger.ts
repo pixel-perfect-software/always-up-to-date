@@ -1,4 +1,4 @@
-import { blue, bold, gray, green, red, yellow } from 'colorette'
+import { blue, bold, cyan, gray, green, red, yellow } from 'colorette'
 import type SemVer from 'semver'
 import type { UpdateResult } from '@/types'
 import { loadConfig } from './config'
@@ -32,19 +32,19 @@ class Logger {
   }
 
   info(message: string): void {
-    if (!this.quiet) console.log(`${blue('ℹ')}  ${message}`)
+    if (!this.quiet) console.log(`${blue('ℹ️')} ${message}`)
   }
 
   success(message: string): void {
-    if (!this.quiet) console.log(`${green('✓')}  ${green(message)}`)
+    if (!this.quiet) console.log(`${green('✅')} ${green(message)}`)
   }
 
   warn(message: string): void {
-    if (!this.quiet) console.log(`${yellow('!')}  ${yellow(message)}`)
+    if (!this.quiet) console.log(`${yellow('⚠️')} ${yellow(message)}`)
   }
 
   error(message: string): void {
-    if (!this.quiet) console.log(`${red('✗')}  ${red(message)}`)
+    if (!this.quiet) console.log(`${red('❌')} ${red(message)}`)
   }
 
   /**
@@ -59,13 +59,13 @@ class Logger {
 
   workspace(manager: string): void {
     if (!this.quiet) {
-      console.log(gray(`Detected ${manager} workspace.`))
+      console.log(`${blue('🏢')} ${blue(`Detected ${manager} workspace.`)}`)
     }
   }
 
   allUpToDate(): void {
     if (!this.quiet) {
-      console.log(`\n${green('✓')}  ${green('All packages are up to date.')}`)
+      console.log(`\n${green('🎉')} ${green('All packages are up to date.')}`)
     }
   }
 
@@ -75,7 +75,7 @@ class Logger {
    */
   outdatedHeader(): void {
     if (this.quiet) return
-    console.log(`\n${yellow('▲')}  ${bold('Outdated packages found')}`)
+    console.log(`\n${yellow('📈')} ${bold('Outdated packages found')}`)
 
     const hasDeny = (config.updateDenylist?.length ?? 0) > 0
     const hasAllow = (config.updateAllowlist?.length ?? 0) > 0
@@ -93,7 +93,7 @@ class Logger {
     if (this.quiet) return
     const displayName =
       groupName === 'unscoped' ? 'Other packages' : `${groupName} packages`
-    console.log(`\n${bold(displayName)}`)
+    console.log(`\n${cyan('🏷️')}  ${bold(cyan(displayName))}`)
   }
 
   /**
@@ -110,7 +110,7 @@ class Logger {
 
   updatingHeader(manager: string): void {
     if (this.quiet) return
-    console.log(`\n${blue('↻')}  ${bold(`Updating packages with ${manager}`)}`)
+    console.log(`\n${blue('🔄')} ${bold(`Updating packages with ${manager}`)}`)
   }
 
   /**
@@ -138,7 +138,7 @@ class Logger {
 
   starting(operation: string, manager: string): void {
     if (this.quiet) return
-    console.log(`${blue('▸')}  ${operation} with ${bold(manager)}`)
+    console.log(`${blue('🚀')} ${blue(`${operation} with ${bold(manager)}`)}`)
   }
 
   clean(message: string): void {
@@ -158,7 +158,7 @@ class Logger {
   noPackagesToUpdate(body: string[] | string): void {
     if (this.quiet) return
     const lines = Array.isArray(body) ? body : [body]
-    console.log(`\n${yellow('!')}  ${bold('No packages to update')}`)
+    console.log(`\n${yellow('🤔')} ${bold('No packages to update')}`)
     for (const line of lines) {
       console.log(`   ${gray(line)}`)
     }
@@ -183,7 +183,7 @@ class Logger {
       )
     if (gated.length === 0) return
     console.log(
-      `\n${blue('◷')}  ${bold(`${pluralize(gated.length, 'package')} held by cooldown`)}`,
+      `\n${blue('⏰')} ${bold(`${pluralize(gated.length, 'package')} held by cooldown`)}`,
     )
     this.printSkippedRows(gated)
   }
