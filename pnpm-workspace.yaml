@@ -1,8 +1,10 @@
 packages:
   - "."
   - "!testRepos/**"
+
 allowBuilds:
   unrs-resolver: true
+
 catalog:
   "@inquirer/prompts": ^8.5.2
   colorette: ^2.0.20
@@ -10,7 +12,7 @@ catalog:
   ini: ^7.0.0
   npm-registry-fetch: ^20.0.1
   semver: ^7.8.5
-  "@biomejs/biome": ^2.5.3
+  "@biomejs/biome": ^2.5.5
   "@types/ini": ^4.1.1
   "@types/jest": ^30.0.0
   "@types/node": ^26.1.1
@@ -21,15 +23,28 @@ catalog:
   jest-coverage-badges: ^1.1.2
   ts-jest: ^29.4.11
   ts-node: ^10.9.2
-  tsc-alias: ^1.9.0
-  typescript: ^6.0.3
+  tsc-alias: ^1.9.1
+  typescript: ^7.0.2
+
 minimumReleaseAgeExclude:
-  - brace-expansion@5.0.6
+  - brace-expansion@1.1.16 || 2.1.2 || 5.0.6
   - form-data@4.0.6
   - '@babel/core@7.29.1'
   - js-yaml@3.15.0
+  - '@biomejs/biome@2.5.5'
+  - '@biomejs/cli-darwin-arm64@2.5.5'
+  - '@biomejs/cli-darwin-x64@2.5.5'
+  - '@biomejs/cli-linux-arm64-musl@2.5.5'
+  - '@biomejs/cli-linux-arm64@2.5.5'
+  - '@biomejs/cli-linux-x64-musl@2.5.5'
+  - '@biomejs/cli-linux-x64@2.5.5'
+  - '@biomejs/cli-win32-arm64@2.5.5'
+  - '@biomejs/cli-win32-x64@2.5.5'
+
 overrides:
   '@babel/core@<=7.29.0': ^7.29.1
+  brace-expansion@<1.1.16: ^1.1.16
+  brace-expansion@>=2.0.0 <2.1.2: ^2.1.2
   brace-expansion@>=4.0.0 <5.0.5: '>=5.0.5'
   brace-expansion@>=5.0.0 <5.0.6: ^5.0.6
   diff@>=4.0.0 <4.0.4: '>=4.0.4'
@@ -39,3 +54,4 @@ overrides:
   minimist@<0.2.4: '>=0.2.4'
   picomatch@<2.3.2: '>=2.3.2'
   picomatch@>=4.0.0 <4.0.4: '>=4.0.4'
+  typescript: 'catalog:'

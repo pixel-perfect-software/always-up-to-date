@@ -6,12 +6,7 @@
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": [
-    "dist/**/*",
-    "schema/**/*",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["dist/**/*", "schema/**/*", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "check-types": "tsc --noEmit",
@@ -48,7 +43,7 @@
   },
   "engines": {
     "node": ">=24.0.0",
-    "pnpm": ">=10.0.0"
+    "pnpm": ">=11.0.0"
   },
   "keywords": [
     "npm",

@@ -29,17 +29,12 @@ describe('parseDuration', () => {
     expect(parseDuration(7)).toBe(7)
   })
 
-  it.each([
-    undefined,
-    '',
-    'gibberish',
-    '5 fortnights',
-    -3,
-    NaN,
-    Infinity,
-  ])('returns 0 for invalid input %j', (input) => {
-    expect(parseDuration(input as never)).toBe(0)
-  })
+  it.each([undefined, '', 'gibberish', '5 fortnights', -3, NaN, Infinity])(
+    'returns 0 for invalid input %j',
+    (input) => {
+      expect(parseDuration(input as never)).toBe(0)
+    },
+  )
 })
 
 describe('formatAgeDays', () => {
