@@ -2,16 +2,18 @@ import { Command } from 'commander'
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils/config')
-
-const mockCheckIfFileExists = jest.fn()
-jest.mock('@/utils/files', () => ({
-  checkIfFileExists: mockCheckIfFileExists,
+jest.mock('@/utils/files')
+jest.mock('@/utils/registry', () => ({
+  clearRegistryCache: jest.fn(),
+  fetchReleaseTimes: jest.fn(),
 }))
 
 import initCommand from '@/commands/init'
 import { saveJsonConfig } from '@/utils/config'
+import { checkIfFileExists } from '@/utils/files'
 
 const mockedSaveJsonConfig = jest.mocked(saveJsonConfig)
+const mockCheckIfFileExists = jest.mocked(checkIfFileExists)
 
 describe('init command', () => {
   let program: Command

@@ -68,6 +68,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
+    "@swc/core": "catalog:",
+    "@swc/jest": "catalog:",
     "@types/ini": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
@@ -76,7 +78,6 @@
     "globals": "catalog:",
     "jest": "catalog:",
     "jest-coverage-badges": "catalog:",
-    "ts-jest": "catalog:",
     "ts-node": "catalog:",
     "tsc-alias": "catalog:",
     "typescript": "catalog:"

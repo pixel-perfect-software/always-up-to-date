@@ -1,42 +1,58 @@
 import { Command } from 'commander'
 
-const mockUpdatePackages = jest.fn()
-const mockCheckPackageVersions = jest.fn()
-const mockFilterPackages = jest.fn().mockReturnValue([])
-
 jest.mock('@/detectPackageManager', () => ({
   __esModule: true,
-  default: jest.fn().mockReturnValue('npm'),
+  default: jest.fn(),
 }))
 
 jest.mock('@/managers', () => ({
-  PackageManager: jest.fn().mockImplementation(() => ({
-    manager: {
-      updatePackages: mockUpdatePackages,
-      checkPackageVersions: mockCheckPackageVersions,
-    },
-  })),
+  PackageManager: jest.fn(),
 }))
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils/config')
+jest.mock('@/utils/registry', () => ({
+  clearRegistryCache: jest.fn(),
+  fetchReleaseTimes: jest.fn(),
+}))
 jest.mock('@/utils/filterPackages', () => ({
   __esModule: true,
-  default: mockFilterPackages,
+  default: jest.fn(),
 }))
 
 import updateCommand from '@/commands/update'
+import detectPackageManager from '@/detectPackageManager'
+import { PackageManager } from '@/managers'
+import filterPackages from '@/utils/filterPackages'
+
+const mockDetectPackageManager = jest.mocked(detectPackageManager)
+const mockPackageManager = jest.mocked(PackageManager)
+const mockFilterPackages = jest.mocked(filterPackages)
+
+const mockUpdatePackages = jest.fn()
+const mockCheckPackageVersions = jest.fn()
 
 describe('update command', () => {
   let program: Command
 
   beforeEach(() => {
+    mockDetectPackageManager.mockReturnValue('npm')
+    mockUpdatePackages.mockReset()
+    mockCheckPackageVersions.mockReset()
+    mockPackageManager.mockImplementation(
+      () =>
+        ({
+          manager: {
+            updatePackages: mockUpdatePackages,
+            checkPackageVersions: mockCheckPackageVersions,
+          },
+        }) as unknown as InstanceType<typeof PackageManager>,
+    )
+    mockFilterPackages.mockReset().mockResolvedValue([])
+
     program = new Command()
     program.exitOverride()
     updateCommand(program)
-    mockUpdatePackages.mockReset()
-    mockCheckPackageVersions.mockReset()
-    mockFilterPackages.mockReset().mockReturnValue([])
   })
 
   it('registers the update command', () => {
@@ -66,7 +82,7 @@ describe('update command', () => {
     mockCheckPackageVersions.mockResolvedValue({
       react: { name: 'react', current: '18.0.0', latest: '18.0.1' },
     })
-    mockFilterPackages.mockReturnValue([
+    mockFilterPackages.mockResolvedValue([
       {
         name: 'react',
         current: '18.0.0',
@@ -95,7 +111,7 @@ describe('update command', () => {
     mockCheckPackageVersions.mockResolvedValue({
       react: { name: 'react', current: '18.0.0', latest: '18.0.1' },
     })
-    mockFilterPackages.mockReturnValue(results)
+    mockFilterPackages.mockResolvedValue(results)
 
     const consoleSpy = jest.spyOn(console, 'log').mockImplementation()
     await program.parseAsync(['node', 'test', 'update', '--dry-run', '--json'])

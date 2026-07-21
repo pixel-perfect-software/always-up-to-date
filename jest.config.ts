@@ -1,10 +1,9 @@
 export default {
-  preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/__tests__'],
   testMatch: ['**/__tests__/**/*.test.ts'],
   transform: {
-    '^.+\\.ts$': ['ts-jest', { useESM: true }],
+    '^.+\\.(t|j)sx?$': '@swc/jest',
   },
   collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts'],
   coveragePathIgnorePatterns: ['node_modules/', 'index.ts'],
@@ -16,7 +15,9 @@ export default {
   clearMocks: true,
   restoreMocks: true,
   setupFiles: ['<rootDir>/__tests__/setup.ts'],
-  transformIgnorePatterns: ['node_modules/(?!(@octokit|@inquirer)/)'],
+  transformIgnorePatterns: [
+    'node_modules/(?!(?:\\.pnpm/)?(@octokit|@inquirer|commander))',
+  ],
   extensionsToTreatAsEsm: ['.ts'],
   testTimeout: 15000,
 }

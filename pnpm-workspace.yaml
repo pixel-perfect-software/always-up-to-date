@@ -3,6 +3,7 @@ packages:
   - "!testRepos/**"
 
 allowBuilds:
+  '@swc/core': true
   unrs-resolver: true
 
 catalog:
@@ -13,6 +14,8 @@ catalog:
   npm-registry-fetch: ^20.0.1
   semver: ^7.8.5
   "@biomejs/biome": ^2.5.5
+  "@swc/core": "^1.15.46"
+  "@swc/jest": "^0.2.39"
   "@types/ini": ^4.1.1
   "@types/jest": ^30.0.0
   "@types/node": ^26.1.1
@@ -21,7 +24,6 @@ catalog:
   globals: ^17.7.0
   jest: ^30.4.2
   jest-coverage-badges: ^1.1.2
-  ts-jest: ^29.4.11
   ts-node: ^10.9.2
   tsc-alias: ^1.9.1
   typescript: ^7.0.2
