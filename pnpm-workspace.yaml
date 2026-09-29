@@ -19,11 +19,11 @@ catalog:
   "@swc/jest": "^0.2.39"
   "@types/ini": ^4.1.1
   "@types/jest": ^30.0.0
-  "@types/node": ^26.6.1
+  "@types/node": ^26.6.3
   "@types/npm-registry-fetch": ^8.0.9
   "@types/semver": ^7.8.0
   globals: ^17.12.0
-  jest: ^30.5.1
+  jest: ^30.5.2
   jest-coverage-badges: ^1.1.2
   ts-node: ^10.9.2
   tsc-alias: ^1.9.5
