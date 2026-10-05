@@ -14,19 +14,19 @@ catalog:
   ini: ^7.0.0
   npm-registry-fetch: ^20.0.1
   semver: ^7.8.5
-  "@biomejs/biome": ^2.5.14
-  "@swc/core": '^1.16.2'
+  "@biomejs/biome": ^2.5.15
+  "@swc/core": '^1.16.13'
   "@swc/jest": "^0.2.39"
   "@types/ini": ^4.1.1
   "@types/jest": ^30.0.0
-  "@types/node": ^26.6.3
+  "@types/node": ^26.6.4
   "@types/npm-registry-fetch": ^8.0.9
   "@types/semver": ^7.8.0
-  globals: ^17.12.0
+  globals: ^17.13.0
   jest: ^30.5.2
   jest-coverage-badges: ^1.1.2
   ts-node: ^10.9.2
-  tsc-alias: ^1.9.5
+  tsc-alias: ^1.9.7
   typescript: ^7.0.2
 
 overrides:
