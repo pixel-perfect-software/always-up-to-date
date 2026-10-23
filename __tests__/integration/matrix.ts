@@ -77,17 +77,18 @@ export const runMatrix = (manager: Manager): void => {
   const run = selectedManagers().includes(manager) ? describe : describe.skip
 
   run(manager, () => {
-    let restoreEnv: () => void
+    let restoreEnv: (() => void) | undefined
 
     beforeAll(() => {
       assertBuilt()
-      restoreEnv = managerEnv()
+      restoreEnv = managerEnv(manager)
     })
-    afterAll(() => restoreEnv())
+    afterAll(() => restoreEnv?.())
 
     for (const layout of LAYOUTS[manager] as readonly Layout[]) {
       describe(`${manager}-${layout}`, () => {
-        let cwd: string
+        // Empty until prepareRepo returns: a failed setup has nothing to clean up.
+        let cwd = ''
         let before: { dependencies: Record<string, Maps>; catalogs: Maps }
         let moved: PlanRow[] = []
 
@@ -100,7 +101,9 @@ export const runMatrix = (manager: Manager): void => {
           ;({ cwd } = await prepareRepo(`${manager}-${layout}`))
           before = manifests()
         })
-        afterAll(() => cleanup(cwd))
+        afterAll(() => {
+          if (cwd) cleanup(cwd)
+        })
 
         it('check --json reports the installed minimums against the wanted maxima', async () => {
           expect(
@@ -159,14 +162,28 @@ export const runMatrix = (manager: Manager): void => {
             CheckRecord
           >
 
+          // Every workspace the record names is one of the repo's manifests:
+          // a format change shows up here instead of as a silent skip below.
+          const manifestPaths = Object.keys(readDependencies(cwd))
+          for (const entry of Object.values(record)) {
+            for (const { path } of entry.workspaces ?? []) {
+              expect(manifestPaths).toContain(path)
+            }
+          }
+
+          // A moved package is either gone from the record (no longer
+          // outdated) or, where it is listed, at its target.
           for (const { name, workspace, target } of moved) {
             const entry = record[name]
             if (!entry) continue
-            const current = entry.workspaces
-              ? entry.workspaces.find((w) => w.path === workspace)?.current
-              : entry.current
-            if (current !== undefined)
-              expect({ name, current }).toEqual({ name, current: target })
+            const row = entry.workspaces
+              ? entry.workspaces.find((w) => w.path === workspace)
+              : entry
+            if (row)
+              expect({ name, current: row.current }).toEqual({
+                name,
+                current: target,
+              })
           }
 
           expect(record.dayjs.current).toBe('1.11.9')

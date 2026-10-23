@@ -3,11 +3,14 @@ import os from 'os'
 import path from 'path'
 import semver from 'semver'
 import { stripVTControlCharacters } from 'util'
+import { toPosix } from '@/managers/workspaces'
 import { runProcess } from '@/utils/runProcess'
 import {
   type RangedDependency,
   rewriteBerryLock,
   rewriteBunLock,
+  rewriteNpmLock,
+  rewritePnpmLock,
   rewriteYarnV1Lock,
 } from './lockfiles'
 
@@ -54,9 +57,22 @@ export const selectedManagers = (
  * exports `npm_config_*` variables that npm and yarn read, so they go, and
  * Corepack, yarn and telemetry never prompt or run scripts. runProcess hands
  * `process.env` to every child. Returns the restore.
+ *
+ * npm's user config points at an empty file, so a developer's `~/.npmrc`
+ * (save-exact, save-prefix, a registry mirror) can't change the results; pnpm
+ * reads it too. yarn's and bun's own home config (`~/.yarnrc.yml`,
+ * `~/.bunfig.toml`) is not isolated. pnpm gets a store of its own in the temp
+ * directory (pnpm 12 reads `pnpm_config_store_dir`, not `npm_config_store_dir`):
+ * its installs would otherwise fill the global store, which CI may save in its
+ * cache.
  */
-export const managerEnv = (): (() => void) => {
+export const managerEnv = (manager: Manager): (() => void) => {
   const saved = { ...process.env }
+  const scratch = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'autd-it-env-')),
+  )
+  const userConfig = path.join(scratch, 'npmrc')
+  fs.writeFileSync(userConfig, '')
   for (const key of Object.keys(process.env)) {
     if (/^npm_/i.test(key)) delete process.env[key]
   }
@@ -67,11 +83,21 @@ export const managerEnv = (): (() => void) => {
     COREPACK_ENABLE_AUTO_PIN: '0',
     YARN_ENABLE_TELEMETRY: '0',
     YARN_ENABLE_SCRIPTS: 'false',
+    npm_config_userconfig: userConfig,
+    ...(manager === 'pnpm'
+      ? { pnpm_config_store_dir: path.join(scratch, 'pnpm-store') }
+      : {}),
   })
 
   return () => {
     for (const key of Object.keys(process.env)) delete process.env[key]
     Object.assign(process.env, saved)
+    fs.rmSync(scratch, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200,
+    })
   }
 }
 
@@ -127,8 +153,6 @@ const minimumOf = (spec: string, where: string): string | undefined => {
   )
 }
 
-const toPosix = (p: string): string => p.split(path.sep).join('/')
-
 const manifestsUnder = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name)
@@ -141,7 +165,7 @@ const manifestsUnder = (dir: string): string[] =>
   })
 
 /** The catalog entries of a pnpm-workspace.yaml, rewritten in place line by line. */
-const pinWorkspaceYaml = (
+export const pinWorkspaceYaml = (
   text: string,
   onEntry: (catalog: string, name: string, spec: string) => string | undefined,
 ): string => {
@@ -163,6 +187,7 @@ const pinWorkspaceYaml = (
       }
       if (/^\S/.test(line) && !line.startsWith('#')) {
         section = undefined
+        group = undefined
         return line
       }
       if (section === 'catalogs') {
@@ -303,7 +328,20 @@ export const prepareRepo = async (
 ): Promise<{ cwd: string; ranged: RangedDependency[] }> => {
   const manager = repo.slice(0, repo.indexOf('-')) as Manager
   const cwd = copyRepo(repo)
+  try {
+    return { cwd, ranged: await installAtMinimum(manager, repo, cwd) }
+  } catch (error) {
+    // Nobody else knows this copy: remove it (or keep it, if asked) and rethrow.
+    cleanup(cwd)
+    throw error
+  }
+}
 
+const installAtMinimum = async (
+  manager: Manager,
+  repo: string,
+  cwd: string,
+): Promise<RangedDependency[]> => {
   if (manager === 'yarn' || manager === 'berry') {
     const version = (await run(cwd, 'yarn', ['--version'])).trim()
     if (version !== YARN_VERSIONS[manager]) {
@@ -323,6 +361,7 @@ export const prepareRepo = async (
         '--ignore-scripts',
       ])
       restore()
+      rewriteLock(cwd, 'package-lock.json', rewriteNpmLock, ranged)
       break
     case 'pnpm':
       await run(cwd, 'pnpm', [
@@ -331,6 +370,15 @@ export const prepareRepo = async (
         '--ignore-scripts',
       ])
       restore()
+      rewriteLock(cwd, 'pnpm-lock.yaml', rewritePnpmLock, ranged)
+      // The check that the rewritten lockfile agrees with the manifests: a
+      // frozen install fails when it doesn't. (npm has no such command that
+      // wouldn't re-resolve; its `check` assertions catch a disagreement.)
+      await run(cwd, 'pnpm', [
+        'install',
+        '--frozen-lockfile',
+        '--ignore-scripts',
+      ])
       break
     case 'yarn':
       await run(cwd, 'yarn', [
@@ -356,7 +404,7 @@ export const prepareRepo = async (
       rewriteLock(cwd, 'bun.lock', rewriteBunLock, ranged)
       break
   }
-  return { cwd, ranged }
+  return ranged
 }
 
 /** Removes a prepared copy, unless `AUTD_INTEGRATION_KEEP=1`, which prints its path instead. */

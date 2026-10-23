@@ -21,7 +21,7 @@ export interface RangedDependency {
   installed: string
 }
 
-const escapeRegExp = (text: string): string =>
+export const escapeRegExp = (text: string): string =>
   text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const splitLines = (text: string): { lines: string[]; eol: string } => ({
@@ -217,6 +217,120 @@ export const rewriteBunLock = (
           : `catalog ${dep.catalog}`
       throw new Error(
         `bun.lock: no ${dep.name}@${dep.installed} specifier in ${where}`,
+      )
+    }
+  }
+  return out.join(eol)
+}
+
+const NPM_DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+] as const
+
+/**
+ * package-lock.json: `packages[<path>].<field>[name]` goes from the installed
+ * version to the range, where `<path>` is "" for the root and the member's
+ * path otherwise. JSON in, JSON out with npm's two-space indent and trailing
+ * newline.
+ */
+export const rewriteNpmLock = (
+  lock: string,
+  ranged: RangedDependency[],
+): string => {
+  const eol = lock.includes('\r\n') ? '\r\n' : '\n'
+  const parsed = JSON.parse(lock) as {
+    packages?: Record<string, Record<string, Record<string, string>>>
+  }
+
+  for (const dep of manifestEntries(ranged)) {
+    const key = dep.workspace === '.' ? '' : dep.workspace
+    const entry = key === undefined ? undefined : parsed.packages?.[key]
+    const field = NPM_DEPENDENCY_FIELDS.find(
+      (candidate) => entry?.[candidate]?.[dep.name] === dep.installed,
+    )
+    if (!entry || !field) {
+      throw new Error(
+        `package-lock.json: no ${dep.name}@${dep.installed} in packages["${key ?? ''}"]`,
+      )
+    }
+    entry[field][dep.name] = dep.range
+  }
+
+  const text = JSON.stringify(parsed, null, 2)
+  return `${eol === '\n' ? text : text.replaceAll('\n', eol)}${/\n$/.test(lock) ? eol : ''}`
+}
+
+const unquoteYaml = (text: string): string =>
+  text.replace(/^(['"])(.*)\1$/, '$2')
+
+/**
+ * pnpm-lock.yaml: under `importers:` -> `<path>:` (`.` for the root) the
+ * dependency's `specifier:` line goes from the installed version to the range;
+ * a catalog entry's `specifier:` under `catalogs:` -> `<catalog>` (`default`
+ * for the default one) -> `<name>:` does the same.
+ */
+export const rewritePnpmLock = (
+  lock: string,
+  ranged: RangedDependency[],
+): string => {
+  const { lines, eol } = splitLines(lock)
+  const done = new Set<RangedDependency>()
+  let top: string | undefined
+  let group: string | undefined
+  let name: string | undefined
+
+  const out = lines.map((line) => {
+    const topKey = /^([^\s#][^:]*):/.exec(line)
+    if (topKey) {
+      top = topKey[1]
+      group = undefined
+      name = undefined
+      return line
+    }
+    if (top !== 'importers' && top !== 'catalogs') return line
+
+    const groupKey = /^ {2}(\S.*):$/.exec(line)
+    if (groupKey) {
+      group = unquoteYaml(groupKey[1])
+      name = undefined
+      return line
+    }
+    const nameKey = top === 'catalogs' ? /^ {4}(\S.*):$/ : /^ {6}(\S.*):$/
+    const named = nameKey.exec(line)
+    if (named) {
+      name = unquoteYaml(named[1])
+      return line
+    }
+
+    const specifierIndent = top === 'catalogs' ? 6 : 8
+    const specifier = new RegExp(
+      `^( {${specifierIndent}}specifier: )(\\S.*)$`,
+    ).exec(line)
+    if (!specifier || name === undefined) return line
+
+    const dep = ranged.find(
+      (candidate) =>
+        candidate.name === name &&
+        candidate.installed === unquoteYaml(specifier[2]) &&
+        (top === 'catalogs'
+          ? candidate.catalog === group
+          : candidate.catalog === undefined && candidate.workspace === group),
+    )
+    if (!dep) return line
+    done.add(dep)
+    return `${specifier[1]}${dep.range}`
+  })
+
+  for (const dep of ranged) {
+    if (!done.has(dep)) {
+      const where =
+        dep.catalog === undefined
+          ? `importer ${dep.workspace}`
+          : `catalog ${dep.catalog}`
+      throw new Error(
+        `pnpm-lock.yaml: no ${dep.name} specifier ${dep.installed} in ${where}`,
       )
     }
   }

@@ -51,8 +51,10 @@ jobs:
 
   integration:
     # Real package managers against temp copies of testRepos/. One job per manager, so each
-    # installs only its own. Only the repo's pnpm store is cached (setup-node); the managers'
-    # caches for testRepos never are: each run resolves from the registry like a fresh machine.
+    # installs only its own. setup-node caches the pnpm store, which then holds only this
+    # repo's own install: the suite's pnpm installs use a store in a temp directory
+    # (pnpm_config_store_dir), and no manager's cache for testRepos is saved, so each run
+    # resolves from the registry like a fresh machine.
     strategy:
       fail-fast: false
       matrix:

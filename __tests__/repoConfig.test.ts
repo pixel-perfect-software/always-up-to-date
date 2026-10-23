@@ -1,6 +1,8 @@
 import fs from 'fs'
 import path from 'path'
+import { toPosix } from '@/managers/workspaces'
 import jestConfig from '../jest.config'
+import { escapeRegExp } from './integration/lockfiles'
 
 const repoRoot = path.resolve(__dirname, '..')
 
@@ -16,10 +18,6 @@ const sourceFiles = (dir: string): string[] =>
         ? [relative]
         : []
     })
-
-const toPosix = (p: string): string => p.split(path.sep).join('/')
-const escapeRegExp = (text: string): string =>
-  text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 // Jest substitutes <rootDir> and matches each pattern against the full path.
 // Both sides use `/`, as the patterns do, so Windows backslashes don't matter.

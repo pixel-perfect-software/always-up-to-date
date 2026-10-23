@@ -141,7 +141,10 @@ export const expectedPlan = (layout: Layout): PlanRow[] =>
  * onto 2.1.2, the version packages/a pins and the lockfile already holds:
  * `pnpm update -r ms` prints `- ms 2.1.1` / `+ ms 2.1.2` and writes `~2.1.2`,
  * with autd out of the loop. autd reports the move as not applied (it checks
- * what was installed). Observed with pnpm 12.14.0, 2026-10-23.
+ * what was installed). Observed with pnpm 12.14.0, 2026-10-23, and confirmed
+ * with a lockfile that agrees with the manifests (the harness rewrites the
+ * lockfile's specifiers and checks it with a frozen install), so the dedupe
+ * isn't an artefact of a lockfile that disagrees.
  */
 const PNPM_MS_DEDUPED: PlanRow = {
   name: 'ms',

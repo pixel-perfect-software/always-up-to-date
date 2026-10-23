@@ -8,7 +8,6 @@ on:
 # Dependabot proposes updates. Tool versions come from .tool-versions, as they do locally.
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   security-audit:
