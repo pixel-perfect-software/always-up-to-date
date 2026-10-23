@@ -57,6 +57,13 @@ const applyVersionDecorator = (
   newVersion: string,
 ): string => (decorator ? `${decorator}${newVersion}` : newVersion)
 
+/**
+ * Builds the manifest spec for a new version, keeping the decorator the
+ * current spec already has. An exact pin stays exact: no decorator is added.
+ */
+const nextVersionSpec = (currentSpec: string, newVersion: string): string =>
+  applyVersionDecorator(parseVersionString(currentSpec).decorator, newVersion)
+
 export const updatePackageJson = async (
   cwd: string,
   packagesToUpdate: string[],
@@ -72,9 +79,8 @@ export const updatePackageJson = async (
     if (packageJson?.dependencies?.[packageName]) {
       const currentVersion = packageJson.dependencies[packageName]
       if (!isWorkspaceReference(currentVersion)) {
-        const { decorator } = parseVersionString(currentVersion)
-        const newVersion = applyVersionDecorator(
-          decorator || '^', // Default to ^ if no decorator found
+        const newVersion = nextVersionSpec(
+          currentVersion,
           outdatedPackages[packageName].latest,
         )
         packageJson.dependencies[packageName] = newVersion
@@ -84,9 +90,8 @@ export const updatePackageJson = async (
     if (packageJson?.optionalDependencies?.[packageName]) {
       const currentVersion = packageJson.optionalDependencies[packageName]
       if (!isWorkspaceReference(currentVersion)) {
-        const { decorator } = parseVersionString(currentVersion)
-        const newVersion = applyVersionDecorator(
-          decorator || '^', // Default to ^ if no decorator found
+        const newVersion = nextVersionSpec(
+          currentVersion,
           outdatedPackages[packageName].latest,
         )
         packageJson.optionalDependencies[packageName] = newVersion
@@ -96,9 +101,8 @@ export const updatePackageJson = async (
     if (packageJson?.peerDependencies?.[packageName]) {
       const currentVersion = packageJson.peerDependencies[packageName]
       if (!isWorkspaceReference(currentVersion)) {
-        const { decorator } = parseVersionString(currentVersion)
-        const newVersion = applyVersionDecorator(
-          decorator || '^', // Default to ^ if no decorator found
+        const newVersion = nextVersionSpec(
+          currentVersion,
           outdatedPackages[packageName].latest,
         )
         packageJson.peerDependencies[packageName] = newVersion
@@ -108,9 +112,8 @@ export const updatePackageJson = async (
     if (packageJson?.devDependencies?.[packageName]) {
       const currentVersion = packageJson.devDependencies[packageName]
       if (!isWorkspaceReference(currentVersion)) {
-        const { decorator } = parseVersionString(currentVersion)
-        const newVersion = applyVersionDecorator(
-          decorator || '^', // Default to ^ if no decorator found
+        const newVersion = nextVersionSpec(
+          currentVersion,
           outdatedPackages[packageName].latest,
         )
         packageJson.devDependencies[packageName] = newVersion
@@ -148,12 +151,7 @@ export const updatePNPMWorkspaceYAML = async (
       const currentVersion = match[2]
       const latestVersion = outdatedPackages[packageName].latest
 
-      // Parse the current version to preserve the decorator
-      const { decorator } = parseVersionString(currentVersion)
-      const newVersion = applyVersionDecorator(
-        decorator || '^', // Default to ^ if no decorator found
-        latestVersion,
-      )
+      const newVersion = nextVersionSpec(currentVersion, latestVersion)
 
       // Update the version in the line, preserving quotes if they exist
       const hasQuotes =
@@ -189,12 +187,7 @@ export const updateBunCatalogs = async (
         const currentVersion = packageJson.catalog[packageName]
         const latestVersion = outdatedPackages[packageName].latest
 
-        // Parse version decorator (^, ~, >=, etc.)
-        const { decorator } = parseVersionString(currentVersion)
-        const newVersion = applyVersionDecorator(
-          decorator || '^', // Default to ^ if no decorator found
-          latestVersion,
-        )
+        const newVersion = nextVersionSpec(currentVersion, latestVersion)
 
         // Update the catalog entry
         packageJson.catalog[packageName] = newVersion
@@ -219,12 +212,7 @@ export const updateBunCatalogs = async (
           const currentVersion = catalog[packageName]
           const latestVersion = outdatedPackages[packageName].latest
 
-          // Parse version decorator (^, ~, >=, etc.)
-          const { decorator } = parseVersionString(currentVersion)
-          const newVersion = applyVersionDecorator(
-            decorator || '^', // Default to ^ if no decorator found
-            latestVersion,
-          )
+          const newVersion = nextVersionSpec(currentVersion, latestVersion)
 
           // Update the catalog entry
           packageJson.catalogs[catalogName][packageName] = newVersion

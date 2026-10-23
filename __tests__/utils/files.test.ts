@@ -58,9 +58,12 @@ describe('updatePackageJson', () => {
     expect(written.devDependencies.typescript).toBe('~5.5.0')
   })
 
-  it('defaults to ^ when no decorator exists', async () => {
+  it('keeps an exact pin exact in every dependency field', async () => {
     const packageJson = {
       dependencies: { react: '18.0.0' },
+      devDependencies: { react: '18.0.0' },
+      optionalDependencies: { react: '18.0.0' },
+      peerDependencies: { react: '18.0.0' },
     }
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
@@ -70,7 +73,10 @@ describe('updatePackageJson', () => {
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
     )
-    expect(written.dependencies.react).toBe('^19.0.0')
+    expect(written.dependencies.react).toBe('19.0.0')
+    expect(written.devDependencies.react).toBe('19.0.0')
+    expect(written.optionalDependencies.react).toBe('19.0.0')
+    expect(written.peerDependencies.react).toBe('19.0.0')
   })
 
   it('skips workspace references', async () => {
@@ -167,6 +173,28 @@ describe('updatePNPMWorkspaceYAML', () => {
     const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
     expect(written).toContain("'^19.0.0'")
   })
+
+  it('keeps an exact pin exact', async () => {
+    const yaml = `catalog:\n  react: 18.0.0\n  lodash: '4.17.0'`
+    mockedFs.readFileSync.mockReturnValue(yaml)
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+
+    await updatePNPMWorkspaceYAML('/test', ['react'], outdatedPackages)
+
+    const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+    expect(written).toBe(`catalog:\n  react: 19.0.0\n  lodash: '4.17.0'`)
+  })
+
+  it('keeps a quoted exact pin exact', async () => {
+    const yaml = `catalog:\n  react: '18.0.0'`
+    mockedFs.readFileSync.mockReturnValue(yaml)
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+
+    await updatePNPMWorkspaceYAML('/test', ['react'], outdatedPackages)
+
+    const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+    expect(written).toBe(`catalog:\n  react: '19.0.0'`)
+  })
 })
 
 describe('updateBunCatalogs', () => {
@@ -208,6 +236,23 @@ describe('updateBunCatalogs', () => {
     )
     expect(written.catalogs.ui.react).toBe('^19.0.0')
     expect(written.catalogs.utils.lodash).toBe('^4.18.0')
+  })
+
+  it('keeps exact pins exact in default and named catalogs', async () => {
+    const packageJson = {
+      catalog: { react: '18.0.0' },
+      catalogs: { utils: { lodash: '4.17.0' } },
+    }
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+
+    await updateBunCatalogs('/test', ['react', 'lodash'], outdatedPackages)
+
+    const written = JSON.parse(
+      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+    )
+    expect(written.catalog.react).toBe('19.0.0')
+    expect(written.catalogs.utils.lodash).toBe('4.18.0')
   })
 
   it('does not write file when no catalogs match', async () => {
