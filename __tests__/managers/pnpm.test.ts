@@ -232,8 +232,9 @@ describe('update with pnpm in a single-package project', () => {
 
     expect(read('pnpm-workspace.yaml')).toBe('catalog:\n  dayjs: 1.11.23\n')
     expect(JSON.parse(read('package.json')).dependencies.dayjs).toBe('catalog:')
+    // Not frozen: CI makes a plain `pnpm install` refuse the rewritten catalog.
     expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
-      ['install'],
+      ['install', '--no-frozen-lockfile'],
       ['update', 'react'],
     ])
   })

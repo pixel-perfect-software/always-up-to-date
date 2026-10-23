@@ -193,6 +193,13 @@ const readWorkspaceOverrides = (yaml: string): Record<string, string> => {
   return overrides
 }
 
+/**
+ * The install after autd rewrites a manifest or catalog. With `CI` set, pnpm
+ * makes a plain `install` frozen and refuses the lockfile the rewrite just
+ * made stale (ERR_PNPM_OUTDATED_LOCKFILE, ERR_PNPM_LOCKFILE_CONFIG_MISMATCH).
+ */
+const INSTALL_AFTER_WRITE = ['install', '--no-frozen-lockfile']
+
 const pnpm: ManagerAdapter = {
   name: 'pnpm',
   lockfile: 'pnpm-lock.yaml',
@@ -257,7 +264,7 @@ const pnpm: ManagerAdapter = {
         // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
         // and relinks node_modules + lockfile reliably. `pnpm update`
         // can miss catalog mutations.
-        await run(['install'], { manifestWritten })
+        await run(INSTALL_AFTER_WRITE, { manifestWritten })
       }
       if (withinRange.length > 0) {
         await run(['update', ...withinRange], { manifestWritten })
@@ -280,7 +287,7 @@ const pnpm: ManagerAdapter = {
     // `pnpm install` re-reads every manifest and pnpm-workspace.yaml and
     // relinks node_modules + lockfile reliably. `pnpm update -r` can miss
     // catalog mutations.
-    if (manifestWritten) await run(['install'], { manifestWritten })
+    if (manifestWritten) await run(INSTALL_AFTER_WRITE, { manifestWritten })
 
     // `install` leaves in-range packages where the lockfile has them.
     if (withinRange.length > 0) {

@@ -48,7 +48,10 @@ describe.each([
     exitsOne: true,
     pnpm: true,
     inRange: [['update', '-r', 'dayjs', 'ms', 'debug']],
-    beyond: [['install'], ['update', '-r', 'dayjs', 'ms', 'debug']],
+    beyond: [
+      ['install', '--no-frozen-lockfile'],
+      ['update', '-r', 'dayjs', 'ms', 'debug'],
+    ],
     writesManifests: true,
   },
   {
@@ -280,7 +283,7 @@ describe.each([
       expect(readJson('package.json').catalog.dayjs).toBe('1.11.23')
     }
     expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
-      ['install'],
+      pm === 'pnpm' ? ['install', '--no-frozen-lockfile'] : ['install'],
     ])
   })
 })
