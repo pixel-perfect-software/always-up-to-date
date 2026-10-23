@@ -1,9 +1,14 @@
 import semver from 'semver'
-import type { PackageInfo, UpdateResult } from '@/types'
+import type {
+  PackageInfo,
+  SupportedPackageManager,
+  UpdateResult,
+} from '@/types'
 import { loadConfig } from './config'
 import { evaluateCooldown, isCooldownEnabled } from './cooldown'
 import { formatAgeDays } from './duration'
 import { loadRegistryConfig } from './npmrcLoader'
+import { findControllingOverrides } from './overrides'
 import { fetchReleaseTimes } from './registry'
 import updateChecker, { policyFromConfig } from './updateChecker'
 
@@ -11,6 +16,8 @@ interface FilterPackagesOptions {
   targetPackages?: string[]
   cwd?: string
   now?: number
+  /** Whose override fields to honor; without it no package is held for one. */
+  packageManager?: SupportedPackageManager
 }
 
 /**
@@ -23,9 +30,12 @@ const filterPackages = async (
   outdatedPackages: Record<string, PackageInfo>,
   options: FilterPackagesOptions = {},
 ): Promise<UpdateResult[]> => {
-  const { targetPackages, cwd = process.cwd(), now } = options
+  const { targetPackages, cwd = process.cwd(), now, packageManager } = options
   const config = loadConfig(cwd)
   const policy = policyFromConfig(config)
+  const controlled = packageManager
+    ? findControllingOverrides(cwd, packageManager)
+    : {}
   const cooldownActive = isCooldownEnabled(config.cooldown)
   const registryConfig = cooldownActive ? loadRegistryConfig(cwd) : undefined
 
@@ -50,6 +60,24 @@ const filterPackages = async (
       }
 
       const { target, reason } = updateChecker({ ...packageInfo, name }, policy)
+
+      // The manager enforces an override whatever a rule says: a target
+      // outside its range cannot take effect. (npm requires a direct
+      // dependency's override to equal its own spec, so in-range targets pass.)
+      // A held package names the override when latest is outside it too,
+      // since that is what keeps it in place.
+      const override = controlled[name]
+      if (override && !semver.satisfies(target ?? latest, override.range)) {
+        return {
+          name,
+          current,
+          wanted,
+          latest,
+          updateType: semver.diff(current, latest),
+          updated: false,
+          reason: `controlled by ${override.field} (${override.range})`,
+        }
+      }
 
       return {
         name,

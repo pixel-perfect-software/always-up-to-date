@@ -74,6 +74,9 @@ describe.each([
   ({ pm, create, inRange, mixed, autdWritesManifest }) => {
     let cwd: string
 
+    const writeManifest = (content: Record<string, unknown>) =>
+      fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify(content))
+
     const readManifest = () =>
       JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'))
 
@@ -98,6 +101,36 @@ describe.each([
         updated: false,
         reason: 'patch beyond the range',
       })
+    })
+
+    it("holds a package its manager's override field controls", async () => {
+      // Each manager's own field, as its current version reads it.
+      const pinReact: Record<string, () => void> = {
+        npm: () =>
+          writeManifest({ ...manifest, overrides: { react: '18.2.0' } }),
+        yarn: () =>
+          writeManifest({
+            ...manifest,
+            packageManager: 'yarn@4.18.1',
+            resolutions: { react: '18.2.0' },
+          }),
+        bun: () =>
+          writeManifest({ ...manifest, overrides: { react: '18.2.0' } }),
+        pnpm: () =>
+          fs.writeFileSync(
+            path.join(cwd, 'pnpm-workspace.yaml'),
+            'overrides:\n  react: 18.2.0\n',
+          ),
+      }
+      pinReact[pm]()
+
+      const results = await create().updatePackages(cwd, undefined, outdated)
+
+      expect(results.find((r) => r.name === 'react')).toMatchObject({
+        updated: false,
+        reason: expect.stringMatching(/^controlled by /),
+      })
+      expect(mockedRunProcess).not.toHaveBeenCalled()
     })
 
     it('writes the new spec only for packages moving past their range', async () => {

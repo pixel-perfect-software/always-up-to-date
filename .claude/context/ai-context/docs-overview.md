@@ -87,6 +87,7 @@ __tests__/
     packageGrouper.test.ts  # Package grouping tests
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping
+    overrides.test.ts       # Which override keys pin a package, per manager's current version
 ```
 
 ## Tech Stack

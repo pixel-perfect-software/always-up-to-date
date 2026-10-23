@@ -1,6 +1,7 @@
 import fs from 'fs'
 
 import CommandRunner, { type SuccessCheck } from '@/commandRunner'
+import { isYarnBerry } from '@/detectPackageManager'
 import messages from '@/messages/en.json'
 import type {
   PackageInfo,
@@ -17,7 +18,7 @@ import {
   toOutdatedRow,
   toUpdatingRow,
 } from '@/utils'
-import { buildUpdateDescriptors, checkIfFileExists } from '@/utils/files'
+import { buildUpdateDescriptors } from '@/utils/files'
 
 /**
  * `yarn outdated` (v1) exits 1 whenever something is outdated, printing a
@@ -101,6 +102,7 @@ class YarnManager extends CommandRunner {
     const results = await filterPackages(outdatedPackages, {
       targetPackages,
       cwd,
+      packageManager: this.packageManager,
     })
     const { names, withinRange, beyondRange } = splitUpdates(results)
 
@@ -173,23 +175,8 @@ class YarnManager extends CommandRunner {
     }
   }
 
-  /**
-   * Yarn 2+ ("berry") is identified by the `packageManager` field when it is
-   * present, otherwise by a `.yarnrc.yml`, which v1 does not use.
-   */
-  isBerry = (cwd: string): boolean => {
-    try {
-      const packageJson = JSON.parse(
-        fs.readFileSync(`${cwd}/package.json`, 'utf8'),
-      )
-      const declared = /^yarn@(\d+)\./.exec(packageJson.packageManager ?? '')
-      if (declared) return Number(declared[1]) >= 2
-    } catch {
-      // Unreadable manifest: fall back to the rc file.
-    }
-
-    return checkIfFileExists(`${cwd}/.yarnrc.yml`)
-  }
+  /** Yarn 2+ ("berry"): see `isYarnBerry`. */
+  isBerry = isYarnBerry
 
   // Parse multiple JSON objects from yarn outdated output
   parseYarnOutdatedResult = (output: string): Record<string, PackageInfo> => {

@@ -114,6 +114,7 @@ class PNPMManager extends CommandRunner {
     const results = await filterPackages(outdatedPackages, {
       targetPackages,
       cwd,
+      packageManager: this.packageManager,
     })
     const { names, withinRange, beyondRange } = splitUpdates(results)
 

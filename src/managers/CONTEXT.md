@@ -72,6 +72,6 @@ Every parser fills `PackageInfo.wanted`, the highest version the manifest range 
 - yarn writes the manifest itself: autd passes `name@spec` descriptors from `buildUpdateDescriptors()` and never pre-writes `package.json` (v1 then fails with "Outdated lockfile")
 - v1 runs `yarn upgrade <descriptors>`, berry runs `yarn up <descriptors>`; neither has `update`. No `--recursive` on apply: v1 has no such flag and berry's rejects explicit ranges
 - A bare `yarn up name` on berry rewrites an exact pin to `^`, so descriptors always carry the spec
-- `isBerry(cwd)`: `packageManager: yarn@2+` wins; otherwise a `.yarnrc.yml` means berry
+- `isBerry(cwd)` is `isYarnBerry` from `src/detectPackageManager.ts` (also used for override detection): `packageManager: yarn@2+` wins; otherwise a `.yarnrc.yml` means berry
 - Packages missing from the root manifest are skipped with a warning: v1 `upgrade` at a workspace root adds them as root dependencies
 - Berry has no `outdated`, so discovery (and therefore `check`/`update`) does not run on berry yet
