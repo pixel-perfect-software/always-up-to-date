@@ -1,7 +1,7 @@
 # Roadmap: performance, correctness and portability
 
 Status: proposed 2026-10-23 from an analysis of v1.0.31. M0 and M1 done and closed 2026-10-23,
-not yet released; M2 in progress.
+released as 2.0.0. M2 done and closed 2026-10-23, not yet released; M3 next.
 
 Tracking: GitHub milestones M0 through M6 at
 https://github.com/pixel-perfect-software/always-up-to-date/milestones. Pull requests
@@ -86,7 +86,7 @@ Goal: the default run proposes exactly what the package manager itself would app
 Done when: on the benchmark project the default run proposes zero changes to pinned
 dependencies and the same set `npm update` would apply.
 
-### M2: One Node ecosystem (medium)
+### M2: One Node ecosystem (medium, done)
 
 Goal: adding a manager is one adapter file plus fixtures.
 
@@ -96,7 +96,8 @@ Goal: adding a manager is one adapter file plus fixtures.
   second, with a `--pm` flag to override.
 - Add yarn berry (no `outdated`; discovery comes from the pipeline, apply uses `up`).
 - Integration matrix in CI: generate lockfiles for `testRepos/` and run `check --json`
-  across npm, pnpm, yarn and bun, single, workspace and catalog layouts.
+  across npm, pnpm, yarn and bun, single, workspace and catalog layouts. Done as
+  `pnpm run test:integration`, run per manager on ubuntu and windows.
 - Direct unit tests for every parser.
 
 Done when: a new manager needs no changes outside its adapter and fixtures.
