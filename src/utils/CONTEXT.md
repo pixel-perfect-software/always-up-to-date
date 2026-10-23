@@ -8,14 +8,16 @@ Core utilities fully implemented. Central barrel export via `index.ts`.
 
 ## Component-Specific Development Guidelines
 - All exports consolidated through `src/utils/index.ts` barrel file
-- `execAsync` (promisified `exec`) is re-exported here for use by `CommandRunner`
+- `runProcess(file, args, { cwd })` is the only way to start a subprocess: `execFile` with no shell and `maxBuffer: Infinity`. On Windows, where npm/pnpm/yarn are `.cmd` shims Node only starts through cmd.exe, it runs `buildWindowsCommand()` through the shell, double-quoting arguments that contain cmd.exe operators (Windows path not covered by CI)
+- `runProcess` passes `env: process.env` explicitly; under Jest the sandbox env otherwise never reaches the child, so PATH-shim tests depend on it
 - Config uses nullish coalescing with `DEFAULT_CONFIG` for safe merging
 - Network/IO utilities (registry, npmrcLoader) must fail open — never block updates on a transient error
 
 ## Major Subsystem Organization
 ```
 utils/
-  index.ts            # Barrel: re-exports execAsync, config, cooldown, duration, logger, filterPackages, npmrcLoader, packageGrouper, registry, updateChecker, files
+  index.ts            # Barrel: re-exports runProcess, config, cooldown, duration, logger, filterPackages, npmrcLoader, packageGrouper, registry, updateChecker, files
+  runProcess.ts       # runProcess() (execFile + args, no output cap), buildWindowsCommand()
   config.ts           # loadConfig(), saveJsonConfig(), DEFAULT_CONFIG (now includes cooldown)
   cooldown.ts         # normalizeCooldown(), isCooldownEnabled(), cooldownDaysFor(), evaluateCooldown()
   duration.ts         # parseDuration() (number | '1 week' | '24h' → days), formatAgeDays(), MS_PER_DAY
@@ -74,7 +76,7 @@ Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Gr
 - Used by all manager `updatePackages()` methods, dry-run, and interactive mode
 
 ## Integration Points
-- `src/commandRunner.ts` uses `execAsync` and `logger`
+- `src/commandRunner.ts` uses `runProcess` and `logger`
 - `src/managers/*/index.ts` use `filterPackages`, `logger`, `groupAndSortPackages`, `updatePackageJson`
 - `src/commands/update.ts` uses `filterPackages` for dry-run and interactive mode
 - `src/commands/init.ts` uses `saveJsonConfig` and `DEFAULT_CONFIG`

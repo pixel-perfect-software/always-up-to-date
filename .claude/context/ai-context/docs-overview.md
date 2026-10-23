@@ -40,7 +40,7 @@ src/
   index.ts                  # Entry point (shebang, calls cli)
   cli.ts                    # Commander.js program setup, registers commands
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
-  commandRunner.ts          # Base class with runCommand() using execAsync
+  commandRunner.ts          # Base class with runCommand(pm, args, cwd, isSuccess?) using runProcess
   detectPackageManager.ts   # Lock file detection logic
   commands/                 # CLI command definitions
     CONTEXT.md
@@ -63,7 +63,9 @@ __tests__/
     npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)
   managers/
     packageManager.test.ts  # Factory pattern tests
-    npm.test.ts, pnpm.test.ts, yarn.test.ts, bun.test.ts  # outdated exit-code semantics on real output
+    npm.test.ts, pnpm.test.ts, bun.test.ts  # outdated exit-code semantics on real output
+    yarn.test.ts            # outdated exit codes, upgrade/up descriptors, berry detection
+    realSubprocess.test.ts  # Fake npm on PATH: >1 MB output, names passed as arguments (POSIX)
   utils/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants)
     cooldown.test.ts        # Normalize/evaluate cooldown gate
@@ -73,6 +75,7 @@ __tests__/
     logger.test.ts          # Logger output and quiet mode tests
     npmrcLoader.test.ts     # .npmrc / NPM_CONFIG_* parsing
     packageGrouper.test.ts  # Package grouping tests
+    runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Semver update logic tests
 ```
 

@@ -26,7 +26,7 @@ managers/
 ## Architectural Patterns
 
 ### CommandRunner Base Class (`src/commandRunner.ts`)
-- `runCommand(packageManager, command, cwd, isSuccess?)` executes `${packageManager} ${command}` via `execAsync` and returns stdout
+- `runCommand(packageManager, args, cwd, isSuccess?)` runs the manager with an argument array via `runProcess` and returns stdout. Build `args` as an array (`['update', ...names]`); shell quoting such as `'*'` must not appear in arguments
 - Success is decided by a `SuccessCheck` over `{ exitCode, stdout }`; the default is exit 0. stderr is never a failure signal (yarn v1 on Node 24 always prints a DEP0169 warning); it is logged with `logger.debug`
 - A failure throws `Command execution failed: <stderr, else stdout>`; a process with no numeric exit code (spawn failure, killed) throws the "unknown error" message
 - Each manager's `outdated` passes its own `isOutdatedReport` check, because npm, pnpm and yarn v1 exit 1 both when packages are outdated and on real errors:
@@ -51,7 +51,7 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 | npm | `package.json` `workspaces` field (array or `{packages: [...]}`) | `--workspaces` |
 | yarn | `package.json` `workspaces` field | `--recursive` (on `outdated` only) |
 | pnpm | `pnpm-workspace.yaml` file existence | `-r` |
-| bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `--filter '*'` |
+| bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `--filter *` (two arguments) |
 
 ## Integration Points
 - `src/commands/check.ts` and `src/commands/update.ts` instantiate managers via the factory

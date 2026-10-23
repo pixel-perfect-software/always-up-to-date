@@ -43,7 +43,8 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 
 **Command Runner Pattern**
 - `src/commandRunner.ts` provides the base `runCommand()` method that all package managers use
-- Executes package manager commands via `execAsync`. Success is judged per call by exit code plus parsable stdout (a `SuccessCheck`), never by stderr, which is logged at debug level
+- Executes package manager commands via `runProcess` (`src/utils/runProcess.ts`): `execFile` with an argument array, no shell, no output cap. Commands are always built as arrays, never strings
+- Success is judged per call by exit code plus parsable stdout (a `SuccessCheck`), never by stderr, which is logged at debug level
 - All manager commands go through this abstraction for consistency
 
 **Configuration System**
