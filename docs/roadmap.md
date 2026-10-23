@@ -1,6 +1,7 @@
 # Roadmap: performance, correctness and portability
 
-Status: proposed 2026-10-23 from an analysis of v1.0.31. Not started.
+Status: proposed 2026-10-23 from an analysis of v1.0.31. M0 and M1 done and closed 2026-10-23,
+not yet released; M2 in progress.
 
 Tracking: GitHub milestones M0 through M6 at
 https://github.com/pixel-perfect-software/always-up-to-date/milestones. Pull requests
@@ -53,7 +54,7 @@ re-signing: 47 ms, 62 MB. Node SEA: 65 ms, 117 MB.
 
 Sizes are rough. Order matters more than dates.
 
-### M0: Correctness floor (small)
+### M0: Correctness floor (small, done)
 
 Goal: stop doing things that break trust.
 
@@ -70,7 +71,7 @@ Goal: stop doing things that break trust.
 Done when: a pinned dependency is untouched under the default config, `autd check`
 works on yarn v1 under Node 24, and 1.5 MB of subprocess output does not crash.
 
-### M1: Respect the manifest (medium)
+### M1: Respect the manifest (medium, done)
 
 Goal: the default run proposes exactly what the package manager itself would apply.
 
