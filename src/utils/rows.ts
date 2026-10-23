@@ -22,5 +22,8 @@ export const toUpdatingRow = (result: UpdateResult): OutdatedRow => ({
   name: result.name,
   current: result.current,
   latest: result.target ?? result.latest,
-  note: result.target !== result.wanted ? 'beyond range' : undefined,
+  note:
+    [result.target !== result.wanted ? 'beyond range' : '', result.warning]
+      .filter(Boolean)
+      .join('; ') || undefined,
 })

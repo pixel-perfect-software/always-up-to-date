@@ -26,6 +26,7 @@ utils/
   updateChecker.ts    # Update policy: within range by default, beyondRange level, per-package rules (pure)
   rows.ts             # toOutdatedRow() / toUpdatingRow(): display rows (in-range note, beyond-range flag)
   overrides.ts        # findControllingOverrides(cwd, pm): packages an override pins, with field and range
+  peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, pnpm store)
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
   logger.ts           # Colored logging (colorette); setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
@@ -78,6 +79,7 @@ Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Gr
 - When cooldown is enabled (`cooldown > 0` for any update type), fetches release times from the registry for packages with a target and applies the gate
 - Returns `UpdateResult[]` with name, current, wanted, latest, `target` (when updated), updateType (`current → target`, else `current → latest`), updated, reason, and optional `releaseAge`
 - With `packageManager`, a target outside the range of an override that manager enforces is held (`controlled by <field> (<range>)`), whatever the rules say; a held package names the override when `latest` is outside it too. Fields, as the current manager versions read them (verified by real installs): npm `overrides`; yarn berry `resolutions` (yarn v1 does not apply them to a direct dependency, so nothing is held); pnpm `overrides` in pnpm-workspace.yaml (pnpm 12 ignores `pnpm.overrides` / `resolutions` in package.json); bun `overrides` and `resolutions`. `$name` references and keys that only reach another package's dependencies (`a>b`, `a/b`, objects without `.`) don't pin
+- Peer pass (`holdPeerConflicts`), when anything has a target: a target an installed package's peer range excludes is held (`peer conflict: <pkg>@<ver> needs <name> <range>`). Ranges from packages also moving in the run don't count (their new peers are unknown offline). Repeats until stable, since a hold can expose another conflict. A `latest` rule still moves, with `warning` set. Runs before cooldown, so held packages cost no network. ~22 ms for ~600 installed packages
 - `splitUpdates(results)` divides the chosen updates into `withinRange` names (target == wanted: hand to the manager, write nothing) and `beyondRange` name → version (write the manifest spec first)
 - Used by all manager `updatePackages()` methods, dry-run, and interactive mode
 
