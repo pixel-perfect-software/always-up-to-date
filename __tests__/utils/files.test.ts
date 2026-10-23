@@ -1,4 +1,5 @@
 import fs from 'fs'
+import path from 'path'
 import type { PackageInfo } from '@/types'
 import {
   checkIfFileExists,
@@ -397,6 +398,26 @@ describe('updatePNPMWorkspaceYAML', () => {
     )
   })
 
+  it('keeps CRLF line endings and changes only the catalog line', async () => {
+    const yaml = [
+      'packages:',
+      '  - "packages/*"',
+      'catalog:',
+      '  react: ^18.0.0',
+      '  lodash: ^4.17.0',
+      'overrides:',
+      '  react: ^18.0.0',
+      '',
+    ].join('\r\n')
+
+    expect(await write(yaml, { react: '19.0.0' })).toBe(
+      yaml.replace(
+        '  react: ^18.0.0\r\n  lodash',
+        '  react: ^19.0.0\r\n  lodash',
+      ),
+    )
+  })
+
   it('keeps an exact pin exact', async () => {
     const yaml = `catalog:\n  react: 18.0.0\n  lodash: '4.17.0'`
     mockedFs.readFileSync.mockReturnValue(yaml)
@@ -541,8 +562,10 @@ describe('readSpec', () => {
 describe('splitCatalogUpdates', () => {
   it('sends catalog: specs to the catalog and the rest to their own manifest', () => {
     const manifests: Record<string, unknown> = {
-      '/test/package.json': { dependencies: { dayjs: '1.11.9' } },
-      '/test/packages/a/package.json': {
+      [path.join('/test', 'package.json')]: {
+        dependencies: { dayjs: '1.11.9' },
+      },
+      [path.join('/test', 'packages/a', 'package.json')]: {
         dependencies: { dayjs: 'catalog:', ms: '2.1.2' },
       },
     }

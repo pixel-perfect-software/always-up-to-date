@@ -1,0 +1,12 @@
+{
+  "name": "@autd/b",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "commander": "catalog:tools",
+    "debug": "catalog:tools"
+  },
+  "devDependencies": {
+    "kleur": "~3.0.0"
+  }
+}

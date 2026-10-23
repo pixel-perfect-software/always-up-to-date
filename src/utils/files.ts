@@ -104,7 +104,7 @@ export const updatePackageJson = async (
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
-  const packageJsonPath = `${cwd}/package.json`
+  const packageJsonPath = path.join(cwd, 'package.json')
   const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
 
   const packageJson = JSON.parse(packageJsonContent)
@@ -202,7 +202,9 @@ export const buildUpdateDescriptors = (
   byField: Record<DescriptorField, string[]>
   notInManifest: string[]
 } => {
-  const packageJson = JSON.parse(fs.readFileSync(`${cwd}/package.json`, 'utf8'))
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'),
+  )
 
   const descriptors: string[] = []
   const byField: Record<DescriptorField, string[]> = {
@@ -252,7 +254,7 @@ export const updatePNPMWorkspaceYAML = async (
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
-  const pnpmWorkspaceYamlPath = `${cwd}/pnpm-workspace.yaml`
+  const pnpmWorkspaceYamlPath = path.join(cwd, 'pnpm-workspace.yaml')
   const lines = fs.readFileSync(pnpmWorkspaceYamlPath, 'utf8').split('\n')
 
   // The top-level key the current line sits under, and, inside `catalogs:`,
@@ -260,7 +262,7 @@ export const updatePNPMWorkspaceYAML = async (
   let block: string | undefined
   let catalogIndent: number | undefined
 
-  const updatedLines = lines.map((line) => {
+  const rewriteLine = (line: string): string => {
     if (/^\S/.test(line)) {
       if (!line.startsWith('#')) {
         block = /^(['"]?)([^'"\s:]+)\1\s*:/.exec(line)?.[2]
@@ -292,7 +294,14 @@ export const updatePNPMWorkspaceYAML = async (
 
     const newSpec = nextVersionSpec(spec, versions[name], style)
     return `${indent}${keyQuote}${name}${keyQuote}${separator}${quote}${newSpec}${quote}${rest}`
-  })
+  }
+
+  // A CRLF file keeps its `\r`: the line is rewritten without it and gets it back.
+  const updatedLines = lines.map((line) =>
+    line.endsWith('\r')
+      ? `${rewriteLine(line.slice(0, -1))}\r`
+      : rewriteLine(line),
+  )
 
   fs.writeFileSync(pnpmWorkspaceYamlPath, updatedLines.join('\n'), 'utf8')
 }
@@ -302,7 +311,7 @@ export const updateBunCatalogs = async (
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
-  const packageJsonPath = `${cwd}/package.json`
+  const packageJsonPath = path.join(cwd, 'package.json')
   const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
   const packageJson = JSON.parse(packageJsonContent)
 
@@ -372,7 +381,9 @@ export const updateBunCatalogs = async (
 export const readSpec = (dir: string, name: string): string | undefined => {
   let manifest: Record<string, Record<string, unknown> | undefined>
   try {
-    manifest = JSON.parse(fs.readFileSync(`${dir}/package.json`, 'utf8'))
+    manifest = JSON.parse(
+      fs.readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    )
   } catch {
     return undefined
   }

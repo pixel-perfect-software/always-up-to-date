@@ -7,9 +7,10 @@ coverage
 .DS_Store
 .clinerules
 
-# Ignore lock files in test repos to prevent Dependabot security alerts
-# None of these are actually used in the build, they are just there for testing purposes.
+# The integration suite generates lockfiles in temp copies of testRepos/; none are committed.
 testRepos/**/package-lock.json
 testRepos/**/yarn.lock
 testRepos/**/pnpm-lock.yaml
 testRepos/**/bun.lock
+testRepos/**/.yarn/
+testRepos/**/.pnp.*

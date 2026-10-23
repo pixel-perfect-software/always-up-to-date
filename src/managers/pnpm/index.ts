@@ -127,7 +127,7 @@ const unquote = (value: string): string =>
  * project is a workspace only when it lists at least one pattern.
  */
 const workspacePackagePatterns = (yaml: string): string[] => {
-  const lines = yaml.split('\n')
+  const lines = yaml.split(/\r?\n/)
   const start = lines.findIndex((line) => /^packages:/.test(line))
   if (start === -1) return []
 
@@ -161,7 +161,7 @@ const catalogNames = (yaml: string): string[] => {
   const names: string[] = []
   let inCatalogs = false
   let keyIndent: number | undefined
-  for (const line of yaml.split('\n')) {
+  for (const line of yaml.split(/\r?\n/)) {
     if (/^\S/.test(line)) {
       inCatalogs = /^catalogs:/.test(line)
       keyIndent = undefined
@@ -180,7 +180,7 @@ const catalogNames = (yaml: string): string[] => {
 const readWorkspaceOverrides = (yaml: string): Record<string, string> => {
   const overrides: Record<string, string> = {}
   let inBlock = false
-  for (const line of yaml.split('\n')) {
+  for (const line of yaml.split(/\r?\n/)) {
     if (/^\S/.test(line)) {
       inBlock = /^overrides:\s*$/.test(line)
       continue

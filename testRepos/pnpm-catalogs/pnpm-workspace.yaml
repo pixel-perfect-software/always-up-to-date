@@ -1,0 +1,11 @@
+packages:
+  - packages/*
+
+catalog:
+  chalk: ^4.0.0
+  ms: ~2.1.1
+
+catalogs:
+  tools:
+    commander: ^11.0.0
+    debug: ~4.3.1

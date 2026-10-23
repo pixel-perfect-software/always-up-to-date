@@ -1,0 +1,12 @@
+{
+  "name": "autd-yarn-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "description": "autd integration matrix: yarn v1, workspace",
+  "workspaces": ["packages/*"],
+  "dependencies": {
+    "dayjs": "1.11.9",
+    "ms": "~2.1.1"
+  }
+}

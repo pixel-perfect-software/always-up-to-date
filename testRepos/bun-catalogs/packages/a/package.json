@@ -1,0 +1,9 @@
+{
+  "name": "@autd/a",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "chalk": "catalog:",
+    "ms": "2.1.2"
+  }
+}

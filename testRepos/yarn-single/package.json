@@ -1,0 +1,17 @@
+{
+  "name": "autd-yarn-single",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "description": "autd integration matrix: yarn v1, single package",
+  "dependencies": {
+    "chalk": "^4.0.0",
+    "commander": "^11.0.0",
+    "dayjs": "1.11.9",
+    "debug": "~4.3.1"
+  },
+  "devDependencies": {
+    "ms": "~2.1.1",
+    "kleur": "~3.0.0"
+  }
+}

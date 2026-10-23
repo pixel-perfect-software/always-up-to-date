@@ -2,9 +2,10 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { buildWindowsCommand, runProcess } from '@/utils/runProcess'
+import { prependPath, writeNodeShim } from '../fixtures'
 
 // Real child processes: `node` itself stands in for a package manager.
-const posixIt = process.platform === 'win32' ? it.skip : it
+const windowsIt = process.platform === 'win32' ? it : it.skip
 
 describe('runProcess', () => {
   let cwd: string
@@ -29,8 +30,15 @@ describe('runProcess', () => {
     expect(stdout).toHaveLength(size)
   })
 
-  posixIt('passes arguments verbatim, with no shell in between', async () => {
-    const args = ['react@>=19.0.0', 'dayjs@^1.11.23', '$(touch pwned)', '*']
+  it('passes arguments verbatim and runs nothing they contain', async () => {
+    const args = [
+      'react@>=19.0.0',
+      'dayjs@^1.11.23',
+      '$(touch pwned)',
+      '*',
+      'a&echo pwned>pwned',
+      'b@>=1.0.0 <2.0.0',
+    ]
 
     const { stdout } = await runProcess(
       'node',
@@ -40,6 +48,39 @@ describe('runProcess', () => {
 
     expect(JSON.parse(stdout)).toEqual(args)
     expect(fs.readdirSync(cwd)).toEqual([])
+  })
+
+  windowsIt('a .cmd shim receives cmd.exe operators intact', async () => {
+    const bin = path.join(cwd, 'bin')
+    const work = path.join(cwd, 'work')
+    fs.mkdirSync(bin)
+    fs.mkdirSync(work)
+    fs.writeFileSync(
+      path.join(bin, 'print-args.js'),
+      'console.log(JSON.stringify(process.argv.slice(2)))',
+    )
+    writeNodeShim(bin, 'print-args', 'print-args.js')
+    const restorePath = prependPath(bin)
+    const args = [
+      'upgrade',
+      'dayjs@^1.11.23',
+      'react@>=19.0.0',
+      'left-pad@>=1.0.0 <2.0.0',
+      'ms@1 || 2',
+      'c@(1)',
+      'a&echo pwned>pwned',
+      'ms@2.1.3',
+      '*',
+    ]
+
+    try {
+      const { stdout } = await runProcess('print-args', args, { cwd: work })
+
+      expect(JSON.parse(stdout)).toEqual(args)
+      expect(fs.readdirSync(work)).toEqual([])
+    } finally {
+      restorePath()
+    }
   })
 
   it('rejects with the exit code and both streams on a non-zero exit', async () => {

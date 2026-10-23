@@ -123,7 +123,7 @@ describe('readWorkspaceManifests', () => {
 
   it('skips symlinked directories', () => {
     pkg('real')
-    fs.symlinkSync(path.join(cwd, 'real'), path.join(cwd, 'link'))
+    fs.symlinkSync(path.join(cwd, 'real'), path.join(cwd, 'link'), 'junction')
 
     expect(paths(['*'])).toEqual(['.', 'real'])
   })

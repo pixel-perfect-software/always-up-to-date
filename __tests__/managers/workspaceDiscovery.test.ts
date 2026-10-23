@@ -102,9 +102,11 @@ describe.each([
       cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-ws-discovery-${pm}-`))
       writeWorkspaceProject(cwd, { pnpm: usesPnpm })
       mockedRunProcess.mockImplementation(async (_file, args) => {
+        // The temp dir goes into JSON strings: escaped, since a Windows
+        // path holds backslashes.
         const stdout = readFixture(
           compatible && args.includes('--compatible') ? compatible : report,
-        ).replaceAll('/project', cwd)
+        ).replaceAll('/project', JSON.stringify(cwd).slice(1, -1))
         if (!exitsOne) return { stdout, stderr: '' }
         throw exitError(1, stdout, '')
       })

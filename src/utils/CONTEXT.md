@@ -8,7 +8,7 @@ Core utilities fully implemented. Central barrel export via `index.ts`.
 
 ## Component-Specific Development Guidelines
 - All exports consolidated through `src/utils/index.ts` barrel file
-- `runProcess(file, args, { cwd })` is the only way to start a subprocess: `execFile` with no shell and `maxBuffer: Infinity`. On Windows, where npm/pnpm/yarn are `.cmd` shims Node only starts through cmd.exe, it runs `buildWindowsCommand()` through the shell, double-quoting arguments that contain cmd.exe operators (Windows path not covered by CI)
+- `runProcess(file, args, { cwd })` is the only way to start a subprocess: `execFile` with no shell and `maxBuffer: Infinity`. On Windows, where npm/pnpm/yarn are `.cmd` shims Node only starts through cmd.exe, it runs `buildWindowsCommand()` through the shell, double-quoting arguments that contain cmd.exe operators (the windows-latest CI jobs cover it: the `.cmd` shim test in runProcess.test.ts, realSubprocess.test.ts through `npm.cmd`, and the integration matrix against real npm, pnpm, yarn and bun on Windows)
 - `runProcess` passes `env: process.env` explicitly; under Jest the sandbox env otherwise never reaches the child, so PATH-shim tests depend on it
 - Config uses nullish coalescing with `DEFAULT_CONFIG` for safe merging
 - Network/IO utilities (registry, npmrcLoader) must fail open — never block updates on a transient error

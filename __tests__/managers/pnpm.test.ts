@@ -151,6 +151,44 @@ describe('pnpm.readWorkspace', () => {
     expect(pnpm.readWorkspace(cwd).catalogs).toEqual(catalogs)
   })
 
+  // Git for Windows can hand out CRLF files; every line reader copes.
+  it('reads packages, catalogs and overrides from a CRLF file', () => {
+    writeWorkspaceYaml(
+      [
+        'packages:',
+        "  - 'packages/*'",
+        '  - apps/*',
+        '',
+        'catalog:',
+        '  ms: ~2.1.1',
+        '',
+        'catalogs:',
+        '  tools:',
+        '    debug: ~4.3.1',
+        '',
+        'overrides:',
+        '  ms: 2.1.2',
+        '',
+      ].join('\r\n'),
+    )
+    fs.mkdirSync(path.join(cwd, 'packages', 'a'), { recursive: true })
+    fs.writeFileSync(path.join(cwd, 'packages', 'a', 'package.json'), '{}')
+
+    const workspace = pnpm.readWorkspace(cwd)
+
+    expect(workspace.isWorkspace).toBe(true)
+    expect(workspace.catalogs).toEqual(['catalog', 'tools'])
+    expect(workspace.manifests.map((manifest) => manifest.path)).toContain(
+      'packages/a',
+    )
+    expect(pnpm.overrides(cwd)).toEqual({
+      ms: {
+        field: 'overrides in pnpm-workspace.yaml',
+        range: '2.1.2',
+      },
+    })
+  })
+
   it('discovers without -r when the file only holds settings', async () => {
     writeWorkspaceYaml('onlyBuiltDependencies: []\n')
     mockedRunProcess.mockResolvedValue({ stdout: '{}', stderr: '' })

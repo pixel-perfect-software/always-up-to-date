@@ -2,6 +2,10 @@ export default {
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/__tests__'],
   testMatch: ['**/__tests__/**/*.test.ts'],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '<rootDir>/__tests__/integration/',
+  ],
   transform: {
     '^.+\\.(t|j)sx?$': '@swc/jest',
   },

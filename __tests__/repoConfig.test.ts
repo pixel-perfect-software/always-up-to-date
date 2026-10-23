@@ -1,6 +1,8 @@
 import fs from 'fs'
 import path from 'path'
+import { toPosix } from '@/managers/workspaces'
 import jestConfig from '../jest.config'
+import { escapeRegExp } from './integration/lockfiles'
 
 const repoRoot = path.resolve(__dirname, '..')
 
@@ -18,11 +20,12 @@ const sourceFiles = (dir: string): string[] =>
     })
 
 // Jest substitutes <rootDir> and matches each pattern against the full path.
+// Both sides use `/`, as the patterns do, so Windows backslashes don't matter.
 const isIgnoredForCoverage = (file: string): boolean =>
   jestConfig.coveragePathIgnorePatterns.some((pattern) =>
-    new RegExp(pattern.replace('<rootDir>', repoRoot)).test(
-      path.join(repoRoot, file),
-    ),
+    new RegExp(
+      pattern.replace('<rootDir>', escapeRegExp(toPosix(repoRoot))),
+    ).test(toPosix(path.join(repoRoot, file))),
   )
 
 describe('coverage configuration', () => {
@@ -68,5 +71,46 @@ describe('CI workflow', () => {
 
   it('runs Biome', () => {
     expect(workflow).toMatch(/^\s+run: pnpm run format-and-lint\s*$/m)
+  })
+
+  it('runs the unit suite on Linux and Windows', () => {
+    expect(workflow).toMatch(/os: \[ubuntu-latest, windows-latest\]/)
+  })
+
+  it('runs the integration matrix per manager in CI', () => {
+    expect(workflow).toContain('pm: [npm, pnpm, yarn, berry, bun]')
+    expect(workflow).toMatch(/^\s+run: pnpm run test:integration\s*$/m)
+  })
+})
+
+describe('integration matrix', () => {
+  it('stays out of pnpm test', () => {
+    expect(jestConfig.testPathIgnorePatterns).toContain(
+      '<rootDir>/__tests__/integration/',
+    )
+  })
+})
+
+describe('workflows', () => {
+  const workflowDir = path.join(repoRoot, '.github/workflows')
+
+  it('pins every action to a release commit', () => {
+    const unpinned = fs
+      .readdirSync(workflowDir)
+      .flatMap((file) =>
+        fs
+          .readFileSync(path.join(workflowDir, file), 'utf8')
+          .split(/\r?\n/)
+          .filter((line) => /\buses:/.test(line))
+          .map((line) => ({ file, line: line.trim() })),
+      )
+      .filter(
+        ({ line }) =>
+          !/uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$/.test(
+            line,
+          ),
+      )
+
+    expect(unpinned).toEqual([])
   })
 })
