@@ -18,6 +18,7 @@ import {
   toUpdatingRow,
 } from '@/utils'
 import { updatePackageJson } from '@/utils/files'
+import { readSaveStyle } from '@/utils/saveStyle'
 
 /**
  * `npm outdated` exits 1 whenever something is outdated. It also exits 1 on
@@ -124,7 +125,13 @@ class NPMManager extends CommandRunner {
       // npm installs the highest version each range allows. Only packages
       // moving past their range need their manifest spec rewritten first.
       const manifestWritten = Object.keys(beyondRange).length > 0
-      if (manifestWritten) await updatePackageJson(cwd, beyondRange)
+      if (manifestWritten) {
+        await updatePackageJson(
+          cwd,
+          beyondRange,
+          readSaveStyle(cwd, this.packageManager),
+        )
+      }
 
       const args = isRunningInWorkspace
         ? ['update', ...names, '--workspaces']

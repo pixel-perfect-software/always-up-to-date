@@ -1,5 +1,7 @@
 import fs from 'fs'
+import semver from 'semver'
 import type { PackageInfo } from '@/types'
+import { DEFAULT_SAVE_STYLE, type SaveStyle } from './saveStyle'
 
 export const checkIfFileExists = (filePath: string): boolean => {
   try {
@@ -58,16 +60,35 @@ const applyVersionDecorator = (
 ): string => (decorator ? `${decorator}${newVersion}` : newVersion)
 
 /**
- * Builds the manifest spec for a new version, keeping the decorator the
- * current spec already has. An exact pin stays exact: no decorator is added.
+ * Builds the manifest spec for a new version:
+ * - a single comparator (`^1.2.3`, `~1.2.3`, `1.2.3`) keeps its decorator,
+ *   so an exact pin stays exact and no decorator is added
+ * - an `npm:` alias keeps the alias and rewrites the spec inside it
+ * - a spec that cannot keep its shape (`1.x`, `*`, `>=1 <2`, `^1 || ^2`) is
+ *   written the way the project's manager writes a new entry (`style`)
+ * - a git, file or URL spec is left alone
  */
-const nextVersionSpec = (currentSpec: string, newVersion: string): string =>
-  applyVersionDecorator(parseVersionString(currentSpec).decorator, newVersion)
+const nextVersionSpec = (
+  currentSpec: string,
+  newVersion: string,
+  style: SaveStyle = DEFAULT_SAVE_STYLE,
+): string => {
+  const alias = /^npm:((?:@[^/@]+\/)?[^@]+)@(.+)$/.exec(currentSpec)
+  if (alias) {
+    return `npm:${alias[1]}@${nextVersionSpec(alias[2], newVersion, style)}`
+  }
+  if (/[:/#]/.test(currentSpec)) return currentSpec
+
+  const { decorator, version } = parseVersionString(currentSpec)
+  if (semver.valid(version)) return applyVersionDecorator(decorator, newVersion)
+  return style.exact ? newVersion : `${style.prefix}${newVersion}`
+}
 
 /** Moves each named entry to its new version, keeping its decorator. */
 export const updatePackageJson = async (
   cwd: string,
   versions: Record<string, string>,
+  style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
   const packageJsonPath = `${cwd}/package.json`
   const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
@@ -82,6 +103,7 @@ export const updatePackageJson = async (
         const newVersion = nextVersionSpec(
           currentVersion,
           versions[packageName],
+          style,
         )
         packageJson.dependencies[packageName] = newVersion
       }
@@ -93,6 +115,7 @@ export const updatePackageJson = async (
         const newVersion = nextVersionSpec(
           currentVersion,
           versions[packageName],
+          style,
         )
         packageJson.optionalDependencies[packageName] = newVersion
       }
@@ -104,6 +127,7 @@ export const updatePackageJson = async (
         const newVersion = nextVersionSpec(
           currentVersion,
           versions[packageName],
+          style,
         )
         packageJson.peerDependencies[packageName] = newVersion
       }
@@ -115,6 +139,7 @@ export const updatePackageJson = async (
         const newVersion = nextVersionSpec(
           currentVersion,
           versions[packageName],
+          style,
         )
         packageJson.devDependencies[packageName] = newVersion
       }
@@ -142,7 +167,12 @@ export const buildUpdateDescriptors = (
   {
     withinRange = [],
     newVersions = {},
-  }: { withinRange?: string[]; newVersions?: Record<string, string> },
+    style = DEFAULT_SAVE_STYLE,
+  }: {
+    withinRange?: string[]
+    newVersions?: Record<string, string>
+    style?: SaveStyle
+  },
 ): { descriptors: string[]; notInManifest: string[] } => {
   const packageJson = JSON.parse(fs.readFileSync(`${cwd}/package.json`, 'utf8'))
 
@@ -162,7 +192,7 @@ export const buildUpdateDescriptors = (
     if (currentVersion) {
       const newVersion = newVersions[packageName]
       const spec = newVersion
-        ? nextVersionSpec(currentVersion, newVersion)
+        ? nextVersionSpec(currentVersion, newVersion, style)
         : currentVersion
       descriptors.push(`${packageName}@${spec}`)
     } else {
@@ -176,6 +206,7 @@ export const buildUpdateDescriptors = (
 export const updatePNPMWorkspaceYAML = async (
   cwd: string,
   versions: Record<string, string>,
+  style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
   const pnpmWorkspaceYamlPath = `${cwd}/pnpm-workspace.yaml`
   const pnpmWorkspaceYamlContent = fs.readFileSync(
@@ -195,7 +226,7 @@ export const updatePNPMWorkspaceYAML = async (
       const currentVersion = match[2]
       const targetVersion = versions[packageName]
 
-      const newVersion = nextVersionSpec(currentVersion, targetVersion)
+      const newVersion = nextVersionSpec(currentVersion, targetVersion, style)
 
       // Update the version in the line, preserving quotes if they exist
       const hasQuotes =
@@ -216,6 +247,7 @@ export const updatePNPMWorkspaceYAML = async (
 export const updateBunCatalogs = async (
   cwd: string,
   versions: Record<string, string>,
+  style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
   const packageJsonPath = `${cwd}/package.json`
   const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
@@ -230,7 +262,7 @@ export const updateBunCatalogs = async (
         const currentVersion = packageJson.catalog[packageName]
         const targetVersion = versions[packageName]
 
-        const newVersion = nextVersionSpec(currentVersion, targetVersion)
+        const newVersion = nextVersionSpec(currentVersion, targetVersion, style)
 
         // Update the catalog entry
         packageJson.catalog[packageName] = newVersion
@@ -255,7 +287,11 @@ export const updateBunCatalogs = async (
           const currentVersion = catalog[packageName]
           const targetVersion = versions[packageName]
 
-          const newVersion = nextVersionSpec(currentVersion, targetVersion)
+          const newVersion = nextVersionSpec(
+            currentVersion,
+            targetVersion,
+            style,
+          )
 
           // Update the catalog entry
           packageJson.catalogs[catalogName][packageName] = newVersion

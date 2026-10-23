@@ -56,21 +56,26 @@ const hostFromAuthKey = (key: string): string | undefined => {
 }
 
 /**
+ * The merged .npmrc settings, as npm resolves them. Precedence (high → low):
+ * NPM_CONFIG_* env vars → project .npmrc → user ~/.npmrc.
+ */
+export const loadNpmrc = (cwd: string): Record<string, unknown> => ({
+  ...readNpmrc(path.join(os.homedir(), '.npmrc')),
+  ...readNpmrc(path.join(cwd, '.npmrc')),
+  ...collectEnvOverrides(),
+})
+
+/** A boolean .npmrc value (`true` / `false`, as a string or a boolean). */
+export const npmrcBoolean = (value: unknown): boolean | undefined =>
+  boolValue(value)
+
+/**
  * Loads .npmrc-style config the way npm/pnpm/yarn-classic/bun do for the
- * registry/auth fields we care about. Precedence (high → low): NPM_CONFIG_*
- * env vars → project .npmrc → user ~/.npmrc. Yarn berry's .yarnrc.yml and
- * Bun's bunfig.toml are not yet read.
+ * registry/auth fields we care about (see `loadNpmrc` for precedence). Yarn
+ * berry's .yarnrc.yml and Bun's bunfig.toml are not yet read.
  */
 export const loadRegistryConfig = (cwd: string): RegistryConfig => {
-  const projectConfig = readNpmrc(path.join(cwd, '.npmrc'))
-  const userConfig = readNpmrc(path.join(os.homedir(), '.npmrc'))
-  const envConfig = collectEnvOverrides()
-
-  const merged: Record<string, unknown> = {
-    ...userConfig,
-    ...projectConfig,
-    ...envConfig,
-  }
+  const merged = loadNpmrc(cwd)
 
   const registry = stringValue(merged.registry) ?? 'https://registry.npmjs.org/'
 

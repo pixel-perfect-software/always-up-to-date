@@ -146,6 +146,83 @@ describe('updatePackageJson', () => {
     expect(written.peerDependencies.react).toBe('^19.0.0')
   })
 
+  describe('specs that cannot keep their shape', () => {
+    const write = (spec: string) => {
+      mockedFs.readFileSync.mockReturnValue(
+        JSON.stringify({ dependencies: { react: spec } }),
+      )
+      mockedFs.writeFileSync.mockImplementation(() => undefined)
+    }
+    const written = () =>
+      JSON.parse((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1])
+        .dependencies.react
+
+    it.each([
+      ['1.x', '^19.0.0'],
+      ['*', '^19.0.0'],
+      ['>=18.0.0 <19.0.0', '^19.0.0'],
+      ['^17.0.0 || ^18.0.0', '^19.0.0'],
+    ])('writes %s with the save prefix', async (spec, expected) => {
+      write(spec)
+
+      await updatePackageJson('/test', { react: '19.0.0' })
+
+      expect(written()).toBe(expected)
+    })
+
+    it('writes an exact version when the project saves exact', async () => {
+      write('1.x')
+
+      await updatePackageJson(
+        '/test',
+        { react: '19.0.0' },
+        { exact: true, prefix: '^' },
+      )
+
+      expect(written()).toBe('19.0.0')
+    })
+
+    it('uses the configured prefix', async () => {
+      write('>=18.0.0 <19.0.0')
+
+      await updatePackageJson(
+        '/test',
+        { react: '19.0.0' },
+        { exact: false, prefix: '~' },
+      )
+
+      expect(written()).toBe('~19.0.0')
+    })
+
+    it('keeps the decorator of a single comparator, ignoring the save style', async () => {
+      write('~18.0.0')
+
+      await updatePackageJson(
+        '/test',
+        { react: '19.0.0' },
+        { exact: true, prefix: '^' },
+      )
+
+      expect(written()).toBe('~19.0.0')
+    })
+
+    it('rewrites the version inside an npm: alias, keeping the alias', async () => {
+      write('npm:preact@^10.0.0')
+
+      await updatePackageJson('/test', { react: '10.5.0' })
+
+      expect(written()).toBe('npm:preact@^10.5.0')
+    })
+
+    it('leaves a git or file spec alone', async () => {
+      write('github:facebook/react#v18.2.0')
+
+      await updatePackageJson('/test', { react: '19.0.0' })
+
+      expect(written()).toBe('github:facebook/react#v18.2.0')
+    })
+  })
+
   it('handles >= version decorator', async () => {
     const packageJson = {
       dependencies: { react: '>=18.0.0' },

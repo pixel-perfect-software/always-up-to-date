@@ -18,6 +18,7 @@ import {
   toUpdatingRow,
 } from '@/utils'
 import { updatePackageJson, updatePNPMWorkspaceYAML } from '@/utils/files'
+import { readSaveStyle } from '@/utils/saveStyle'
 
 /**
  * `pnpm outdated` exits 1 whenever something is outdated. On real errors it
@@ -141,8 +142,9 @@ class PNPMManager extends CommandRunner {
           // Run both rewrites — each is a no-op for entries it doesn't
           // own, and updatePackageJson skips `catalog:` / `workspace:`
           // refs so it can't clobber catalog references.
-          await updatePNPMWorkspaceYAML(cwd, beyondRange)
-          await updatePackageJson(cwd, beyondRange)
+          const style = readSaveStyle(cwd, this.packageManager)
+          await updatePNPMWorkspaceYAML(cwd, beyondRange, style)
+          await updatePackageJson(cwd, beyondRange, style)
 
           // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
           // and relinks node_modules + lockfile reliably. `pnpm update -r`
@@ -163,7 +165,13 @@ class PNPMManager extends CommandRunner {
           )
         }
       } else {
-        if (manifestWritten) await updatePackageJson(cwd, beyondRange)
+        if (manifestWritten) {
+          await updatePackageJson(
+            cwd,
+            beyondRange,
+            readSaveStyle(cwd, this.packageManager),
+          )
+        }
 
         await this.runStep(
           'apply',

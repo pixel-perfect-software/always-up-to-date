@@ -22,6 +22,7 @@ import {
   updateBunCatalogs,
   updatePackageJson,
 } from '@/utils/files'
+import { readSaveStyle } from '@/utils/saveStyle'
 
 class BunManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = 'bun'
@@ -119,11 +120,19 @@ class BunManager extends CommandRunner {
         }
 
         if (Object.keys(catalogVersions).length > 0) {
-          await updateBunCatalogs(cwd, catalogVersions)
+          await updateBunCatalogs(
+            cwd,
+            catalogVersions,
+            readSaveStyle(cwd, this.packageManager),
+          )
         }
 
         if (Object.keys(rootVersions).length > 0) {
-          await updatePackageJson(cwd, rootVersions)
+          await updatePackageJson(
+            cwd,
+            rootVersions,
+            readSaveStyle(cwd, this.packageManager),
+          )
         }
 
         if (manifestWritten) {
@@ -143,7 +152,13 @@ class BunManager extends CommandRunner {
           )
         }
       } else {
-        if (manifestWritten) await updatePackageJson(cwd, beyondRange)
+        if (manifestWritten) {
+          await updatePackageJson(
+            cwd,
+            beyondRange,
+            readSaveStyle(cwd, this.packageManager),
+          )
+        }
 
         const args = isWorkspace
           ? ['update', ...names, '--filter', '*']

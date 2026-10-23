@@ -171,7 +171,7 @@ An update that an installed package's peer range would reject is held too, namin
 
 A package your package manager pins with an override is held when the update would leave the override's range, with the reason `controlled by …`: npm `overrides`, yarn berry `resolutions`, pnpm `overrides` in `pnpm-workspace.yaml`, and bun `overrides` or `resolutions`.
 
-When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"` becomes `"^19.3.1"` and `"1.11.9"` becomes `"1.11.23"`. Run `autd update --dry-run` to see where each package would move, or why it is held.
+When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"` becomes `"^19.3.1"` and `"1.11.9"` becomes `"1.11.23"`. A spec that can't keep its shape, such as `"3.x"` or `">=4 <5"`, is written the way your package manager writes a new dependency: `^` unless you set `save-exact` / `save-prefix` (npm), `saveExact` / `savePrefix` (pnpm), `defaultSemverRangePrefix` (yarn) or `exact` (bun). Run `autd update --dry-run` to see where each package would move, or why it is held.
 
 ### Older config files
 
