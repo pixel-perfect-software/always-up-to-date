@@ -112,4 +112,6 @@ Berry has no `outdated` (`yarn outdated` runs a script of that name), so v1's pa
 `pnpm run test:integration` runs the built CLI against every manager on temp copies of `testRepos/<manager>-<layout>`: each range installed at its minimum, ranges restored, the lockfile rewritten to agree. It asserts autd's own output (never the manager's) against values derived from the ranges. Manager behavior it has observed and asserts, as per-manager overrides in `expectations.ts`:
 - pnpm, in a workspace or with catalogs, dedupes the root's `ms` (`~2.1.1`) onto 2.1.2, which a member pins: `pnpm update -r ms` writes `~2.1.2`, and autd reports the row `not applied by pnpm (installed 2.1.2)`
 - pnpm and bun raise range floors on `update`; npm, yarn v1 and berry leave package.json alone (see the apply notes above)
+- bun 1.4.0 raises floors in package.json but leaves `catalog`/`catalogs` ranges as written; pnpm 12 raises its catalog ranges too
+- It found two autd bugs, fixed in #59's branch: yarn v1 member devDependencies duplicated into `dependencies` (now `-D`), and bun catalog rows (`catalog (<ws>)`) failing discovery
 

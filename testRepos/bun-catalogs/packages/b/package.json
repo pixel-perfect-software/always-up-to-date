@@ -7,6 +7,6 @@
     "debug": "catalog:tools"
   },
   "devDependencies": {
-    "uuid": "~9.0.0"
+    "kleur": "~3.0.0"
   }
 }

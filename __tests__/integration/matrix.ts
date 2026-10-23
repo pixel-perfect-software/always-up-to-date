@@ -8,6 +8,7 @@ import {
   type Layout,
   type PlanRow,
   raiseFloors,
+  rewritesCatalogRanges,
   rewritesRanges,
 } from './expectations'
 import {
@@ -141,12 +142,14 @@ export const runMatrix = (manager: Manager): void => {
             ),
           )
           expect(after.catalogs).toEqual(
-            Object.fromEntries(
-              Object.entries(before.catalogs).map(([name, map]) => [
-                name,
-                raiseFloors(map, floors),
-              ]),
-            ),
+            rewritesCatalogRanges(manager)
+              ? Object.fromEntries(
+                  Object.entries(before.catalogs).map(([name, map]) => [
+                    name,
+                    raiseFloors(map, floors),
+                  ]),
+                )
+              : before.catalogs,
           )
         })
 

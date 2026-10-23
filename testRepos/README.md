@@ -19,7 +19,7 @@ The sets are frozen on purpose: they must resolve the same way for as long as po
   stay on lines that exclude the September 2025 malicious releases.
 - Lockfiles are generated in the temp copy and never committed (`.gitignore` covers them).
 
-Frozen maxima: chalk 4.1.2, commander 11.1.0, debug 4.3.7, uuid 9.0.1, ms 2.1.3. Each
+Frozen maxima: chalk 4.1.2, commander 11.1.0, debug 4.3.7, kleur 3.0.3, ms 2.1.3. Each
 package appears in at most two manifests, never at the same installed version. `dayjs` is
 an exact pin at the root only, and `ms` is `~2.1.1` at the root beside `2.1.2` in `@autd/a`.
 

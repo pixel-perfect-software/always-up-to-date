@@ -42,8 +42,8 @@ export const expectedCheck = (layout: Layout): Record<string, CheckRecord> => {
       commander: { current: '11.0.0', wanted: '11.1.0' },
       dayjs: { current: '1.11.9', wanted: '1.11.9' },
       debug: { current: '4.3.1', wanted: '4.3.7' },
+      kleur: { current: '3.0.0', wanted: '3.0.3' },
       ms: { current: '2.1.1', wanted: '2.1.3' },
-      uuid: { current: '9.0.0', wanted: '9.0.1' },
     }
   }
   const at = (path: string, current: string, wanted: string) => ({
@@ -81,10 +81,10 @@ export const expectedCheck = (layout: Layout): Record<string, CheckRecord> => {
         at('packages/a', '2.1.2', '2.1.2'),
       ],
     },
-    uuid: {
-      current: '9.0.0',
-      wanted: '9.0.1',
-      workspaces: [at('packages/b', '9.0.0', '9.0.1')],
+    kleur: {
+      current: '3.0.0',
+      wanted: '3.0.3',
+      workspaces: [at('packages/b', '3.0.0', '3.0.3')],
     },
   }
 }
@@ -123,17 +123,17 @@ export const expectedPlan = (layout: Layout): PlanRow[] =>
         row('commander', 'packages/b', '11.0.0', '11.1.0', '11.1.0'),
         row('dayjs', '.', '1.11.9', '1.11.9'),
         row('debug', 'packages/b', '4.3.1', '4.3.7', '4.3.7'),
+        row('kleur', 'packages/b', '3.0.0', '3.0.3', '3.0.3'),
         row('ms', '.', '2.1.1', '2.1.3', '2.1.3'),
         row('ms', 'packages/a', '2.1.2', '2.1.2'),
-        row('uuid', 'packages/b', '9.0.0', '9.0.1', '9.0.1'),
       ]
     : [
         row('chalk', undefined, '4.0.0', '4.1.2', '4.1.2'),
         row('commander', undefined, '11.0.0', '11.1.0', '11.1.0'),
         row('dayjs', undefined, '1.11.9', '1.11.9'),
         row('debug', undefined, '4.3.1', '4.3.7', '4.3.7'),
+        row('kleur', undefined, '3.0.0', '3.0.3', '3.0.3'),
         row('ms', undefined, '2.1.1', '2.1.3', '2.1.3'),
-        row('uuid', undefined, '9.0.0', '9.0.1', '9.0.1'),
       ]
 
 /**
@@ -175,8 +175,8 @@ const FLOORS: Record<string, string> = {
   chalk: '4.1.2',
   commander: '11.1.0',
   debug: '4.3.7',
+  kleur: '3.0.3',
   ms: '2.1.3',
-  uuid: '9.0.1',
 }
 
 /** The floors a manager that rewrites ranges writes for the packages that moved. */
@@ -207,3 +207,12 @@ export const raiseFloors = (
  */
 export const rewritesRanges = (manager: Manager): boolean =>
   manager === 'pnpm' || manager === 'bun'
+
+/**
+ * Whether the manager raises a catalog entry's floor when it moves the
+ * package. bun 1.4.0's `update --filter '*'` installs the in-range version
+ * but leaves `catalog`/`catalogs` ranges as written (`^4.0.0` stays), while
+ * it raises the floors in package.json. pnpm 12 raises both.
+ */
+export const rewritesCatalogRanges = (manager: Manager): boolean =>
+  manager !== 'bun'
