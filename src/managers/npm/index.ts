@@ -1,3 +1,6 @@
+import fs from 'fs'
+import path from 'path'
+
 import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
 import { hasWorkspacesField } from '@/managers/workspaces'
@@ -25,9 +28,46 @@ const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
   }
 }
 
-/** `npm outdated --json`: already keyed by name, with `wanted` filled. */
-export const parseNpmOutdated = (stdout: string): Record<string, PackageInfo> =>
-  JSON.parse(stdout || '{}')
+/**
+ * Versions package-lock.json records, keyed by install path
+ * (`node_modules/ms`). Empty when there is no readable lockfile.
+ */
+export const readLockedVersions = (cwd: string): Record<string, string> => {
+  let packages: Record<string, { version?: unknown }>
+  try {
+    packages =
+      JSON.parse(fs.readFileSync(path.join(cwd, 'package-lock.json'), 'utf8'))
+        .packages ?? {}
+  } catch {
+    return {}
+  }
+  const versions: Record<string, string> = {}
+  for (const [location, entry] of Object.entries(packages)) {
+    if (typeof entry?.version === 'string') versions[location] = entry.version
+  }
+  return versions
+}
+
+/**
+ * `npm outdated --json`: already keyed by name, with `wanted` filled. npm
+ * reads `current` from node_modules, so a package that isn't installed (a
+ * fresh clone) comes back without one. It takes the version the lockfile
+ * records, which is what the other managers report there, or `missing`, as
+ * npm's own table prints it, when the lockfile doesn't have it either.
+ */
+export const parseNpmOutdated = (
+  stdout: string,
+  locked: Record<string, string> = {},
+): Record<string, PackageInfo> => {
+  const report: Record<string, PackageInfo> = JSON.parse(stdout || '{}')
+  for (const [key, info] of Object.entries(report)) {
+    if (info.current) continue
+    // An npm: alias is keyed `dj:dayjs@1.11.9` and installed as node_modules/dj.
+    const name = key.split(':')[0]
+    info.current = locked[`node_modules/${name}`] ?? 'missing'
+  }
+  return report
+}
 
 const npm: ManagerAdapter = {
   name: 'npm',
@@ -38,7 +78,7 @@ const npm: ManagerAdapter = {
     catalogs: [],
   }),
 
-  discover: async (run, _cwd, { isWorkspace }) =>
+  discover: async (run, cwd, { isWorkspace }) =>
     parseNpmOutdated(
       await run(
         isWorkspace
@@ -46,6 +86,7 @@ const npm: ManagerAdapter = {
           : ['outdated', '--json'],
         { isSuccess: isOutdatedReport },
       ),
+      readLockedVersions(cwd),
     ),
 
   apply: async (run, cwd, { names, beyondRange }, { isWorkspace }) => {

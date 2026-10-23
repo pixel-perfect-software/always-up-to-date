@@ -1,4 +1,7 @@
-import npm, { parseNpmOutdated } from '@/managers/npm'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import npm, { parseNpmOutdated, readLockedVersions } from '@/managers/npm'
 import { check } from '@/pipeline'
 import { exitError, projectFor, readFixture } from '../fixtures'
 
@@ -47,6 +50,32 @@ describe('check with npm', () => {
     })
   })
 
+  it('takes current from package-lock.json when nothing is installed', async () => {
+    // A fresh clone: npm 11.19.1 leaves `current` out of every row.
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-lock-'))
+    fs.copyFileSync(
+      path.join(__dirname, '../fixtures/npm/no-node-modules.package-lock.json'),
+      path.join(cwd, 'package-lock.json'),
+    )
+    mockedRunProcess.mockRejectedValue(
+      exitError(1, readFixture('npm/outdated-no-node-modules.stdout'), ''),
+    )
+
+    try {
+      const result = await check(projectFor(npm, cwd))
+
+      expect(Object.values(result).every((info) => info.current)).toBe(true)
+      expect(result.chalk).toMatchObject({
+        current: '4.0.0',
+        wanted: '4.1.2',
+        latest: '6.0.1',
+      })
+      expect(result.ms).toMatchObject({ current: '2.1.1', wanted: '2.1.1' })
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
   it('fails when npm exits 1 with its JSON error object instead of a report', async () => {
     mockedRunProcess.mockRejectedValue(
       exitError(
@@ -85,5 +114,70 @@ describe('parseNpmOutdated', () => {
 
   it('reads empty stdout as nothing outdated', () => {
     expect(parseNpmOutdated('')).toEqual({})
+  })
+
+  it('fills a missing current from the locked versions', () => {
+    const result = parseNpmOutdated(
+      readFixture('npm/outdated-no-node-modules.stdout'),
+      { 'node_modules/chalk': '4.0.0' },
+    )
+
+    expect(result.chalk.current).toBe('4.0.0')
+  })
+
+  it('marks a package neither installed nor locked as missing', () => {
+    const result = parseNpmOutdated(
+      readFixture('npm/outdated-no-node-modules.stdout'),
+    )
+
+    expect(result.chalk.current).toBe('missing')
+  })
+
+  it('looks an npm: alias up by its manifest key', () => {
+    const result = parseNpmOutdated(
+      JSON.stringify({
+        'dj:dayjs@1.11.9': { wanted: '1.11.9', latest: '1.11.23' },
+      }),
+      { 'node_modules/dj': '1.11.9' },
+    )
+
+    expect(result['dj:dayjs@1.11.9'].current).toBe('1.11.9')
+  })
+
+  it('keeps the installed current over the lockfile', () => {
+    const result = parseNpmOutdated(readFixture('npm/outdated-ranges.stdout'), {
+      'node_modules/react': '0.0.1',
+    })
+
+    expect(result.react.current).toBe('18.2.0')
+  })
+})
+
+describe('readLockedVersions', () => {
+  it('reads every install path package-lock.json records', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-lock-'))
+    fs.copyFileSync(
+      path.join(__dirname, '../fixtures/npm/no-node-modules.package-lock.json'),
+      path.join(cwd, 'package-lock.json'),
+    )
+
+    try {
+      expect(readLockedVersions(cwd)).toMatchObject({
+        'node_modules/chalk': '4.0.0',
+        'node_modules/ms': '2.1.1',
+      })
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('is empty without a readable lockfile', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-lock-'))
+
+    try {
+      expect(readLockedVersions(cwd)).toEqual({})
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
   })
 })

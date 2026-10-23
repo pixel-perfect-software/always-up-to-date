@@ -10,7 +10,7 @@ All four package managers are implemented with workspace support. Yarn berry has
 - An adapter is a plain object implementing `ManagerAdapter` (`adapter.ts`):
   - `name`, `lockfile`: what detection looks for
   - `readWorkspace(cwd)` → `{ isWorkspace, catalogs }`, read once per run and passed back to `discover` and `apply`
-  - `discover(run, cwd, workspace)` → the manager's outdated report as `Record<string, PackageInfo>`. The output parser is an exported pure function (`parseNpmOutdated`, `parsePnpmOutdated`, `parseYarnOutdated`, `parseBunOutdated`) with direct tests on captured fixtures
+  - `discover(run, cwd, workspace)` → the manager's outdated report as `Record<string, PackageInfo>`. The output parser is an exported pure function (`parseNpmOutdated`, `parsePnpmOutdated`, `parseYarnOutdated`, `parseBunOutdated`) with direct tests on captured fixtures. Every row has a `current`: pnpm, yarn v1 and bun read it from their lockfile, while `npm outdated` reads node_modules and omits it for a package that isn't installed, so `parseNpmOutdated` takes it from `package-lock.json` (`readLockedVersions`), else `missing`
   - `apply(run, cwd, plan, workspace)`: writes the specs the manager does not write itself, then runs its update commands. `plan` is `{ names, withinRange, beyondRange, discovered }`
   - `saveStyle(cwd)`: exact or prefix for specs that can't keep their shape, read from where the manager's current version keeps it
   - `overrides(cwd)`: packages pinned by an override field the manager enforces
@@ -23,7 +23,7 @@ managers/
   adapter.ts           # ManagerAdapter, Workspace, RunManager, ApplyPlan
   index.ts             # adapters registry (detection order), adapterFor(name)
   workspaces.ts        # readManifest(), hasWorkspacesField() shared by npm, yarn, bun
-  npm/index.ts         # npm adapter, parseNpmOutdated
+  npm/index.ts         # npm adapter, parseNpmOutdated, readLockedVersions
   yarn/index.ts        # yarn adapter, parseYarnOutdated, isYarnBerry
   pnpm/index.ts        # pnpm adapter, parsePnpmOutdated
   bun/index.ts         # bun adapter, parseBunOutdated
