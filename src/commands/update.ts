@@ -2,6 +2,7 @@ import { type Command, Option } from 'commander'
 import detectPackageManager from '@/detectPackageManager'
 import { PackageManager } from '@/managers'
 import { filterPackages, logger } from '@/utils'
+import reportFailure from './reportFailure'
 
 const workingDir = process.cwd()
 
@@ -34,27 +35,31 @@ const update = (program: Command) =>
     .action(async (packages: string[], options: UpdateOptions) => {
       if (options.json) logger.setJsonOutput(true)
 
-      const packageManagerName = detectPackageManager(workingDir)
-      const packageManager = new PackageManager(packageManagerName)
-      const targetPackages = packages.length > 0 ? packages : undefined
+      try {
+        const packageManagerName = detectPackageManager(workingDir)
+        const packageManager = new PackageManager(packageManagerName)
+        const targetPackages = packages.length > 0 ? packages : undefined
 
-      if (options.dryRun) {
-        await dryRun(packageManager, targetPackages, options.json)
-        return
-      }
+        if (options.dryRun) {
+          await dryRun(packageManager, targetPackages, options.json)
+          return
+        }
 
-      if (options.interactive) {
-        await interactiveUpdate(packageManager)
-        return
-      }
+        if (options.interactive) {
+          await interactiveUpdate(packageManager)
+          return
+        }
 
-      const results = await packageManager.manager.updatePackages(
-        workingDir,
-        targetPackages,
-      )
+        const results = await packageManager.manager.updatePackages(
+          workingDir,
+          targetPackages,
+        )
 
-      if (options.json) {
-        console.log(JSON.stringify(results, null, 2))
+        if (options.json) {
+          console.log(JSON.stringify(results, null, 2))
+        }
+      } catch (error) {
+        reportFailure(error, options.json)
       }
     })
 

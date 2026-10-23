@@ -45,11 +45,12 @@ class YarnManager extends CommandRunner {
       ? ['outdated', '--json', '--recursive']
       : ['outdated', '--json']
 
-    const commandResult = await this.runCommand(
+    const commandResult = await this.runStep(
+      'discover',
       this.packageManager,
       args,
       cwd,
-      isOutdatedReport,
+      { isSuccess: isOutdatedReport },
     )
     const result = this.parseYarnOutdatedResult(commandResult || '')
 
@@ -88,75 +89,70 @@ class YarnManager extends CommandRunner {
     targetPackages?: string[],
     discovered?: Record<string, PackageInfo>,
   ): Promise<UpdateResult[]> => {
-    try {
-      const outdatedPackages =
-        discovered ?? (await this.checkPackageVersions(cwd))
+    const outdatedPackages =
+      discovered ?? (await this.checkPackageVersions(cwd))
 
-      if (Object.keys(outdatedPackages).length === 0) {
-        // checkPackageVersions already printed allUpToDate.
-        return []
-      }
-
-      await this.checkIfInWorkspace(cwd)
-      const results = await filterPackages(outdatedPackages, {
-        targetPackages,
-        cwd,
-      })
-      const packagesToUpdate = results
-        .filter((r) => r.updated)
-        .map((r) => r.name)
-
-      if (
-        packagesToUpdate.length === 0 &&
-        Object.keys(outdatedPackages).length > 0
-      ) {
-        logger.noPackagesToUpdate(messages.noPackagesToUpdate)
-        logger.cooldownSummary(results)
-        return results
-      }
-
-      logger.updatingHeader('yarn')
-      logger.printUpdatingRows(
-        results
-          .filter((r) => r.updated)
-          .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
-      )
-
-      if (packagesToUpdate.length > 0) {
-        // yarn rewrites the manifest itself: v1 refuses to upgrade against a
-        // pre-written package.json ("Outdated lockfile"). Hand it `name@spec`
-        // descriptors that keep each entry's decorator instead.
-        const { descriptors, notInManifest } = buildUpdateDescriptors(
-          cwd,
-          packagesToUpdate,
-          outdatedPackages,
-        )
-
-        if (notInManifest.length > 0) {
-          logger.warn(
-            `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`,
-          )
-        }
-
-        if (descriptors.length > 0) {
-          // v1 is `upgrade`, berry is `up`; neither has `update`. No
-          // `--recursive`: v1 ignores it and berry's means "re-resolve
-          // transitive dependencies", which rejects explicit ranges.
-          const subcommand = this.isBerry(cwd) ? 'up' : 'upgrade'
-          await this.runCommand(
-            this.packageManager,
-            [subcommand, ...descriptors],
-            cwd,
-          )
-        }
-      }
-
-      logger.cooldownSummary(results)
-      return results
-    } catch {
-      logger.error('An error occurred while checking for outdated packages.')
+    if (Object.keys(outdatedPackages).length === 0) {
+      // checkPackageVersions already printed allUpToDate.
       return []
     }
+
+    await this.checkIfInWorkspace(cwd)
+    const results = await filterPackages(outdatedPackages, {
+      targetPackages,
+      cwd,
+    })
+    const packagesToUpdate = results.filter((r) => r.updated).map((r) => r.name)
+
+    if (
+      packagesToUpdate.length === 0 &&
+      Object.keys(outdatedPackages).length > 0
+    ) {
+      logger.noPackagesToUpdate(messages.noPackagesToUpdate)
+      logger.cooldownSummary(results)
+      return results
+    }
+
+    logger.updatingHeader('yarn')
+    logger.printUpdatingRows(
+      results
+        .filter((r) => r.updated)
+        .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
+    )
+
+    if (packagesToUpdate.length > 0) {
+      // yarn rewrites the manifest itself: v1 refuses to upgrade against a
+      // pre-written package.json ("Outdated lockfile"). Hand it `name@spec`
+      // descriptors that keep each entry's decorator instead.
+      const { descriptors, notInManifest } = buildUpdateDescriptors(
+        cwd,
+        packagesToUpdate,
+        outdatedPackages,
+      )
+
+      if (notInManifest.length > 0) {
+        logger.warn(
+          `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`,
+        )
+      }
+
+      if (descriptors.length > 0) {
+        // v1 is `upgrade`, berry is `up`; neither has `update`. No
+        // `--recursive`: v1 ignores it and berry's means "re-resolve
+        // transitive dependencies", which rejects explicit ranges.
+        const subcommand = this.isBerry(cwd) ? 'up' : 'upgrade'
+        await this.runStep(
+          'apply',
+          this.packageManager,
+          [subcommand, ...descriptors],
+          cwd,
+          { manifestWritten: false },
+        )
+      }
+    }
+
+    logger.cooldownSummary(results)
+    return results
   }
 
   checkIfInWorkspace = async (cwd: string): Promise<boolean> => {

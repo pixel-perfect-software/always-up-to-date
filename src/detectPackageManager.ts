@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 
+import { StepError } from '@/stepError'
 import type { SupportedPackageManager } from '@/types'
 
 const packageManagers: Array<SupportedPackageManager> = [
@@ -27,7 +28,10 @@ const detectPackageManager = (cwd: string): SupportedPackageManager => {
   }
 
   if (!pm) {
-    throw new Error('No package manager detected in the current directory.')
+    throw new StepError(
+      'detect',
+      'No package manager detected in the current directory.',
+    )
   }
 
   return pm

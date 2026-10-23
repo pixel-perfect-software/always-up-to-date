@@ -1,3 +1,4 @@
+import { type PipelineStep, StepError } from '@/stepError'
 import type { SupportedPackageManager } from '@/types'
 import { logger, runProcess } from '@/utils'
 
@@ -42,7 +43,6 @@ class CommandRunner {
 
       // No numeric exit code: the process could not start or was killed.
       if (typeof execError.code !== 'number') {
-        logger.error(`Unknown error occurred: ${execError.message}`)
         throw new Error(
           `An unknown error occurred while running the command: ${execError.message}`,
           { cause: error },
@@ -61,8 +61,33 @@ class CommandRunner {
 
     const detail =
       stderr.trim() || output.stdout.trim() || `exit code ${output.exitCode}`
-    logger.error(`Command failed: ${detail}`)
     throw new Error(`Command execution failed: ${detail}`)
+  }
+
+  /**
+   * `runCommand` for one pipeline step: a failure is rethrown as a
+   * `StepError` so the command layer can report which step broke and whether
+   * the manifest was already written.
+   */
+  public runStep = async (
+    step: PipelineStep,
+    packageManager: SupportedPackageManager,
+    args: string[],
+    cwd: string,
+    {
+      isSuccess,
+      manifestWritten = false,
+    }: { isSuccess?: SuccessCheck; manifestWritten?: boolean } = {},
+  ): Promise<string> => {
+    try {
+      return await this.runCommand(packageManager, args, cwd, isSuccess)
+    } catch (error) {
+      throw new StepError(
+        step,
+        error instanceof Error ? error.message : String(error),
+        { manifestWritten, cause: error },
+      )
+    }
   }
 }
 

@@ -16,7 +16,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 ### Testing
 - `pnpm test` - Run all tests (silent mode)
 - `pnpm run test:coverage` - Run tests with coverage report
-- `pnpm run test:badges` - Generate coverage badges in ./badges directory
+- `pnpm run test:badges` - Regenerate the coverage badges in `./badges`, shown in the README. They are static files: rerun and commit them when coverage changes
 - Single test: `pnpm test -- __tests__/path/to/test.test.ts`
 
 ### Code Quality
@@ -46,6 +46,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - Executes package manager commands via `runProcess` (`src/utils/runProcess.ts`): `execFile` with an argument array, no shell, no output cap. Commands are always built as arrays, never strings
 - Success is judged per call by exit code plus parsable stdout (a `SuccessCheck`), never by stderr, which is logged at debug level
 - All manager commands go through this abstraction for consistency
+- Failures propagate as a `StepError` (`src/stepError.ts`, step `detect` / `discover` / `apply`) to the command, which reports once and exits 1; never catch and return an empty result
 
 **Configuration System**
 - Config file: `.always-up-to-date.json` in the project root

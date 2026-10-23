@@ -31,7 +31,12 @@ class BunManager extends CommandRunner {
     const { isWorkspace } = await this.checkIfInWorkspace(cwd)
     const args = isWorkspace ? ['outdated', '--filter', '*'] : ['outdated']
 
-    const commandResult = await this.runCommand(this.packageManager, args, cwd)
+    const commandResult = await this.runStep(
+      'discover',
+      this.packageManager,
+      args,
+      cwd,
+    )
     const result = this.parseBunOutdatedOutput(commandResult || '')
 
     if (Object.keys(result).length === 0) {
@@ -69,80 +74,77 @@ class BunManager extends CommandRunner {
     targetPackages?: string[],
     discovered?: Record<string, PackageInfo>,
   ): Promise<UpdateResult[]> => {
-    try {
-      const outdatedPackages =
-        discovered ?? (await this.checkPackageVersions(cwd))
+    const outdatedPackages =
+      discovered ?? (await this.checkPackageVersions(cwd))
 
-      if (Object.keys(outdatedPackages).length === 0) {
-        // checkPackageVersions already printed allUpToDate.
-        return []
-      }
-
-      const { isWorkspace, hasCatalogs } = await this.checkIfInWorkspace(cwd)
-      const results = await filterPackages(outdatedPackages, {
-        targetPackages,
-        cwd,
-      })
-      const packagesToUpdate = results
-        .filter((r) => r.updated)
-        .map((r) => r.name)
-
-      if (
-        packagesToUpdate.length === 0 &&
-        Object.keys(outdatedPackages).length > 0
-      ) {
-        logger.noPackagesToUpdate(messages.noPackagesToUpdate)
-        logger.cooldownSummary(results)
-        return results
-      }
-
-      logger.updatingHeader('bun')
-      logger.printUpdatingRows(
-        results
-          .filter((r) => r.updated)
-          .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
-      )
-
-      if (packagesToUpdate.length > 0) {
-        if (isWorkspace && hasCatalogs) {
-          const { catalogPackages, rootPackages } = identifyCatalogPackages(
-            cwd,
-            outdatedPackages,
-          )
-
-          const catalogsToUpdate = catalogPackages.filter((pkg) =>
-            packagesToUpdate.includes(pkg),
-          )
-          const rootToUpdate = rootPackages.filter((pkg) =>
-            packagesToUpdate.includes(pkg),
-          )
-
-          if (catalogsToUpdate.length > 0) {
-            await updateBunCatalogs(cwd, catalogsToUpdate, outdatedPackages)
-          }
-
-          if (rootToUpdate.length > 0) {
-            await updatePackageJson(cwd, rootToUpdate, outdatedPackages)
-          }
-
-          await this.runCommand(this.packageManager, ['install'], cwd)
-        } else {
-          await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
-
-          const args = isWorkspace
-            ? ['update', ...packagesToUpdate, '--filter', '*']
-            : ['update', ...packagesToUpdate]
-
-          await this.runCommand(this.packageManager, args, cwd)
-        }
-      }
-
-      logger.cooldownSummary(results)
-      return results
-    } catch {
-      logger.error('An error occurred while checking for outdated packages.')
+    if (Object.keys(outdatedPackages).length === 0) {
+      // checkPackageVersions already printed allUpToDate.
       return []
     }
+
+    const { isWorkspace, hasCatalogs } = await this.checkIfInWorkspace(cwd)
+    const results = await filterPackages(outdatedPackages, {
+      targetPackages,
+      cwd,
+    })
+    const packagesToUpdate = results.filter((r) => r.updated).map((r) => r.name)
+
+    if (
+      packagesToUpdate.length === 0 &&
+      Object.keys(outdatedPackages).length > 0
+    ) {
+      logger.noPackagesToUpdate(messages.noPackagesToUpdate)
+      logger.cooldownSummary(results)
+      return results
+    }
+
+    logger.updatingHeader('bun')
+    logger.printUpdatingRows(
+      results
+        .filter((r) => r.updated)
+        .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
+    )
+
+    if (packagesToUpdate.length > 0) {
+      if (isWorkspace && hasCatalogs) {
+        const { catalogPackages, rootPackages } = identifyCatalogPackages(
+          cwd,
+          outdatedPackages,
+        )
+
+        const catalogsToUpdate = catalogPackages.filter((pkg) =>
+          packagesToUpdate.includes(pkg),
+        )
+        const rootToUpdate = rootPackages.filter((pkg) =>
+          packagesToUpdate.includes(pkg),
+        )
+
+        if (catalogsToUpdate.length > 0) {
+          await updateBunCatalogs(cwd, catalogsToUpdate, outdatedPackages)
+        }
+
+        if (rootToUpdate.length > 0) {
+          await updatePackageJson(cwd, rootToUpdate, outdatedPackages)
+        }
+
+        await this.runStep('apply', this.packageManager, ['install'], cwd, {
+          manifestWritten: true,
+        })
+      } else {
+        await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
+
+        const args = isWorkspace
+          ? ['update', ...packagesToUpdate, '--filter', '*']
+          : ['update', ...packagesToUpdate]
+
+        await this.runStep('apply', this.packageManager, args, cwd, {
+          manifestWritten: true,
+        })
+      }
+    }
+
+    logger.cooldownSummary(results)
+    return results
   }
 
   checkIfInWorkspace = async (

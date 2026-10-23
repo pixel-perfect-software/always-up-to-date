@@ -28,7 +28,8 @@ managers/
 ### CommandRunner Base Class (`src/commandRunner.ts`)
 - `runCommand(packageManager, args, cwd, isSuccess?)` runs the manager with an argument array via `runProcess` and returns stdout. Build `args` as an array (`['update', ...names]`); shell quoting such as `'*'` must not appear in arguments
 - Success is decided by a `SuccessCheck` over `{ exitCode, stdout }`; the default is exit 0. stderr is never a failure signal (yarn v1 on Node 24 always prints a DEP0169 warning); it is logged with `logger.debug`
-- A failure throws `Command execution failed: <stderr, else stdout>`; a process with no numeric exit code (spawn failure, killed) throws the "unknown error" message
+- A failure throws `Command execution failed: <stderr, else stdout>`; a process with no numeric exit code (spawn failure, killed) throws the "unknown error" message. `runCommand` does not log failures; the command layer reports them once
+- Managers call `runStep(step, packageManager, args, cwd, { isSuccess?, manifestWritten? })`, which rethrows as a `StepError` tagged `discover` or `apply`. Pass `manifestWritten: true` when autd rewrote package.json before the apply command (npm, pnpm, bun); yarn writes its own manifest, so it passes `false`. `updatePackages()` never catches: failures reach `src/commands/reportFailure.ts`
 - Each manager's `outdated` passes its own `isOutdatedReport` check, because npm, pnpm and yarn v1 exit 1 both when packages are outdated and on real errors:
 
 | Manager | `outdated` succeeds when |

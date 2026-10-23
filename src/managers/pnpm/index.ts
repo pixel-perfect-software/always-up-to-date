@@ -44,11 +44,12 @@ class PNPMManager extends CommandRunner {
       ? ['outdated', '--json', '-r']
       : ['outdated', '--json']
 
-    const commandResult = await this.runCommand(
+    const commandResult = await this.runStep(
+      'discover',
       this.packageManager,
       args,
       cwd,
-      isOutdatedReport,
+      { isSuccess: isOutdatedReport },
     )
     const result: Record<string, PackageInfo> = JSON.parse(
       commandResult || '{}',
@@ -89,70 +90,65 @@ class PNPMManager extends CommandRunner {
     targetPackages?: string[],
     discovered?: Record<string, PackageInfo>,
   ): Promise<UpdateResult[]> => {
-    try {
-      const outdatedPackages =
-        discovered ?? (await this.checkPackageVersions(cwd))
+    const outdatedPackages =
+      discovered ?? (await this.checkPackageVersions(cwd))
 
-      if (Object.keys(outdatedPackages).length === 0) {
-        // checkPackageVersions already printed allUpToDate.
-        return []
-      }
-
-      const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-      const results = await filterPackages(outdatedPackages, {
-        targetPackages,
-        cwd,
-      })
-      const packagesToUpdate = results
-        .filter((r) => r.updated)
-        .map((r) => r.name)
-
-      if (
-        packagesToUpdate.length === 0 &&
-        Object.keys(outdatedPackages).length > 0
-      ) {
-        logger.noPackagesToUpdate(messages.noPackagesToUpdate)
-        logger.cooldownSummary(results)
-        return results
-      }
-
-      logger.updatingHeader('pnpm')
-      logger.printUpdatingRows(
-        results
-          .filter((r) => r.updated)
-          .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
-      )
-
-      if (packagesToUpdate.length > 0) {
-        if (isRunningInWorkspace) {
-          // Workspaces can hold versions in either pnpm-workspace.yaml
-          // catalogs or directly in a workspace package's package.json.
-          // Run both rewrites — each is a no-op for entries it doesn't
-          // own, and updatePackageJson skips `catalog:` / `workspace:`
-          // refs so it can't clobber catalog references.
-          await updatePNPMWorkspaceYAML(cwd, packagesToUpdate, outdatedPackages)
-          await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
-        } else {
-          await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
-        }
-
-        // For workspaces (especially with catalogs), `pnpm install`
-        // re-reads both manifest and pnpm-workspace.yaml and relinks
-        // node_modules + lockfile reliably. `pnpm update -r` can miss
-        // catalog mutations, so prefer install in workspace mode.
-        const args = isRunningInWorkspace
-          ? ['install']
-          : ['update', ...packagesToUpdate]
-
-        await this.runCommand(this.packageManager, args, cwd)
-      }
-
-      logger.cooldownSummary(results)
-      return results
-    } catch {
-      logger.error('An error occurred while checking for outdated packages.')
+    if (Object.keys(outdatedPackages).length === 0) {
+      // checkPackageVersions already printed allUpToDate.
       return []
     }
+
+    const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
+    const results = await filterPackages(outdatedPackages, {
+      targetPackages,
+      cwd,
+    })
+    const packagesToUpdate = results.filter((r) => r.updated).map((r) => r.name)
+
+    if (
+      packagesToUpdate.length === 0 &&
+      Object.keys(outdatedPackages).length > 0
+    ) {
+      logger.noPackagesToUpdate(messages.noPackagesToUpdate)
+      logger.cooldownSummary(results)
+      return results
+    }
+
+    logger.updatingHeader('pnpm')
+    logger.printUpdatingRows(
+      results
+        .filter((r) => r.updated)
+        .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
+    )
+
+    if (packagesToUpdate.length > 0) {
+      if (isRunningInWorkspace) {
+        // Workspaces can hold versions in either pnpm-workspace.yaml
+        // catalogs or directly in a workspace package's package.json.
+        // Run both rewrites — each is a no-op for entries it doesn't
+        // own, and updatePackageJson skips `catalog:` / `workspace:`
+        // refs so it can't clobber catalog references.
+        await updatePNPMWorkspaceYAML(cwd, packagesToUpdate, outdatedPackages)
+        await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
+      } else {
+        await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
+      }
+
+      // For workspaces (especially with catalogs), `pnpm install`
+      // re-reads both manifest and pnpm-workspace.yaml and relinks
+      // node_modules + lockfile reliably. `pnpm update -r` can miss
+      // catalog mutations, so prefer install in workspace mode.
+      const args = isRunningInWorkspace
+        ? ['install']
+        : ['update', ...packagesToUpdate]
+
+      await this.runStep('apply', this.packageManager, args, cwd, {
+        manifestWritten: true,
+      })
+    }
+
+    logger.cooldownSummary(results)
+    return results
   }
 
   checkIfInWorkspace = async (cwd: string): Promise<boolean> => {

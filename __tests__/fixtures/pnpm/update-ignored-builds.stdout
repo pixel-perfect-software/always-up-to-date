@@ -1,0 +1,13 @@
+✓ Lockfile passes supply-chain policies (verified 37s ago)
+[WARN] deprecated uuid@9.0.0
+[WARN] deprecated eslint@8.40.0. 10.13.0 is not deprecated.
+[WARN] deprecated next@14.0.0. 16.5.0-canary.23 is not deprecated.
+[WARN] 6 deprecated subdependencies found: @humanwhocodes/config-array@0.11.14, @humanwhocodes/object-schema@2.0.3, glob@10.5.0, glob@7.2.3, inflight@1.0.6, rimraf@3.0.2
+Packages: +1 -1
++-
+Progress: resolved 1, reused 89, downloaded 0, added 1, done
+
+dependencies:
+- dayjs 1.11.9
++ dayjs 1.11.23
+
