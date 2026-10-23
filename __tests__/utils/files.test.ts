@@ -239,6 +239,62 @@ describe('updatePackageJson', () => {
   })
 })
 
+describe('manifest formatting', () => {
+  const rewrite = async (original: string) => {
+    mockedFs.readFileSync.mockReturnValue(original)
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+    await updatePackageJson('/test', { react: '19.0.0' })
+    return (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1] as string
+  }
+
+  it('keeps the trailing newline', async () => {
+    expect(
+      await rewrite('{\n  "dependencies": {\n    "react": "18.0.0"\n  }\n}\n'),
+    ).toBe('{\n  "dependencies": {\n    "react": "19.0.0"\n  }\n}\n')
+  })
+
+  it('does not add a trailing newline the file did not have', async () => {
+    expect(
+      await rewrite('{\n  "dependencies": {\n    "react": "18.0.0"\n  }\n}'),
+    ).toBe('{\n  "dependencies": {\n    "react": "19.0.0"\n  }\n}')
+  })
+
+  it('keeps tab indentation', async () => {
+    expect(
+      await rewrite('{\n\t"dependencies": {\n\t\t"react": "18.0.0"\n\t}\n}\n'),
+    ).toBe('{\n\t"dependencies": {\n\t\t"react": "19.0.0"\n\t}\n}\n')
+  })
+
+  it('keeps four-space indentation', async () => {
+    expect(
+      await rewrite(
+        '{\n    "dependencies": {\n        "react": "18.0.0"\n    }\n}\n',
+      ),
+    ).toBe('{\n    "dependencies": {\n        "react": "19.0.0"\n    }\n}\n')
+  })
+
+  it('keeps CRLF line endings', async () => {
+    expect(
+      await rewrite(
+        '{\r\n  "dependencies": {\r\n    "react": "18.0.0"\r\n  }\r\n}\r\n',
+      ),
+    ).toBe('{\r\n  "dependencies": {\r\n    "react": "19.0.0"\r\n  }\r\n}\r\n')
+  })
+
+  it('keeps the format when rewriting Bun catalogs', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      '{\n\t"catalog": {\n\t\t"react": "18.0.0"\n\t}\n}\n',
+    )
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+
+    await updateBunCatalogs('/test', { react: '19.0.0' })
+
+    expect((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]).toBe(
+      '{\n\t"catalog": {\n\t\t"react": "19.0.0"\n\t}\n}\n',
+    )
+  })
+})
+
 describe('updatePNPMWorkspaceYAML', () => {
   const outdatedPackages: Record<string, PackageInfo> = {
     react: {
