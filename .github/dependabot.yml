@@ -38,3 +38,17 @@ updates:
           - "prettier"
           - "typescript*"
           - "ts-*"
+
+  # Keeps the workflows' pinned actions current: Dependabot updates each commit SHA and the
+  # version comment beside it together, in one grouped pull request a month.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "automated"
+    groups:
+      actions:
+        patterns:
+          - "*"
