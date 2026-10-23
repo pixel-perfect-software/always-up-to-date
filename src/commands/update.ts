@@ -1,7 +1,7 @@
 import { type Command, Option } from 'commander'
 import detectPackageManager from '@/detectPackageManager'
 import { PackageManager } from '@/managers'
-import { filterPackages, logger } from '@/utils'
+import { filterPackages, logger, toUpdatingRow } from '@/utils'
 import reportFailure from './reportFailure'
 
 const workingDir = process.cwd()
@@ -14,8 +14,8 @@ interface UpdateOptions {
 
 /**
  * The "update" command.
- * This command updates the update-able dependencies of the project
- * to their latest versions.
+ * This command updates the project's dependencies within their package.json
+ * ranges, and further when the config allows it.
  */
 const update = (program: Command) =>
   program
@@ -90,13 +90,7 @@ const dryRun = async (
 
   if (wouldUpdate.length > 0) {
     logger.clean(`\nWould update (${wouldUpdate.length})`)
-    logger.printUpdatingRows(
-      wouldUpdate.map((p) => ({
-        name: p.name,
-        current: p.current,
-        latest: p.latest,
-      })),
-    )
+    logger.printUpdatingRows(wouldUpdate.map(toUpdatingRow))
   }
 
   if (wouldSkip.length > 0) {
@@ -134,7 +128,7 @@ const interactiveUpdate = async (
   const selected = await checkbox({
     message: 'Select packages to update:',
     choices: eligible.map((pkg) => ({
-      name: `${pkg.name}: ${pkg.current} → ${pkg.latest} (${pkg.updateType})`,
+      name: `${pkg.name}: ${pkg.current} → ${pkg.target} (${pkg.updateType}${pkg.target === pkg.wanted ? '' : ', beyond range'})`,
       value: pkg.name,
       checked: true,
     })),

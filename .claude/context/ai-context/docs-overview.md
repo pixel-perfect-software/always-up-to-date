@@ -72,6 +72,8 @@ __tests__/
     yarn.test.ts            # outdated exit codes, upgrade/up descriptors, berry detection
     realSubprocess.test.ts  # Fake npm on PATH: >1 MB output, names passed as arguments (POSIX)
     reuseDiscovery.test.ts  # updatePackages with a discovery result runs only the apply command
+    withinRange.test.ts     # Real output, default config: proposes exactly npm update's set; zero for pins
+    applyRanges.test.ts     # In-range apply writes nothing; beyond-range writes the target spec first
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
   utils/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants)
@@ -83,7 +85,7 @@ __tests__/
     npmrcLoader.test.ts     # .npmrc / NPM_CONFIG_* parsing
     packageGrouper.test.ts  # Package grouping tests
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
-    updateChecker.test.ts   # Semver update logic tests
+    updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping
 ```
 
 ## Tech Stack

@@ -28,12 +28,18 @@ import logger from '@/utils/logger'
  * JSON.parse on what the command printed.
  */
 const outdated: Record<string, PackageInfo> = {
-  dayjs: { name: 'dayjs', current: '1.11.9', latest: '1.11.23' },
+  dayjs: {
+    name: 'dayjs',
+    current: '1.11.9',
+    wanted: '1.11.9',
+    latest: '1.11.23',
+  },
 }
 const results: UpdateResult[] = [
   {
     name: 'dayjs',
     current: '1.11.9',
+    wanted: '1.11.9',
     latest: '1.11.23',
     updateType: 'patch',
     updated: true,

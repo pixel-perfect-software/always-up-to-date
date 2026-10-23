@@ -85,12 +85,18 @@ describe('update command', () => {
 
   it('runs dry-run without calling updatePackages', async () => {
     mockCheckPackageVersions.mockResolvedValue({
-      react: { name: 'react', current: '18.0.0', latest: '18.0.1' },
+      react: {
+        name: 'react',
+        current: '18.0.0',
+        wanted: '18.0.0',
+        latest: '18.0.1',
+      },
     })
     mockFilterPackages.mockResolvedValue([
       {
         name: 'react',
         current: '18.0.0',
+        wanted: '18.0.0',
         latest: '18.0.1',
         updateType: 'patch',
         updated: true,
@@ -108,13 +114,19 @@ describe('update command', () => {
       {
         name: 'react',
         current: '18.0.0',
+        wanted: '18.0.0',
         latest: '18.0.1',
         updateType: 'patch' as const,
         updated: true,
       },
     ]
     mockCheckPackageVersions.mockResolvedValue({
-      react: { name: 'react', current: '18.0.0', latest: '18.0.1' },
+      react: {
+        name: 'react',
+        current: '18.0.0',
+        wanted: '18.0.0',
+        latest: '18.0.1',
+      },
     })
     mockFilterPackages.mockResolvedValue(results)
 
@@ -130,6 +142,7 @@ describe('update command', () => {
       {
         name: 'react',
         current: '18.0.0',
+        wanted: '18.0.0',
         latest: '18.0.1',
         updateType: 'patch' as const,
         updated: true,
@@ -155,14 +168,25 @@ describe('update command', () => {
 
   it('interactive mode discovers once and applies the selection with that result', async () => {
     const outdated = {
-      react: { name: 'react', current: '18.0.0', latest: '18.0.1' },
-      lodash: { name: 'lodash', current: '4.17.20', latest: '4.17.21' },
+      react: {
+        name: 'react',
+        current: '18.0.0',
+        wanted: '18.0.0',
+        latest: '18.0.1',
+      },
+      lodash: {
+        name: 'lodash',
+        current: '4.17.20',
+        wanted: '4.17.20',
+        latest: '4.17.21',
+      },
     }
     mockCheckPackageVersions.mockResolvedValue(outdated)
     mockFilterPackages.mockResolvedValue([
       {
         name: 'react',
         current: '18.0.0',
+        wanted: '18.0.0',
         latest: '18.0.1',
         updateType: 'patch',
         updated: true,
@@ -170,6 +194,7 @@ describe('update command', () => {
       {
         name: 'lodash',
         current: '4.17.20',
+        wanted: '4.17.20',
         latest: '4.17.21',
         updateType: 'patch',
         updated: true,

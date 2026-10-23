@@ -43,9 +43,7 @@ function loadComputeReleaseAges(opts: LoadOpts = {}) {
   return fn!
 }
 
-const outdated = (
-  pkgs: Array<{ name: string; current: string; latest: string }>,
-): Record<string, PackageInfo> =>
+const outdated = (pkgs: PackageInfo[]): Record<string, PackageInfo> =>
   Object.fromEntries(pkgs.map((p) => [p.name, p]))
 
 describe('computeReleaseAges', () => {
@@ -56,7 +54,9 @@ describe('computeReleaseAges', () => {
     })
 
     const ages = await compute(
-      outdated([{ name: 'foo', current: '1.0.0', latest: '1.0.1' }]),
+      outdated([
+        { name: 'foo', current: '1.0.0', wanted: '1.0.0', latest: '1.0.1' },
+      ]),
       '/proj',
       NOW,
     )
@@ -75,8 +75,8 @@ describe('computeReleaseAges', () => {
 
     const ages = await compute(
       outdated([
-        { name: 'foo', current: '1.0.0', latest: '1.0.1' },
-        { name: 'bar', current: '1.0.0', latest: '2.0.0' },
+        { name: 'foo', current: '1.0.0', wanted: '1.0.0', latest: '1.0.1' },
+        { name: 'bar', current: '1.0.0', wanted: '1.0.0', latest: '2.0.0' },
       ]),
       '/proj',
       NOW,
@@ -93,7 +93,9 @@ describe('computeReleaseAges', () => {
     })
 
     const ages = await compute(
-      outdated([{ name: 'foo', current: '1.0.0', latest: '1.0.1' }]),
+      outdated([
+        { name: 'foo', current: '1.0.0', wanted: '1.0.0', latest: '1.0.1' },
+      ]),
       '/proj',
       NOW,
     )
@@ -108,7 +110,9 @@ describe('computeReleaseAges', () => {
     })
 
     const ages = await compute(
-      outdated([{ name: 'foo', current: '1.0.0', latest: '1.0.1' }]),
+      outdated([
+        { name: 'foo', current: '1.0.0', wanted: '1.0.0', latest: '1.0.1' },
+      ]),
       '/proj',
       NOW,
     )

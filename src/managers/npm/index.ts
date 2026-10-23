@@ -13,6 +13,9 @@ import {
   getSortedGroupNames,
   groupAndSortPackages,
   logger,
+  splitUpdates,
+  toOutdatedRow,
+  toUpdatingRow,
 } from '@/utils'
 import { updatePackageJson } from '@/utils/files'
 
@@ -72,12 +75,9 @@ class NPMManager extends CommandRunner {
     sortedGroupNames.forEach((groupName) => {
       logger.packageGroupHeader(groupName)
       logger.printOutdatedRows(
-        groupedPackages[groupName].map(({ name, info }) => ({
-          name,
-          current: info.current,
-          latest: info.latest,
-          releaseAge: releaseAges[name],
-        })),
+        groupedPackages[groupName].map(({ name, info }) =>
+          toOutdatedRow(name, info, releaseAges[name]),
+        ),
       )
     })
 
@@ -106,12 +106,9 @@ class NPMManager extends CommandRunner {
       targetPackages,
       cwd,
     })
-    const packagesToUpdate = results.filter((r) => r.updated).map((r) => r.name)
+    const { names, beyondRange } = splitUpdates(results)
 
-    if (
-      packagesToUpdate.length === 0 &&
-      Object.keys(outdatedPackages).length > 0
-    ) {
+    if (names.length === 0 && Object.keys(outdatedPackages).length > 0) {
       logger.noPackagesToUpdate(messages.noPackagesToUpdate)
       logger.cooldownSummary(results)
       return results
@@ -119,20 +116,21 @@ class NPMManager extends CommandRunner {
 
     logger.updatingHeader('npm')
     logger.printUpdatingRows(
-      results
-        .filter((r) => r.updated)
-        .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
+      results.filter((r) => r.updated).map(toUpdatingRow),
     )
 
-    if (packagesToUpdate.length > 0) {
-      await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
+    if (names.length > 0) {
+      // npm installs the highest version each range allows. Only packages
+      // moving past their range need their manifest spec rewritten first.
+      const manifestWritten = Object.keys(beyondRange).length > 0
+      if (manifestWritten) await updatePackageJson(cwd, beyondRange)
 
       const args = isRunningInWorkspace
-        ? ['update', ...packagesToUpdate, '--workspaces']
-        : ['update', ...packagesToUpdate]
+        ? ['update', ...names, '--workspaces']
+        : ['update', ...names]
 
       await this.runStep('apply', this.packageManager, args, cwd, {
-        manifestWritten: true,
+        manifestWritten,
       })
     }
 

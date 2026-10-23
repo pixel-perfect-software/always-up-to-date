@@ -36,7 +36,7 @@ commands/
 
 #### `update [packages...]`
 - Accepts optional variadic package names to target specific packages
-- `--dry-run` - Preview which packages would be updated without making changes
+- `--dry-run` - Preview which packages would be updated without making changes: each row shows `current → target`, flagged `beyond range` when it leaves its manifest range; held rows show the policy's reason
 - `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). Discovery runs once: the checklist's `checkPackageVersions` result is passed to `updatePackages(cwd, selected, discovered)`
 - `--json` - Output `UpdateResult[]` as JSON (`[]` when nothing is outdated, including with `--dry-run`). Conflicts with `--interactive`
 

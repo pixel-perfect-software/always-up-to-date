@@ -13,6 +13,9 @@ import {
   getSortedGroupNames,
   groupAndSortPackages,
   logger,
+  splitUpdates,
+  toOutdatedRow,
+  toUpdatingRow,
 } from '@/utils'
 import { buildUpdateDescriptors, checkIfFileExists } from '@/utils/files'
 
@@ -68,12 +71,9 @@ class YarnManager extends CommandRunner {
     sortedGroupNames.forEach((groupName) => {
       logger.packageGroupHeader(groupName)
       logger.printOutdatedRows(
-        groupedPackages[groupName].map(({ name, info }) => ({
-          name,
-          current: info.current,
-          latest: info.latest,
-          releaseAge: releaseAges[name],
-        })),
+        groupedPackages[groupName].map(({ name, info }) =>
+          toOutdatedRow(name, info, releaseAges[name]),
+        ),
       )
     })
 
@@ -102,12 +102,9 @@ class YarnManager extends CommandRunner {
       targetPackages,
       cwd,
     })
-    const packagesToUpdate = results.filter((r) => r.updated).map((r) => r.name)
+    const { names, withinRange, beyondRange } = splitUpdates(results)
 
-    if (
-      packagesToUpdate.length === 0 &&
-      Object.keys(outdatedPackages).length > 0
-    ) {
+    if (names.length === 0 && Object.keys(outdatedPackages).length > 0) {
       logger.noPackagesToUpdate(messages.noPackagesToUpdate)
       logger.cooldownSummary(results)
       return results
@@ -115,20 +112,18 @@ class YarnManager extends CommandRunner {
 
     logger.updatingHeader('yarn')
     logger.printUpdatingRows(
-      results
-        .filter((r) => r.updated)
-        .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
+      results.filter((r) => r.updated).map(toUpdatingRow),
     )
 
-    if (packagesToUpdate.length > 0) {
+    if (names.length > 0) {
       // yarn rewrites the manifest itself: v1 refuses to upgrade against a
       // pre-written package.json ("Outdated lockfile"). Hand it `name@spec`
-      // descriptors that keep each entry's decorator instead.
-      const { descriptors, notInManifest } = buildUpdateDescriptors(
-        cwd,
-        packagesToUpdate,
-        outdatedPackages,
-      )
+      // descriptors instead: the current spec for in-range packages, the new
+      // version with the entry's decorator for packages moving past it.
+      const { descriptors, notInManifest } = buildUpdateDescriptors(cwd, {
+        withinRange,
+        newVersions: beyondRange,
+      })
 
       if (notInManifest.length > 0) {
         logger.warn(
@@ -221,10 +216,11 @@ class YarnManager extends CommandRunner {
 
       tableData.data.body.forEach((row: string[]) => {
         if (row.length >= 4) {
-          const [packageName, current, , latest] = row
+          const [packageName, current, wanted, latest] = row
           outdatedPackages[packageName] = {
             name: packageName,
             current,
+            wanted,
             latest,
           }
         }

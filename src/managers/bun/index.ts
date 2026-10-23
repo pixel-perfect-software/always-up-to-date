@@ -13,6 +13,9 @@ import {
   getSortedGroupNames,
   groupAndSortPackages,
   logger,
+  splitUpdates,
+  toOutdatedRow,
+  toUpdatingRow,
 } from '@/utils'
 import {
   identifyCatalogPackages,
@@ -53,12 +56,9 @@ class BunManager extends CommandRunner {
     sortedGroupNames.forEach((groupName) => {
       logger.packageGroupHeader(groupName)
       logger.printOutdatedRows(
-        groupedPackages[groupName].map(({ name, info }) => ({
-          name,
-          current: info.current,
-          latest: info.latest,
-          releaseAge: releaseAges[name],
-        })),
+        groupedPackages[groupName].map(({ name, info }) =>
+          toOutdatedRow(name, info, releaseAges[name]),
+        ),
       )
     })
 
@@ -87,12 +87,9 @@ class BunManager extends CommandRunner {
       targetPackages,
       cwd,
     })
-    const packagesToUpdate = results.filter((r) => r.updated).map((r) => r.name)
+    const { names, withinRange, beyondRange } = splitUpdates(results)
 
-    if (
-      packagesToUpdate.length === 0 &&
-      Object.keys(outdatedPackages).length > 0
-    ) {
+    if (names.length === 0 && Object.keys(outdatedPackages).length > 0) {
       logger.noPackagesToUpdate(messages.noPackagesToUpdate)
       logger.cooldownSummary(results)
       return results
@@ -100,45 +97,59 @@ class BunManager extends CommandRunner {
 
     logger.updatingHeader('bun')
     logger.printUpdatingRows(
-      results
-        .filter((r) => r.updated)
-        .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
+      results.filter((r) => r.updated).map(toUpdatingRow),
     )
 
-    if (packagesToUpdate.length > 0) {
+    if (names.length > 0) {
+      // bun installs the highest version each range allows. Only packages
+      // moving past their range need their manifest spec rewritten first.
+      const manifestWritten = Object.keys(beyondRange).length > 0
+
       if (isWorkspace && hasCatalogs) {
-        const { catalogPackages, rootPackages } = identifyCatalogPackages(
+        const { catalogPackages } = identifyCatalogPackages(
           cwd,
           outdatedPackages,
         )
-
-        const catalogsToUpdate = catalogPackages.filter((pkg) =>
-          packagesToUpdate.includes(pkg),
-        )
-        const rootToUpdate = rootPackages.filter((pkg) =>
-          packagesToUpdate.includes(pkg),
-        )
-
-        if (catalogsToUpdate.length > 0) {
-          await updateBunCatalogs(cwd, catalogsToUpdate, outdatedPackages)
+        const catalogVersions: Record<string, string> = {}
+        const rootVersions: Record<string, string> = {}
+        for (const [name, version] of Object.entries(beyondRange)) {
+          if (catalogPackages.includes(name)) catalogVersions[name] = version
+          else rootVersions[name] = version
         }
 
-        if (rootToUpdate.length > 0) {
-          await updatePackageJson(cwd, rootToUpdate, outdatedPackages)
+        if (Object.keys(catalogVersions).length > 0) {
+          await updateBunCatalogs(cwd, catalogVersions)
         }
 
-        await this.runStep('apply', this.packageManager, ['install'], cwd, {
-          manifestWritten: true,
-        })
+        if (Object.keys(rootVersions).length > 0) {
+          await updatePackageJson(cwd, rootVersions)
+        }
+
+        if (manifestWritten) {
+          await this.runStep('apply', this.packageManager, ['install'], cwd, {
+            manifestWritten,
+          })
+        }
+
+        // `install` leaves in-range packages where the lockfile has them.
+        if (withinRange.length > 0) {
+          await this.runStep(
+            'apply',
+            this.packageManager,
+            ['update', ...withinRange, '--filter', '*'],
+            cwd,
+            { manifestWritten },
+          )
+        }
       } else {
-        await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
+        if (manifestWritten) await updatePackageJson(cwd, beyondRange)
 
         const args = isWorkspace
-          ? ['update', ...packagesToUpdate, '--filter', '*']
-          : ['update', ...packagesToUpdate]
+          ? ['update', ...names, '--filter', '*']
+          : ['update', ...names]
 
         await this.runStep('apply', this.packageManager, args, cwd, {
-          manifestWritten: true,
+          manifestWritten,
         })
       }
     }
@@ -225,6 +236,8 @@ class BunManager extends CommandRunner {
       if (columns.length >= 4) {
         const packageNameRaw = columns[0]
         const current = columns[1]
+        // bun's "Update" column: the highest version the range allows.
+        const wanted = columns[2]
         const latest = columns[3]
 
         // Extract package name (remove dev/prod indicators)
@@ -237,6 +250,7 @@ class BunManager extends CommandRunner {
           result[packageName] = {
             name: packageName,
             current,
+            wanted,
             latest,
           }
         }

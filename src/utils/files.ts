@@ -64,10 +64,10 @@ const applyVersionDecorator = (
 const nextVersionSpec = (currentSpec: string, newVersion: string): string =>
   applyVersionDecorator(parseVersionString(currentSpec).decorator, newVersion)
 
+/** Moves each named entry to its new version, keeping its decorator. */
 export const updatePackageJson = async (
   cwd: string,
-  packagesToUpdate: string[],
-  outdatedPackages: Record<string, PackageInfo>,
+  versions: Record<string, string>,
 ): Promise<void> => {
   const packageJsonPath = `${cwd}/package.json`
   const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
@@ -75,13 +75,13 @@ export const updatePackageJson = async (
   const packageJson = JSON.parse(packageJsonContent)
 
   // Update the version of each package in the package.json
-  packagesToUpdate.forEach((packageName) => {
+  Object.keys(versions).forEach((packageName) => {
     if (packageJson?.dependencies?.[packageName]) {
       const currentVersion = packageJson.dependencies[packageName]
       if (!isWorkspaceReference(currentVersion)) {
         const newVersion = nextVersionSpec(
           currentVersion,
-          outdatedPackages[packageName].latest,
+          versions[packageName],
         )
         packageJson.dependencies[packageName] = newVersion
       }
@@ -92,7 +92,7 @@ export const updatePackageJson = async (
       if (!isWorkspaceReference(currentVersion)) {
         const newVersion = nextVersionSpec(
           currentVersion,
-          outdatedPackages[packageName].latest,
+          versions[packageName],
         )
         packageJson.optionalDependencies[packageName] = newVersion
       }
@@ -103,7 +103,7 @@ export const updatePackageJson = async (
       if (!isWorkspaceReference(currentVersion)) {
         const newVersion = nextVersionSpec(
           currentVersion,
-          outdatedPackages[packageName].latest,
+          versions[packageName],
         )
         packageJson.peerDependencies[packageName] = newVersion
       }
@@ -114,7 +114,7 @@ export const updatePackageJson = async (
       if (!isWorkspaceReference(currentVersion)) {
         const newVersion = nextVersionSpec(
           currentVersion,
-          outdatedPackages[packageName].latest,
+          versions[packageName],
         )
         packageJson.devDependencies[packageName] = newVersion
       }
@@ -130,22 +130,26 @@ export const updatePackageJson = async (
 
 /**
  * Builds `name@spec` descriptors for a manager that rewrites the manifest
- * itself (yarn `upgrade` / `up`). Each spec keeps the decorator its
- * package.json entry already has. Packages the root manifest does not list
- * are returned separately: handing those to yarn at the root would add them
- * as new root dependencies.
+ * itself (yarn `upgrade` / `up`). A package in `newVersions` gets its spec
+ * moved to that version, keeping its decorator. A package in `withinRange`
+ * keeps its current spec, so yarn resolves the highest version the range
+ * allows (a bare `yarn up name` on berry would jump to latest instead).
+ * Packages the root manifest does not list are returned separately: handing
+ * those to yarn at the root would add them as new root dependencies.
  */
 export const buildUpdateDescriptors = (
   cwd: string,
-  packagesToUpdate: string[],
-  outdatedPackages: Record<string, PackageInfo>,
+  {
+    withinRange = [],
+    newVersions = {},
+  }: { withinRange?: string[]; newVersions?: Record<string, string> },
 ): { descriptors: string[]; notInManifest: string[] } => {
   const packageJson = JSON.parse(fs.readFileSync(`${cwd}/package.json`, 'utf8'))
 
   const descriptors: string[] = []
   const notInManifest: string[] = []
 
-  for (const packageName of packagesToUpdate) {
+  for (const packageName of [...withinRange, ...Object.keys(newVersions)]) {
     const currentVersion = [
       packageJson?.dependencies?.[packageName],
       packageJson?.devDependencies?.[packageName],
@@ -156,11 +160,11 @@ export const buildUpdateDescriptors = (
     )
 
     if (currentVersion) {
-      const newVersion = nextVersionSpec(
-        currentVersion,
-        outdatedPackages[packageName].latest,
-      )
-      descriptors.push(`${packageName}@${newVersion}`)
+      const newVersion = newVersions[packageName]
+      const spec = newVersion
+        ? nextVersionSpec(currentVersion, newVersion)
+        : currentVersion
+      descriptors.push(`${packageName}@${spec}`)
     } else {
       notInManifest.push(packageName)
     }
@@ -171,8 +175,7 @@ export const buildUpdateDescriptors = (
 
 export const updatePNPMWorkspaceYAML = async (
   cwd: string,
-  packagesToUpdate: string[],
-  outdatedPackages: Record<string, PackageInfo>,
+  versions: Record<string, string>,
 ): Promise<void> => {
   const pnpmWorkspaceYamlPath = `${cwd}/pnpm-workspace.yaml`
   const pnpmWorkspaceYamlContent = fs.readFileSync(
@@ -187,12 +190,12 @@ export const updatePNPMWorkspaceYAML = async (
       /^\s*\s*['"]?([^'"]+)['"]?\s*:\s*['"]?([^'"]+)['"]?/,
     )
 
-    if (match && packagesToUpdate.includes(match[1])) {
+    if (match && Object.hasOwn(versions, match[1])) {
       const packageName = match[1]
       const currentVersion = match[2]
-      const latestVersion = outdatedPackages[packageName].latest
+      const targetVersion = versions[packageName]
 
-      const newVersion = nextVersionSpec(currentVersion, latestVersion)
+      const newVersion = nextVersionSpec(currentVersion, targetVersion)
 
       // Update the version in the line, preserving quotes if they exist
       const hasQuotes =
@@ -212,8 +215,7 @@ export const updatePNPMWorkspaceYAML = async (
 
 export const updateBunCatalogs = async (
   cwd: string,
-  packagesToUpdate: string[],
-  outdatedPackages: Record<string, PackageInfo>,
+  versions: Record<string, string>,
 ): Promise<void> => {
   const packageJsonPath = `${cwd}/package.json`
   const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
@@ -223,12 +225,12 @@ export const updateBunCatalogs = async (
 
   // Handle the default "catalog" field (singular)
   if (packageJson.catalog && typeof packageJson.catalog === 'object') {
-    for (const packageName of packagesToUpdate) {
+    for (const packageName of Object.keys(versions)) {
       if (packageJson.catalog[packageName]) {
         const currentVersion = packageJson.catalog[packageName]
-        const latestVersion = outdatedPackages[packageName].latest
+        const targetVersion = versions[packageName]
 
-        const newVersion = nextVersionSpec(currentVersion, latestVersion)
+        const newVersion = nextVersionSpec(currentVersion, targetVersion)
 
         // Update the catalog entry
         packageJson.catalog[packageName] = newVersion
@@ -248,12 +250,12 @@ export const updateBunCatalogs = async (
       }
 
       // Update packages in this catalog
-      for (const packageName of packagesToUpdate) {
+      for (const packageName of Object.keys(versions)) {
         if (catalog[packageName]) {
           const currentVersion = catalog[packageName]
-          const latestVersion = outdatedPackages[packageName].latest
+          const targetVersion = versions[packageName]
 
-          const newVersion = nextVersionSpec(currentVersion, latestVersion)
+          const newVersion = nextVersionSpec(currentVersion, targetVersion)
 
           // Update the catalog entry
           packageJson.catalogs[catalogName][packageName] = newVersion

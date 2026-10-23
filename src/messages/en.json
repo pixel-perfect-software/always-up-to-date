@@ -1,8 +1,8 @@
 {
   "noPackagesToUpdate": [
-    "There are outdated packages, but none of them need to be updated based on your configuration.",
-    "Always-up-to-date by default does not update major & minor versions.",
-    "This is to prevent breaking changes in your project.",
-    "However, if you know you want them upgraded, you can enable it in the configuration file."
+    "There are outdated packages, but none of them can move within the version ranges in package.json.",
+    "By default always-up-to-date stays within each range, and an exact pin is held.",
+    "To go further, set allowMinorUpdates or allowMajorUpdates in .always-up-to-date.json,",
+    "or list a package in updateAllowlist. Run `autd update --dry-run` to see why each one was held."
   ]
 }

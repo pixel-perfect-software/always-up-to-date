@@ -13,6 +13,9 @@ import {
   getSortedGroupNames,
   groupAndSortPackages,
   logger,
+  splitUpdates,
+  toOutdatedRow,
+  toUpdatingRow,
 } from '@/utils'
 import { updatePackageJson, updatePNPMWorkspaceYAML } from '@/utils/files'
 
@@ -44,16 +47,28 @@ class PNPMManager extends CommandRunner {
       ? ['outdated', '--json', '-r']
       : ['outdated', '--json']
 
-    const commandResult = await this.runStep(
-      'discover',
-      this.packageManager,
-      args,
-      cwd,
-      { isSuccess: isOutdatedReport },
+    // pnpm's `wanted` is the lockfile's version, not the highest version the
+    // range allows. `outdated --compatible` reports that one as `latest`, so
+    // both run, in parallel.
+    const [report, compatibleReport] = await Promise.all([
+      this.runStep('discover', this.packageManager, args, cwd, {
+        isSuccess: isOutdatedReport,
+      }),
+      this.runStep(
+        'discover',
+        this.packageManager,
+        [...args, '--compatible'],
+        cwd,
+        { isSuccess: isOutdatedReport },
+      ),
+    ])
+    const result: Record<string, PackageInfo> = JSON.parse(report || '{}')
+    const compatible: Record<string, PackageInfo> = JSON.parse(
+      compatibleReport || '{}',
     )
-    const result: Record<string, PackageInfo> = JSON.parse(
-      commandResult || '{}',
-    )
+    for (const [name, info] of Object.entries(result)) {
+      info.wanted = compatible[name]?.latest ?? info.wanted
+    }
 
     if (Object.keys(result).length === 0) {
       logger.allUpToDate()
@@ -69,12 +84,9 @@ class PNPMManager extends CommandRunner {
     sortedGroupNames.forEach((groupName) => {
       logger.packageGroupHeader(groupName)
       logger.printOutdatedRows(
-        groupedPackages[groupName].map(({ name, info }) => ({
-          name,
-          current: info.current,
-          latest: info.latest,
-          releaseAge: releaseAges[name],
-        })),
+        groupedPackages[groupName].map(({ name, info }) =>
+          toOutdatedRow(name, info, releaseAges[name]),
+        ),
       )
     })
 
@@ -103,12 +115,9 @@ class PNPMManager extends CommandRunner {
       targetPackages,
       cwd,
     })
-    const packagesToUpdate = results.filter((r) => r.updated).map((r) => r.name)
+    const { names, withinRange, beyondRange } = splitUpdates(results)
 
-    if (
-      packagesToUpdate.length === 0 &&
-      Object.keys(outdatedPackages).length > 0
-    ) {
+    if (names.length === 0 && Object.keys(outdatedPackages).length > 0) {
       logger.noPackagesToUpdate(messages.noPackagesToUpdate)
       logger.cooldownSummary(results)
       return results
@@ -116,35 +125,53 @@ class PNPMManager extends CommandRunner {
 
     logger.updatingHeader('pnpm')
     logger.printUpdatingRows(
-      results
-        .filter((r) => r.updated)
-        .map((r) => ({ name: r.name, current: r.current, latest: r.latest })),
+      results.filter((r) => r.updated).map(toUpdatingRow),
     )
 
-    if (packagesToUpdate.length > 0) {
+    if (names.length > 0) {
+      // pnpm installs the highest version each range allows. Only packages
+      // moving past their range need their manifest spec rewritten first.
+      const manifestWritten = Object.keys(beyondRange).length > 0
+
       if (isRunningInWorkspace) {
-        // Workspaces can hold versions in either pnpm-workspace.yaml
-        // catalogs or directly in a workspace package's package.json.
-        // Run both rewrites — each is a no-op for entries it doesn't
-        // own, and updatePackageJson skips `catalog:` / `workspace:`
-        // refs so it can't clobber catalog references.
-        await updatePNPMWorkspaceYAML(cwd, packagesToUpdate, outdatedPackages)
-        await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
+        if (manifestWritten) {
+          // Workspaces can hold versions in either pnpm-workspace.yaml
+          // catalogs or directly in a workspace package's package.json.
+          // Run both rewrites — each is a no-op for entries it doesn't
+          // own, and updatePackageJson skips `catalog:` / `workspace:`
+          // refs so it can't clobber catalog references.
+          await updatePNPMWorkspaceYAML(cwd, beyondRange)
+          await updatePackageJson(cwd, beyondRange)
+
+          // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
+          // and relinks node_modules + lockfile reliably. `pnpm update -r`
+          // can miss catalog mutations.
+          await this.runStep('apply', this.packageManager, ['install'], cwd, {
+            manifestWritten,
+          })
+        }
+
+        // `install` leaves in-range packages where the lockfile has them.
+        if (withinRange.length > 0) {
+          await this.runStep(
+            'apply',
+            this.packageManager,
+            ['update', '-r', ...withinRange],
+            cwd,
+            { manifestWritten },
+          )
+        }
       } else {
-        await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
+        if (manifestWritten) await updatePackageJson(cwd, beyondRange)
+
+        await this.runStep(
+          'apply',
+          this.packageManager,
+          ['update', ...names],
+          cwd,
+          { manifestWritten },
+        )
       }
-
-      // For workspaces (especially with catalogs), `pnpm install`
-      // re-reads both manifest and pnpm-workspace.yaml and relinks
-      // node_modules + lockfile reliably. `pnpm update -r` can miss
-      // catalog mutations, so prefer install in workspace mode.
-      const args = isRunningInWorkspace
-        ? ['install']
-        : ['update', ...packagesToUpdate]
-
-      await this.runStep('apply', this.packageManager, args, cwd, {
-        manifestWritten: true,
-      })
     }
 
     logger.cooldownSummary(results)

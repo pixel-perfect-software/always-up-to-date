@@ -58,7 +58,15 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 - `src/commands/check.ts` and `src/commands/update.ts` instantiate managers via the factory
 - `src/utils/filterPackages.ts` filters and classifies packages for update (used inside `updatePackages()`)
 - `src/utils/packageGrouper.ts` groups check output by scope for display
-- `src/utils/files.ts` `updatePackageJson()` writes version updates before running the manager's update command (npm, pnpm, bun)
+- `src/utils/files.ts` `updatePackageJson()` writes version updates before running the manager's update command (npm, pnpm, bun), only for packages moving past their range
+
+### Discovery: `wanted`
+Every parser fills `PackageInfo.wanted`, the highest version the manifest range allows: npm's `wanted`, yarn v1's `Wanted` column, bun's `Update` column. pnpm's own `wanted` is the lockfile's version, so pnpm also runs `outdated --compatible` (in parallel) and takes `wanted` from its `latest`.
+
+### Apply: within range vs beyond range
+- In-range updates (`target == wanted`) go to the manager by name with no manifest write: `npm update`, `pnpm update`, `bun update`, yarn `upgrade name@<current spec>`. Each manager installs `wanted`; npm and yarn leave package.json alone, pnpm and bun raise the range floor (their own convention)
+- Beyond-range updates get their spec rewritten to the target first (decorator kept), then the same command
+- pnpm workspaces run `install` after manifest/catalog writes, then `update -r <in-range names>`; bun catalogs the same with `install` then `update <names> --filter *`
 
 ### Yarn apply (`src/managers/yarn/index.ts`)
 - yarn writes the manifest itself: autd passes `name@spec` descriptors from `buildUpdateDescriptors()` and never pre-writes `package.json` (v1 then fails with "Outdated lockfile")

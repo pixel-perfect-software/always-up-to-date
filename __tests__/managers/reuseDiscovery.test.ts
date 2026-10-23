@@ -23,13 +23,18 @@ import { logger, runProcess } from '@/utils'
 const mockedRunProcess = jest.mocked(runProcess)
 
 const outdatedPackages: Record<string, PackageInfo> = {
-  dayjs: { name: 'dayjs', current: '1.11.9', latest: '1.11.23' },
+  dayjs: {
+    name: 'dayjs',
+    current: '1.11.9',
+    wanted: '1.11.23',
+    latest: '1.11.23',
+  },
 }
 
 describe.each([
   ['npm', () => new NPMManager(), ['update', 'dayjs']],
   ['pnpm', () => new PNPMManager(), ['update', 'dayjs']],
-  ['yarn', () => new YarnManager(), ['upgrade', 'dayjs@1.11.23']],
+  ['yarn', () => new YarnManager(), ['upgrade', 'dayjs@^1.11.9']],
   ['bun', () => new BunManager(), ['update', 'dayjs']],
 ] as const)(
   '%s updatePackages with a discovery result',
@@ -40,7 +45,7 @@ describe.each([
       cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-reuse-${pm}-`))
       fs.writeFileSync(
         path.join(cwd, 'package.json'),
-        JSON.stringify({ dependencies: { dayjs: '1.11.9' } }),
+        JSON.stringify({ dependencies: { dayjs: '^1.11.9' } }),
       )
       mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
     })

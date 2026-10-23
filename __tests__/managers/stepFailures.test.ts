@@ -21,11 +21,17 @@ jest.mock('@/utils', () => ({
 }))
 
 import { runProcess } from '@/utils'
+import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
 const outdatedPackages: Record<string, PackageInfo> = {
-  dayjs: { name: 'dayjs', current: '1.11.9', latest: '1.11.23' },
+  dayjs: {
+    name: 'dayjs',
+    current: '1.11.9',
+    wanted: '1.11.23',
+    latest: '1.11.23',
+  },
 }
 
 // Real pnpm 12 output: the update ran, then failed on an ignored build script.
@@ -50,7 +56,7 @@ describe.each([
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-step-${pm}-`))
     fs.writeFileSync(
       path.join(cwd, 'package.json'),
-      JSON.stringify({ dependencies: { dayjs: '1.11.9' } }),
+      JSON.stringify({ dependencies: { dayjs: '^1.11.9' } }),
     )
   })
 
@@ -58,19 +64,48 @@ describe.each([
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('rejects with an apply StepError when the apply command fails', async () => {
+  afterEach(() => {
+    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+  })
+
+  it('rejects with an apply StepError when an in-range apply fails', async () => {
     mockedRunProcess.mockRejectedValue(applyFailure())
 
     const error = await create()
       .updatePackages(cwd, ['dayjs'], outdatedPackages)
       .catch((e: unknown) => e)
 
+    // In range, autd hands the name to the manager and writes nothing.
     expect(error).toBeInstanceOf(StepError)
+    expect(error).toMatchObject({ step: 'apply', manifestWritten: false })
+    expect((error as Error).message).toContain('ERR_PNPM_IGNORED_BUILDS')
+  })
+
+  it('flags the written manifest when a beyond-range apply fails', async () => {
+    jest
+      .mocked(loadConfig)
+      .mockReturnValue({ ...DEFAULT_CONFIG, allowMinorUpdates: true })
+    fs.writeFileSync(
+      path.join(cwd, 'package.json'),
+      JSON.stringify({ dependencies: { dayjs: '1.11.9' } }),
+    )
+    mockedRunProcess.mockRejectedValue(applyFailure())
+
+    const error = await create()
+      .updatePackages(cwd, ['dayjs'], {
+        dayjs: {
+          name: 'dayjs',
+          current: '1.11.9',
+          wanted: '1.11.9',
+          latest: '1.11.23',
+        },
+      })
+      .catch((e: unknown) => e)
+
     expect(error).toMatchObject({
       step: 'apply',
       manifestWritten: writesManifestFirst,
     })
-    expect((error as Error).message).toContain('ERR_PNPM_IGNORED_BUILDS')
   })
 
   it('rejects with a discover StepError when discovery fails', async () => {
