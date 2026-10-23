@@ -73,6 +73,7 @@ utils/
 - Each adapter's `saveStyle(cwd)` reads that style where its manager's current version keeps it: npm `.npmrc` `save-exact` / `save-prefix`; pnpm `pnpm-workspace.yaml` `saveExact` / `savePrefix` (not `.npmrc`); yarn berry `.yarnrc.yml` `defaultSemverRangePrefix` (`''` = exact); bun `bunfig.toml` `[install] exact` or `.npmrc` `save-exact` (no prefix setting). Default `^`. Managers read it only when they write a beyond-range spec
 - `catalog:` and `workspace:` references are never rewritten
 - JSON manifests are written back in their own format (`formatLike`): the detected indentation (tabs or N spaces), CRLF or LF, and a final newline only if the file had one, so a bump changes one line
+- `updatePNPMWorkspaceYAML` rewrites only entries under `catalog:` and under each named catalog in `catalogs:`; every other block (`overrides`, `peerDependencyRules`, settings) stays byte-for-byte. An entry keeps its quotes (`"` or `'`) and its trailing comment
 - `buildUpdateDescriptors()` applies the same rule to produce `name@spec` for managers that write the manifest themselves (yarn), reading `dependencies`, then `devDependencies`, then `optionalDependencies`
 
 ### Package Grouping (`packageGrouper.ts`)

@@ -215,42 +215,64 @@ export const buildUpdateDescriptors = (
   return { descriptors, notInManifest }
 }
 
+/**
+ * A `name: version` entry: indent, the name with its quotes, the separator,
+ * the version with its quotes, and whatever follows (a comment).
+ */
+const YAML_ENTRY =
+  /^(\s+)(['"]?)([^'"\s#][^'"\s]*)\2(\s*:\s*)(['"]?)([^'"\s#]+)\5(.*)$/
+
+/**
+ * Rewrites catalog versions in pnpm-workspace.yaml: the entries under
+ * `catalog:` and under each named catalog in `catalogs:`. Every other block
+ * (`overrides`, `peerDependencyRules`, …) and every other line stays as it
+ * was, and an entry keeps its quotes and trailing comment.
+ */
 export const updatePNPMWorkspaceYAML = async (
   cwd: string,
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
   const pnpmWorkspaceYamlPath = `${cwd}/pnpm-workspace.yaml`
-  const pnpmWorkspaceYamlContent = fs.readFileSync(
-    pnpmWorkspaceYamlPath,
-    'utf8',
-  )
+  const lines = fs.readFileSync(pnpmWorkspaceYamlPath, 'utf8').split('\n')
 
-  const lines = pnpmWorkspaceYamlContent.split('\n')
+  // The top-level key the current line sits under, and, inside `catalogs:`,
+  // the indent of the named catalog it belongs to.
+  let block: string | undefined
+  let catalogIndent: number | undefined
 
   const updatedLines = lines.map((line) => {
-    const match = line.match(
-      /^\s*\s*['"]?([^'"]+)['"]?\s*:\s*['"]?([^'"]+)['"]?/,
-    )
+    if (/^\S/.test(line)) {
+      if (!line.startsWith('#')) {
+        block = /^(['"]?)([^'"\s:]+)\1\s*:/.exec(line)?.[2]
+        catalogIndent = undefined
+      }
+      return line
+    }
+    if (block !== 'catalog' && block !== 'catalogs') return line
+    if (/^\s*(#|$)/.test(line)) return line
 
-    if (match && Object.hasOwn(versions, match[1])) {
-      const packageName = match[1]
-      const currentVersion = match[2]
-      const targetVersion = versions[packageName]
-
-      const newVersion = nextVersionSpec(currentVersion, targetVersion, style)
-
-      // Update the version in the line, preserving quotes if they exist
-      const hasQuotes =
-        line.includes(`"${currentVersion}"`) ||
-        line.includes(`'${currentVersion}'`)
-      const versionToInsert = hasQuotes ? `'${newVersion}'` : newVersion
-
-      return line.replace(/:\s*['"]?[^'"]+['"]?$/, `: ${versionToInsert}`)
+    if (block === 'catalogs') {
+      const catalogKey = /^(\s+)(['"]?)[^'"\s:]+\2\s*:\s*(#.*)?$/.exec(line)
+      if (catalogKey) {
+        catalogIndent = catalogKey[1].length
+        return line
+      }
     }
 
-    // Return the line unchanged if no package to update is found
-    return line
+    const entry = YAML_ENTRY.exec(line)
+    if (!entry) return line
+    const [, indent, keyQuote, name, separator, quote, spec, rest] = entry
+    if (
+      block === 'catalogs' &&
+      !(indent.length > (catalogIndent ?? Infinity))
+    ) {
+      return line
+    }
+    if (!Object.hasOwn(versions, name)) return line
+
+    const newSpec = nextVersionSpec(spec, versions[name], style)
+    return `${indent}${keyQuote}${name}${keyQuote}${separator}${quote}${newSpec}${quote}${rest}`
   })
 
   fs.writeFileSync(pnpmWorkspaceYamlPath, updatedLines.join('\n'), 'utf8')

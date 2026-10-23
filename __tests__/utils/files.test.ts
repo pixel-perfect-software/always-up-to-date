@@ -320,18 +320,80 @@ describe('updatePNPMWorkspaceYAML', () => {
     expect(written).toContain('^4.17.0') // lodash unchanged
   })
 
-  it('preserves quoted versions', async () => {
-    const yaml = `catalog:\n  react: "^18.0.0"`
+  const write = async (yaml: string, versions: Record<string, string>) => {
     mockedFs.readFileSync.mockReturnValue(yaml)
     mockedFs.writeFileSync.mockImplementation(() => undefined)
+    await updatePNPMWorkspaceYAML('/test', versions)
+    return (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+  }
 
-    await updatePNPMWorkspaceYAML(
-      '/test',
-      versionsOf(['react'], outdatedPackages),
+  it('keeps the quotes a version was written with', async () => {
+    // Before: double quotes came back as single quotes.
+    expect(
+      await write(`catalog:\n  react: "^18.0.0"`, { react: '19.0.0' }),
+    ).toBe(`catalog:\n  react: "^19.0.0"`)
+  })
+
+  it('leaves overrides alone while it moves the catalog entry', async () => {
+    // #80: the override's floor used to move from 1.11.0 to 1.11.23.
+    const yaml =
+      'packages:\n  - packages/*\ncatalog:\n  dayjs: 1.11.9\noverrides:\n  dayjs: ^1.11.0\n'
+
+    expect(await write(yaml, { dayjs: '1.11.23' })).toBe(
+      'packages:\n  - packages/*\ncatalog:\n  dayjs: 1.11.23\noverrides:\n  dayjs: ^1.11.0\n',
     )
+  })
 
-    const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
-    expect(written).toContain("'^19.0.0'")
+  it('rewrites named catalogs and nothing nested elsewhere', async () => {
+    const yaml = [
+      'catalogs:',
+      '  react18:',
+      '    react: ^18.2.0',
+      '  tools:',
+      '    dayjs: 1.11.9',
+      'peerDependencyRules:',
+      '  allowedVersions:',
+      '    dayjs: 1.11.9',
+    ].join('\n')
+
+    expect(await write(yaml, { dayjs: '1.11.23', react: '19.3.1' })).toBe(
+      [
+        'catalogs:',
+        '  react18:',
+        '    react: ^19.3.1',
+        '  tools:',
+        '    dayjs: 1.11.23',
+        'peerDependencyRules:',
+        '  allowedVersions:',
+        '    dayjs: 1.11.9',
+      ].join('\n'),
+    )
+  })
+
+  it('moves an entry with a trailing comment and keeps the comment', async () => {
+    // Before: the comment was read as part of the version and nothing moved.
+    expect(
+      await write('catalog:\n  dayjs: 1.11.9 # pinned for the date picker\n', {
+        dayjs: '1.11.23',
+      }),
+    ).toBe('catalog:\n  dayjs: 1.11.23 # pinned for the date picker\n')
+  })
+
+  it('reads a quoted scoped name', async () => {
+    expect(
+      await write(`catalog:\n  '@types/node': ^20.0.0\n`, {
+        '@types/node': '22.1.0',
+      }),
+    ).toBe(`catalog:\n  '@types/node': ^22.1.0\n`)
+  })
+
+  it('leaves comment lines and other keys untouched', async () => {
+    const yaml =
+      '# dayjs: 1.0.0\ncatalog:\n  # dayjs: 1.0.0\n  react: ^18.0.0\nsavePrefix: "~"\n'
+
+    expect(await write(yaml, { dayjs: '1.11.23', savePrefix: '1.0.0' })).toBe(
+      yaml,
+    )
   })
 
   it('keeps an exact pin exact', async () => {
