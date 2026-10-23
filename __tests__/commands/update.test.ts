@@ -19,7 +19,11 @@ jest.mock('@/utils/filterPackages', () => ({
   __esModule: true,
   default: jest.fn(),
 }))
+jest.mock('@inquirer/prompts', () => ({
+  checkbox: jest.fn(),
+}))
 
+import { checkbox } from '@inquirer/prompts'
 import updateCommand from '@/commands/update'
 import detectPackageManager from '@/detectPackageManager'
 import { PackageManager } from '@/managers'
@@ -28,6 +32,7 @@ import filterPackages from '@/utils/filterPackages'
 const mockDetectPackageManager = jest.mocked(detectPackageManager)
 const mockPackageManager = jest.mocked(PackageManager)
 const mockFilterPackages = jest.mocked(filterPackages)
+const mockCheckbox = jest.mocked(checkbox)
 
 const mockUpdatePackages = jest.fn()
 const mockCheckPackageVersions = jest.fn()
@@ -146,5 +151,40 @@ describe('update command', () => {
 
     expect(mockFilterPackages).not.toHaveBeenCalled()
     expect(mockUpdatePackages).not.toHaveBeenCalled()
+  })
+
+  it('interactive mode discovers once and applies the selection with that result', async () => {
+    const outdated = {
+      react: { name: 'react', current: '18.0.0', latest: '18.0.1' },
+      lodash: { name: 'lodash', current: '4.17.20', latest: '4.17.21' },
+    }
+    mockCheckPackageVersions.mockResolvedValue(outdated)
+    mockFilterPackages.mockResolvedValue([
+      {
+        name: 'react',
+        current: '18.0.0',
+        latest: '18.0.1',
+        updateType: 'patch',
+        updated: true,
+      },
+      {
+        name: 'lodash',
+        current: '4.17.20',
+        latest: '4.17.21',
+        updateType: 'patch',
+        updated: true,
+      },
+    ])
+    mockCheckbox.mockResolvedValue(['react'])
+    mockUpdatePackages.mockResolvedValue([])
+
+    await program.parseAsync(['node', 'test', 'update', '--interactive'])
+
+    expect(mockCheckPackageVersions).toHaveBeenCalledTimes(1)
+    expect(mockUpdatePackages).toHaveBeenCalledWith(
+      expect.any(String),
+      ['react'],
+      outdated,
+    )
   })
 })

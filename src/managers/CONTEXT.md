@@ -10,7 +10,7 @@ All four package managers are fully implemented with workspace support.
 - All managers extend `CommandRunner` base class from `src/commandRunner.ts`
 - Each manager must implement: `checkPackageVersions()`, `updatePackages()`, `checkIfInWorkspace()`
 - `checkPackageVersions()` returns `Record<string, PackageInfo>` (structured data)
-- `updatePackages()` returns `UpdateResult[]` and accepts optional `targetPackages?: string[]` for scoped updates
+- `updatePackages()` returns `UpdateResult[]` and accepts optional `targetPackages?: string[]` for scoped updates and `discovered?: Record<string, PackageInfo>` to reuse a discovery result instead of running `outdated` again
 - The `PackageManager` factory class (`packageManager.ts`) maps `SupportedPackageManager` to concrete instances via switch statement
 
 ## Major Subsystem Organization

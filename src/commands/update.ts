@@ -133,7 +133,11 @@ const interactiveUpdate = async (
     return
   }
 
-  await packageManager.manager.updatePackages(workingDir, selected)
+  await packageManager.manager.updatePackages(
+    workingDir,
+    selected,
+    outdatedPackages,
+  )
 }
 
 export default update

@@ -36,7 +36,7 @@ commands/
 #### `update [packages...]`
 - Accepts optional variadic package names to target specific packages
 - `--dry-run` - Preview which packages would be updated without making changes
-- `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`)
+- `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). Discovery runs once: the checklist's `checkPackageVersions` result is passed to `updatePackages(cwd, selected, discovered)`
 - `--json` - Output `UpdateResult[]` as JSON after updating
 
 ### Binary Aliases

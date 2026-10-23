@@ -38,7 +38,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - `src/managers/packageManager.ts` is a factory that instantiates the correct manager based on detection
 - Each manager (npm, yarn, pnpm, bun) extends `CommandRunner` and implements:
   - `checkPackageVersions(cwd)` - Returns `Record<string, PackageInfo>` of outdated packages
-  - `updatePackages(cwd, targetPackages?)` - Updates packages, returns `UpdateResult[]`. Optional `targetPackages` scopes to specific packages.
+  - `updatePackages(cwd, targetPackages?, discovered?)` - Updates packages, returns `UpdateResult[]`. Optional `targetPackages` scopes to specific packages; optional `discovered` is a `checkPackageVersions` result the caller already has, so discovery is not run twice.
   - `checkIfInWorkspace(cwd)` - Detects workspace/monorepo configuration
 
 **Command Runner Pattern**

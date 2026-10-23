@@ -60,12 +60,18 @@ class BunManager extends CommandRunner {
     return result
   }
 
+  /**
+   * `discovered` is a result from `checkPackageVersions` the caller already
+   * has (interactive mode), so `outdated` is not run a second time.
+   */
   updatePackages = async (
     cwd: string,
     targetPackages?: string[],
+    discovered?: Record<string, PackageInfo>,
   ): Promise<UpdateResult[]> => {
     try {
-      const outdatedPackages = await this.checkPackageVersions(cwd)
+      const outdatedPackages =
+        discovered ?? (await this.checkPackageVersions(cwd))
 
       if (Object.keys(outdatedPackages).length === 0) {
         // checkPackageVersions already printed allUpToDate.
