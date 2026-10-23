@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 
-import cli from './cli'
+import { ConfigError } from './utils/config'
 
-const main = async () => {
+export const main = async () => {
   try {
+    // Loaded here, not at the top: loading the CLI reads the config file, and
+    // a bad config must reach this catch rather than crash with a stack trace.
+    const { default: cli } = await import('./cli')
     await cli()
   } catch (error) {
-    console.error('An error occurred:', error)
+    if (error instanceof ConfigError) {
+      console.error(`autd: ${error.message}`)
+    } else {
+      console.error('An error occurred:', error)
+    }
     process.exit(1)
   }
 }

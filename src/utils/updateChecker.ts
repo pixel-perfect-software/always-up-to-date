@@ -25,26 +25,47 @@ const LEVEL_RANK: Record<BeyondRange, number> = {
   major: 3,
 }
 
+const escapeRegExp = (text: string): string =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** `*` matches any run of characters; everything else is literal. */
+const globToRegExp = (pattern: string): RegExp =>
+  new RegExp(`^${pattern.split('*').map(escapeRegExp).join('.*')}$`)
+
 /**
- * The legacy fields act as the override layer: `allowMinorUpdates` and
- * `allowMajorUpdates` say how far beyond the range a package may move, the
- * allowlist means "always latest" and the denylist means "hold". The
- * allowlist wins when a package is on both.
+ * Builds the override layer from the config. `beyondRange` and `rules` win
+ * over the deprecated fields: `allowMinorUpdates` / `allowMajorUpdates` give
+ * the level only when `beyondRange` is unset, and the allow/deny lists act as
+ * `latest` / `hold` rules only for packages no rule matches. A rule for the
+ * exact name beats any glob; among globs the longest pattern wins.
  */
 export const policyFromConfig = (
   config: AlwaysUpToDateConfig,
-): UpdatePolicy => ({
-  beyondRange: config.allowMajorUpdates
+): UpdatePolicy => {
+  const rules = config.rules ?? {}
+  const globs = Object.entries(rules)
+    .filter(([pattern]) => pattern.includes('*'))
+    .sort(([a], [b]) => b.length - a.length)
+    .map(([pattern, rule]) => ({ matches: globToRegExp(pattern), rule }))
+
+  const legacyLevel: BeyondRange = config.allowMajorUpdates
     ? 'major'
     : config.allowMinorUpdates
       ? 'minor'
-      : 'none',
-  ruleFor: (name) => {
-    if (config.updateAllowlist.includes(name)) return 'latest'
-    if (config.updateDenylist.includes(name)) return 'hold'
-    return undefined
-  },
-})
+      : 'none'
+
+  return {
+    beyondRange: config.beyondRange ?? legacyLevel,
+    ruleFor: (name) => {
+      if (Object.hasOwn(rules, name)) return rules[name]
+      const glob = globs.find(({ matches }) => matches.test(name))
+      if (glob) return glob.rule
+      if (config.updateAllowlist.includes(name)) return 'latest'
+      if (config.updateDenylist.includes(name)) return 'hold'
+      return undefined
+    },
+  }
+}
 
 /** Size of the step from `from` to `to`; pre-releases count as their level. */
 export const stepLevel = (

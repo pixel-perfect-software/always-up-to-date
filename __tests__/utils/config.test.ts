@@ -60,6 +60,53 @@ describe('loadConfig', () => {
     expect(() => loadConfig('/test')).toThrow('Failed to load JSON config')
   })
 
+  describe('beyondRange and rules', () => {
+    const load = (json: Record<string, unknown>) => {
+      mockedCheckIfFileExists.mockReturnValue(true)
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify(json))
+      return loadConfig('/test')
+    }
+
+    it('reads beyondRange and rules', () => {
+      const config = load({
+        beyondRange: 'minor',
+        rules: { react: 'hold', '@types/*': 'latest', zod: 'followRange' },
+      })
+
+      expect(config.beyondRange).toBe('minor')
+      expect(config.rules).toEqual({
+        react: 'hold',
+        '@types/*': 'latest',
+        zod: 'followRange',
+      })
+    })
+
+    it('leaves beyondRange unset and rules empty when missing', () => {
+      const config = load({ allowMinorUpdates: true })
+
+      expect(config.beyondRange).toBeUndefined()
+      expect(config.rules).toEqual({})
+    })
+
+    it('rejects an unknown beyondRange instead of silently ignoring it', () => {
+      expect(() => load({ beyondRange: 'majr' })).toThrow(
+        'beyondRange must be one of "none", "patch", "minor", "major" (got "majr")',
+      )
+    })
+
+    it('rejects an unknown rule instead of updating a package meant to be held', () => {
+      expect(() => load({ rules: { react: 'hodl' } })).toThrow(
+        'rules["react"] must be one of "hold", "followRange", "latest" (got "hodl")',
+      )
+    })
+
+    it('rejects rules that are not an object', () => {
+      expect(() => load({ rules: ['react'] })).toThrow(
+        'rules must be an object of package name to rule',
+      )
+    })
+  })
+
   describe('cooldown', () => {
     it('defaults to 0 when missing', () => {
       mockedCheckIfFileExists.mockReturnValue(true)

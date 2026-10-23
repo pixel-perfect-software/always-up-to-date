@@ -1,12 +1,19 @@
 import fs from 'fs'
 import path from 'path'
-import type { AlwaysUpToDateConfig, CooldownConfig } from '@/types'
+import type {
+  AlwaysUpToDateConfig,
+  BeyondRange,
+  ConfigFile,
+  CooldownConfig,
+  PackageRule,
+} from '@/types'
 import { checkIfFileExists } from './files'
 
 export const CONFIG_SCHEMA_URL =
   'https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/schema/config.schema.json'
 
 const DEFAULT_CONFIG: AlwaysUpToDateConfig = {
+  rules: {},
   allowMinorUpdates: false,
   allowMajorUpdates: false,
   debug: false,
@@ -14,6 +21,52 @@ const DEFAULT_CONFIG: AlwaysUpToDateConfig = {
   updateAllowlist: [],
   updateDenylist: [],
   cooldown: 0,
+}
+
+/** The config file exists but cannot be used: malformed JSON or an invalid value. */
+export class ConfigError extends Error {
+  override name = 'ConfigError'
+}
+
+/** What `autd init` writes: the current shape, without the deprecated fields. */
+const INITIAL_CONFIG: ConfigFile = {
+  beyondRange: 'none',
+  rules: {},
+  cooldown: 0,
+  debug: false,
+  silent: false,
+}
+
+const BEYOND_RANGE_LEVELS: BeyondRange[] = ['none', 'patch', 'minor', 'major']
+const PACKAGE_RULES: PackageRule[] = ['hold', 'followRange', 'latest']
+
+const oneOf = (values: string[]) => values.map((v) => `"${v}"`).join(', ')
+
+// Policy fields are validated strictly: silently ignoring a typo such as
+// `"react": "hodl"` would update a package the user meant to hold.
+const parseBeyondRange = (input: unknown): BeyondRange | undefined => {
+  if (input === undefined) return undefined
+  if (BEYOND_RANGE_LEVELS.includes(input as BeyondRange)) {
+    return input as BeyondRange
+  }
+  throw new Error(
+    `beyondRange must be one of ${oneOf(BEYOND_RANGE_LEVELS)} (got ${JSON.stringify(input)})`,
+  )
+}
+
+const parseRules = (input: unknown): Record<string, PackageRule> => {
+  if (input === undefined) return {}
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('rules must be an object of package name to rule')
+  }
+  for (const [name, rule] of Object.entries(input)) {
+    if (!PACKAGE_RULES.includes(rule as PackageRule)) {
+      throw new Error(
+        `rules[${JSON.stringify(name)}] must be one of ${oneOf(PACKAGE_RULES)} (got ${JSON.stringify(rule)})`,
+      )
+    }
+  }
+  return input as Record<string, PackageRule>
 }
 
 const isValidCooldownValue = (value: unknown): boolean => {
@@ -48,6 +101,8 @@ const loadJsonConfig = (filePath: string): AlwaysUpToDateConfig => {
 
     // Validate and merge with defaults
     return {
+      beyondRange: parseBeyondRange(jsonConfig.beyondRange),
+      rules: parseRules(jsonConfig.rules),
       allowMinorUpdates: Boolean(
         jsonConfig.allowMinorUpdates ?? DEFAULT_CONFIG.allowMinorUpdates,
       ),
@@ -65,7 +120,11 @@ const loadJsonConfig = (filePath: string): AlwaysUpToDateConfig => {
       cooldown: parseCooldownInput(jsonConfig.cooldown),
     }
   } catch (error) {
-    throw new Error(`Failed to load JSON config from ${filePath}: ${error}`)
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new ConfigError(
+      `Failed to load JSON config from ${filePath}: ${detail}`,
+      { cause: error },
+    )
   }
 }
 
@@ -89,12 +148,9 @@ export const loadConfig = (
 /**
  * Save configuration to JSON format
  */
-export const saveJsonConfig = (
-  config: AlwaysUpToDateConfig & { $schema?: string },
-  filePath: string,
-): void => {
+export const saveJsonConfig = (config: ConfigFile, filePath: string): void => {
   const jsonContent = JSON.stringify(config, null, 2)
   fs.writeFileSync(filePath, jsonContent, 'utf8')
 }
 
-export { DEFAULT_CONFIG }
+export { DEFAULT_CONFIG, INITIAL_CONFIG }

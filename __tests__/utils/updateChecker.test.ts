@@ -158,7 +158,61 @@ describe('policyFromConfig (legacy fields as the override layer)', () => {
     updateAllowlist: [],
     updateDenylist: [],
     cooldown: 0,
+    rules: {},
     ...overrides,
+  })
+
+  it('uses beyondRange when it is set, over the legacy fields', () => {
+    expect(
+      policyFromConfig(
+        config({ beyondRange: 'patch', allowMajorUpdates: true }),
+      ).beyondRange,
+    ).toBe('patch')
+    expect(policyFromConfig(config({ beyondRange: 'none' })).beyondRange).toBe(
+      'none',
+    )
+  })
+
+  it('matches rules by exact name first, then the longest matching glob', () => {
+    const { ruleFor } = policyFromConfig(
+      config({
+        rules: {
+          '*': 'followRange',
+          '@types/*': 'latest',
+          '@types/react': 'hold',
+          'eslint-*': 'hold',
+        },
+      }),
+    )
+
+    expect(ruleFor('@types/react')).toBe('hold')
+    expect(ruleFor('@types/node')).toBe('latest')
+    expect(ruleFor('eslint-plugin-react')).toBe('hold')
+    expect(ruleFor('eslint')).toBe('followRange')
+    expect(ruleFor('dayjs')).toBe('followRange')
+  })
+
+  it('treats glob characters other than * literally', () => {
+    const { ruleFor } = policyFromConfig(
+      config({ rules: { 'lodash.merge': 'hold' } }),
+    )
+
+    expect(ruleFor('lodash.merge')).toBe('hold')
+    expect(ruleFor('lodashxmerge')).toBeUndefined()
+  })
+
+  it('lets rules win over the legacy allow and deny lists', () => {
+    const { ruleFor } = policyFromConfig(
+      config({
+        rules: { react: 'hold', 'vue*': 'latest' },
+        updateAllowlist: ['react'],
+        updateDenylist: ['vue', 'lodash'],
+      }),
+    )
+
+    expect(ruleFor('react')).toBe('hold')
+    expect(ruleFor('vue')).toBe('latest')
+    expect(ruleFor('lodash')).toBe('hold')
   })
 
   it('maps allowMinorUpdates and allowMajorUpdates to a beyond-range level', () => {

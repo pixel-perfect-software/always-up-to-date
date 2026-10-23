@@ -1,12 +1,7 @@
 import type { Command } from 'commander'
 import path from 'path'
-import {
-  checkIfFileExists,
-  DEFAULT_CONFIG,
-  logger,
-  saveJsonConfig,
-} from '@/utils'
-import { CONFIG_SCHEMA_URL } from '@/utils/config'
+import { checkIfFileExists, logger, saveJsonConfig } from '@/utils'
+import { CONFIG_SCHEMA_URL, INITIAL_CONFIG } from '@/utils/config'
 
 const workingDir = process.cwd()
 
@@ -40,7 +35,7 @@ const initCommand = (program: Command) =>
       // Create the new JSON configuration file with a $schema reference
       // for IDE autocomplete + validation.
       saveJsonConfig(
-        { $schema: CONFIG_SCHEMA_URL, ...DEFAULT_CONFIG },
+        { $schema: CONFIG_SCHEMA_URL, ...INITIAL_CONFIG },
         jsonConfigFilePath,
       )
 
