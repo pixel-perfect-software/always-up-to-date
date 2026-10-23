@@ -139,6 +139,33 @@ describe('parseBunWorkspaceOutdated', () => {
     expect(entries).toEqual(expect.arrayContaining(WORKSPACE_ENTRIES))
   })
 
+  it('gives a catalog row to the workspace that uses the catalog', () => {
+    // bun 1.4.0 prints `catalog (<workspace>)` and `catalog:<name> (<workspace>)`.
+    const entries = parseBunWorkspaceOutdated(
+      readFixture('bun/outdated-workspace-catalogs.stdout'),
+      workspaceOwner(
+        [
+          { path: '.', name: 'autd-bun-catalogs' },
+          { path: 'packages/a', name: '@autd/a' },
+          { path: 'packages/b', name: '@autd/b' },
+        ],
+        'bun',
+      ),
+    )
+
+    expect(
+      entries.map((e) => [e.name, e.workspace, e.current, e.wanted]),
+    ).toEqual([
+      ['dayjs', '.', '1.11.9', '1.11.9'],
+      ['ms', 'packages/a', '2.1.2', '2.1.2'],
+      ['ms', '.', '2.1.1', '2.1.3'],
+      ['chalk', 'packages/a', '4.0.0', '4.1.2'],
+      ['commander', 'packages/b', '11.0.0', '11.1.0'],
+      ['debug', 'packages/b', '4.3.1', '4.3.7'],
+      ['uuid', 'packages/b', '9.0.0', '9.0.1'],
+    ])
+  })
+
   it('maps the empty Workspace cell of an unnamed root to the root', () => {
     const entries = parseBunWorkspaceOutdated(
       readFixture('bun/outdated-workspace-unnamed-root.stdout'),

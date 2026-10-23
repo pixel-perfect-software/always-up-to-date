@@ -65,7 +65,7 @@ A `packageManager` naming an unsupported manager falls through to `devEngines.pa
 | yarn v1 | `package.json` `workspaces` field | `outdated --json --recursive` | the `Workspace` column (a package name), resolved through `manifests` |
 | yarn berry | `package.json` `workspaces` field | `info -A --json` (no `outdated`; see Yarn berry) | each workspace entry's value, `<name>@workspace:<path>` (path `.` for the root) |
 | pnpm | `pnpm-workspace.yaml` with a non-empty `packages:` list (a file holding only settings or catalogs is not a workspace) | `outdated --json -r`, plus `--compatible` | each `dependentPackages[].location`, made relative to `cwd`; a `name@current` key loses its suffix |
-| bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `outdated --filter *` (two arguments) | the `Workspace` column (a package name), resolved through `manifests` |
+| bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `outdated --filter *` (two arguments) | the `Workspace` column (a package name), resolved through `manifests`; a catalog row reads `catalog (<ws>)` or `catalog:<name> (<ws>)` and belongs to that workspace |
 
 Yarn v1 and bun print a root without a `name` as an empty `Workspace` cell (verified on yarn 1.22.22 and bun 1.4.0): `workspaceOwner()` reads `''` as the root only when the root manifest has no name, and fails `discover` for any other name no manifest declares.
 
@@ -95,7 +95,7 @@ Every parser fills `PackageInfo.wanted`, the highest version the manifest range 
 
 ### Yarn apply (`src/managers/yarn/index.ts`)
 - yarn writes the manifest itself: autd passes `name@spec` descriptors from `buildUpdateDescriptors()` and never pre-writes `package.json` (v1 then fails with "Outdated lockfile")
-- v1 runs `yarn upgrade <descriptors>`; it has no `update`. In a v1 workspace `upgrade` at the root only touches the root manifest, so each manifest in `plan.manifests` gets its own command: `upgrade` for the root, `workspace <name> upgrade` for a member (the name comes from `Workspace.manifests`; a member without one is an `apply` StepError), then one `install` if any member command ran, since a member upgrade leaves node_modules unlinked. No `--recursive`: v1 ignores it
+- v1 runs `yarn upgrade <descriptors>`; it has no `update`. In a v1 workspace `upgrade` at the root only touches the root manifest, so each manifest in `plan.manifests` gets its own command: `upgrade` for the root, `workspace <name> upgrade` for a member, one command per dependency field with that field's flag (none, `-D`, `-O`): without `-D`, yarn 1.22.22 also writes a member's devDependency into its `dependencies` (the name comes from `Workspace.manifests`; a member without one is an `apply` StepError), then one `install` if any member command ran, since a member upgrade leaves node_modules unlinked. No `--recursive`: v1 ignores it
 - `isYarnBerry(cwd)` (exported here; also decides save style and overrides): `packageManager: yarn@2+` wins; otherwise a `.yarnrc.yml` means berry
 - Packages a manifest does not list are skipped with a warning naming it: v1 `upgrade` at a workspace root adds them as root dependencies
 

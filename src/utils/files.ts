@@ -176,6 +176,15 @@ export const updatePackageJson = async (
  * Packages the root manifest does not list are returned separately: handing
  * those to yarn at the root would add them as new root dependencies.
  */
+/** The fields a yarn descriptor can come from, in the order they are looked up. */
+const DESCRIPTOR_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+] as const
+
+export type DescriptorField = (typeof DESCRIPTOR_FIELDS)[number]
+
 export const buildUpdateDescriptors = (
   cwd: string,
   {
@@ -187,36 +196,44 @@ export const buildUpdateDescriptors = (
     newVersions?: Record<string, string>
     style?: SaveStyle
   },
-): { descriptors: string[]; notInManifest: string[] } => {
+): {
+  descriptors: string[]
+  /** The same descriptors, grouped by the field that declares each package. */
+  byField: Record<DescriptorField, string[]>
+  notInManifest: string[]
+} => {
   const packageJson = JSON.parse(
     fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'),
   )
 
   const descriptors: string[] = []
+  const byField: Record<DescriptorField, string[]> = {
+    dependencies: [],
+    devDependencies: [],
+    optionalDependencies: [],
+  }
   const notInManifest: string[] = []
 
   for (const packageName of [...withinRange, ...Object.keys(newVersions)]) {
-    const currentVersion = [
-      packageJson?.dependencies?.[packageName],
-      packageJson?.devDependencies?.[packageName],
-      packageJson?.optionalDependencies?.[packageName],
-    ].find(
-      (spec): spec is string =>
-        typeof spec === 'string' && !isWorkspaceReference(spec),
-    )
+    const field = DESCRIPTOR_FIELDS.find((name) => {
+      const spec = packageJson?.[name]?.[packageName]
+      return typeof spec === 'string' && !isWorkspaceReference(spec)
+    })
 
-    if (currentVersion) {
+    if (field) {
+      const currentVersion: string = packageJson[field][packageName]
       const newVersion = newVersions[packageName]
       const spec = newVersion
         ? nextVersionSpec(currentVersion, newVersion, style)
         : currentVersion
       descriptors.push(`${packageName}@${spec}`)
+      byField[field].push(`${packageName}@${spec}`)
     } else {
       notInManifest.push(packageName)
     }
   }
 
-  return { descriptors, notInManifest }
+  return { descriptors, byField, notInManifest }
 }
 
 /**
