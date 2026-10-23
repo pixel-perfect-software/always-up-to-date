@@ -51,7 +51,7 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 |---------|--------|------|
 | npm | `package.json` `workspaces` field (array or `{packages: [...]}`) | `--workspaces` |
 | yarn | `package.json` `workspaces` field | `--recursive` (on `outdated` only) |
-| pnpm | `pnpm-workspace.yaml` file existence | `-r` |
+| pnpm | `pnpm-workspace.yaml` with a non-empty `packages:` list (a file holding only settings or catalogs is not a workspace) | `-r` |
 | bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `--filter *` (two arguments) |
 
 ## Integration Points
@@ -69,7 +69,7 @@ Every parser fills `PackageInfo.wanted`, the highest version the manifest range 
 ### Apply: within range vs beyond range
 - In-range updates (`target == wanted`) go to the manager by name with no manifest write: `npm update`, `pnpm update`, `bun update`, yarn `upgrade name@<current spec>`. Each manager installs `wanted`; npm and yarn leave package.json alone, pnpm and bun raise the range floor (their own convention)
 - Beyond-range updates get their spec rewritten to the target first (decorator kept), then the same command
-- pnpm workspaces run `install` after manifest/catalog writes, then `update -r <in-range names>`; bun catalogs the same with `install` then `update <names> --filter *`
+- pnpm workspaces, and single-package projects with `catalog:` / `catalogs:` in pnpm-workspace.yaml, run `install` after manifest/catalog writes, then `update <in-range names>` (`-r` only in a workspace); bun catalogs the same with `install` then `update <names> --filter *`
 
 ### Yarn apply (`src/managers/yarn/index.ts`)
 - yarn writes the manifest itself: autd passes `name@spec` descriptors from `buildUpdateDescriptors()` and never pre-writes `package.json` (v1 then fails with "Outdated lockfile")
