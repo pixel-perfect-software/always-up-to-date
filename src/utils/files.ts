@@ -84,6 +84,18 @@ const nextVersionSpec = (
   return style.exact ? newVersion : `${style.prefix}${newVersion}`
 }
 
+/**
+ * Serializes `data` the way `original` was written: the same indentation
+ * (tabs or a number of spaces), the same line endings, and a final newline
+ * only if the file had one. A version bump then changes only its line.
+ */
+const formatLike = (original: string, data: unknown): string => {
+  const indent = /^([ \t]+)"/m.exec(original)?.[1] ?? '  '
+  const eol = original.includes('\r\n') ? '\r\n' : '\n'
+  const body = JSON.stringify(data, null, indent).replaceAll('\n', eol)
+  return /\r?\n$/.test(original) ? `${body}${eol}` : body
+}
+
 /** Moves each named entry to its new version, keeping its decorator. */
 export const updatePackageJson = async (
   cwd: string,
@@ -148,7 +160,7 @@ export const updatePackageJson = async (
 
   fs.writeFileSync(
     packageJsonPath,
-    JSON.stringify(packageJson, null, 2),
+    formatLike(packageJsonContent, packageJson),
     'utf8',
   )
 }
@@ -305,7 +317,7 @@ export const updateBunCatalogs = async (
   if (catalogsUpdated) {
     fs.writeFileSync(
       packageJsonPath,
-      JSON.stringify(packageJson, null, 2),
+      formatLike(packageJsonContent, packageJson),
       'utf8',
     )
   }

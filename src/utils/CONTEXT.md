@@ -71,6 +71,7 @@ utils/
 - Every writer builds the new spec with `nextVersionSpec()`: a single comparator (`^1.2.3`, `~1.2.3`, `1.2.3`) keeps its decorator, so an exact pin stays exact; an `npm:` alias keeps the alias and rewrites the spec inside it; a spec that can't keep its shape (`1.x`, `*`, `>=1 <2`, `^1 || ^2`) is written in the project's save style; git, file and URL specs are left alone
 - `readSaveStyle(cwd, pm)` (`saveStyle.ts`) reads that style where each manager's current version keeps it: npm `.npmrc` `save-exact` / `save-prefix`; pnpm `pnpm-workspace.yaml` `saveExact` / `savePrefix` (not `.npmrc`); yarn berry `.yarnrc.yml` `defaultSemverRangePrefix` (`''` = exact); bun `bunfig.toml` `[install] exact` or `.npmrc` `save-exact` (no prefix setting). Default `^`. Managers read it only when they write a beyond-range spec
 - `catalog:` and `workspace:` references are never rewritten
+- JSON manifests are written back in their own format (`formatLike`): the detected indentation (tabs or N spaces), CRLF or LF, and a final newline only if the file had one, so a bump changes one line
 - `buildUpdateDescriptors()` applies the same rule to produce `name@spec` for managers that write the manifest themselves (yarn), reading `dependencies`, then `devDependencies`, then `optionalDependencies`
 
 ### Package Grouping (`packageGrouper.ts`)
