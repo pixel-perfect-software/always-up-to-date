@@ -136,16 +136,20 @@ class PNPMManager extends CommandRunner {
       // pnpm installs the highest version each range allows. Only packages
       // moving past their range need their manifest spec rewritten first.
       const manifestWritten = Object.keys(beyondRange).length > 0
+      // A single-package project can have catalogs too, so they are not tied
+      // to being a workspace.
+      const usesCatalogs = definesCatalogs(cwd)
 
-      if (isRunningInWorkspace) {
+      if (isRunningInWorkspace || usesCatalogs) {
         if (manifestWritten) {
-          // Workspaces can hold versions in either pnpm-workspace.yaml
-          // catalogs or directly in a workspace package's package.json.
-          // Run both rewrites — each is a no-op for entries it doesn't
-          // own, and updatePackageJson skips `catalog:` / `workspace:`
-          // refs so it can't clobber catalog references.
+          // Versions live in pnpm-workspace.yaml catalogs or directly in a
+          // package.json. Run both rewrites — each is a no-op for entries it
+          // doesn't own, and updatePackageJson skips `catalog:` /
+          // `workspace:` refs so it can't clobber catalog references.
           const style = readSaveStyle(cwd, this.packageManager)
-          await updatePNPMWorkspaceYAML(cwd, beyondRange, style)
+          if (usesCatalogs) {
+            await updatePNPMWorkspaceYAML(cwd, beyondRange, style)
+          }
           await updatePackageJson(cwd, beyondRange, style)
 
           // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
@@ -161,7 +165,9 @@ class PNPMManager extends CommandRunner {
           await this.runStep(
             'apply',
             this.packageManager,
-            ['update', '-r', ...withinRange],
+            isRunningInWorkspace
+              ? ['update', '-r', ...withinRange]
+              : ['update', ...withinRange],
             cwd,
             { manifestWritten },
           )
@@ -190,19 +196,50 @@ class PNPMManager extends CommandRunner {
   }
 
   checkIfInWorkspace = async (cwd: string): Promise<boolean> => {
+    let workspaceFile: string
     try {
-      const workspaceFile = fs.readFileSync(
-        `${cwd}/pnpm-workspace.yaml`,
-        'utf8',
-      )
-
-      logger.workspace('pnpm')
-
-      return !!workspaceFile
+      workspaceFile = fs.readFileSync(`${cwd}/pnpm-workspace.yaml`, 'utf8')
     } catch {
       return false
     }
+
+    const isWorkspace = listsWorkspacePackages(workspaceFile)
+    if (isWorkspace) logger.workspace('pnpm')
+
+    return isWorkspace
   }
+}
+
+/** `catalog:` or `catalogs:` in pnpm-workspace.yaml, which hold versions. */
+const definesCatalogs = (cwd: string): boolean => {
+  try {
+    return /^catalogs?:/m.test(
+      fs.readFileSync(`${cwd}/pnpm-workspace.yaml`, 'utf8'),
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * pnpm-workspace.yaml also holds settings (`overrides`, `catalog`,
+ * `onlyBuiltDependencies`), so single-package projects often have one. The
+ * project is a workspace only when the file lists `packages`, as a block list
+ * or a flow list.
+ */
+const listsWorkspacePackages = (yaml: string): boolean => {
+  const lines = yaml.split('\n')
+  const start = lines.findIndex((line) => /^packages:/.test(line))
+  if (start === -1) return false
+
+  const inline = lines[start].replace(/^packages:\s*/, '')
+  if (inline && !inline.startsWith('#')) return /^\[\s*[^\s\]]/.test(inline)
+
+  for (const line of lines.slice(start + 1)) {
+    if (/^\s*-\s*[^\s#]/.test(line)) return true
+    if (/^\S/.test(line) && !line.startsWith('#')) return false
+  }
+  return false
 }
 
 export default PNPMManager
