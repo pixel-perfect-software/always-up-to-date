@@ -1,0 +1,113 @@
+name: Release
+
+# Pushing a tag like `v2.0.0` tests the tagged source, publishes it to npm, and creates the
+# GitHub release with that version's CHANGELOG.md entry as its notes. The tag must match
+# `version` in package.json, sit on main, and have a CHANGELOG.md entry.
+#
+# npm authenticates the publish through trusted publishing (OIDC): no token is stored in the
+# repository. It needs this workflow registered once as the package's trusted publisher on
+# npmjs.com (organization pixel-perfect-software, repository always-up-to-date, workflow
+# release.yml).
+
+on:
+  push:
+    tags: ['v*']
+
+# Actions are pinned to the commit of a release (the version is in the comment beside it), so a
+# moved or compromised tag can't change what runs; Dependabot proposes updates. Nothing here
+# restores a cache: a release builds only from its tagged source, so a poisoned cache can't
+# reach what users install.
+permissions:
+  contents: read
+
+# One release at a time.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # to check the tag is on main
+          persist-credentials: false
+      - id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          manifest=$(node -p "require('./package.json').version")
+          if [ "$version" != "$manifest" ]; then
+            echo "::error::$GITHUB_REF_NAME doesn't match the package's version ($manifest in package.json)."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME isn't on main."
+            exit 1
+          fi
+          if ! grep -q "^## .* — $version:" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no entry for $version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # to create the release
+      id-token: write # npm trusted publishing, which also attaches provenance
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pnpm's and Node's versions come from .tool-versions, as they do locally.
+      - id: tools
+        run: echo "pnpm=$(awk '$1 == "pnpm" { print $2 }' .tool-versions)" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tools.outputs.pnpm }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+          package-manager-cache: false
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run format-and-lint
+      - run: pnpm run check-types
+      - run: pnpm test
+
+      # pnpm, not npm: it writes the catalog: ranges in package.json as real versions in the
+      # published manifest. prepack builds dist from this clean checkout. The tag is a detached
+      # HEAD, which pnpm's git checks reject; the check job already proved it is on main. A rerun
+      # after a later step failed skips the publish, since npm refuses a version twice.
+      - name: Publish to npm
+        run: |
+          name=$(node -p "require('./package.json').name")
+          if [ "$(npm view "$name@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "$name@$VERSION is already on npm."
+          else
+            pnpm publish --no-git-checks
+          fi
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "The release for $GITHUB_REF_NAME already exists."
+            exit 0
+          fi
+          # The notes are this version's CHANGELOG.md entry: its heading down to the next one.
+          awk -v version="$VERSION" '
+            /^## / { if (found) exit; found = index($0, " — " version ":") > 0 }
+            found
+          ' CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$VERSION" --notes-file notes.md
