@@ -43,7 +43,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 
 **Command Runner Pattern**
 - `src/commandRunner.ts` provides the base `runCommand()` method that all package managers use
-- Executes package manager commands via `execAsync` and handles stdout/stderr appropriately
+- Executes package manager commands via `execAsync`. Success is judged per call by exit code plus parsable stdout (a `SuccessCheck`), never by stderr, which is logged at debug level
 - All manager commands go through this abstraction for consistency
 
 **Configuration System**
@@ -121,4 +121,5 @@ Documentation registry: `.claude/context/ai-context/docs-overview.md`
 - Uses ESM transform for TypeScript
 - Mock cleanup: `clearMocks` and `restoreMocks` enabled
 - Path aliases: `moduleNameMapper` maps `@/*` to `src/*` for test imports
+- Manager tests feed real captured package-manager output from `__tests__/fixtures/<pm>/` (helpers `readFixture`, `exitError` in `__tests__/fixtures/index.ts`). Capture new fixtures from a real run, with local paths scrubbed; never hand-write manager output
 - Single test: `pnpm test -- __tests__/path/to/test.test.ts`

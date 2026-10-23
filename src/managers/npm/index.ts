@@ -1,6 +1,6 @@
 import fs from 'fs'
 
-import CommandRunner from '@/commandRunner'
+import CommandRunner, { type SuccessCheck } from '@/commandRunner'
 import messages from '@/messages/en.json'
 import type {
   PackageInfo,
@@ -15,6 +15,24 @@ import {
   logger,
 } from '@/utils'
 import { updatePackageJson } from '@/utils/files'
+
+/**
+ * `npm outdated` exits 1 whenever something is outdated. It also exits 1 on
+ * real errors, printing `{ "error": { code, summary } }` instead of a report.
+ */
+const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
+  if (exitCode === 0) return true
+  if (exitCode !== 1) return false
+  try {
+    const report = JSON.parse(stdout)
+    const isNpmError =
+      typeof report?.error?.code === 'string' &&
+      typeof report?.error?.summary === 'string'
+    return typeof report === 'object' && report !== null && !isNpmError
+  } catch {
+    return false
+  }
+}
 
 class NPMManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = 'npm'
@@ -33,6 +51,7 @@ class NPMManager extends CommandRunner {
       this.packageManager,
       command,
       cwd,
+      isOutdatedReport,
     )
     const result: Record<string, PackageInfo> = JSON.parse(
       commandResult || '{}',

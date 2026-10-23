@@ -1,0 +1,79 @@
+error: ConnectionRefused downloading package manifest @types/node
+
+error: ConnectionRefused downloading package manifest @types/react
+
+error: ConnectionRefused downloading package manifest eslint
+
+error: ConnectionRefused downloading package manifest husky
+
+error: ConnectionRefused downloading package manifest jest
+
+error: ConnectionRefused downloading package manifest prettier
+
+error: ConnectionRefused downloading package manifest rimraf
+
+error: ConnectionRefused downloading package manifest typescript
+
+error: ConnectionRefused downloading package manifest vite
+
+error: ConnectionRefused downloading package manifest vitest
+
+error: ConnectionRefused downloading package manifest @reduxjs/toolkit
+
+error: ConnectionRefused downloading package manifest @tanstack/react-query
+
+error: ConnectionRefused downloading package manifest axios
+
+error: ConnectionRefused downloading package manifest chalk
+
+error: ConnectionRefused downloading package manifest classnames
+
+error: ConnectionRefused downloading package manifest clsx
+
+error: ConnectionRefused downloading package manifest commander
+
+error: ConnectionRefused downloading package manifest date-fns
+
+error: ConnectionRefused downloading package manifest dayjs
+
+error: ConnectionRefused downloading package manifest debug
+
+error: ConnectionRefused downloading package manifest dotenv
+
+error: ConnectionRefused downloading package manifest express
+
+error: ConnectionRefused downloading package manifest immer
+
+error: ConnectionRefused downloading package manifest lodash
+
+error: ConnectionRefused downloading package manifest minimist
+
+error: ConnectionRefused downloading package manifest ms
+
+error: ConnectionRefused downloading package manifest nanoid
+
+error: ConnectionRefused downloading package manifest next
+
+error: ConnectionRefused downloading package manifest prop-types
+
+error: ConnectionRefused downloading package manifest qs
+
+error: ConnectionRefused downloading package manifest react
+
+error: ConnectionRefused downloading package manifest react-dom
+
+error: ConnectionRefused downloading package manifest react-router-dom
+
+error: ConnectionRefused downloading package manifest redux
+
+error: ConnectionRefused downloading package manifest rxjs
+
+error: ConnectionRefused downloading package manifest semver
+
+error: ConnectionRefused downloading package manifest uuid
+
+error: ConnectionRefused downloading package manifest yargs
+
+error: ConnectionRefused downloading package manifest zod
+
+error: ConnectionRefused downloading package manifest zustand

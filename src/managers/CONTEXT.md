@@ -26,10 +26,19 @@ managers/
 ## Architectural Patterns
 
 ### CommandRunner Base Class (`src/commandRunner.ts`)
-- `runCommand(packageManager, command, cwd)` executes `${packageManager} ${command}` via `execAsync`
-- Returns stdout on success
-- Handles non-zero exit codes that still produce stdout (e.g., `npm outdated` exits non-zero when packages are outdated) by returning stdout if stderr is empty
-- Throws on stderr or unknown errors
+- `runCommand(packageManager, command, cwd, isSuccess?)` executes `${packageManager} ${command}` via `execAsync` and returns stdout
+- Success is decided by a `SuccessCheck` over `{ exitCode, stdout }`; the default is exit 0. stderr is never a failure signal (yarn v1 on Node 24 always prints a DEP0169 warning); it is logged with `logger.debug`
+- A failure throws `Command execution failed: <stderr, else stdout>`; a process with no numeric exit code (spawn failure, killed) throws the "unknown error" message
+- Each manager's `outdated` passes its own `isOutdatedReport` check, because npm, pnpm and yarn v1 exit 1 both when packages are outdated and on real errors:
+
+| Manager | `outdated` succeeds when |
+|---------|--------------------------|
+| npm | exit 0, or exit 1 with a JSON report that is not npm's `{ "error": { code, summary } }` |
+| pnpm | exit 0, or exit 1 with a JSON object on stdout (errors leave stdout empty) |
+| yarn v1 | exit 0, or exit 1 with a `{"type":"table"}` line (errors have none) |
+| bun | exit 0 only (bun exits 0 when packages are outdated) |
+
+Apply commands (`update`, `upgrade`, `install`) use the default.
 
 ### Package Detection (`src/detectPackageManager.ts`)
 - Scans cwd for lock files in order: npm -> yarn -> pnpm -> bun

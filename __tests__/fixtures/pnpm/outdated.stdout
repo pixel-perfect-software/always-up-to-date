@@ -1,0 +1,282 @@
+{
+  "dayjs": {
+    "current": "1.11.9",
+    "latest": "1.11.23",
+    "wanted": "1.11.9",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "minimist": {
+    "current": "1.2.7",
+    "latest": "1.2.8",
+    "wanted": "1.2.7",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "ms": {
+    "current": "2.1.2",
+    "latest": "2.1.3",
+    "wanted": "2.1.2",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "prop-types": {
+    "current": "15.8.0",
+    "latest": "15.8.1",
+    "wanted": "15.8.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "rxjs": {
+    "current": "7.8.0",
+    "latest": "7.8.2",
+    "wanted": "7.8.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "axios": {
+    "current": "1.4.0",
+    "latest": "1.20.0",
+    "wanted": "1.4.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "classnames": {
+    "current": "2.3.2",
+    "latest": "2.5.1",
+    "wanted": "2.3.2",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "debug": {
+    "current": "4.3.4",
+    "latest": "4.4.3",
+    "wanted": "4.3.4",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "lodash": {
+    "current": "4.17.20",
+    "latest": "4.18.1",
+    "wanted": "4.17.20",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "qs": {
+    "current": "6.11.0",
+    "latest": "6.16.1",
+    "wanted": "6.11.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "semver": {
+    "current": "7.5.0",
+    "latest": "7.8.5",
+    "wanted": "7.5.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "@reduxjs/toolkit": {
+    "current": "1.9.5",
+    "latest": "2.13.0",
+    "wanted": "1.9.5",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "@tanstack/react-query": {
+    "current": "4.29.5",
+    "latest": "5.104.5",
+    "wanted": "4.29.5",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "@types/node": {
+    "current": "20.2.5",
+    "latest": "26.6.5",
+    "wanted": "20.2.5",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "@types/react": {
+    "current": "18.2.6",
+    "latest": "19.3.0",
+    "wanted": "18.2.6",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "chalk": {
+    "current": "5.2.0",
+    "latest": "6.0.1",
+    "wanted": "5.2.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "clsx": {
+    "current": "1.2.1",
+    "latest": "2.1.1",
+    "wanted": "1.2.1",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "commander": {
+    "current": "11.0.0",
+    "latest": "15.0.0",
+    "wanted": "11.0.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "date-fns": {
+    "current": "2.30.0",
+    "latest": "4.4.0",
+    "wanted": "2.30.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "dotenv": {
+    "current": "16.0.3",
+    "latest": "18.0.8",
+    "wanted": "16.0.3",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "eslint": {
+    "current": "8.40.0",
+    "latest": "10.13.0",
+    "wanted": "8.40.0",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "express": {
+    "current": "4.18.2",
+    "latest": "5.3.0",
+    "wanted": "4.18.2",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "husky": {
+    "current": "8.0.3",
+    "latest": "9.1.7",
+    "wanted": "8.0.3",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "immer": {
+    "current": "10.0.1",
+    "latest": "11.2.9",
+    "wanted": "10.0.1",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "jest": {
+    "current": "29.5.0",
+    "latest": "30.5.2",
+    "wanted": "29.5.0",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "nanoid": {
+    "current": "4.0.2",
+    "latest": "6.0.2",
+    "wanted": "4.0.2",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "next": {
+    "current": "14.0.0",
+    "latest": "16.4.2",
+    "wanted": "14.0.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "prettier": {
+    "current": "2.8.8",
+    "latest": "3.9.10",
+    "wanted": "2.8.8",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "react": {
+    "current": "18.2.0",
+    "latest": "19.3.1",
+    "wanted": "18.2.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "react-dom": {
+    "current": "18.2.0",
+    "latest": "19.3.1",
+    "wanted": "18.2.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "react-router-dom": {
+    "current": "6.11.0",
+    "latest": "7.18.4",
+    "wanted": "6.11.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "redux": {
+    "current": "4.2.1",
+    "latest": "5.0.1",
+    "wanted": "4.2.1",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "rimraf": {
+    "current": "5.0.0",
+    "latest": "6.1.3",
+    "wanted": "5.0.0",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "typescript": {
+    "current": "5.3.3",
+    "latest": "7.0.2",
+    "wanted": "5.3.3",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "uuid": {
+    "current": "9.0.0",
+    "latest": "14.0.3",
+    "wanted": "9.0.0",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "vite": {
+    "current": "4.3.9",
+    "latest": "8.3.5",
+    "wanted": "4.3.9",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "vitest": {
+    "current": "0.31.1",
+    "latest": "5.0.5",
+    "wanted": "0.31.1",
+    "isDeprecated": false,
+    "dependencyType": "devDependencies"
+  },
+  "yargs": {
+    "current": "17.7.1",
+    "latest": "18.2.0",
+    "wanted": "17.7.1",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "zod": {
+    "current": "3.21.4",
+    "latest": "4.6.7",
+    "wanted": "3.21.4",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "zustand": {
+    "current": "4.3.8",
+    "latest": "5.0.16",
+    "wanted": "4.3.8",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  }
+}

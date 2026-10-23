@@ -1,6 +1,6 @@
 import fs from 'fs'
 
-import CommandRunner from '@/commandRunner'
+import CommandRunner, { type SuccessCheck } from '@/commandRunner'
 import messages from '@/messages/en.json'
 import type {
   PackageInfo,
@@ -15,6 +15,22 @@ import {
   logger,
 } from '@/utils'
 import { updatePackageJson } from '@/utils/files'
+
+/**
+ * `yarn outdated` (v1) exits 1 whenever something is outdated, printing a
+ * `{"type":"table"}` line. On real errors it also exits 1, with no table.
+ */
+const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
+  if (exitCode === 0) return true
+  if (exitCode !== 1) return false
+  return stdout.split('\n').some((line) => {
+    try {
+      return JSON.parse(line)?.type === 'table'
+    } catch {
+      return false
+    }
+  })
+}
 
 class YarnManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = 'yarn'
@@ -33,6 +49,7 @@ class YarnManager extends CommandRunner {
       this.packageManager,
       command,
       cwd,
+      isOutdatedReport,
     )
     const result = this.parseYarnOutdatedResult(commandResult || '')
 

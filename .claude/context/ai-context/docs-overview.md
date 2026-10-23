@@ -56,10 +56,14 @@ schema/
   config.schema.json        # JSON schema for .always-up-to-date.json (referenced via $schema)
 __tests__/
   setup.ts                  # Global test setup (console suppression)
-  commandRunner.test.ts     # CommandRunner error handling tests
+  commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   detectPackageManager.test.ts  # Lock file detection tests
+  fixtures/
+    index.ts                # readFixture(), exitError() helpers
+    npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)
   managers/
     packageManager.test.ts  # Factory pattern tests
+    npm.test.ts, pnpm.test.ts, yarn.test.ts, bun.test.ts  # outdated exit-code semantics on real output
   utils/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants)
     cooldown.test.ts        # Normalize/evaluate cooldown gate
