@@ -1,0 +1,8 @@
+{"value":"@ws/a@workspace:packages/a","children":{"Version":"1.0.0","Dependencies":[{"descriptor":"ms@npm:2.1.2","locator":"ms@npm:2.1.2"}]}}
+{"value":"@ws/b@workspace:packages/b","children":{"Version":"1.0.0","Dependencies":[{"descriptor":"dayjs@npm:^1.11.9","locator":"dayjs@npm:1.11.23"},{"descriptor":"debug@virtual:f8980eca3fcac3a5bd580eed200a6b0c8de1763b52bb329f91b39b7815f697d373a1dd8f359e09467853cc932c6fd898ba258fbf4bfba3a23f0b3642ffbbd510#npm:~4.3.1","locator":"debug@virtual:f8980eca3fcac3a5bd580eed200a6b0c8de1763b52bb329f91b39b7815f697d373a1dd8f359e09467853cc932c6fd898ba258fbf4bfba3a23f0b3642ffbbd510#npm:4.3.7"}]}}
+{"value":"dayjs@npm:1.11.23","children":{"Version":"1.11.23"}}
+{"value":"dayjs@npm:1.11.9","children":{"Version":"1.11.9"}}
+{"value":"debug@npm:4.3.7","children":{"Instances":1,"Version":"4.3.7","Dependencies":[{"descriptor":"ms@npm:^2.1.3","locator":"ms@npm:2.1.3"}]}}
+{"value":"ms@npm:2.1.2","children":{"Version":"2.1.2"}}
+{"value":"ms@npm:2.1.3","children":{"Version":"2.1.3"}}
+{"value":"ws-root@workspace:.","children":{"Version":"0.0.0","Dependencies":[{"descriptor":"dayjs@npm:1.11.9","locator":"dayjs@npm:1.11.9"},{"descriptor":"ms@npm:~2.1.1","locator":"ms@npm:2.1.3"}]}}

@@ -1,0 +1,5 @@
+{"value":"berry-pnp@workspace:.","children":{"Version":"1.0.0","Dependencies":[{"descriptor":"chalk@npm:^4.0.0","locator":"chalk@npm:4.0.0"},{"descriptor":"dayjs@npm:1.11.9","locator":"dayjs@npm:1.11.9"},{"descriptor":"debug@virtual:585896e809516003d9941d4b789ea8f640e2f6839345467d33703d58a1614115961f45c5071626fa342e1f49464b708bdf4604abc2daaa1db0a7fb3722ea9785#npm:~4.3.1","locator":"debug@virtual:585896e809516003d9941d4b789ea8f640e2f6839345467d33703d58a1614115961f45c5071626fa342e1f49464b708bdf4604abc2daaa1db0a7fb3722ea9785#npm:4.3.1"},{"descriptor":"ms@npm:~2.1.1","locator":"ms@npm:2.1.1"}]}}
+{"value":"chalk@npm:4.0.0","children":{"Version":"4.0.0","Dependencies":[{"descriptor":"ansi-styles@npm:^4.1.0","locator":"ansi-styles@npm:4.3.0"},{"descriptor":"supports-color@npm:^7.1.0","locator":"supports-color@npm:7.2.0"}]}}
+{"value":"dayjs@npm:1.11.9","children":{"Version":"1.11.9"}}
+{"value":"debug@npm:4.3.1","children":{"Instances":1,"Version":"4.3.1","Dependencies":[{"descriptor":"ms@npm:2.1.2","locator":"ms@npm:2.1.2"}]}}
+{"value":"ms@npm:2.1.1","children":{"Version":"2.1.1"}}

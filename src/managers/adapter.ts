@@ -81,6 +81,16 @@ export interface ManagerAdapter {
     plan: ApplyPlan,
     workspace: Workspace,
   ): Promise<void>
+  /**
+   * The versions installed for these rows after apply, keyed by `rowKey`,
+   * for a manager whose installs can't be read from node_modules (yarn
+   * berry's PnP). Without it the pipeline reads node_modules.
+   */
+  installed?(
+    run: RunManager,
+    cwd: string,
+    rows: { name: string; workspace?: string }[],
+  ): Promise<Record<string, string>>
   /** How the manager writes a new spec, read from where its current version keeps that setting. */
   saveStyle(cwd: string): SaveStyle
   /** Packages pinned by an override this manager enforces. */

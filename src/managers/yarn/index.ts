@@ -8,10 +8,16 @@ import {
   readManifest,
   workspaceOwner,
 } from '@/managers/workspaces'
+import {
+  applyBerry,
+  discoverBerry,
+  installedBerry,
+} from '@/managers/yarn/berry'
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
 import { logger } from '@/utils'
 import { buildUpdateDescriptors } from '@/utils/files'
+import { readInstalledVersions } from '@/utils/installed'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
 
@@ -148,7 +154,10 @@ const yarn: ManagerAdapter = {
     catalogs: [],
   }),
 
-  discover: async (run, _cwd, { isWorkspace, manifests }) => {
+  discover: async (run, cwd, { isWorkspace, manifests }) => {
+    // berry has no `outdated`: it reads `yarn info` and the registry instead.
+    if (isYarnBerry(cwd)) return discoverBerry(run, isWorkspace)
+
     const output = await run(
       isWorkspace
         ? ['outdated', '--json', '--recursive']
@@ -172,19 +181,24 @@ const yarn: ManagerAdapter = {
     { withinRange, beyondRange, manifests },
     { isWorkspace, manifests: members },
   ) => {
-    // yarn rewrites the manifest itself: v1 refuses to upgrade against a
+    // berry: autd writes the specs that move past their range, yarn locks.
+    if (isYarnBerry(cwd)) {
+      return applyBerry(
+        run,
+        cwd,
+        { withinRange, manifests },
+        yarn.saveStyle(cwd),
+      )
+    }
+
+    // v1 rewrites the manifest itself and refuses to upgrade against a
     // pre-written package.json ("Outdated lockfile"). Hand it `name@spec`
     // descriptors instead: the current spec for in-range packages, the new
     // version with the entry's decorator for packages moving past it.
     const style = yarn.saveStyle(cwd)
-    const berry = isYarnBerry(cwd)
 
-    // v1 is `upgrade`, berry is `up`; neither has `update`. No
-    // `--recursive`: v1 ignores it and berry's means "re-resolve
-    // transitive dependencies", which rejects explicit ranges.
-    const subcommand = berry ? 'up' : 'upgrade'
-
-    if (!isWorkspace || berry) {
+    // No `--recursive`: v1 ignores it.
+    if (!isWorkspace) {
       const { descriptors, notInManifest } = buildUpdateDescriptors(cwd, {
         withinRange,
         newVersions: beyondRange,
@@ -198,7 +212,7 @@ const yarn: ManagerAdapter = {
       }
 
       if (descriptors.length > 0) {
-        await run([subcommand, ...descriptors], { manifestWritten: false })
+        await run(['upgrade', ...descriptors], { manifestWritten: false })
       }
       return
     }
@@ -243,6 +257,15 @@ const yarn: ManagerAdapter = {
     // A member's upgrade leaves node_modules unlinked until an install.
     if (memberRan) await run(['install'], { manifestWritten: false })
   },
+
+  /**
+   * berry locks versions in `yarn.lock` and, under PnP, has no node_modules,
+   * so the versions come from `yarn info`. Yarn v1 reads node_modules.
+   */
+  installed: (run, cwd, rows) =>
+    isYarnBerry(cwd)
+      ? installedBerry(run, rows)
+      : Promise.resolve(readInstalledVersions(cwd, rows)),
 
   /** berry: `defaultSemverRangePrefix` in .yarnrc.yml, where `''` means exact. Yarn v1 keeps the default. */
   saveStyle: (cwd) => {

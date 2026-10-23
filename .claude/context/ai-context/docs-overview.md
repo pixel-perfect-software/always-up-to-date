@@ -76,7 +76,8 @@ __tests__/
   managers/
     adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager
     npm.test.ts, pnpm.test.ts, bun.test.ts  # outdated exit-code semantics on real output; direct parser tests on fixtures; npm current from package-lock.json with no node_modules
-    yarn.test.ts            # outdated exit codes, upgrade/up descriptors, berry detection, parser
+    yarn.test.ts            # yarn v1: outdated exit codes, upgrade descriptors, v1-over-stray-.yarnrc.yml, parsers
+    yarnBerry.test.ts       # yarn berry on real captures (PnP, node-modules, workspace, patch:/alias/link): parsers, check, in-range and beyond-range apply, installed-version check
     realSubprocess.test.ts  # Fake npm on PATH: >1 MB output, names passed as arguments (POSIX)
     reuseDiscovery.test.ts  # update with a discovery result runs only the apply command
     withinRange.test.ts     # Real output, default config: proposes exactly npm update's set; zero for pins

@@ -137,36 +137,17 @@ describe('update with yarn', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('keeps the current spec for an in-range update, on v1 and berry', async () => {
-    const outdatedRanges = exitError(
-      1,
-      readFixture('yarn/v1-outdated-ranges.stdout'),
-      '',
-    )
-
+  it('keeps the current spec for an in-range update', async () => {
     writeProject({ dependencies: { dayjs: '^1.11.9' } })
     mockedRunProcess
-      .mockRejectedValueOnce(outdatedRanges)
+      .mockRejectedValueOnce(
+        exitError(1, readFixture('yarn/v1-outdated-ranges.stdout'), ''),
+      )
       .mockResolvedValueOnce({ stdout: '', stderr: '' })
     await update(projectFor(yarn, cwd), { targetPackages: ['dayjs'] })
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
       ['upgrade', 'dayjs@^1.11.9'],
-      expect.anything(),
-    )
-
-    // A bare `yarn up dayjs` on berry would jump to latest and rewrite the spec.
-    writeProject({
-      packageManager: 'yarn@4.18.1',
-      dependencies: { dayjs: '^1.11.9' },
-    })
-    mockedRunProcess
-      .mockRejectedValueOnce(outdatedRanges)
-      .mockResolvedValueOnce({ stdout: '', stderr: '' })
-    await update(projectFor(yarn, cwd), { targetPackages: ['dayjs'] })
-    expect(mockedRunProcess).toHaveBeenLastCalledWith(
-      'yarn',
-      ['up', 'dayjs@^1.11.9'],
       expect.anything(),
     )
   })
@@ -227,38 +208,6 @@ describe('update with yarn', () => {
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
       ['upgrade', 'dayjs@~1.11.23'],
-      expect.anything(),
-    )
-  })
-
-  it('runs `yarn up` on berry, detected from the packageManager field', async () => {
-    writeProject({
-      packageManager: 'yarn@4.18.1',
-      dependencies: { dayjs: '1.11.9' },
-    })
-    mockOutdatedThenApply(readFixture('yarn/berry-up.stdout'))
-
-    await update(projectFor(yarn, cwd, movePins), { targetPackages: ['dayjs'] })
-
-    expect(mockedRunProcess).toHaveBeenLastCalledWith(
-      'yarn',
-      ['up', 'dayjs@1.11.23'],
-      expect.anything(),
-    )
-  })
-
-  it('runs `yarn up` on berry, detected from .yarnrc.yml', async () => {
-    writeProject(
-      { dependencies: { dayjs: '1.11.9' } },
-      { '.yarnrc.yml': 'nodeLinker: node-modules\n' },
-    )
-    mockOutdatedThenApply(readFixture('yarn/berry-up.stdout'))
-
-    await update(projectFor(yarn, cwd, movePins), { targetPackages: ['dayjs'] })
-
-    expect(mockedRunProcess).toHaveBeenLastCalledWith(
-      'yarn',
-      ['up', 'dayjs@1.11.23'],
       expect.anything(),
     )
   })

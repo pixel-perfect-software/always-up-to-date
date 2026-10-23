@@ -149,12 +149,12 @@ export const update = async (
   )
 
   // Report what the manager installed, not what it was asked to install.
+  const moved = results.filter((r) => r.updated)
   const applied = checkApplied(
     results,
-    readInstalledVersions(
-      cwd,
-      results.filter((r) => r.updated),
-    ),
+    adapter.installed
+      ? await adapter.installed(runFor(adapter, cwd, 'apply'), cwd, moved)
+      : readInstalledVersions(cwd, moved),
     adapter.name,
   )
   logger.notAppliedSummary(applied, adapter.name)
