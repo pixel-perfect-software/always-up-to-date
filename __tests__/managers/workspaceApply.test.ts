@@ -114,9 +114,11 @@ describe.each([
           if (applyError) throw applyError
           return { stdout: '', stderr: '' }
         }
+        // The temp dir goes into JSON strings: escaped, since a Windows
+        // path holds backslashes.
         const stdout = readFixture(
           compatible && args.includes('--compatible') ? compatible : report,
-        ).replaceAll('/project', cwd)
+        ).replaceAll('/project', JSON.stringify(cwd).slice(1, -1))
         if (!exitsOne) return { stdout, stderr: '' }
         throw exitError(1, stdout, '')
       })
