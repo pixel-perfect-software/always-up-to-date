@@ -602,6 +602,60 @@ describe('filterPackages', () => {
         },
       ])
 
+    it('re-checks peers once the together rule holds a package', async () => {
+      // The root's P is held by Q's peer range, packages/m's P moves within
+      // its own. The together rule then holds P everywhere, so P@1.0.0 stays
+      // installed and its peer range on x must hold x's move as well.
+      const filter = loadFilterWithConfig(
+        {},
+        {
+          installedPeers: {
+            P: [{ name: 'Q', version: '1.0.0', range: '<1.2.0' }],
+            x: [{ name: 'P', version: '1.0.0', range: '1.0.x' }],
+          },
+        },
+      )
+
+      const results = await filter(
+        foldWorkspaceEntries([
+          {
+            name: 'P',
+            workspace: '.',
+            current: '1.0.0',
+            wanted: '1.2.0',
+            latest: '1.2.0',
+          },
+          {
+            name: 'P',
+            workspace: 'packages/m',
+            current: '1.0.0',
+            wanted: '1.1.0',
+            latest: '1.2.0',
+          },
+          {
+            name: 'x',
+            workspace: '.',
+            current: '1.0.0',
+            wanted: '1.5.0',
+            latest: '1.5.0',
+          },
+        ]),
+      )
+
+      expect(
+        results.map((r) => [r.name, r.workspace, r.updated, r.reason]),
+      ).toEqual([
+        ['P', '.', false, 'peer conflict: Q@1.0.0 needs P <1.2.0'],
+        [
+          'P',
+          'packages/m',
+          false,
+          'held with the root (peer conflict: Q@1.0.0 needs P <1.2.0)',
+        ],
+        ['x', '.', false, 'peer conflict: P@1.0.0 needs x 1.0.x'],
+      ])
+    })
+
     it('holds the package in every manifest when one is held by the cooldown', async () => {
       const filter = loadFilterWithConfig(
         { cooldown: 7 },

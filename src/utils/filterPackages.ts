@@ -15,7 +15,7 @@ import updateChecker, {
   policyFromConfig,
   type UpdatePolicy,
 } from './updateChecker'
-import { expandWorkspaces } from './workspaceRows'
+import { byPath, expandWorkspaces } from './workspaceRows'
 
 interface FilterPackagesOptions {
   config: AlwaysUpToDateConfig
@@ -195,11 +195,29 @@ const filterPackages = async (
     },
   )
 
-  const results = initialResults.some((r) => r.updated)
-    ? holdPeerConflicts(initialResults, readInstalledPeers(cwd), policy)
-    : initialResults
+  const peers = initialResults.some((r) => r.updated)
+    ? readInstalledPeers(cwd)
+    : undefined
 
-  if (!cooldownActive || !registryConfig) return holdTogether(results)
+  // A peer hold can hold a package's other rows (holdTogether), and a row
+  // held for any reason stops counting as moving for the peer check, so
+  // both repeat until nothing changes. Each only ever holds, so this ends.
+  const settle = (rows: UpdateResult[]): UpdateResult[] => {
+    let current = rows
+    for (;;) {
+      const next = holdTogether(
+        peers ? holdPeerConflicts(current, peers, policy) : current,
+      )
+      if (next.every((row, i) => row.updated === current[i].updated)) {
+        return next
+      }
+      current = next
+    }
+  }
+
+  const results = settle(initialResults)
+
+  if (!cooldownActive || !registryConfig) return results
 
   const gated = await Promise.all(
     results.map(async (result) => {
@@ -229,7 +247,7 @@ const filterPackages = async (
       return { ...result, releaseAge: evaluation.ageDays }
     }),
   )
-  return holdTogether(gated)
+  return settle(gated)
 }
 
 /**
@@ -271,12 +289,7 @@ export const splitUpdates = (
     } else manifest.beyondRange[name] = target
   }
 
-  const manifests = [...byManifest.values()].sort((a, b) => {
-    if (a.path === b.path) return 0
-    if (a.path === '.') return -1
-    if (b.path === '.') return 1
-    return a.path < b.path ? -1 : 1
-  })
+  const manifests = [...byManifest.values()].sort(byPath)
   return { names, withinRange, beyondRange, manifests }
 }
 

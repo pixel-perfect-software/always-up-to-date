@@ -2,7 +2,7 @@ import path from 'path'
 
 import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
-import { readWorkspaceManifests, toPosix } from '@/managers/workspaces'
+import { ownerPath, readWorkspaceManifests } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
 import {
@@ -69,24 +69,21 @@ const pnpmEntries = (report: string, cwd: string): OutdatedEntry[] => {
       row.current && key.endsWith(suffix) && key !== suffix
         ? key.slice(0, -suffix.length)
         : key
-    for (const { location } of row.dependentPackages ?? []) {
-      const relative = toPosix(path.relative(cwd, location)) || '.'
-      if (
-        relative === '..' ||
-        relative.startsWith('../') ||
-        path.isAbsolute(relative)
-      ) {
-        throw new StepError(
-          'discover',
-          `pnpm reported ${name} in ${location}, which is outside ${cwd}`,
-        )
-      }
+    // Every row of a recursive report names its owners; one without them
+    // can't be attributed, and dropping it would read as "up to date".
+    if (!Array.isArray(row.dependentPackages)) {
+      throw new StepError(
+        'discover',
+        `pnpm outdated -r reported ${name} with no dependentPackages`,
+      )
+    }
+    for (const { location } of row.dependentPackages) {
       entries.push({
         name,
         current: row.current ?? 'missing',
         wanted: row.wanted,
         latest: row.latest,
-        workspace: relative,
+        workspace: ownerPath('pnpm', name, path.relative(cwd, location)),
       })
     }
   }

@@ -3,12 +3,7 @@ import path from 'path'
 
 import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
-import {
-  hasWorkspacesField,
-  readManifest,
-  readWorkspaceManifests,
-  workspacePatterns,
-} from '@/managers/workspaces'
+import { ownerPath, packageJsonWorkspace } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
 import { updatePackageJson } from '@/utils/files'
@@ -97,7 +92,7 @@ export const parseNpmWorkspaceOutdated = (
           `npm outdated --long reported no dependedByLocation for ${name}`,
         )
       }
-      const workspace = row.dependedByLocation || '.'
+      const workspace = ownerPath('npm', name, row.dependedByLocation)
       const alias = name.split(':')[0]
       const current =
         typeof row.current === 'string' && row.current
@@ -123,17 +118,10 @@ const npm: ManagerAdapter = {
   name: 'npm',
   lockfile: 'package-lock.json',
 
-  readWorkspace: (cwd) => {
-    const isWorkspace = hasWorkspacesField(cwd)
-    return {
-      isWorkspace,
-      catalogs: [],
-      manifests: readWorkspaceManifests(
-        cwd,
-        isWorkspace ? workspacePatterns(readManifest(cwd)) : [],
-      ),
-    }
-  },
+  readWorkspace: (cwd) => ({
+    ...packageJsonWorkspace(cwd),
+    catalogs: [],
+  }),
 
   discover: async (run, cwd, { isWorkspace }) => {
     // Without --workspaces the report covers the root's dependencies too;

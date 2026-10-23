@@ -4,11 +4,9 @@ import path from 'path'
 import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
 import {
-  hasWorkspacesField,
+  packageJsonWorkspace,
   readManifest,
-  readWorkspaceManifests,
   workspaceOwner,
-  workspacePatterns,
 } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
@@ -145,17 +143,10 @@ const yarn: ManagerAdapter = {
   name: 'yarn',
   lockfile: 'yarn.lock',
 
-  readWorkspace: (cwd) => {
-    const isWorkspace = hasWorkspacesField(cwd)
-    return {
-      isWorkspace,
-      catalogs: [],
-      manifests: readWorkspaceManifests(
-        cwd,
-        isWorkspace ? workspacePatterns(readManifest(cwd)) : [],
-      ),
-    }
-  },
+  readWorkspace: (cwd) => ({
+    ...packageJsonWorkspace(cwd),
+    catalogs: [],
+  }),
 
   discover: async (run, _cwd, { isWorkspace, manifests }) => {
     const output = await run(

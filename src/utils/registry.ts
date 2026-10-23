@@ -2,7 +2,9 @@ import npmFetch from 'npm-registry-fetch'
 import type { RegistryConfig } from '@/types'
 import logger from './logger'
 
-const releaseTimeCache = new Map<string, Record<string, string>>()
+// The in-flight request is cached, not its result: a workspace asks for the
+// same package once per manifest, at the same time.
+const releaseTimeCache = new Map<string, Promise<Record<string, string>>>()
 
 export const clearRegistryCache = () => {
   releaseTimeCache.clear()
@@ -41,29 +43,35 @@ interface Packument {
  * Cached in-memory per CLI run. Network errors degrade to an empty map so that
  * cooldown gating fails open rather than blocking updates.
  */
-export const fetchReleaseTimes = async (
+const requestReleaseTimes = async (
   packageName: string,
   config: RegistryConfig,
 ): Promise<Record<string, string>> => {
-  const cached = releaseTimeCache.get(packageName)
-  if (cached) return cached
-
   try {
     const opts = buildFetchOpts(config)
     const packument = (await npmFetch.json(
       packageName,
       opts,
     )) as unknown as Packument
-    const time = packument.time ?? {}
-    releaseTimeCache.set(packageName, time)
-    return time
+    return packument.time ?? {}
   } catch (error) {
     logger.debug(
       `Failed to fetch registry metadata for ${packageName}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     )
-    releaseTimeCache.set(packageName, {})
     return {}
   }
+}
+
+export const fetchReleaseTimes = (
+  packageName: string,
+  config: RegistryConfig,
+): Promise<Record<string, string>> => {
+  let request = releaseTimeCache.get(packageName)
+  if (!request) {
+    request = requestReleaseTimes(packageName, config)
+    releaseTimeCache.set(packageName, request)
+  }
+  return request
 }

@@ -241,4 +241,16 @@ describe('parseNpmWorkspaceOutdated', () => {
       ),
     ).toThrow(StepError)
   })
+
+  it('fails discovery for an owner outside the project', () => {
+    // Apply writes the owner's package.json; ../shared is not ours to write.
+    const outside = readFixture('npm/outdated-workspace.stdout').replace(
+      '"dependedByLocation": "packages/b"',
+      '"dependedByLocation": "../shared"',
+    )
+
+    expect(() => parseNpmWorkspaceOutdated(outside)).toThrow(
+      'npm reported dayjs in ../shared, which is outside the project',
+    )
+  })
 })

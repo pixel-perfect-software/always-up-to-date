@@ -1,6 +1,7 @@
-import type { OutdatedEntry, PackageInfo, WorkspaceVersion } from '@/types'
+import type { OutdatedEntry, PackageInfo } from '@/types'
 
-const byPath = (a: WorkspaceVersion, b: WorkspaceVersion): number => {
+/** Orders manifests the way every workspace list is shown: the root first, then by path. */
+export const byPath = (a: { path: string }, b: { path: string }): number => {
   if (a.path === b.path) return 0
   if (a.path === '.') return -1
   if (b.path === '.') return 1

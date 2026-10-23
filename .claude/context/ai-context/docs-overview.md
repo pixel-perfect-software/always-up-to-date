@@ -62,7 +62,8 @@ __tests__/
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
   project.test.ts           # openProject: config loaded once, logger configured before detection
-  pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place
+  pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows
+  singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON, pinned before #59: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   commands/
     check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options
@@ -84,6 +85,7 @@ __tests__/
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
     workspaces.test.ts      # Member map (patterns, negations, skips) and workspaceOwner
     workspaceDiscovery.test.ts  # Workspace check on all four managers returns one record; unnamed roots
+    workspaceApply.test.ts  # Workspace apply per manager: commands, member manifest writes, catalog routing
   utils/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants)
     cooldown.test.ts        # Normalize/evaluate cooldown gate

@@ -104,17 +104,17 @@ const choicesByPackage = (eligible: UpdateResult[]) => {
     if (rows) rows.push(result)
     else byName.set(result.name, [result])
   }
-  return [...byName].map(([name, rows]) => {
-    const [pkg] = rows
-    const where = rows.some((r) => r.workspace !== undefined)
-      ? ` in ${rows.map((r) => workspaceLabel(r.workspace ?? '.')).join(', ')}`
-      : ''
-    return {
-      name: `${name}: ${pkg.current} → ${pkg.target} (${pkg.updateType}${pkg.target === pkg.wanted ? '' : ', beyond range'})${where}`,
-      value: name,
-      checked: true,
-    }
-  })
+  const step = (r: UpdateResult) =>
+    `${r.current} → ${r.target} (${r.updateType}${r.target === r.wanted ? '' : ', beyond range'})`
+
+  // Selecting a package moves every manifest listed, so each shows its own move.
+  return [...byName].map(([name, rows]) => ({
+    name: rows.some((r) => r.workspace !== undefined)
+      ? `${name}: ${rows.map((r) => `${workspaceLabel(r.workspace ?? '.')} ${step(r)}`).join(', ')}`
+      : `${name}: ${step(rows[0])}`,
+    value: name,
+    checked: true,
+  }))
 }
 
 const interactiveUpdate = async (project: Project) => {

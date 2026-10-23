@@ -22,7 +22,7 @@ All four package managers are implemented with workspace support. Yarn berry has
 managers/
   adapter.ts           # ManagerAdapter, Workspace, WorkspaceManifest, Discovery, RunManager, ApplyPlan
   index.ts             # adapters registry (detection order), adapterFor(name)
-  workspaces.ts        # readManifest(), hasWorkspacesField(), workspacePatterns(), readWorkspaceManifests() (the member map), workspaceOwner()
+  workspaces.ts        # readManifest(), packageJsonWorkspace() (npm/yarn/bun), workspacePatterns(), readWorkspaceManifests() (the member map), workspaceOwner(), ownerPath()
   npm/index.ts         # npm adapter, parseNpmOutdated, readLockedVersions
   yarn/index.ts        # yarn adapter, parseYarnOutdated, isYarnBerry
   pnpm/index.ts        # pnpm adapter, parsePnpmOutdated
@@ -66,7 +66,7 @@ A `packageManager` naming an unsupported manager falls through to `devEngines.pa
 
 Yarn v1 and bun print a root without a `name` as an empty `Workspace` cell (verified on yarn 1.22.22 and bun 1.4.0): `workspaceOwner()` reads `''` as the root only when the root manifest has no name, and fails `discover` for any other name no manifest declares.
 
-The member map (`readWorkspaceManifests`) expands the patterns with `readdirSync`, not `fs.globSync`: literal directories, `*` and `?` within a segment, `**` as a whole segment, and `!` negations applied after the positive patterns. It skips `node_modules`, dot-directories (unless the pattern segment starts with `.`) and symlinks, counts only directories with a package.json, and matches nothing for braces, character classes and extglobs (logged at debug level). Only yarn and bun need it for discovery; npm and pnpm take owners from paths.
+The member map (`readWorkspaceManifests`) expands the patterns with `readdirSync`, not `fs.globSync`: literal directories, `{a,b}` braces, `*`, `?` and `[…]` / `[!…]` classes within a segment, `**` as a whole segment, and `!` negations applied after the positive patterns. It skips `node_modules`, dot-directories (unless the pattern segment starts with `.`) and symlinks, counts only directories with a package.json, and matches nothing for extglobs such as `@(a|b)` (logged at debug level). An owner a manager reports outside the root (`..`, absolute) fails `discover` (`ownerPath`), since apply writes the owner's package.json. Only yarn and bun need it for discovery; npm and pnpm take owners from paths.
 
 `catalogs` lists catalog names (pnpm: `catalog` and the keys of `catalogs:` in pnpm-workspace.yaml; bun: the same fields in package.json). The pipeline logs the workspace once per run, and the catalogs when it is a workspace.
 

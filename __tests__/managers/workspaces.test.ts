@@ -136,12 +136,40 @@ describe('readWorkspaceManifests', () => {
     })
   })
 
-  it('matches nothing for braces, character classes and extglobs', () => {
+  it('expands braces, including in a negation', () => {
+    pkg('packages/core')
+    pkg('packages/cli')
+    pkg('packages/docs')
+    pkg('tools/lint')
+
+    expect(paths(['{packages,tools}/*', '!packages/{docs,cli}'])).toEqual([
+      '.',
+      'packages/core',
+      'tools/lint',
+    ])
+  })
+
+  it('reads character classes and negated classes', () => {
+    pkg('packages/a1')
+    pkg('packages/b1')
+    pkg('packages/c1')
+
+    expect(paths(['packages/[ab]1'])).toEqual([
+      '.',
+      'packages/a1',
+      'packages/b1',
+    ])
+    expect(paths(['packages/[!a]1'])).toEqual([
+      '.',
+      'packages/b1',
+      'packages/c1',
+    ])
+  })
+
+  it('matches nothing for an extglob', () => {
     pkg('packages/a')
 
-    expect(paths(['packages/{a,b}', 'packages/[a]', '@(packages)/a'])).toEqual([
-      '.',
-    ])
+    expect(paths(['@(packages)/a', '+(packages)/*'])).toEqual(['.'])
   })
 
   it('lists only the root outside a workspace and for a root without a name', () => {

@@ -251,7 +251,7 @@ describe('update command', () => {
       const { choices } = mockCheckbox.mock.calls[0][0]
       expect(choices).toEqual([
         {
-          name: 'ms: 1.0.0 → 1.0.1 (patch) in (root), packages/a',
+          name: 'ms: (root) 1.0.0 → 1.0.1 (patch), packages/a 1.0.0 → 1.0.1 (patch)',
           value: 'ms',
           checked: true,
         },

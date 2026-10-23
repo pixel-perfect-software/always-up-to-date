@@ -2,11 +2,9 @@ import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
 import {
-  hasWorkspacesField,
+  packageJsonWorkspace,
   readManifest,
-  readWorkspaceManifests,
   workspaceOwner,
-  workspacePatterns,
 } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
@@ -159,17 +157,10 @@ const bun: ManagerAdapter = {
   name: 'bun',
   lockfile: 'bun.lock',
 
-  readWorkspace: (cwd) => {
-    const isWorkspace = hasWorkspacesField(cwd)
-    return {
-      isWorkspace,
-      catalogs: catalogNames(cwd),
-      manifests: readWorkspaceManifests(
-        cwd,
-        isWorkspace ? workspacePatterns(readManifest(cwd)) : [],
-      ),
-    }
-  },
+  readWorkspace: (cwd) => ({
+    ...packageJsonWorkspace(cwd),
+    catalogs: catalogNames(cwd),
+  }),
 
   discover: async (run, _cwd, { isWorkspace, manifests }) => {
     const output = await run(

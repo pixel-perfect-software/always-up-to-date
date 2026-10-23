@@ -292,6 +292,20 @@ describe('parsePnpmWorkspaceOutdated', () => {
       parsePnpmWorkspaceOutdated(report, compatible, '/elsewhere'),
     ).toThrow(StepError)
   })
+
+  it('fails discovery for a row that names no dependent packages', () => {
+    // Dropping it would read as "up to date".
+    const parsed = JSON.parse(report)
+    delete parsed.debug.dependentPackages
+
+    expect(() =>
+      parsePnpmWorkspaceOutdated(
+        JSON.stringify(parsed),
+        compatible,
+        '/project',
+      ),
+    ).toThrow('pnpm outdated -r reported debug with no dependentPackages')
+  })
 })
 
 describe('pnpm.readWorkspace manifests', () => {

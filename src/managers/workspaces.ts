@@ -20,15 +20,11 @@ export const readManifest = (
  * npm, yarn and bun declare members in a `workspaces` field: an array of
  * globs, or an object with a `packages` field.
  */
-export const hasWorkspacesField = (cwd: string): boolean => {
-  const workspaces = readManifest(cwd)?.workspaces
-  return (
-    Array.isArray(workspaces) ||
-    (typeof workspaces === 'object' &&
-      workspaces !== null &&
-      !!(workspaces as { packages?: unknown }).packages)
-  )
-}
+const declaresWorkspaces = (workspaces: unknown): boolean =>
+  Array.isArray(workspaces) ||
+  (typeof workspaces === 'object' &&
+    workspaces !== null &&
+    !!(workspaces as { packages?: unknown }).packages)
 
 /**
  * The `workspaces` patterns of a package.json (npm, yarn, bun): the array,
@@ -47,11 +43,43 @@ export const workspacePatterns = (manifest: unknown): string[] => {
     : []
 }
 
-/** Syntax this expansion does not support: braces, character classes, extglobs. */
-const UNSUPPORTED_SYNTAX = /[{}[\]()]/
+/** Syntax this expansion does not support: extglobs such as `@(a|b)`. */
+const UNSUPPORTED_SYNTAX = /[()]/
+
+/** `{a,b}` alternatives, expanded into one pattern each, innermost first. */
+const expandBraces = (pattern: string): string[] => {
+  const brace = /\{([^{}]*)\}/.exec(pattern)
+  if (!brace) return [pattern]
+  const before = pattern.slice(0, brace.index)
+  const after = pattern.slice(brace.index + brace[0].length)
+  return brace[1]
+    .split(',')
+    .flatMap((option) => expandBraces(`${before}${option}${after}`))
+}
 
 export const toPosix = (value: string): string =>
   value.split(path.sep).join('/')
+
+/**
+ * A manager-reported owner as a path relative to the root ('.' for the root
+ * itself). An owner outside the root (`..`, an absolute path) fails
+ * discovery: apply writes the owner's package.json, and must not write
+ * outside the project.
+ */
+export const ownerPath = (
+  manager: string,
+  name: string,
+  relative: string,
+): string => {
+  const owner = toPosix(relative) || '.'
+  if (owner === '..' || owner.startsWith('../') || path.isAbsolute(owner)) {
+    throw new StepError(
+      'discover',
+      `${manager} reported ${name} in ${relative}, which is outside the project`,
+    )
+  }
+  return owner
+}
 
 const segmentsOf = (pattern: string): string[] =>
   pattern
@@ -60,14 +88,22 @@ const segmentsOf = (pattern: string): string[] =>
     .split('/')
     .filter((segment) => segment !== '' && segment !== '.')
 
-/** A segment's `*` and `?` wildcards as a regular expression. */
-const segmentRegExp = (segment: string): RegExp =>
-  new RegExp(
-    `^${segment
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '[^/]*')
-      .replace(/\?/g, '[^/]')}$`,
-  )
+/** A segment's `*`, `?` and `[…]` / `[!…]` wildcards as a regular expression. */
+const segmentRegExp = (segment: string): RegExp => {
+  let source = ''
+  for (let i = 0; i < segment.length; i++) {
+    const char = segment[i]
+    const classEnd = char === '[' ? segment.indexOf(']', i + 1) : -1
+    if (char === '*') source += '[^/]*'
+    else if (char === '?') source += '[^/]'
+    else if (classEnd > i + 1) {
+      const body = segment.slice(i + 1, classEnd).replace(/\\/g, '\\\\')
+      source += body.startsWith('!') ? `[^${body.slice(1)}]` : `[${body}]`
+      i = classEnd
+    } else source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  }
+  return new RegExp(`^${source}$`)
+}
 
 const isDirectory = (dir: string): boolean => {
   try {
@@ -114,7 +150,7 @@ const walk = (
     return
   }
 
-  if (!/[*?]/.test(segment)) {
+  if (!/[*?[]/.test(segment)) {
     if (isDirectory(path.join(dir, segment))) {
       walk(root, [...relative, segment], rest, found)
     }
@@ -148,9 +184,10 @@ const matchesSegments = (pattern: string[], parts: string[]): boolean => {
 
 /**
  * The root's manifest, then every member directory the workspace patterns
- * match, sorted by path. Supported: literal directories, `*` and `?` inside a
- * segment, `**` as a whole segment, and `!` negations applied after the
- * positive patterns. Braces, character classes and extglobs match nothing.
+ * match, sorted by path. Supported: literal directories, `{a,b}` braces, `*`,
+ * `?` and `[…]` / `[!…]` classes inside a segment, `**` as a whole segment,
+ * and `!` negations applied after the positive patterns. Extglobs
+ * (`@(a|b)`) match nothing.
  * Only directories with a package.json count; `node_modules`, dot-directories
  * (unless the pattern segment itself starts with `.`) and symlinks are skipped.
  */
@@ -168,10 +205,10 @@ export const readWorkspaceManifests = (
       )
       continue
     }
-    if (pattern.startsWith('!')) {
-      negations.push(segmentsOf(pattern.slice(1)))
-    } else {
-      walk(cwd, [], segmentsOf(pattern), found)
+    const negated = pattern.startsWith('!')
+    for (const expanded of expandBraces(negated ? pattern.slice(1) : pattern)) {
+      if (negated) negations.push(segmentsOf(expanded))
+      else walk(cwd, [], segmentsOf(expanded), found)
     }
   }
 
@@ -224,5 +261,23 @@ export const workspaceOwner = (
       'discover',
       `${manager} reported workspace "${workspaceName}", which no manifest matched by the workspaces patterns declares`,
     )
+  }
+}
+
+/**
+ * npm, yarn and bun: whether package.json declares workspaces, and the
+ * manifests its patterns match, the root first.
+ */
+export const packageJsonWorkspace = (
+  cwd: string,
+): { isWorkspace: boolean; manifests: WorkspaceManifest[] } => {
+  const manifest = readManifest(cwd)
+  const isWorkspace = declaresWorkspaces(manifest?.workspaces)
+  return {
+    isWorkspace,
+    manifests: readWorkspaceManifests(
+      cwd,
+      isWorkspace ? workspacePatterns(manifest) : [],
+    ),
   }
 }
