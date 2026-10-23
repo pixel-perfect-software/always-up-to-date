@@ -12,12 +12,12 @@ jest.mock('@/utils/registry', () => ({
 }))
 jest.mock('@/utils', () => ({
   ...jest.requireActual('@/utils'),
-  execAsync: jest.fn(),
+  runProcess: jest.fn(),
 }))
 
-import { execAsync, logger } from '@/utils'
+import { logger, runProcess } from '@/utils'
 
-const mockedExecAsync = jest.mocked(execAsync)
+const mockedRunProcess = jest.mocked(runProcess)
 
 describe('YarnManager.checkPackageVersions (yarn v1)', () => {
   let manager: YarnManager
@@ -27,7 +27,7 @@ describe('YarnManager.checkPackageVersions (yarn v1)', () => {
   })
 
   it('lists outdated packages when yarn exits 1 with a Node deprecation warning on stderr', async () => {
-    mockedExecAsync.mockRejectedValue(
+    mockedRunProcess.mockRejectedValue(
       exitError(
         1,
         readFixture('yarn/v1-outdated.stdout'),
@@ -50,7 +50,7 @@ describe('YarnManager.checkPackageVersions (yarn v1)', () => {
   })
 
   it('reports nothing outdated when yarn exits 0 with empty stdout', async () => {
-    mockedExecAsync.mockResolvedValue({
+    mockedRunProcess.mockResolvedValue({
       stdout: readFixture('yarn/v1-outdated-none.stdout'),
       stderr: readFixture('yarn/v1-outdated.stderr'),
     })
@@ -59,7 +59,7 @@ describe('YarnManager.checkPackageVersions (yarn v1)', () => {
   })
 
   it('fails instead of reporting "up to date" when yarn exits 1 without a table', async () => {
-    mockedExecAsync.mockRejectedValue(
+    mockedRunProcess.mockRejectedValue(
       exitError(
         1,
         readFixture('yarn/v1-outdated-error.stdout'),
@@ -96,7 +96,7 @@ describe('YarnManager.updatePackages', () => {
 
   // First call: `yarn outdated --json`. Second call: the apply command.
   const mockOutdatedThenApply = (stdout: string, stderr = '') => {
-    mockedExecAsync
+    mockedRunProcess
       .mockRejectedValueOnce(
         exitError(
           1,
@@ -125,8 +125,9 @@ describe('YarnManager.updatePackages', () => {
 
     const results = await manager.updatePackages(cwd, ['dayjs'])
 
-    expect(mockedExecAsync).toHaveBeenLastCalledWith(
-      "yarn upgrade 'dayjs@1.11.23'",
+    expect(mockedRunProcess).toHaveBeenLastCalledWith(
+      'yarn',
+      ['upgrade', 'dayjs@1.11.23'],
       expect.objectContaining({ cwd }),
     )
     expect(results.find((r) => r.name === 'dayjs')?.updated).toBe(true)
@@ -153,8 +154,9 @@ describe('YarnManager.updatePackages', () => {
 
     await manager.updatePackages(cwd, ['ms'])
 
-    expect(mockedExecAsync).toHaveBeenLastCalledWith(
-      "yarn upgrade 'ms@^2.1.3'",
+    expect(mockedRunProcess).toHaveBeenLastCalledWith(
+      'yarn',
+      ['upgrade', 'ms@^2.1.3'],
       expect.anything(),
     )
   })
@@ -165,8 +167,9 @@ describe('YarnManager.updatePackages', () => {
 
     await manager.updatePackages(cwd, ['dayjs'])
 
-    expect(mockedExecAsync).toHaveBeenLastCalledWith(
-      "yarn upgrade 'dayjs@~1.11.23'",
+    expect(mockedRunProcess).toHaveBeenLastCalledWith(
+      'yarn',
+      ['upgrade', 'dayjs@~1.11.23'],
       expect.anything(),
     )
   })
@@ -180,8 +183,9 @@ describe('YarnManager.updatePackages', () => {
 
     await manager.updatePackages(cwd, ['dayjs'])
 
-    expect(mockedExecAsync).toHaveBeenLastCalledWith(
-      "yarn up 'dayjs@1.11.23'",
+    expect(mockedRunProcess).toHaveBeenLastCalledWith(
+      'yarn',
+      ['up', 'dayjs@1.11.23'],
       expect.anything(),
     )
   })
@@ -195,8 +199,9 @@ describe('YarnManager.updatePackages', () => {
 
     await manager.updatePackages(cwd, ['dayjs'])
 
-    expect(mockedExecAsync).toHaveBeenLastCalledWith(
-      "yarn up 'dayjs@1.11.23'",
+    expect(mockedRunProcess).toHaveBeenLastCalledWith(
+      'yarn',
+      ['up', 'dayjs@1.11.23'],
       expect.anything(),
     )
   })
@@ -210,15 +215,16 @@ describe('YarnManager.updatePackages', () => {
 
     await manager.updatePackages(cwd, ['dayjs'])
 
-    expect(mockedExecAsync).toHaveBeenLastCalledWith(
-      "yarn upgrade 'dayjs@1.11.23'",
+    expect(mockedRunProcess).toHaveBeenLastCalledWith(
+      'yarn',
+      ['upgrade', 'dayjs@1.11.23'],
       expect.anything(),
     )
   })
 
   it('surfaces a failed apply command as an error', async () => {
     writeProject({ dependencies: { dayjs: '1.11.9' } })
-    mockedExecAsync
+    mockedRunProcess
       .mockRejectedValueOnce(
         exitError(1, readFixture('yarn/v1-outdated.stdout'), ''),
       )
@@ -246,8 +252,9 @@ describe('YarnManager.updatePackages', () => {
 
     await manager.updatePackages(cwd, ['dayjs', 'ms'])
 
-    expect(mockedExecAsync).toHaveBeenLastCalledWith(
-      "yarn upgrade 'dayjs@1.11.23'",
+    expect(mockedRunProcess).toHaveBeenLastCalledWith(
+      'yarn',
+      ['upgrade', 'dayjs@1.11.23'],
       expect.anything(),
     )
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('ms'))

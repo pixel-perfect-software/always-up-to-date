@@ -5,7 +5,7 @@ import PNPMManager from '@/managers/pnpm'
 import YarnManager from '@/managers/yarn'
 
 jest.mock('@/utils', () => ({
-  execAsync: jest.fn(),
+  runProcess: jest.fn(),
   logger: {
     command: jest.fn(),
     error: jest.fn(),

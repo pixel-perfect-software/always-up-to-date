@@ -29,13 +29,9 @@ class BunManager extends CommandRunner {
     logger.starting('Checking dependencies', 'bun')
 
     const { isWorkspace } = await this.checkIfInWorkspace(cwd)
-    const command = isWorkspace ? "outdated --filter '*'" : 'outdated'
+    const args = isWorkspace ? ['outdated', '--filter', '*'] : ['outdated']
 
-    const commandResult = await this.runCommand(
-      this.packageManager,
-      command,
-      cwd,
-    )
+    const commandResult = await this.runCommand(this.packageManager, args, cwd)
     const result = this.parseBunOutdatedOutput(commandResult || '')
 
     if (Object.keys(result).length === 0) {
@@ -123,15 +119,15 @@ class BunManager extends CommandRunner {
             await updatePackageJson(cwd, rootToUpdate, outdatedPackages)
           }
 
-          await this.runCommand(this.packageManager, 'install', cwd)
+          await this.runCommand(this.packageManager, ['install'], cwd)
         } else {
           await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
 
-          const command = isWorkspace
-            ? `update ${packagesToUpdate.join(' ')} --filter '*'`
-            : `update ${packagesToUpdate.join(' ')}`
+          const args = isWorkspace
+            ? ['update', ...packagesToUpdate, '--filter', '*']
+            : ['update', ...packagesToUpdate]
 
-          await this.runCommand(this.packageManager, command, cwd)
+          await this.runCommand(this.packageManager, args, cwd)
         }
       }
 

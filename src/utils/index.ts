@@ -1,8 +1,3 @@
-import { exec } from 'child_process'
-import { promisify } from 'util'
-
-export const execAsync = promisify(exec)
-
 export {
   CONFIG_SCHEMA_URL,
   DEFAULT_CONFIG,
@@ -24,4 +19,5 @@ export type { GroupedPackages } from './packageGrouper'
 export { getSortedGroupNames, groupAndSortPackages } from './packageGrouper'
 export { clearRegistryCache, fetchReleaseTimes } from './registry'
 export { computeReleaseAges } from './releaseAges'
+export { runProcess } from './runProcess'
 export { default as updateChecker } from './updateChecker'
