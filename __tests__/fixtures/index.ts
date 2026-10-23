@@ -110,3 +110,62 @@ export const WORKSPACE_ENTRIES: OutdatedEntry[] = [
     latest: '2.1.3',
   },
 ]
+
+/**
+ * Puts `dir` first on PATH and returns the function that restores it. Windows
+ * spells the variable `Path`, so the existing key is found case-insensitively.
+ */
+export const prependPath = (dir: string): (() => void) => {
+  const key =
+    Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
+  const original = process.env[key]
+  process.env[key] = [dir, original].filter(Boolean).join(path.delimiter)
+  return () => {
+    if (original === undefined) delete process.env[key]
+    else process.env[key] = original
+  }
+}
+
+// npm/cmd-shim's template: what npm, pnpm and Corepack install for a Node CLI
+// on Windows. The last line re-reads the arguments with `%*`.
+const CMD_SHIM = (scriptFile: string): string =>
+  [
+    '@ECHO off',
+    'GOTO start',
+    ':find_dp0',
+    'SET dp0=%~dp0',
+    'EXIT /b',
+    ':start',
+    'SETLOCAL',
+    'CALL :find_dp0',
+    '',
+    'IF EXIST "%dp0%\\node.exe" (',
+    '  SET "_prog=%dp0%\\node.exe"',
+    ') ELSE (',
+    '  SET "_prog=node"',
+    ')',
+    '',
+    `endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & set PATHEXT=%PATHEXT:;.JS;=;% & "%_prog%"  "%dp0%\\${scriptFile}" %*`,
+  ].join('\r\n')
+
+/**
+ * Writes a launcher for the Node script `bin/<scriptFile>` the way managers
+ * install CLIs: a `#!/bin/sh` wrapper on POSIX, a cmd-shim `<name>.cmd` on
+ * Windows.
+ */
+export const writeNodeShim = (
+  bin: string,
+  name: string,
+  scriptFile: string,
+): void => {
+  if (process.platform === 'win32') {
+    fs.writeFileSync(path.join(bin, `${name}.cmd`), CMD_SHIM(scriptFile))
+    return
+  }
+  const launcher = path.join(bin, name)
+  fs.writeFileSync(
+    launcher,
+    `#!/bin/sh\nexec node '${path.join(bin, scriptFile)}' "$@"\n`,
+  )
+  fs.chmodSync(launcher, 0o755)
+}

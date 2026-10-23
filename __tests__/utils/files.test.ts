@@ -1,4 +1,5 @@
 import fs from 'fs'
+import path from 'path'
 import type { PackageInfo } from '@/types'
 import {
   checkIfFileExists,
@@ -541,8 +542,10 @@ describe('readSpec', () => {
 describe('splitCatalogUpdates', () => {
   it('sends catalog: specs to the catalog and the rest to their own manifest', () => {
     const manifests: Record<string, unknown> = {
-      '/test/package.json': { dependencies: { dayjs: '1.11.9' } },
-      '/test/packages/a/package.json': {
+      [path.join('/test', 'package.json')]: {
+        dependencies: { dayjs: '1.11.9' },
+      },
+      [path.join('/test', 'packages/a', 'package.json')]: {
         dependencies: { dayjs: 'catalog:', ms: '2.1.2' },
       },
     }

@@ -104,7 +104,7 @@ export const updatePackageJson = async (
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
-  const packageJsonPath = `${cwd}/package.json`
+  const packageJsonPath = path.join(cwd, 'package.json')
   const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
 
   const packageJson = JSON.parse(packageJsonContent)
@@ -188,7 +188,9 @@ export const buildUpdateDescriptors = (
     style?: SaveStyle
   },
 ): { descriptors: string[]; notInManifest: string[] } => {
-  const packageJson = JSON.parse(fs.readFileSync(`${cwd}/package.json`, 'utf8'))
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'),
+  )
 
   const descriptors: string[] = []
   const notInManifest: string[] = []
@@ -235,7 +237,7 @@ export const updatePNPMWorkspaceYAML = async (
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
-  const pnpmWorkspaceYamlPath = `${cwd}/pnpm-workspace.yaml`
+  const pnpmWorkspaceYamlPath = path.join(cwd, 'pnpm-workspace.yaml')
   const lines = fs.readFileSync(pnpmWorkspaceYamlPath, 'utf8').split('\n')
 
   // The top-level key the current line sits under, and, inside `catalogs:`,
@@ -285,7 +287,7 @@ export const updateBunCatalogs = async (
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
-  const packageJsonPath = `${cwd}/package.json`
+  const packageJsonPath = path.join(cwd, 'package.json')
   const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
   const packageJson = JSON.parse(packageJsonContent)
 
@@ -355,7 +357,9 @@ export const updateBunCatalogs = async (
 export const readSpec = (dir: string, name: string): string | undefined => {
   let manifest: Record<string, Record<string, unknown> | undefined>
   try {
-    manifest = JSON.parse(fs.readFileSync(`${dir}/package.json`, 'utf8'))
+    manifest = JSON.parse(
+      fs.readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    )
   } catch {
     return undefined
   }

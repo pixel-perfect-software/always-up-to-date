@@ -5,36 +5,46 @@ on:
     branches: [main]
   pull_request:
 
+# Actions are pinned to the commit of a release (version in the comment), as in release.yml;
+# Dependabot proposes updates. Tool versions come from .tool-versions, as they do locally.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
-    runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: latest
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+          persist-credentials: false
+      - id: tools
+        shell: bash
+        run: echo "pnpm=$(awk '$1 == "pnpm" { print $2 }' .tool-versions)" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
-          node-version: 24
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+          version: ${{ steps.tools.outputs.pnpm }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Formatting and types don't depend on the OS: once is enough.
       - name: Check formatting and lint
+        if: runner.os == 'Linux'
         run: pnpm run format-and-lint
-
+      - name: Check TypeScript
+        if: runner.os == 'Linux'
+        run: pnpm run check-types
       - name: Run tests
-        run: pnpm test --passWithNoTests
-
+        run: pnpm test
       - name: Build project
         run: pnpm run build
-
-      - name: Check TypeScript
-        run: pnpm run check-types

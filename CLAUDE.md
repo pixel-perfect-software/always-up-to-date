@@ -133,7 +133,7 @@ Documentation registry: `.claude/context/ai-context/docs-overview.md`
 
 ## Testing Notes
 
-- Test framework: Jest with ts-jest
+- Test framework: Jest with `@swc/jest` as the transform
 - Tests located in `__tests__/` directory (mirrors `src/` structure)
 - Global setup: `__tests__/setup.ts` (suppresses console output unless `DEBUG` env is set)
 - Test timeout: 15 seconds
@@ -142,3 +142,4 @@ Documentation registry: `.claude/context/ai-context/docs-overview.md`
 - Path aliases: `moduleNameMapper` maps `@/*` to `src/*` for test imports
 - Manager tests feed real captured package-manager output from `__tests__/fixtures/<pm>/` (helpers `readFixture`, `exitError` in `__tests__/fixtures/index.ts`). Capture new fixtures from a real run, with local paths scrubbed; never hand-write manager output
 - Single test: `pnpm test -- __tests__/path/to/test.test.ts`
+- CI runs the unit suite on ubuntu and windows (Biome and the type check only on ubuntu). `.gitattributes` keeps every file LF so Windows checkouts match. Tests that spawn a fake manager use `writeNodeShim` and `prependPath` from `__tests__/fixtures` (a `sh` wrapper on POSIX, a cmd-shim `.cmd` on Windows); symlinks in tests use type `'junction'`, which Windows allows without privileges

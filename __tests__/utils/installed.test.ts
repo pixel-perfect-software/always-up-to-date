@@ -73,6 +73,7 @@ describe('readInstalledVersions', () => {
     fs.symlinkSync(
       path.join(cwd, 'node_modules/.pnpm/ms@2.1.3/node_modules/ms'),
       path.join(cwd, 'node_modules/ms'),
+      'junction',
     )
 
     expect(readInstalledVersions(cwd, [{ name: 'ms' }])).toEqual({
@@ -140,6 +141,7 @@ describe('readInstalledVersions', () => {
       fs.symlinkSync(
         path.join(cwd, 'node_modules/.pnpm/ms@2.1.2/node_modules/ms'),
         path.join(cwd, 'packages/a/node_modules/ms'),
+        'junction',
       )
 
       expect(

@@ -17,12 +17,17 @@ const sourceFiles = (dir: string): string[] =>
         : []
     })
 
+const toPosix = (p: string): string => p.split(path.sep).join('/')
+const escapeRegExp = (text: string): string =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 // Jest substitutes <rootDir> and matches each pattern against the full path.
+// Both sides use `/`, as the patterns do, so Windows backslashes don't matter.
 const isIgnoredForCoverage = (file: string): boolean =>
   jestConfig.coveragePathIgnorePatterns.some((pattern) =>
-    new RegExp(pattern.replace('<rootDir>', repoRoot)).test(
-      path.join(repoRoot, file),
-    ),
+    new RegExp(
+      pattern.replace('<rootDir>', escapeRegExp(toPosix(repoRoot))),
+    ).test(toPosix(path.join(repoRoot, file))),
   )
 
 describe('coverage configuration', () => {
@@ -68,5 +73,33 @@ describe('CI workflow', () => {
 
   it('runs Biome', () => {
     expect(workflow).toMatch(/^\s+run: pnpm run format-and-lint\s*$/m)
+  })
+
+  it('runs the unit suite on Linux and Windows', () => {
+    expect(workflow).toMatch(/os: \[ubuntu-latest, windows-latest\]/)
+  })
+})
+
+describe('workflows', () => {
+  const workflowDir = path.join(repoRoot, '.github/workflows')
+
+  it('pins every action to a release commit', () => {
+    const unpinned = fs
+      .readdirSync(workflowDir)
+      .flatMap((file) =>
+        fs
+          .readFileSync(path.join(workflowDir, file), 'utf8')
+          .split(/\r?\n/)
+          .filter((line) => /\buses:/.test(line))
+          .map((line) => ({ file, line: line.trim() })),
+      )
+      .filter(
+        ({ line }) =>
+          !/uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+\s*$/.test(
+            line,
+          ),
+      )
+
+    expect(unpinned).toEqual([])
   })
 })
