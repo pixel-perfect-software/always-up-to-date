@@ -1,6 +1,6 @@
 import fs from 'fs'
 
-import CommandRunner from '@/commandRunner'
+import CommandRunner, { type SuccessCheck } from '@/commandRunner'
 import messages from '@/messages/en.json'
 import type {
   PackageInfo,
@@ -15,6 +15,21 @@ import {
   logger,
 } from '@/utils'
 import { updatePackageJson, updatePNPMWorkspaceYAML } from '@/utils/files'
+
+/**
+ * `pnpm outdated` exits 1 whenever something is outdated. On real errors it
+ * also exits 1, with the error on stderr and no report on stdout.
+ */
+const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
+  if (exitCode === 0) return true
+  if (exitCode !== 1) return false
+  try {
+    const report = JSON.parse(stdout)
+    return typeof report === 'object' && report !== null
+  } catch {
+    return false
+  }
+}
 
 class PNPMManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = 'pnpm'
@@ -33,6 +48,7 @@ class PNPMManager extends CommandRunner {
       this.packageManager,
       command,
       cwd,
+      isOutdatedReport,
     )
     const result: Record<string, PackageInfo> = JSON.parse(
       commandResult || '{}',
