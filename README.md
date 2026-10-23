@@ -1,130 +1,104 @@
 <p align="center">
-  <img src="./assets/logo.svg" />
+  <img src="assets/logo.svg" width="128" height="128" alt="Always Up To Date logo: an npm package box with an automation gear" />
 </p>
-<hr />
 
-# Always Up To Date
+<h1 align="center">Always Up To Date</h1>
 
-[![CI](https://github.com/pixel-perfect-software/always-up-to-date/workflows/CI/badge.svg)](https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/ci.yml)
-[![Security](https://github.com/pixel-perfect-software/always-up-to-date/workflows/Security/badge.svg)](https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/security.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-![Coverage: statements](https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-statements.svg)
-![Coverage: branches](https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-branches.svg)
-![Coverage: functions](https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-functions.svg)
-![Coverage: lines](https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-lines.svg)
+<p align="center">
+  Dependency updates that respect your package.json: ranges are followed, exact pins stay put, and you decide how far past them to go.
+</p>
 
-A smart CLI tool that automatically keeps your dependencies up to date with intelligent package manager detection and workspace support.
+<p align="center">
+  <a href="https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/ci.yml"><img src="https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
+  <a href="https://www.npmjs.com/package/@pixel-perfect-software/always-up-to-date"><img src="https://img.shields.io/npm/v/@pixel-perfect-software/always-up-to-date?label=npm&color=cb3837" alt="npm version" /></a>
+  <img src="https://img.shields.io/node/v/@pixel-perfect-software/always-up-to-date?color=339933" alt="Node.js version" />
+  <img src="https://img.shields.io/badge/managers-npm%20%7C%20pnpm%20%7C%20yarn%20%7C%20bun-4C6EF5" alt="Package managers: npm, pnpm, yarn and bun" />
+  <img src="https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-lines.svg" alt="Coverage: lines" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+</p>
+
+`autd` updates your dependencies the way your package manager would. Run `autd update` and each
+dependency moves to the newest version its package.json range allows, the same set `npm update`
+installs, while an exact pin like `"18.2.0"` stays exactly where it is. When you want more, a
+small config file lets one package, a scope, or everything move past its range.
+
+It works with npm, pnpm, yarn and bun, in single projects and workspaces, and picks the package
+manager from your lockfile.
+
+```console
+$ autd update --dry-run
+
+Would update (15)
+  axios      1.4.0   → 1.20.0
+  commander  9.0.0   → 9.5.0
+  debug      4.3.1   → 4.3.7
+  zod        3.20.0  → 3.25.76
+  …
+
+Would skip (5)
+  express     4.17.1 → 5.3.0   (major beyond the range)
+  react       18.2.0 → 19.3.1  (major beyond the range)
+  typescript  5.0.4  → 7.0.2   (major beyond the range)
+  …
+```
+
+What happens to each kind of spec:
+
+| In package.json | Installed | Latest | `autd update` | With `"beyondRange": "major"` |
+|---|---|---|---|---|
+| `"^9.0.0"` | 9.0.0 | 15.0.0 | 9.5.0, the newest `9.x` | `"^15.0.0"` |
+| `"~4.3.1"` | 4.3.1 | 4.4.3 | 4.3.7, the newest `4.3.x` | `"~4.4.3"` |
+| `"18.2.0"` | 18.2.0 | 19.3.1 | stays on 18.2.0 | `"19.3.1"`, still exact |
 
 ## ✨ Features
 
-- 📦 **Universal Package Manager Support** - Automatically detects and works with npm, yarn, pnpm, and bun
-- 🔍 **Dependency Checking** - Check for outdated packages across your project
-- 🚀 **Smart Updates** - Update packages while respecting workspace configurations
-- 🏢 **Workspace Support** - Full support for npm workspaces and monorepo structures
-- 🎯 **Intelligent Detection** - Automatically detects your package manager from lock files
-- 🛠️ **Extensible Architecture** - Modular design with dedicated managers, migrators, and PR generators
-
-## 🏗️ Architecture
-
-The tool is built with a modular architecture:
-
-- **Managers** - Package manager specific implementations (npm, yarn, pnpm, bun)
-- **Migrators** - Smart migration rules for popular packages (React, Next.js, etc.) (Coming Soon!)
-- **PR Generators** - Automated pull request creation with detailed migration guides (Coming Soon!)
-- **Command Runner** - Unified command execution across all package managers
-
-## 🔜 Coming Soon
-
-- Migration rules for popular frameworks (React, Next.js, etc.)
-- GitHub integration with automated PR creation
-- Security vulnerability scanning
+- 📏 **Follows your ranges.** By default an update installs what the package manager itself would, and an exact pin is never touched.
+- 🎚️ **Goes further when you say so.** `beyondRange` lets everything move past its range by a patch, minor or major step; per-package `rules` hold a package, keep it in range, or always take the latest, by name or `*` glob.
+- 🛡️ **Holds what would break.** A package your package manager pins with an override is left alone, and so is an update an installed package's peer range would reject. Each one is reported with the reason.
+- ⏳ **Waits out fresh releases.** `cooldown` skips versions published more recently than a number of days, a duration like `"1 week"`, or a limit per update type.
+- ✍️ **Keeps package.json yours.** Decorators, `npm:` aliases and compound ranges keep their shape, and the file keeps its indentation, line endings and final newline.
+- 🤖 **Fits in CI.** `--json` prints nothing but JSON, and a failed step exits 1 with its name.
 
 ## 📋 Requirements
 
 - **Node.js** 24 or higher
-- One of: **npm**, **yarn**, **pnpm** (10+), or **bun**
+- **npm**, **pnpm**, **yarn** v1 or **bun**. yarn 2+ (berry) isn't supported yet ([#79](https://github.com/pixel-perfect-software/always-up-to-date/issues/79)).
 
-## 🚀 Quick Start
+## 🚀 Install
 
 ```bash
-# Global installation (recommended)
 npm install -g @pixel-perfect-software/always-up-to-date
-
-# Initialize the library
-autd init
-
-# Check for outdated dependencies
-autd check
-
-# Update outdated dependencies
-autd update
 ```
 
-## 🔧 Usage Examples
+The command is `autd`; `alwaysuptodate` and `always-up-to-date` work too.
+
+## 🧭 Getting started
 
 ```bash
-# Check for outdated dependencies
-autd check
-
-# Check with JSON output (useful for CI/CD pipelines)
-autd check --json
-
-# Update all eligible dependencies
-autd update
-
-# Update specific packages only
-autd update react lodash @babel/core
-
-# Preview what would be updated without making changes
-autd update --dry-run
-
-# Interactively select which packages to update
-autd update --interactive
-
-# Combine flags: dry-run specific packages with JSON output
-autd update react --dry-run --json
-
-# Get help and see all available commands
-autd help
+autd check              # list outdated dependencies
+autd update --dry-run   # see where each one would move, or why it's held
+autd update             # apply it
+autd init               # optional: create .always-up-to-date.json to go past your ranges
 ```
 
-## 📦 Package Manager Detection
-
-The tool automatically detects your package manager by looking for lock files:
-
-- **npm** - `package-lock.json`
-- **yarn** - `yarn.lock`
-- **pnpm** - `pnpm-lock.yaml`
-- **bun** - `bun.lock`
-
-## 🏢 Workspace Support
-
-Full support for workspaces and monorepos:
-
-- **npm workspaces** - Automatically detected from `package.json` workspaces field
-- **yarn workspaces** - Automatically detected from `package.json` workspaces field
-- **pnpm workspaces** - Automatically detected from `pnpm-workspace.yaml`
-- **bun workspaces** - Automatically detected from `package.json` workspaces field
-
-## 🛠️ Available Commands
+## ⌨️ Commands
 
 | Command | Description |
 |---------|-------------|
-| `autd init` | Initialize configuration in the current directory |
-| `autd check` | Check for outdated dependencies in your project |
-| `autd check --json` | Output outdated packages as JSON |
-| `autd update` | Update all eligible dependencies |
-| `autd update [packages...]` | Update only the specified packages |
-| `autd update --dry-run` | Preview which packages would be updated |
-| `autd update -i, --interactive` | Interactively select packages to update |
-| `autd update --json` | Output update results as JSON |
-| `autd help` | Display help information |
+| `autd check` | List outdated dependencies |
+| `autd check --json` | The same, as JSON |
+| `autd update` | Update every eligible dependency |
+| `autd update [packages...]` | Update only the named packages |
+| `autd update --dry-run` | Show where each package would move, or why it's held, without changing anything |
+| `autd update -i, --interactive` | Pick the packages to update from a checklist |
+| `autd update --json` | Print the update results as JSON (combines with `--dry-run`, not with `--interactive`) |
+| `autd init` | Create `.always-up-to-date.json` in the current directory |
+| `autd help` | Show help |
 
 ## ⚙️ Configuration
 
-By default, `autd update` stays within the version range each dependency has in `package.json`, the same set `npm update` would install. `"^18.2.0"` can move to the newest `18.x`, `"~7.5.0"` to the newest `7.5.x`, and an exact pin like `"1.11.9"` is left alone. You only need a config file to go further.
-
-Run `autd init` to create `.always-up-to-date.json` in your project root:
+You only need a config file to go further than your package.json ranges. Run `autd init` to create
+`.always-up-to-date.json` in your project root:
 
 ```json
 {
@@ -141,8 +115,8 @@ Run `autd init` to create `.always-up-to-date.json` in your project root:
 | `beyondRange` | `"none"` | How far past its range a dependency may move, to its latest version: `"none"`, `"patch"`, `"minor"` or `"major"`. Applies to exact pins too, so `"patch"` moves `"1.11.9"` to `"1.11.23"`. |
 | `rules` | `{}` | Per-package overrides (see below). |
 | `cooldown` | `0` | Skip versions published more recently than this: days (`7`), a duration (`"1 week"`, `"24h"`), or per update type (`{ "major": "30 days" }`). |
-| `debug` | `false` | Enable debug logging |
-| `silent` | `false` | Suppress all output |
+| `debug` | `false` | Print each package-manager command and its stderr. |
+| `silent` | `false` | Suppress all output. |
 
 ### Rules
 
@@ -167,15 +141,35 @@ Run `autd init` to create `.always-up-to-date.json` in your project root:
 
 Keys are package names or `*` globs (`"@types/*"`, `"eslint-*"`, `"*"`). An exact name beats a glob, and among globs the longest pattern wins.
 
-An update that an installed package's peer range would reject is held too, naming the package: `react` stays on 18 while `@tanstack/react-query` 4, which accepts react up to 18, stays installed. A `"latest"` rule still moves it, with a warning.
+### What else holds an update
 
-A package your package manager pins with an override is held when the update would leave the override's range, with the reason `controlled by …`: npm `overrides`, yarn berry `resolutions`, pnpm `overrides` in `pnpm-workspace.yaml`, and bun `overrides` or `resolutions`.
+- **Installed peer ranges.** An update an installed package's peer range would reject is held, naming that package: `react` stays on 18 while `@tanstack/react-query` 4, which accepts react up to 18, stays installed. A `"latest"` rule still moves it, with a warning.
+- **Overrides.** A package your package manager pins with an override is held when the update would leave the override's range, with the reason `controlled by …`. That covers npm `overrides`, yarn berry `resolutions`, pnpm `overrides` in `pnpm-workspace.yaml`, and bun `overrides` or `resolutions`.
 
-When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"` becomes `"^19.3.1"` and `"1.11.9"` becomes `"1.11.23"`. A spec that can't keep its shape, such as `"3.x"` or `">=4 <5"`, is written the way your package manager writes a new dependency: `^` unless you set `save-exact` / `save-prefix` (npm), `saveExact` / `savePrefix` (pnpm), `defaultSemverRangePrefix` (yarn) or `exact` (bun). Run `autd update --dry-run` to see where each package would move, or why it is held.
+### How specs are rewritten
 
-### Older config files
+When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"` becomes `"^19.3.1"` and `"1.11.9"` becomes `"1.11.23"`. A spec that can't keep its shape, such as `"3.x"` or `">=4 <5"`, is written the way your package manager writes a new dependency: `^` unless you set `save-exact` / `save-prefix` (npm), `saveExact` / `savePrefix` (pnpm), `defaultSemverRangePrefix` (yarn) or `exact` (bun).
 
-These fields still work, and `beyondRange` and `rules` win when both are set:
+## 📦 Package managers and workspaces
+
+| Manager | Detected from | Workspaces from |
+|---------|---------------|-----------------|
+| npm | `package-lock.json` | the `workspaces` field in package.json |
+| pnpm | `pnpm-lock.yaml` | the `packages` list in `pnpm-workspace.yaml`, including catalogs |
+| yarn v1 | `yarn.lock` | the `workspaces` field in package.json |
+| bun | `bun.lock` | the `workspaces` field in package.json, including catalogs |
+
+## 🩺 Troubleshooting
+
+- **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)` or `peer conflict: …`.
+- **`check` or `update` exits 1.** The message names the step that failed (`detect`, `discover` or `apply`) and says whether package.json was already written. Set `"debug": true` to see each package-manager command and its stderr.
+- **"No package manager detected".** autd looks for a lockfile in the current directory; run your package manager's install first.
+
+## 🔄 Upgrading from 1.x
+
+2.0 changed what `autd update` does with no config. 1.x moved any dependency with a newer patch release, rewriting exact pins to `^`, and held minor updates even when the range allowed them. 2.0 installs what the range allows and leaves exact pins alone. To let pins take patch releases again, set `"beyondRange": "patch"`.
+
+Old config files keep working. When both are set, `beyondRange` and `rules` win:
 
 | Old field | Same as |
 |-----------|---------|
@@ -184,14 +178,16 @@ These fields still work, and `beyondRange` and `rules` win when both are set:
 | `"updateAllowlist": ["x"]` | `"rules": { "x": "latest" }` |
 | `"updateDenylist": ["x"]` | `"rules": { "x": "hold" }` |
 
+See [CHANGELOG.md](CHANGELOG.md) for everything in each release, and the [roadmap](docs/roadmap.md) for what's next.
+
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](./docs/contributing.md) for details on how to get started.
+Contributions are welcome! See the [Contributing Guide](docs/contributing.md) to get started.
 
-## 💸 Support this package's development & maintenance
+## 💸 Support this project
 
-<a href="https://www.buymeacoffee.com/tylernrobertson" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 217px !important;" >
+<a href="https://www.buymeacoffee.com/tylernrobertson" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-blue.png" alt="Buy Me A Coffee" height="50" width="217" /></a>
 
 ## 📝 License
 
-MIT © [Tyler Robertson](https://github.com/TylerNRobertson) @ [Pixel Perfect Software Inc.](https://github.com/pixel-perfect-software) - See [LICENSE](LICENSE) for details.
+MIT © [Tyler Robertson](https://github.com/TylerNRobertson) @ [Pixel Perfect Software Inc.](https://github.com/pixel-perfect-software). See [LICENSE](LICENSE) for details.
