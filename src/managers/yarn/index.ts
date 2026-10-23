@@ -14,7 +14,7 @@ import {
   groupAndSortPackages,
   logger,
 } from '@/utils'
-import { updatePackageJson } from '@/utils/files'
+import { buildUpdateDescriptors, checkIfFileExists } from '@/utils/files'
 
 /**
  * `yarn outdated` (v1) exits 1 whenever something is outdated, printing a
@@ -31,6 +31,10 @@ const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
     }
   })
 }
+
+// Until #38 moves to an argument array, descriptors pass through a shell,
+// where specs like `>=1.2.3` would otherwise be read as redirects.
+const shellQuote = (arg: string): string => `'${arg.replaceAll("'", `'\\''`)}'`
 
 class YarnManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = 'yarn'
@@ -91,7 +95,7 @@ class YarnManager extends CommandRunner {
         return []
       }
 
-      const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
+      await this.checkIfInWorkspace(cwd)
       const results = await filterPackages(outdatedPackages, {
         targetPackages,
         cwd,
@@ -117,13 +121,30 @@ class YarnManager extends CommandRunner {
       )
 
       if (packagesToUpdate.length > 0) {
-        await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
+        // yarn rewrites the manifest itself: v1 refuses to upgrade against a
+        // pre-written package.json ("Outdated lockfile"). Hand it `name@spec`
+        // descriptors that keep each entry's decorator instead.
+        const { descriptors, notInManifest } = buildUpdateDescriptors(
+          cwd,
+          packagesToUpdate,
+          outdatedPackages,
+        )
 
-        const command = isRunningInWorkspace
-          ? `update ${packagesToUpdate.join(' ')} --recursive`
-          : `update ${packagesToUpdate.join(' ')}`
+        if (notInManifest.length > 0) {
+          logger.warn(
+            `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`,
+          )
+        }
 
-        await this.runCommand(this.packageManager, command, cwd)
+        if (descriptors.length > 0) {
+          // v1 is `upgrade`, berry is `up`; neither has `update`. No
+          // `--recursive`: v1 ignores it and berry's means "re-resolve
+          // transitive dependencies", which rejects explicit ranges.
+          const subcommand = this.isBerry(cwd) ? 'up' : 'upgrade'
+          const command = `${subcommand} ${descriptors.map(shellQuote).join(' ')}`
+
+          await this.runCommand(this.packageManager, command, cwd)
+        }
       }
 
       logger.cooldownSummary(results)
@@ -155,6 +176,24 @@ class YarnManager extends CommandRunner {
     } catch {
       return false
     }
+  }
+
+  /**
+   * Yarn 2+ ("berry") is identified by the `packageManager` field when it is
+   * present, otherwise by a `.yarnrc.yml`, which v1 does not use.
+   */
+  isBerry = (cwd: string): boolean => {
+    try {
+      const packageJson = JSON.parse(
+        fs.readFileSync(`${cwd}/package.json`, 'utf8'),
+      )
+      const declared = /^yarn@(\d+)\./.exec(packageJson.packageManager ?? '')
+      if (declared) return Number(declared[1]) >= 2
+    } catch {
+      // Unreadable manifest: fall back to the rc file.
+    }
+
+    return checkIfFileExists(`${cwd}/.yarnrc.yml`)
   }
 
   // Parse multiple JSON objects from yarn outdated output

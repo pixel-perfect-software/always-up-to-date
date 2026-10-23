@@ -49,7 +49,7 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 | Manager | Method | Flag |
 |---------|--------|------|
 | npm | `package.json` `workspaces` field (array or `{packages: [...]}`) | `--workspaces` |
-| yarn | `package.json` `workspaces` field | `--recursive` |
+| yarn | `package.json` `workspaces` field | `--recursive` (on `outdated` only) |
 | pnpm | `pnpm-workspace.yaml` file existence | `-r` |
 | bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `--filter '*'` |
 
@@ -57,4 +57,12 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 - `src/commands/check.ts` and `src/commands/update.ts` instantiate managers via the factory
 - `src/utils/filterPackages.ts` filters and classifies packages for update (used inside `updatePackages()`)
 - `src/utils/packageGrouper.ts` groups check output by scope for display
-- `src/utils/files.ts` `updatePackageJson()` writes version updates before running the manager's update command
+- `src/utils/files.ts` `updatePackageJson()` writes version updates before running the manager's update command (npm, pnpm, bun)
+
+### Yarn apply (`src/managers/yarn/index.ts`)
+- yarn writes the manifest itself: autd passes `name@spec` descriptors from `buildUpdateDescriptors()` and never pre-writes `package.json` (v1 then fails with "Outdated lockfile")
+- v1 runs `yarn upgrade <descriptors>`, berry runs `yarn up <descriptors>`; neither has `update`. No `--recursive` on apply: v1 has no such flag and berry's rejects explicit ranges
+- A bare `yarn up name` on berry rewrites an exact pin to `^`, so descriptors always carry the spec
+- `isBerry(cwd)`: `packageManager: yarn@2+` wins; otherwise a `.yarnrc.yml` means berry
+- Packages missing from the root manifest are skipped with a warning: v1 `upgrade` at a workspace root adds them as root dependencies
+- Berry has no `outdated`, so discovery (and therefore `check`/`update`) does not run on berry yet

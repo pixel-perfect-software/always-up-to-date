@@ -128,6 +128,47 @@ export const updatePackageJson = async (
   )
 }
 
+/**
+ * Builds `name@spec` descriptors for a manager that rewrites the manifest
+ * itself (yarn `upgrade` / `up`). Each spec keeps the decorator its
+ * package.json entry already has. Packages the root manifest does not list
+ * are returned separately: handing those to yarn at the root would add them
+ * as new root dependencies.
+ */
+export const buildUpdateDescriptors = (
+  cwd: string,
+  packagesToUpdate: string[],
+  outdatedPackages: Record<string, PackageInfo>,
+): { descriptors: string[]; notInManifest: string[] } => {
+  const packageJson = JSON.parse(fs.readFileSync(`${cwd}/package.json`, 'utf8'))
+
+  const descriptors: string[] = []
+  const notInManifest: string[] = []
+
+  for (const packageName of packagesToUpdate) {
+    const currentVersion = [
+      packageJson?.dependencies?.[packageName],
+      packageJson?.devDependencies?.[packageName],
+      packageJson?.optionalDependencies?.[packageName],
+    ].find(
+      (spec): spec is string =>
+        typeof spec === 'string' && !isWorkspaceReference(spec),
+    )
+
+    if (currentVersion) {
+      const newVersion = nextVersionSpec(
+        currentVersion,
+        outdatedPackages[packageName].latest,
+      )
+      descriptors.push(`${packageName}@${newVersion}`)
+    } else {
+      notInManifest.push(packageName)
+    }
+  }
+
+  return { descriptors, notInManifest }
+}
+
 export const updatePNPMWorkspaceYAML = async (
   cwd: string,
   packagesToUpdate: string[],

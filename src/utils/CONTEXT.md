@@ -25,7 +25,7 @@ utils/
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
   logger.ts           # Colored logging (colorette)
-  files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML(), updateBunCatalogs(), identifyCatalogPackages()
+  files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML(), updateBunCatalogs(), identifyCatalogPackages(), buildUpdateDescriptors()
 ```
 
 ## Architectural Patterns
@@ -57,6 +57,11 @@ Priority order:
 - `fetchReleaseTimes(name, registryConfig)` calls `npm-registry-fetch` with `fullMetadata: true` (corgi format strips `time`), maps the result to `Record<version, ISO>`. Network failure → empty map (cached) so the cooldown gate fails open.
 - One in-memory cache per CLI run; `clearRegistryCache()` is exported for tests.
 - Limitation: yarn berry's `.yarnrc.yml` and bun's `bunfig.toml` are not read in v1. Common case (npm-spec `.npmrc`) covers all four PMs.
+
+### Manifest Specs (`files.ts`)
+- Every writer builds the new spec with `nextVersionSpec()`, which keeps the decorator the current spec has. An exact pin stays exact; a decorator is never added
+- `catalog:` and `workspace:` references are never rewritten
+- `buildUpdateDescriptors()` applies the same rule to produce `name@spec` for managers that write the manifest themselves (yarn), reading `dependencies`, then `devDependencies`, then `optionalDependencies`
 
 ### Package Grouping (`packageGrouper.ts`)
 Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Groups sorted alphabetically.
