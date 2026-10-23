@@ -8,6 +8,10 @@
 [![CI](https://github.com/pixel-perfect-software/always-up-to-date/workflows/CI/badge.svg)](https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/ci.yml)
 [![Security](https://github.com/pixel-perfect-software/always-up-to-date/workflows/Security/badge.svg)](https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Coverage: statements](https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-statements.svg)
+![Coverage: branches](https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-branches.svg)
+![Coverage: functions](https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-functions.svg)
+![Coverage: lines](https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-lines.svg)
 
 A smart CLI tool that automatically keeps your dependencies up to date with intelligent package manager detection and workspace support.
 

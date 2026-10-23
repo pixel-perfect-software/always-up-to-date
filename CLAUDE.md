@@ -16,7 +16,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 ### Testing
 - `pnpm test` - Run all tests (silent mode)
 - `pnpm run test:coverage` - Run tests with coverage report
-- `pnpm run test:badges` - Generate coverage badges in ./badges directory
+- `pnpm run test:badges` - Regenerate the coverage badges in `./badges`, shown in the README. They are static files: rerun and commit them when coverage changes
 - Single test: `pnpm test -- __tests__/path/to/test.test.ts`
 
 ### Code Quality
