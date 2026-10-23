@@ -2,12 +2,38 @@ import type { ReleaseType } from 'semver'
 
 export type SupportedPackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 
+/** One manifest's versions of an outdated package, in a workspace project. */
+export interface WorkspaceVersion {
+  /** The manifest's directory relative to the root, POSIX separators; '.' is the root. */
+  path: string
+  current: string
+  wanted: string
+}
+
 export interface PackageInfo {
   name: string
   current: string
   /** Highest version the manifest range allows: what the manager would install. */
   wanted: string
   latest: string
+  /**
+   * Workspace projects only: each manifest declaring the package, root first,
+   * then by path. `current` and `wanted` above repeat the root's, else the
+   * first member's.
+   */
+  workspaces?: WorkspaceVersion[]
+}
+
+/** Discovery's unit in a workspace project: one package as one manifest declares it. */
+export interface OutdatedEntry {
+  /** As the manager reports it; the pipeline re-keys it by the owner's dependency key. */
+  name: string
+  current: string
+  /** Highest version the owning manifest's range allows. */
+  wanted: string
+  latest: string
+  /** The owning manifest's directory relative to the root ('.' = root). */
+  workspace: string
 }
 
 export interface UpdateResult {

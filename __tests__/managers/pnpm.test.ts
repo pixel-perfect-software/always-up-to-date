@@ -1,10 +1,20 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import pnpm, { parsePnpmOutdated } from '@/managers/pnpm'
+import pnpm, {
+  parsePnpmOutdated,
+  parsePnpmWorkspaceOutdated,
+} from '@/managers/pnpm'
 import { check, update } from '@/pipeline'
+import { StepError } from '@/stepError'
 import type { PackageInfo } from '@/types'
-import { exitError, projectFor, readFixture } from '../fixtures'
+import {
+  exitError,
+  projectFor,
+  readFixture,
+  WORKSPACE_ENTRIES,
+  writeWorkspaceProject,
+} from '../fixtures'
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils/registry', () => ({
@@ -254,5 +264,71 @@ describe('parsePnpmOutdated', () => {
     )
 
     expect(result.react.wanted).toBe('18.2.0')
+  })
+})
+
+describe('parsePnpmWorkspaceOutdated', () => {
+  const report = readFixture('pnpm/outdated-workspace.stdout')
+  const compatible = readFixture('pnpm/outdated-workspace-compatible.stdout')
+
+  it('parses one entry per dependent package, wanted from --compatible', () => {
+    const entries = parsePnpmWorkspaceOutdated(report, compatible, '/project')
+
+    expect(entries).toHaveLength(5)
+    expect(entries).toEqual(expect.arrayContaining(WORKSPACE_ENTRIES))
+  })
+
+  it('strips the @current suffix pnpm adds to a name at several versions', () => {
+    expect(JSON.parse(report)).toHaveProperty(['ms@2.1.1'])
+
+    const entries = parsePnpmWorkspaceOutdated(report, compatible, '/project')
+
+    expect(entries.map((e) => e.name)).not.toContain('ms@2.1.1')
+    expect(entries.map((e) => e.name)).not.toContain('ms@2.1.2')
+  })
+
+  it('fails discovery for a location outside the project', () => {
+    expect(() =>
+      parsePnpmWorkspaceOutdated(report, compatible, '/elsewhere'),
+    ).toThrow(StepError)
+  })
+})
+
+describe('pnpm.readWorkspace manifests', () => {
+  it('lists the root, then the members the patterns match', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-manifests-'))
+    try {
+      writeWorkspaceProject(cwd, { pnpm: true })
+
+      expect(pnpm.readWorkspace(cwd).manifests).toEqual([
+        { path: '.', name: 'ws-root' },
+        { path: 'packages/a', name: '@ws/a' },
+        { path: 'packages/b', name: '@ws/b' },
+      ])
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('reads quoted block items and flow lists', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-manifests-'))
+    try {
+      writeWorkspaceProject(cwd, { pnpm: true })
+      fs.writeFileSync(
+        path.join(cwd, 'pnpm-workspace.yaml'),
+        'packages: [\'packages/a\', "packages/b"] # members\n',
+      )
+
+      expect(pnpm.readWorkspace(cwd)).toMatchObject({
+        isWorkspace: true,
+        manifests: [
+          { path: '.' },
+          { path: 'packages/a' },
+          { path: 'packages/b' },
+        ],
+      })
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
   })
 })

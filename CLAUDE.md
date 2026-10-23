@@ -91,8 +91,9 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 
 **Workspace Detection**
 - npm/yarn/bun: Checks `package.json` for `workspaces` field (array or object with packages)
-- pnpm: Checks for `pnpm-workspace.yaml` file
-- When detected, commands append workspace flags (e.g., `--workspaces` for npm)
+- pnpm: Checks for `pnpm-workspace.yaml` file with a `packages:` list
+- `Workspace.manifests` lists the root and each member (`src/managers/workspaces.ts`). Discovery keeps the owning manifest of every outdated entry (`Discovery` in `src/managers/adapter.ts`); `check --json` values gain `workspaces: [{ path, current, wanted }]`
+- When detected, commands append workspace flags (`-r` for pnpm, `--filter *` for bun, `--recursive` for yarn's `outdated`); npm's discovery uses `outdated --json --long` and reads each row's `dependedByLocation`
 
 **Package Grouping**
 - `src/utils/packageGrouper.ts` groups packages by scope (@org/package) for organized output

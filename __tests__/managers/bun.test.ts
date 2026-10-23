@@ -1,9 +1,19 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import bun, { parseBunOutdated } from '@/managers/bun'
+import bun, {
+  parseBunOutdated,
+  parseBunWorkspaceOutdated,
+} from '@/managers/bun'
+import { workspaceOwner } from '@/managers/workspaces'
 import { check } from '@/pipeline'
-import { exitError, projectFor, readFixture } from '../fixtures'
+import { StepError } from '@/stepError'
+import {
+  exitError,
+  projectFor,
+  readFixture,
+  WORKSPACE_ENTRIES,
+} from '../fixtures'
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils/registry', () => ({
@@ -106,5 +116,75 @@ describe('parseBunOutdated', () => {
 
   it('reads empty output as nothing outdated', () => {
     expect(parseBunOutdated('')).toEqual({})
+  })
+})
+
+describe('parseBunWorkspaceOutdated', () => {
+  const named = workspaceOwner(
+    [
+      { path: '.', name: 'ws-root' },
+      { path: 'packages/a', name: '@ws/a' },
+      { path: 'packages/b', name: '@ws/b' },
+    ],
+    'bun',
+  )
+
+  it('parses one entry per table row, owners from the Workspace column', () => {
+    const entries = parseBunWorkspaceOutdated(
+      readFixture('bun/outdated-workspace.stdout'),
+      named,
+    )
+
+    expect(entries).toHaveLength(5)
+    expect(entries).toEqual(expect.arrayContaining(WORKSPACE_ENTRIES))
+  })
+
+  it('maps the empty Workspace cell of an unnamed root to the root', () => {
+    const entries = parseBunWorkspaceOutdated(
+      readFixture('bun/outdated-workspace-unnamed-root.stdout'),
+      workspaceOwner(
+        [
+          { path: '.' },
+          { path: 'packages/a', name: '@ws/a' },
+          { path: 'packages/b', name: '@ws/b' },
+        ],
+        'bun',
+      ),
+    )
+
+    expect(entries.map((e) => [e.name, e.workspace])).toEqual([
+      ['dayjs', '.'],
+      ['ms', 'packages/a'],
+      ['dayjs', 'packages/b'],
+      ['debug', 'packages/b'],
+    ])
+  })
+
+  it('strips dependency markers and keeps only rows that are behind latest', () => {
+    const output = [
+      '| Package      | Current | Update | Latest | Workspace |',
+      '|--------------|---------|--------|--------|-----------|',
+      '| left (dev)   | 1.0.0   | 1.0.1  | 1.0.1  | ws-root   |',
+      '| same         | 2.0.0   | 2.0.0  | 2.0.0  | ws-root   |',
+    ].join('\n')
+
+    expect(parseBunWorkspaceOutdated(output, named)).toEqual([
+      {
+        name: 'left',
+        current: '1.0.0',
+        wanted: '1.0.1',
+        latest: '1.0.1',
+        workspace: '.',
+      },
+    ])
+  })
+
+  it('fails discovery for a workspace no manifest declares', () => {
+    expect(() =>
+      parseBunWorkspaceOutdated(
+        readFixture('bun/outdated-workspace.stdout'),
+        workspaceOwner([{ path: '.', name: 'other' }], 'bun'),
+      ),
+    ).toThrow(StepError)
   })
 })

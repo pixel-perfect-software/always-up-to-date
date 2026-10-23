@@ -11,11 +11,12 @@ import {
   groupAndSortPackages,
   logger,
   splitUpdates,
-  toOutdatedRow,
+  toOutdatedRows,
   toUpdatingRow,
 } from '@/utils'
 import { checkApplied, readInstalledVersions } from '@/utils/installed'
-import { toManifestNames } from '@/utils/manifestNames'
+import { toEntryManifestNames, toManifestNames } from '@/utils/manifestNames'
+import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 
 const runner = new CommandRunner()
 
@@ -49,10 +50,20 @@ const discover = async ({
   logger.starting('Checking dependencies', adapter.name)
 
   const workspace = readWorkspace(adapter, cwd)
-  const outdated = toManifestNames(
+  if (workspace.isWorkspace) {
+    logger.debug(
+      `Manifests: ${workspace.manifests.map((manifest) => manifest.path).join(', ')}`,
+    )
+  }
+  const discovery = await adapter.discover(
+    runFor(adapter, cwd, 'discover'),
     cwd,
-    await adapter.discover(runFor(adapter, cwd, 'discover'), cwd, workspace),
+    workspace,
   )
+  const outdated =
+    discovery.kind === 'single'
+      ? toManifestNames(cwd, discovery.outdated)
+      : foldWorkspaceEntries(toEntryManifestNames(cwd, discovery.entries))
 
   if (Object.keys(outdated).length === 0) {
     logger.allUpToDate()
@@ -66,8 +77,8 @@ const discover = async ({
   for (const groupName of getSortedGroupNames(groupedPackages)) {
     logger.packageGroupHeader(groupName)
     logger.printOutdatedRows(
-      groupedPackages[groupName].map(({ name, info }) =>
-        toOutdatedRow(name, info, releaseAges[name]),
+      groupedPackages[groupName].flatMap(({ name, info }) =>
+        toOutdatedRows(name, info, releaseAges[name]),
       ),
     )
   }

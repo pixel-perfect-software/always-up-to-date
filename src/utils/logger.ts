@@ -2,6 +2,7 @@ import { blue, bold, cyan, gray, green, red, yellow } from 'colorette'
 import type SemVer from 'semver'
 import type { AlwaysUpToDateConfig, UpdateResult } from '@/types'
 import { formatAgeDays } from './duration'
+import { workspaceLabel } from './workspaceRows'
 
 export const pluralize = (
   count: number,
@@ -11,6 +12,8 @@ export const pluralize = (
 
 export interface OutdatedRow {
   name: string
+  /** Workspace projects only: the manifest's directory ('.' is the root). */
+  workspace?: string
   current: string
   latest: string
   releaseAge?: number
@@ -259,12 +262,19 @@ class Logger {
 
 interface ColumnWidths {
   name: number
+  /** 0 when no row carries a workspace, which leaves the column out. */
+  workspace: number
   current: number
   latest: number
 }
 
 const computeWidths = (rows: OutdatedRow[]): ColumnWidths => ({
   name: Math.max(...rows.map((r) => r.name.length)),
+  workspace: Math.max(
+    ...rows.map((r) =>
+      r.workspace === undefined ? 0 : workspaceLabel(r.workspace).length,
+    ),
+  ),
   current: Math.max(...rows.map((r) => r.current.length)),
   latest: Math.max(...rows.map((r) => r.latest.length)),
 })
@@ -279,7 +289,11 @@ const formatRow = (
   const current = red(row.current.padEnd(widths.current))
   const latest = green(row.latest.padEnd(widths.latest))
   const arrow = gray('→')
-  let line = `  ${name}  ${current} ${arrow} ${latest}`
+  const workspace =
+    widths.workspace > 0
+      ? `  ${gray(workspaceLabel(row.workspace ?? '.').padEnd(widths.workspace))}`
+      : ''
+  let line = `  ${name}${workspace}  ${current} ${arrow} ${latest}`
 
   const tail: string[] = []
   if (row.releaseAge !== undefined) {

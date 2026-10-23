@@ -70,7 +70,7 @@ __tests__/
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, JSON error object
   detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging
   fixtures/
-    index.ts                # readFixture(), exitError() helpers
+    index.ts                # readFixture(), exitError(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers
     npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)
   managers/
     adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager
@@ -82,6 +82,8 @@ __tests__/
     applyRanges.test.ts     # In-range apply writes nothing; beyond-range writes the target spec first
     aliases.test.ts         # Real alias output from all four managers: manifest key, no crash on exotic
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
+    workspaces.test.ts      # Member map (patterns, negations, skips) and workspaceOwner
+    workspaceDiscovery.test.ts  # Workspace check on all four managers returns one record; unnamed roots
   utils/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants)
     cooldown.test.ts        # Normalize/evaluate cooldown gate
@@ -97,6 +99,7 @@ __tests__/
     peers.test.ts           # Installed peer ranges from hoisted node_modules and the pnpm store
     saveStyle.test.ts       # Where each manager keeps save-exact / save-prefix
     manifestNames.test.ts   # Report names mapped back to package.json keys
+    workspaceRows.test.ts   # foldWorkspaceEntries ordering and top-level choice
     installed.test.ts       # Installed root-dependency versions (hoisted, scoped, alias, pnpm symlink); checkApplied
 ```
 

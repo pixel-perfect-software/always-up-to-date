@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import type { PackageInfo } from '@/types'
+import type { OutdatedEntry, PackageInfo } from '@/types'
 
 export const DEPENDENCY_FIELDS = [
   'dependencies',
@@ -10,23 +10,20 @@ export const DEPENDENCY_FIELDS = [
 ] as const
 
 /**
- * Re-keys an outdated report by the names package.json uses. An `npm:`
- * alias (`"dj": "npm:dayjs@1.11.9"`) comes back under another name from
- * most managers: npm keys it `dj:dayjs@1.11.9`, pnpm and bun use the
+ * The names package.json in `dir` uses, or undefined when it can't be read.
+ * An `npm:` alias (`"dj": "npm:dayjs@1.11.9"`) comes back under another name
+ * from most managers: npm keys it `dj:dayjs@1.11.9`, pnpm and bun use the
  * target name `dayjs`. Every later step (rules, manifest writes, the
  * manager's own `update dj`) needs the manifest key.
  */
-export const toManifestNames = (
-  cwd: string,
-  outdated: Record<string, PackageInfo>,
-): Record<string, PackageInfo> => {
+const readNamer = (dir: string): ((reported: string) => string) | undefined => {
   let manifest: Record<string, Record<string, unknown> | undefined>
   try {
     manifest = JSON.parse(
-      fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'),
+      fs.readFileSync(path.join(dir, 'package.json'), 'utf8'),
     )
   } catch {
-    return outdated
+    return undefined
   }
 
   const keys = new Set<string>()
@@ -42,14 +39,49 @@ export const toManifestNames = (
     }
   }
 
-  const renamed: Record<string, PackageInfo> = {}
-  for (const [reported, info] of Object.entries(outdated)) {
-    const name = reported.includes(':')
+  return (reported) =>
+    reported.includes(':')
       ? reported.slice(0, reported.indexOf(':'))
       : !keys.has(reported) && aliasFor.has(reported)
         ? (aliasFor.get(reported) as string)
         : reported
+}
+
+/** Maps a reported package name to the key package.json in `dir` declares it under. */
+export const manifestNamer = (dir: string): ((reported: string) => string) =>
+  readNamer(dir) ?? ((reported) => reported)
+
+/** Re-keys an outdated report by the names the project's package.json uses. */
+export const toManifestNames = (
+  cwd: string,
+  outdated: Record<string, PackageInfo>,
+): Record<string, PackageInfo> => {
+  const nameOf = readNamer(cwd)
+  if (!nameOf) return outdated
+
+  const renamed: Record<string, PackageInfo> = {}
+  for (const [reported, info] of Object.entries(outdated)) {
+    const name = nameOf(reported)
     renamed[name] = { ...info, name }
   }
   return renamed
+}
+
+/**
+ * Re-keys a workspace project's entries by the names their owning manifest
+ * uses: an alias only a member declares takes that member's key.
+ */
+export const toEntryManifestNames = (
+  cwd: string,
+  entries: OutdatedEntry[],
+): OutdatedEntry[] => {
+  const namers = new Map<string, (reported: string) => string>()
+  return entries.map((entry) => {
+    let nameOf = namers.get(entry.workspace)
+    if (!nameOf) {
+      nameOf = manifestNamer(path.join(cwd, entry.workspace))
+      namers.set(entry.workspace, nameOf)
+    }
+    return { ...entry, name: nameOf(entry.name) }
+  })
 }

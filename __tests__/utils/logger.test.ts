@@ -1,3 +1,4 @@
+import { bold, gray, green, red } from 'colorette'
 import type { UpdateResult } from '@/types'
 import logger, { pluralize } from '@/utils/logger'
 
@@ -191,6 +192,35 @@ describe('Logger', () => {
   })
 
   describe('printOutdatedRows', () => {
+    it('adds a workspace column when rows carry a workspace', () => {
+      logger.printOutdatedRows([
+        { name: 'ms', workspace: '.', current: '2.1.1', latest: '2.1.3' },
+        {
+          name: 'ms',
+          workspace: 'packages/a',
+          current: '2.1.2',
+          latest: '2.1.3',
+        },
+      ])
+
+      const lines = logSpy.mock.calls.map(([line]) => line as string)
+      expect(lines[0]).toContain('(root)')
+      expect(lines[1]).toContain('packages/a')
+      // Both versions start in the same column.
+      expect(lines[0].indexOf('2.1.1')).toBe(lines[1].indexOf('2.1.2'))
+    })
+
+    it('prints rows without a workspace exactly as before', () => {
+      logger.printOutdatedRows([
+        { name: 'react', current: '18.0.0', latest: '19.0.0' },
+      ])
+
+      expect(logSpy.mock.calls[0][0]).not.toContain('(root)')
+      expect(logSpy.mock.calls[0][0]).toBe(
+        `  ${bold('react')}  ${red('18.0.0')} ${gray('→')} ${green('19.0.0')}`,
+      )
+    })
+
     it('renders one line per row with name + versions', () => {
       logger.printOutdatedRows([
         { name: 'react', current: '18.0.0', latest: '19.0.0' },

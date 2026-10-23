@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import type { PackageInfo } from '@/types'
-import { toManifestNames } from '@/utils/manifestNames'
+import { toEntryManifestNames, toManifestNames } from '@/utils/manifestNames'
 
 const info = (name: string): PackageInfo => ({
   name,
@@ -51,5 +51,57 @@ describe('toManifestNames', () => {
     const report = { 'dj:dayjs@1.11.9': info('dj:dayjs@1.11.9') }
 
     expect(toManifestNames(cwd, report)).toBe(report)
+  })
+})
+
+describe('toEntryManifestNames', () => {
+  it("re-keys an alias only a member declares by that member's key", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-entry-names-'))
+    try {
+      fs.mkdirSync(path.join(cwd, 'packages/a'), { recursive: true })
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({ dependencies: { dayjs: '1.11.9' } }),
+      )
+      fs.writeFileSync(
+        path.join(cwd, 'packages/a/package.json'),
+        JSON.stringify({ dependencies: { dj: 'npm:dayjs@1.11.9' } }),
+      )
+      const entry = (name: string, workspace: string) => ({
+        name,
+        workspace,
+        current: '1.11.9',
+        wanted: '1.11.9',
+        latest: '1.11.23',
+      })
+
+      const renamed = toEntryManifestNames(cwd, [
+        entry('dayjs', '.'),
+        entry('dayjs', 'packages/a'),
+        entry('dj:dayjs@1.11.9', 'packages/a'),
+      ])
+
+      expect(renamed.map((e) => [e.workspace, e.name])).toEqual([
+        ['.', 'dayjs'],
+        ['packages/a', 'dj'],
+        ['packages/a', 'dj'],
+      ])
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves names alone for a manifest it cannot read', () => {
+    const renamed = toEntryManifestNames('/does/not/exist', [
+      {
+        name: 'ms',
+        workspace: 'packages/a',
+        current: '1',
+        wanted: '1',
+        latest: '2',
+      },
+    ])
+
+    expect(renamed[0].name).toBe('ms')
   })
 })

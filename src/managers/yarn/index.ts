@@ -3,8 +3,15 @@ import path from 'path'
 
 import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
-import { hasWorkspacesField, readManifest } from '@/managers/workspaces'
-import type { PackageInfo } from '@/types'
+import {
+  hasWorkspacesField,
+  readManifest,
+  readWorkspaceManifests,
+  workspaceOwner,
+  workspacePatterns,
+} from '@/managers/workspaces'
+import { StepError } from '@/stepError'
+import type { OutdatedEntry, PackageInfo } from '@/types'
 import { logger } from '@/utils'
 import { buildUpdateDescriptors } from '@/utils/files'
 import { manifestOverrides } from '@/utils/overrides'
@@ -86,24 +93,87 @@ export const parseYarnOutdated = (
   }
 }
 
+/**
+ * `yarn outdated --json --recursive` (v1) in a workspace project: the table's
+ * header names the columns, and each body row is one package in one workspace.
+ * The `Workspace` column holds a workspace's package name, `ownerOf` turns it
+ * into the manifest's directory. Unlike the single-package parser, output it
+ * cannot read fails discovery.
+ */
+export const parseYarnWorkspaceOutdated = (
+  output: string,
+  ownerOf: (workspaceName: string) => string,
+): OutdatedEntry[] => {
+  if (!output.trim()) return []
+
+  const lines = output.split('\n').filter((line) => line.trim())
+  const table = lines
+    .map((line) => JSON.parse(line))
+    .find((item) => item?.type === 'table')
+  const head: unknown = table?.data?.head
+  const body: unknown = table?.data?.body
+  if (!Array.isArray(head) || !Array.isArray(body)) return []
+
+  const column = (title: string): number => {
+    const index = head.indexOf(title)
+    if (index === -1) {
+      throw new StepError(
+        'discover',
+        `yarn outdated --recursive printed no ${title} column`,
+      )
+    }
+    return index
+  }
+  const [name, current, wanted, latest, workspace] = [
+    'Package',
+    'Current',
+    'Wanted',
+    'Latest',
+    'Workspace',
+  ].map(column)
+
+  return (body as string[][]).map((row) => ({
+    name: row[name],
+    current: row[current],
+    wanted: row[wanted],
+    latest: row[latest],
+    workspace: ownerOf(row[workspace]),
+  }))
+}
+
 const yarn: ManagerAdapter = {
   name: 'yarn',
   lockfile: 'yarn.lock',
 
-  readWorkspace: (cwd) => ({
-    isWorkspace: hasWorkspacesField(cwd),
-    catalogs: [],
-  }),
-
-  discover: async (run, _cwd, { isWorkspace }) =>
-    parseYarnOutdated(
-      await run(
-        isWorkspace
-          ? ['outdated', '--json', '--recursive']
-          : ['outdated', '--json'],
-        { isSuccess: isOutdatedReport },
+  readWorkspace: (cwd) => {
+    const isWorkspace = hasWorkspacesField(cwd)
+    return {
+      isWorkspace,
+      catalogs: [],
+      manifests: readWorkspaceManifests(
+        cwd,
+        isWorkspace ? workspacePatterns(readManifest(cwd)) : [],
       ),
-    ),
+    }
+  },
+
+  discover: async (run, _cwd, { isWorkspace, manifests }) => {
+    const output = await run(
+      isWorkspace
+        ? ['outdated', '--json', '--recursive']
+        : ['outdated', '--json'],
+      { isSuccess: isOutdatedReport },
+    )
+    return isWorkspace
+      ? {
+          kind: 'workspace',
+          entries: parseYarnWorkspaceOutdated(
+            output,
+            workspaceOwner(manifests, 'yarn'),
+          ),
+        }
+      : { kind: 'single', outdated: parseYarnOutdated(output) }
+  },
 
   apply: async (run, cwd, { withinRange, beyondRange }) => {
     // yarn rewrites the manifest itself: v1 refuses to upgrade against a

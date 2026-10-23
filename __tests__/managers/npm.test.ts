@@ -1,9 +1,19 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import npm, { parseNpmOutdated, readLockedVersions } from '@/managers/npm'
+import npm, {
+  parseNpmOutdated,
+  parseNpmWorkspaceOutdated,
+  readLockedVersions,
+} from '@/managers/npm'
 import { check } from '@/pipeline'
-import { exitError, projectFor, readFixture } from '../fixtures'
+import { StepError } from '@/stepError'
+import {
+  exitError,
+  projectFor,
+  readFixture,
+  WORKSPACE_ENTRIES,
+} from '../fixtures'
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils/registry', () => ({
@@ -179,5 +189,56 @@ describe('readLockedVersions', () => {
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true })
     }
+  })
+})
+
+describe('parseNpmWorkspaceOutdated', () => {
+  it('parses one entry per manifest, owners from dependedByLocation', () => {
+    const entries = parseNpmWorkspaceOutdated(
+      readFixture('npm/outdated-workspace.stdout'),
+    )
+
+    expect(entries).toHaveLength(5)
+    expect(entries).toEqual(expect.arrayContaining(WORKSPACE_ENTRIES))
+  })
+
+  it("takes a member's missing current from its own lock entry, then the root's", () => {
+    const report = JSON.stringify({
+      ms: [
+        {
+          wanted: '2.1.2',
+          latest: '2.1.3',
+          dependedByLocation: 'packages/a',
+        },
+        { wanted: '2.1.3', latest: '2.1.3', dependedByLocation: '' },
+      ],
+      debug: {
+        wanted: '4.3.7',
+        latest: '4.4.3',
+        dependedByLocation: 'packages/b',
+      },
+      dayjs: { wanted: '1.11.9', latest: '1.11.23', dependedByLocation: '' },
+    })
+
+    const entries = parseNpmWorkspaceOutdated(report, {
+      'node_modules/ms': '2.1.1',
+      'packages/a/node_modules/ms': '2.1.2',
+      'node_modules/debug': '4.3.1',
+    })
+
+    expect(entries.map((e) => [e.name, e.workspace, e.current])).toEqual([
+      ['ms', 'packages/a', '2.1.2'],
+      ['ms', '.', '2.1.1'],
+      ['debug', 'packages/b', '4.3.1'],
+      ['dayjs', '.', 'missing'],
+    ])
+  })
+
+  it('fails discovery when a row names no owner', () => {
+    expect(() =>
+      parseNpmWorkspaceOutdated(
+        JSON.stringify({ ms: { current: '1', wanted: '1', latest: '2' } }),
+      ),
+    ).toThrow(StepError)
   })
 })

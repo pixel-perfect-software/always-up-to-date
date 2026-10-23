@@ -7,9 +7,11 @@ import yarn from './yarn'
 
 export type {
   ApplyPlan,
+  Discovery,
   ManagerAdapter,
   RunManager,
   Workspace,
+  WorkspaceManifest,
 } from './adapter'
 
 /**

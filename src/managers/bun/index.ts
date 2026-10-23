@@ -1,8 +1,15 @@
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
-import { hasWorkspacesField, readManifest } from '@/managers/workspaces'
-import type { PackageInfo } from '@/types'
+import {
+  hasWorkspacesField,
+  readManifest,
+  readWorkspaceManifests,
+  workspaceOwner,
+  workspacePatterns,
+} from '@/managers/workspaces'
+import { StepError } from '@/stepError'
+import type { OutdatedEntry, PackageInfo } from '@/types'
 import {
   identifyCatalogPackages,
   updateBunCatalogs,
@@ -66,6 +73,58 @@ export const parseBunOutdated = (
   return result
 }
 
+/**
+ * `bun outdated --filter '*'` in a workspace project: the table gains a
+ * `Workspace` column holding a workspace's package name, which `ownerOf`
+ * turns into the manifest's directory. Cells are read by position, so an
+ * empty one (a root without a `name`) stays a column.
+ */
+export const parseBunWorkspaceOutdated = (
+  output: string,
+  ownerOf: (workspaceName: string) => string,
+): OutdatedEntry[] => {
+  const rows = output
+    .split('\n')
+    .filter((line) => line.startsWith('|') && !line.startsWith('|-'))
+    .map((line) =>
+      line
+        .replace(/^\|/, '')
+        .replace(/\|\s*$/, '')
+        .split('|')
+        .map((cell) => cell.trim()),
+    )
+  const [header, ...body] = rows
+  if (!header) return []
+
+  const column = (title: string): number => {
+    const index = header.indexOf(title)
+    if (index === -1) {
+      throw new StepError(
+        'discover',
+        `bun outdated --filter printed no ${title} column`,
+      )
+    }
+    return index
+  }
+  const [name, current, wanted, latest, workspace] = [
+    'Package',
+    'Current',
+    'Update',
+    'Latest',
+    'Workspace',
+  ].map(column)
+
+  return body
+    .filter((row) => row[current] !== row[latest])
+    .map((row) => ({
+      name: row[name].replace(/\s*\((?:dev|prod|peer|optional)\)/, '').trim(),
+      current: row[current],
+      wanted: row[wanted],
+      latest: row[latest],
+      workspace: ownerOf(row[workspace]),
+    }))
+}
+
 /** `exact = true` inside bunfig.toml's `[install]` table. */
 const bunfigExact = (content: string): boolean => {
   let inInstall = false
@@ -100,15 +159,32 @@ const bun: ManagerAdapter = {
   name: 'bun',
   lockfile: 'bun.lock',
 
-  readWorkspace: (cwd) => ({
-    isWorkspace: hasWorkspacesField(cwd),
-    catalogs: catalogNames(cwd),
-  }),
+  readWorkspace: (cwd) => {
+    const isWorkspace = hasWorkspacesField(cwd)
+    return {
+      isWorkspace,
+      catalogs: catalogNames(cwd),
+      manifests: readWorkspaceManifests(
+        cwd,
+        isWorkspace ? workspacePatterns(readManifest(cwd)) : [],
+      ),
+    }
+  },
 
-  discover: async (run, _cwd, { isWorkspace }) =>
-    parseBunOutdated(
-      await run(isWorkspace ? ['outdated', '--filter', '*'] : ['outdated']),
-    ),
+  discover: async (run, _cwd, { isWorkspace, manifests }) => {
+    const output = await run(
+      isWorkspace ? ['outdated', '--filter', '*'] : ['outdated'],
+    )
+    return isWorkspace
+      ? {
+          kind: 'workspace',
+          entries: parseBunWorkspaceOutdated(
+            output,
+            workspaceOwner(manifests, 'bun'),
+          ),
+        }
+      : { kind: 'single', outdated: parseBunOutdated(output) }
+  },
 
   apply: async (
     run,

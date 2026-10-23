@@ -2,7 +2,9 @@ import path from 'path'
 
 import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
-import type { PackageInfo } from '@/types'
+import { readWorkspaceManifests, toPosix } from '@/managers/workspaces'
+import { StepError } from '@/stepError'
+import type { OutdatedEntry, PackageInfo } from '@/types'
 import { updatePackageJson, updatePNPMWorkspaceYAML } from '@/utils/files'
 import { overridesFromField } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
@@ -41,28 +43,113 @@ export const parsePnpmOutdated = (
   return parsed
 }
 
+interface PnpmOutdatedRow {
+  current?: string
+  wanted: string
+  latest: string
+  dependentPackages?: { name: string; location: string }[]
+}
+
+/**
+ * One entry per package per workspace package that depends on it. pnpm keys
+ * a name by `name@current` when owners are at different versions, so that
+ * suffix comes off, and reports each owner's directory as an absolute
+ * `location`, made relative to `cwd`.
+ */
+const pnpmEntries = (report: string, cwd: string): OutdatedEntry[] => {
+  const parsed: Record<string, PnpmOutdatedRow> = JSON.parse(report || '{}')
+  const entries: OutdatedEntry[] = []
+  for (const [key, row] of Object.entries(parsed)) {
+    const suffix = `@${row.current}`
+    const name =
+      row.current && key.endsWith(suffix) && key !== suffix
+        ? key.slice(0, -suffix.length)
+        : key
+    for (const { location } of row.dependentPackages ?? []) {
+      const relative = toPosix(path.relative(cwd, location)) || '.'
+      if (
+        relative === '..' ||
+        relative.startsWith('../') ||
+        path.isAbsolute(relative)
+      ) {
+        throw new StepError(
+          'discover',
+          `pnpm reported ${name} in ${location}, which is outside ${cwd}`,
+        )
+      }
+      entries.push({
+        name,
+        current: row.current ?? 'missing',
+        wanted: row.wanted,
+        latest: row.latest,
+        workspace: relative,
+      })
+    }
+  }
+  return entries
+}
+
+/**
+ * `pnpm outdated -r --json`: one entry per (package, manifest). `wanted` is
+ * taken from the `--compatible` report's `latest` for the same manifest and
+ * name, as in single-package projects.
+ */
+export const parsePnpmWorkspaceOutdated = (
+  report: string,
+  compatibleReport: string,
+  cwd: string,
+): OutdatedEntry[] => {
+  const compatible = new Map(
+    pnpmEntries(compatibleReport, cwd).map((entry) => [
+      `${entry.workspace}\0${entry.name}`,
+      entry,
+    ]),
+  )
+  return pnpmEntries(report, cwd).map((entry) => ({
+    ...entry,
+    wanted:
+      compatible.get(`${entry.workspace}\0${entry.name}`)?.latest ??
+      entry.wanted,
+  }))
+}
+
 const readWorkspaceYaml = (cwd: string): string =>
   readTextFile(path.join(cwd, 'pnpm-workspace.yaml'))
 
+const unquote = (value: string): string =>
+  value.trim().replace(/^(['"])(.*)\1$/, '$2')
+
 /**
- * pnpm-workspace.yaml also holds settings (`overrides`, `catalog`,
- * `onlyBuiltDependencies`), so single-package projects often have one. The
- * project is a workspace only when the file lists `packages`, as a block list
- * or a flow list.
+ * The `packages` patterns of pnpm-workspace.yaml, as a block list or a flow
+ * list. The file also holds settings (`overrides`, `catalog`,
+ * `onlyBuiltDependencies`), so single-package projects often have one; the
+ * project is a workspace only when it lists at least one pattern.
  */
-const listsWorkspacePackages = (yaml: string): boolean => {
+const workspacePackagePatterns = (yaml: string): string[] => {
   const lines = yaml.split('\n')
   const start = lines.findIndex((line) => /^packages:/.test(line))
-  if (start === -1) return false
+  if (start === -1) return []
 
   const inline = lines[start].replace(/^packages:\s*/, '')
-  if (inline && !inline.startsWith('#')) return /^\[\s*[^\s\]]/.test(inline)
-
-  for (const line of lines.slice(start + 1)) {
-    if (/^\s*-\s*[^\s#]/.test(line)) return true
-    if (/^\S/.test(line) && !line.startsWith('#')) return false
+  if (inline && !inline.startsWith('#')) {
+    const flow = /^\[\s*([^\s\]][^\]]*)\]?/.exec(inline)
+    if (!flow) return []
+    return flow[1]
+      .split(',')
+      .map(unquote)
+      .filter((pattern) => pattern !== '')
   }
-  return false
+
+  const patterns: string[] = []
+  for (const line of lines.slice(start + 1)) {
+    const item = /^\s*-\s*([^\s#].*)$/.exec(line)
+    if (item) {
+      patterns.push(unquote(item[1].replace(/\s+#.*$/, '')))
+    } else if (/^\S/.test(line) && !line.startsWith('#')) {
+      break
+    }
+  }
+  return patterns
 }
 
 /**
@@ -111,13 +198,15 @@ const pnpm: ManagerAdapter = {
 
   readWorkspace: (cwd) => {
     const yaml = readWorkspaceYaml(cwd)
+    const patterns = workspacePackagePatterns(yaml)
     return {
-      isWorkspace: listsWorkspacePackages(yaml),
+      isWorkspace: patterns.length > 0,
       catalogs: catalogNames(yaml),
+      manifests: readWorkspaceManifests(cwd, patterns),
     }
   },
 
-  discover: async (run, _cwd, { isWorkspace }) => {
+  discover: async (run, cwd, { isWorkspace }) => {
     const args = isWorkspace
       ? ['outdated', '--json', '-r']
       : ['outdated', '--json']
@@ -127,7 +216,15 @@ const pnpm: ManagerAdapter = {
       run(args, { isSuccess: isOutdatedReport }),
       run([...args, '--compatible'], { isSuccess: isOutdatedReport }),
     ])
-    return parsePnpmOutdated(report, compatibleReport)
+    return isWorkspace
+      ? {
+          kind: 'workspace',
+          entries: parsePnpmWorkspaceOutdated(report, compatibleReport, cwd),
+        }
+      : {
+          kind: 'single',
+          outdated: parsePnpmOutdated(report, compatibleReport),
+        }
   },
 
   apply: async (

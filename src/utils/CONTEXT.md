@@ -24,11 +24,12 @@ utils/
   npmrcLoader.ts      # loadRegistryConfig() reads .npmrc + ~/.npmrc + NPM_CONFIG_* env, returns RegistryConfig
   registry.ts         # fetchReleaseTimes() wraps npm-registry-fetch with in-memory per-run cache
   updateChecker.ts    # Update policy: within range by default, beyondRange level, per-package rules (pure)
-  rows.ts             # toOutdatedRow() / toUpdatingRow(): display rows (in-range note, beyond-range flag)
+  rows.ts             # toOutdatedRow() / toOutdatedRows() / toUpdatingRow(): display rows (in-range note, beyond-range flag; one outdated row per manifest in a workspace)
   overrides.ts        # overridesFromField(), manifestOverrides(cwd, fields): packages an override pins, with field and range
   peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, pnpm store)
   saveStyle.ts        # SaveStyle, DEFAULT_SAVE_STYLE, readTextFile(), yamlValue(): what adapters' saveStyle() builds on
-  manifestNames.ts    # toManifestNames(cwd, outdated): re-keys a report by package.json names (npm: aliases)
+  manifestNames.ts    # toManifestNames(cwd, outdated), toEntryManifestNames(cwd, entries): re-key a report by package.json names (npm: aliases), per owning manifest in a workspace
+  workspaceRows.ts    # foldWorkspaceEntries(entries): one PackageInfo per name with `workspaces`; workspaceLabel(path): `(root)` or the path
   installed.ts        # readInstalledVersions(cwd, names): root dependencies' versions in node_modules; checkApplied(): rows the manager left in place become `not applied by <pm> (installed …)`
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display

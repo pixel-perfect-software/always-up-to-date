@@ -9,8 +9,8 @@ All four package managers are implemented with workspace support. Yarn berry has
 ## Component-Specific Development Guidelines
 - An adapter is a plain object implementing `ManagerAdapter` (`adapter.ts`):
   - `name`, `lockfile`: what detection looks for
-  - `readWorkspace(cwd)` → `{ isWorkspace, catalogs }`, read once per run and passed back to `discover` and `apply`
-  - `discover(run, cwd, workspace)` → the manager's outdated report as `Record<string, PackageInfo>`. The output parser is an exported pure function (`parseNpmOutdated`, `parsePnpmOutdated`, `parseYarnOutdated`, `parseBunOutdated`) with direct tests on captured fixtures. Every row has a `current`: pnpm, yarn v1 and bun read it from their lockfile, while `npm outdated` reads node_modules and omits it for a package that isn't installed, so `parseNpmOutdated` takes it from `package-lock.json` (`readLockedVersions`), else `missing`
+  - `readWorkspace(cwd)` → `{ isWorkspace, catalogs, manifests }`, read once per run and passed back to `discover` and `apply`. `manifests` is the root (`{ path: '.', name? }`) first, then each member directory the workspace patterns match, sorted by path
+  - `discover(run, cwd, workspace)` → a `Discovery`: `{ kind: 'single', outdated: Record<string, PackageInfo> }` in a single-package project, `{ kind: 'workspace', entries: OutdatedEntry[] }` (one entry per package per owning manifest) in a workspace. The output parsers are exported pure functions (`parseNpmOutdated`, `parsePnpmOutdated`, `parseYarnOutdated`, `parseBunOutdated`, and for workspaces `parseNpmWorkspaceOutdated`, `parsePnpmWorkspaceOutdated`, `parseYarnWorkspaceOutdated`, `parseBunWorkspaceOutdated`) with direct tests on captured fixtures. Every row has a `current`: pnpm, yarn v1 and bun read it from their lockfile, while `npm outdated` reads node_modules and omits it for a package that isn't installed, so `parseNpmOutdated` takes it from `package-lock.json` (`readLockedVersions`), else `missing`
   - `apply(run, cwd, plan, workspace)`: writes the specs the manager does not write itself, then runs its update commands. `plan` is `{ names, withinRange, beyondRange, discovered }`
   - `saveStyle(cwd)`: exact or prefix for specs that can't keep their shape, read from where the manager's current version keeps it
   - `overrides(cwd)`: packages pinned by an override field the manager enforces
@@ -20,9 +20,9 @@ All four package managers are implemented with workspace support. Yarn berry has
 ## Major Subsystem Organization
 ```
 managers/
-  adapter.ts           # ManagerAdapter, Workspace, RunManager, ApplyPlan
+  adapter.ts           # ManagerAdapter, Workspace, WorkspaceManifest, Discovery, RunManager, ApplyPlan
   index.ts             # adapters registry (detection order), adapterFor(name)
-  workspaces.ts        # readManifest(), hasWorkspacesField() shared by npm, yarn, bun
+  workspaces.ts        # readManifest(), hasWorkspacesField(), workspacePatterns(), readWorkspaceManifests() (the member map), workspaceOwner()
   npm/index.ts         # npm adapter, parseNpmOutdated, readLockedVersions
   yarn/index.ts        # yarn adapter, parseYarnOutdated, isYarnBerry
   pnpm/index.ts        # pnpm adapter, parsePnpmOutdated
@@ -57,12 +57,16 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 A `packageManager` naming an unsupported manager falls through to `devEngines.packageManager`; when every declaration names only unsupported managers (`deno@2.5.0`), the `detect` step fails rather than guessing from a lockfile. Lockfiles that disagree with the chosen manager are logged at debug level as ignored, unless the declared manager has no lockfile while another has, which warns. A `--pm` that contradicts a declaration warns (Corepack may refuse it). The choice itself is logged at debug level. With nothing declared and no lockfile, `detect` fails and suggests `--pm`. A declared manager with no lockfile is used: its `outdated` then fails `discover` with the manager's own "run install" message.
 
 ### Workspace Detection
-| Manager | Method | Flag |
-|---------|--------|------|
-| npm | `package.json` `workspaces` field (array or `{packages: [...]}`) | `--workspaces` |
-| yarn | `package.json` `workspaces` field | `--recursive` (on `outdated` only) |
-| pnpm | `pnpm-workspace.yaml` with a non-empty `packages:` list (a file holding only settings or catalogs is not a workspace) | `-r` |
-| bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `--filter *` (two arguments) |
+| Manager | Method | `outdated` command | Owning manifest comes from |
+|---------|--------|--------------------|----------------------------|
+| npm | `package.json` `workspaces` field (array or `{packages: [...]}`) | `outdated --json --long` (no `--workspaces`: that would drop the root's own dependencies) | `dependedByLocation` (`''` is the root); a name maps to one row or an array of rows |
+| yarn | `package.json` `workspaces` field | `outdated --json --recursive` | the `Workspace` column (a package name), resolved through `manifests` |
+| pnpm | `pnpm-workspace.yaml` with a non-empty `packages:` list (a file holding only settings or catalogs is not a workspace) | `outdated --json -r`, plus `--compatible` | each `dependentPackages[].location`, made relative to `cwd`; a `name@current` key loses its suffix |
+| bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `outdated --filter *` (two arguments) | the `Workspace` column (a package name), resolved through `manifests` |
+
+Yarn v1 and bun print a root without a `name` as an empty `Workspace` cell (verified on yarn 1.22.22 and bun 1.4.0): `workspaceOwner()` reads `''` as the root only when the root manifest has no name, and fails `discover` for any other name no manifest declares.
+
+The member map (`readWorkspaceManifests`) expands the patterns with `readdirSync`, not `fs.globSync`: literal directories, `*` and `?` within a segment, `**` as a whole segment, and `!` negations applied after the positive patterns. It skips `node_modules`, dot-directories (unless the pattern segment starts with `.`) and symlinks, counts only directories with a package.json, and matches nothing for braces, character classes and extglobs (logged at debug level). Only yarn and bun need it for discovery; npm and pnpm take owners from paths.
 
 `catalogs` lists catalog names (pnpm: `catalog` and the keys of `catalogs:` in pnpm-workspace.yaml; bun: the same fields in package.json). The pipeline logs the workspace once per run, and the catalogs when it is a workspace.
 
@@ -73,7 +77,7 @@ A `packageManager` naming an unsupported manager falls through to `devEngines.pa
 - `src/utils/overrides.ts` (`overridesFromField`, `manifestOverrides`) and `src/utils/saveStyle.ts` (`readTextFile`, `yamlValue`) hold the generic readers adapters build on
 
 ### Discovery: names
-Every parser's report goes through `toManifestNames()`, so results are keyed by the package.json name. An `npm:` alias (`"dj": "npm:dayjs@1.11.9"`) otherwise comes back as `dj:dayjs@1.11.9` (npm) or the target name `dayjs` (pnpm, bun); yarn v1 reports `dj` but with `exotic` as wanted and latest, which the policy holds as an invalid version. The managers' own `update dj` accepts the alias key.
+Every parser's report goes through `toManifestNames()` (single-package) or `toEntryManifestNames()` (workspace, each entry re-keyed by its owning manifest), so results are keyed by the package.json name. In a workspace the entries are then folded by `foldWorkspaceEntries()` into one `PackageInfo` per name carrying `workspaces`. An `npm:` alias (`"dj": "npm:dayjs@1.11.9"`) otherwise comes back as `dj:dayjs@1.11.9` (npm) or the target name `dayjs` (pnpm, bun); yarn v1 reports `dj` but with `exotic` as wanted and latest, which the policy holds as an invalid version. The managers' own `update dj` accepts the alias key.
 
 ### Discovery: `wanted`
 Every parser fills `PackageInfo.wanted`, the highest version the manifest range allows: npm's `wanted`, yarn v1's `Wanted` column, bun's `Update` column. pnpm's own `wanted` is the lockfile's version, so pnpm also runs `outdated --compatible` (in parallel) and takes `wanted` from its `latest`.
