@@ -78,6 +78,19 @@ describe('CI workflow', () => {
   it('runs the unit suite on Linux and Windows', () => {
     expect(workflow).toMatch(/os: \[ubuntu-latest, windows-latest\]/)
   })
+
+  it('runs the integration matrix per manager in CI', () => {
+    expect(workflow).toContain('pm: [npm, pnpm, yarn, berry, bun]')
+    expect(workflow).toMatch(/^\s+run: pnpm run test:integration\s*$/m)
+  })
+})
+
+describe('integration matrix', () => {
+  it('stays out of pnpm test', () => {
+    expect(jestConfig.testPathIgnorePatterns).toContain(
+      '<rootDir>/__tests__/integration/',
+    )
+  })
 })
 
 describe('workflows', () => {

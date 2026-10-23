@@ -1,0 +1,12 @@
+{
+  "name": "autd-berry-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "yarn@4.12.0",
+  "description": "autd integration matrix: yarn berry, workspace",
+  "workspaces": ["packages/*"],
+  "dependencies": {
+    "dayjs": "1.11.9",
+    "ms": "~2.1.1"
+  }
+}

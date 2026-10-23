@@ -1,6 +1,0 @@
-packages:
-  - packages/*
-  - tools/*
-  - services/*
-ignoredBuiltDependencies:
-  - esbuild

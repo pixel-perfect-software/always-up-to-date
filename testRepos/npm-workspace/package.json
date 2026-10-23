@@ -1,0 +1,11 @@
+{
+  "name": "autd-npm-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "autd integration matrix: npm, workspace",
+  "workspaces": ["packages/*"],
+  "dependencies": {
+    "dayjs": "1.11.9",
+    "ms": "~2.1.1"
+  }
+}

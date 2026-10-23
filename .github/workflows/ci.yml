@@ -48,3 +48,52 @@ jobs:
         run: pnpm test
       - name: Build project
         run: pnpm run build
+
+  integration:
+    # Real package managers against temp copies of testRepos/. One job per manager, so each
+    # installs only its own. Only the repo's pnpm store is cached (setup-node); the managers'
+    # caches for testRepos never are: each run resolves from the registry like a fresh machine.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        pm: [npm, pnpm, yarn, berry, bun]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      AUTD_INTEGRATION_PM: ${{ matrix.pm }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: tools
+        shell: bash
+        run: echo "pnpm=$(awk '$1 == "pnpm" { print $2 }' .tool-versions)" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tools.outputs.pnpm }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+          cache: pnpm
+      # yarn 1.22.22 / 4.12.0 come from each testRepo's packageManager, through Corepack.
+      # Only yarn's shims, so pnpm stays the version set up above.
+      - name: Enable yarn through Corepack
+        if: matrix.pm == 'yarn' || matrix.pm == 'berry'
+        run: corepack enable yarn
+      - name: Set up Bun
+        if: matrix.pm == 'bun'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .tool-versions
+      - name: Show tool versions
+        shell: bash
+        run: |
+          node --version; npm --version; pnpm --version
+          if [ "$AUTD_INTEGRATION_PM" = bun ]; then bun --version; fi
+      - run: pnpm install --frozen-lockfile
+      - name: Run the integration matrix
+        run: pnpm run test:integration
+      - name: The suite leaves the checkout untouched
+        shell: bash
+        run: test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }

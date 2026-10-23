@@ -16,6 +16,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 ### Testing
 - `pnpm test` - Run all tests (silent mode)
 - `pnpm run test:coverage` - Run tests with coverage report
+- `pnpm run test:integration` - The integration matrix: builds, then runs the built CLI against real npm, pnpm, yarn v1, yarn berry and bun on temp copies of `testRepos/`. Needs network access and the managers on PATH (yarn through Corepack: `corepack enable yarn`). Outside `pnpm test` and coverage. `AUTD_INTEGRATION_PM=npm,bun` selects managers (an unknown name fails fast); `AUTD_INTEGRATION_KEEP=1` keeps the temp copies and prints their paths
 - `pnpm run test:badges` - Regenerate the coverage badges in `./badges`, shown in the README. They are static files: rerun and commit them when coverage changes
 - Single test: `pnpm test -- __tests__/path/to/test.test.ts`
 
@@ -142,4 +143,5 @@ Documentation registry: `.claude/context/ai-context/docs-overview.md`
 - Path aliases: `moduleNameMapper` maps `@/*` to `src/*` for test imports
 - Manager tests feed real captured package-manager output from `__tests__/fixtures/<pm>/` (helpers `readFixture`, `exitError` in `__tests__/fixtures/index.ts`). Capture new fixtures from a real run, with local paths scrubbed; never hand-write manager output
 - Single test: `pnpm test -- __tests__/path/to/test.test.ts`
+- `testRepos/<manager>-<layout>/` are the integration matrix's fixtures (see `testRepos/README.md`): small manifests on frozen release lines, no lockfiles. The harness (`__tests__/integration/`) installs each range at its minimum, restores the ranges, rewrites the lockfile to agree (`lockfiles.ts`), then asserts autd's `check --json`, `update --dry-run --json` and `update --json` against values derived in `expectations.ts`. Manager quirks the matrix observes are per-manager overrides there, each with a comment
 - CI runs the unit suite on ubuntu and windows (Biome and the type check only on ubuntu). `.gitattributes` keeps every file LF so Windows checkouts match. Tests that spawn a fake manager use `writeNodeShim` and `prependPath` from `__tests__/fixtures` (a `sh` wrapper on POSIX, a cmd-shim `.cmd` on Windows); symlinks in tests use type `'junction'`, which Windows allows without privileges

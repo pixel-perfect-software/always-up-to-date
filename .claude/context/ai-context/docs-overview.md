@@ -57,7 +57,10 @@ src/
     CONTEXT.md
 schema/
   config.schema.json        # JSON schema for .always-up-to-date.json (referenced via $schema)
+testRepos/                  # Integration fixtures, <manager>-<layout> (README.md); lockfiles are generated in temp copies, never committed
+jest.integration.config.ts  # Jest config for the integration matrix (not part of pnpm test)
 __tests__/
+  integration/              # pnpm run test:integration: harness.ts (copy, pin to minimum, install, run the CLI), lockfiles.ts (yarn v1/berry/bun rewriters), expectations.ts (derived values, per-manager overrides), matrix.ts, <manager>.test.ts
   setup.ts                  # Global test setup (console suppression)
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
@@ -112,7 +115,7 @@ __tests__/
 - **CLI Framework:** Commander.js
 - **Package Manager:** pnpm (>=10.0.0)
 - **Node:** >=24.0.0
-- **Testing:** Jest + ts-jest
+- **Testing:** Jest + @swc/jest
 - **Linting/Formatting:** Biome
 - **Path Aliases:** `@/*` -> `src/*` (resolved by tsc-alias at build)
 - **Key Dependencies:** semver, colorette, @inquirer/prompts, npm-registry-fetch (registry metadata for cooldown), ini (.npmrc parsing)

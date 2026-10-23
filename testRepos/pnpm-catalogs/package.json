@@ -1,0 +1,10 @@
+{
+  "name": "autd-pnpm-catalogs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "autd integration matrix: pnpm, catalogs",
+  "dependencies": {
+    "dayjs": "1.11.9",
+    "ms": "catalog:"
+  }
+}

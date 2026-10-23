@@ -155,6 +155,14 @@ pnpm run test:watch
 pnpm run test:coverage
 ```
 
+### Integration tests
+
+`pnpm run test:integration` builds the CLI and runs it against real package managers on
+temp copies of `testRepos/`. It needs network access, and npm, pnpm, bun and yarn (through
+Corepack) on `PATH`. `AUTD_INTEGRATION_PM=npm,bun` selects managers and
+`AUTD_INTEGRATION_KEEP=1` keeps the temp copies. See `testRepos/README.md` for the fixture
+rules; CI runs one job per manager.
+
 ### Writing Tests
 
 Use Jest with the existing patterns:
