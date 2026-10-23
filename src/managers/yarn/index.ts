@@ -16,7 +16,7 @@ import {
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
 import { logger } from '@/utils'
-import { buildUpdateDescriptors } from '@/utils/files'
+import { buildUpdateDescriptors, type DescriptorField } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
@@ -145,6 +145,13 @@ export const parseYarnWorkspaceOutdated = (
   }))
 }
 
+/** The `yarn workspace <name> upgrade` flag that keeps each field's packages in it. */
+const MEMBER_FIELD_FLAGS: [DescriptorField, string[]][] = [
+  ['dependencies', []],
+  ['devDependencies', ['-D']],
+  ['optionalDependencies', ['-O']],
+]
+
 const yarn: ManagerAdapter = {
   name: 'yarn',
   lockfile: 'yarn.lock',
@@ -222,7 +229,7 @@ const yarn: ManagerAdapter = {
     // `yarn workspace <name> upgrade`, and yarn writes every manifest.
     let memberRan = false
     for (const m of manifests) {
-      const { descriptors, notInManifest } = buildUpdateDescriptors(
+      const { descriptors, byField, notInManifest } = buildUpdateDescriptors(
         path.join(cwd, m.path),
         { withinRange: m.withinRange, newVersions: m.beyondRange, style },
       )
@@ -248,9 +255,15 @@ const yarn: ManagerAdapter = {
           `${m.path}/package.json has no name, so yarn cannot upgrade it as a workspace`,
         )
       }
-      await run(['workspace', name, 'upgrade', ...descriptors], {
-        manifestWritten: false,
-      })
+      // `yarn workspace <name> upgrade` writes a devDependency into
+      // `dependencies` as well unless told its field (1.22.22), so each
+      // field gets its own command with that field's flag.
+      for (const [field, flags] of MEMBER_FIELD_FLAGS) {
+        if (byField[field].length === 0) continue
+        await run(['workspace', name, 'upgrade', ...flags, ...byField[field]], {
+          manifestWritten: false,
+        })
+      }
       memberRan = true
     }
 

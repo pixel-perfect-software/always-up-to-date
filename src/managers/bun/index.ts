@@ -77,6 +77,15 @@ export const parseBunOutdated = (
  * turns into the manifest's directory. Cells are read by position, so an
  * empty one (a root without a `name`) stays a column.
  */
+/**
+ * A row for a catalog entry names the catalog and the workspace that uses
+ * it (`catalog (autd-bun-catalogs)`, `catalog:tools (@autd/b)`, bun 1.4.0).
+ * That workspace owns the row: its spec is the `catalog:` reference, which
+ * apply follows to the catalog.
+ */
+const catalogUser = (cell: string): string =>
+  /^catalog(?::\S+)?\s+\((.*)\)$/.exec(cell)?.[1] ?? cell
+
 export const parseBunWorkspaceOutdated = (
   output: string,
   ownerOf: (workspaceName: string) => string,
@@ -119,7 +128,7 @@ export const parseBunWorkspaceOutdated = (
       current: row[current],
       wanted: row[wanted],
       latest: row[latest],
-      workspace: ownerOf(row[workspace]),
+      workspace: ownerOf(catalogUser(row[workspace])),
     }))
 }
 

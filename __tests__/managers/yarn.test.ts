@@ -8,6 +8,7 @@ import yarn, {
 } from '@/managers/yarn'
 import { check, update } from '@/pipeline'
 import { StepError } from '@/stepError'
+import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 import {
   exitError,
   projectFor,
@@ -135,6 +136,47 @@ describe('update with yarn', () => {
 
   afterEach(() => {
     fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it("upgrades a member's devDependencies with -D, so yarn keeps them out of dependencies", async () => {
+    // Without -D, yarn 1.22.22's `workspace <name> upgrade` also wrote the
+    // devDependency into the member's dependencies.
+    writeProject({ name: 'ws-root', private: true, workspaces: ['packages/*'] })
+    fs.mkdirSync(path.join(cwd, 'packages', 'b'), { recursive: true })
+    fs.writeFileSync(
+      path.join(cwd, 'packages', 'b', 'package.json'),
+      JSON.stringify({
+        name: '@x/b',
+        dependencies: { debug: '~4.3.1' },
+        devDependencies: { uuid: '~9.0.0' },
+      }),
+    )
+    mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
+
+    await update(projectFor(yarn, cwd), {
+      discovered: foldWorkspaceEntries([
+        {
+          name: 'debug',
+          workspace: 'packages/b',
+          current: '4.3.1',
+          wanted: '4.3.7',
+          latest: '4.4.3',
+        },
+        {
+          name: 'uuid',
+          workspace: 'packages/b',
+          current: '9.0.0',
+          wanted: '9.0.1',
+          latest: '14.0.3',
+        },
+      ]),
+    })
+
+    expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
+      ['workspace', '@x/b', 'upgrade', 'debug@~4.3.1'],
+      ['workspace', '@x/b', 'upgrade', '-D', 'uuid@~9.0.0'],
+      ['install'],
+    ])
   })
 
   it('keeps the current spec for an in-range update', async () => {
