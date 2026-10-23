@@ -89,6 +89,7 @@ __tests__/
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping
     overrides.test.ts       # Which override keys pin a package, per manager's current version
     peers.test.ts           # Installed peer ranges from hoisted node_modules and the pnpm store
+    saveStyle.test.ts       # Where each manager keeps save-exact / save-prefix
 ```
 
 ## Tech Stack

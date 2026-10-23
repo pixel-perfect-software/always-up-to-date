@@ -27,6 +27,7 @@ utils/
   rows.ts             # toOutdatedRow() / toUpdatingRow(): display rows (in-range note, beyond-range flag)
   overrides.ts        # findControllingOverrides(cwd, pm): packages an override pins, with field and range
   peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, pnpm store)
+  saveStyle.ts        # readSaveStyle(cwd, pm): exact or prefix for specs that can't keep their shape
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
   logger.ts           # Colored logging (colorette); setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
@@ -66,7 +67,8 @@ utils/
 - Limitation: yarn berry's `.yarnrc.yml` and bun's `bunfig.toml` are not read in v1. Common case (npm-spec `.npmrc`) covers all four PMs.
 
 ### Manifest Specs (`files.ts`)
-- Every writer builds the new spec with `nextVersionSpec()`, which keeps the decorator the current spec has. An exact pin stays exact; a decorator is never added
+- Every writer builds the new spec with `nextVersionSpec()`: a single comparator (`^1.2.3`, `~1.2.3`, `1.2.3`) keeps its decorator, so an exact pin stays exact; an `npm:` alias keeps the alias and rewrites the spec inside it; a spec that can't keep its shape (`1.x`, `*`, `>=1 <2`, `^1 || ^2`) is written in the project's save style; git, file and URL specs are left alone
+- `readSaveStyle(cwd, pm)` (`saveStyle.ts`) reads that style where each manager's current version keeps it: npm `.npmrc` `save-exact` / `save-prefix`; pnpm `pnpm-workspace.yaml` `saveExact` / `savePrefix` (not `.npmrc`); yarn berry `.yarnrc.yml` `defaultSemverRangePrefix` (`''` = exact); bun `bunfig.toml` `[install] exact` or `.npmrc` `save-exact` (no prefix setting). Default `^`. Managers read it only when they write a beyond-range spec
 - `catalog:` and `workspace:` references are never rewritten
 - `buildUpdateDescriptors()` applies the same rule to produce `name@spec` for managers that write the manifest themselves (yarn), reading `dependencies`, then `devDependencies`, then `optionalDependencies`
 

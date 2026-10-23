@@ -19,6 +19,7 @@ import {
   toUpdatingRow,
 } from '@/utils'
 import { buildUpdateDescriptors } from '@/utils/files'
+import { readSaveStyle } from '@/utils/saveStyle'
 
 /**
  * `yarn outdated` (v1) exits 1 whenever something is outdated, printing a
@@ -125,6 +126,7 @@ class YarnManager extends CommandRunner {
       const { descriptors, notInManifest } = buildUpdateDescriptors(cwd, {
         withinRange,
         newVersions: beyondRange,
+        style: readSaveStyle(cwd, this.packageManager),
       })
 
       if (notInManifest.length > 0) {
