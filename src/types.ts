@@ -38,6 +38,8 @@ export interface OutdatedEntry {
 
 export interface UpdateResult {
   name: string
+  /** Workspace projects only: the manifest this row belongs to. Absent in single-package projects. */
+  workspace?: string
   current: string
   wanted: string
   latest: string
@@ -49,6 +51,14 @@ export interface UpdateResult {
   /** Set when an update goes ahead despite a problem (a `latest` rule over a peer conflict). */
   warning?: string
   releaseAge?: number
+}
+
+/** One manifest's share of the plan. */
+export interface ManifestPlan {
+  /** The manifest's directory relative to the root ('.' is the root). */
+  path: string
+  withinRange: string[]
+  beyondRange: Record<string, string>
 }
 
 /** How far past its manifest range a package may move. */

@@ -347,6 +347,61 @@ describe('Logger', () => {
     })
   })
 
+  describe('workspace rows in the update summaries', () => {
+    const base: UpdateResult = {
+      name: 'ms',
+      current: '2.1.1',
+      wanted: '2.1.3',
+      latest: '2.1.3',
+      updateType: 'patch',
+      updated: false,
+    }
+
+    it('shows the manifest in the skipped block', () => {
+      logger.printSkippedRows([
+        {
+          name: 'ms',
+          workspace: 'packages/a',
+          current: '2.1.2',
+          latest: '2.1.3',
+          updateType: 'patch',
+          reason: 'patch beyond the range',
+        },
+      ])
+      expect(logSpy.mock.calls[0][0]).toContain('packages/a')
+    })
+
+    it('shows the manifest in the updating block', () => {
+      logger.printUpdatingRows([
+        { name: 'ms', workspace: '.', current: '2.1.1', latest: '2.1.3' },
+      ])
+      expect(logSpy.mock.calls[0][0]).toContain('(root)')
+    })
+
+    it('shows the manifest in the left-in-place and cooldown blocks', () => {
+      logger.notAppliedSummary(
+        [
+          {
+            ...base,
+            workspace: '.',
+            reason: 'not applied by npm (installed 2.1.1)',
+          },
+        ],
+        'npm',
+      )
+      logger.cooldownSummary([
+        {
+          ...base,
+          workspace: 'packages/b',
+          reason: 'cooldown: released 3d ago, requires 30d',
+        },
+      ])
+
+      expect(logSpy.mock.calls[1][0]).toContain('(root)')
+      expect(logSpy.mock.calls[3][0]).toContain('packages/b')
+    })
+  })
+
   describe('notAppliedSummary', () => {
     const makeResult = (overrides: Partial<UpdateResult>): UpdateResult => ({
       name: 'ms',

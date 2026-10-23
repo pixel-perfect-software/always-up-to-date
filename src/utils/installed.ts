@@ -12,32 +12,57 @@ const readJson = (file: string): Record<string, unknown> | undefined => {
   }
 }
 
+/** The key a row's installed version is stored under: its name, plus the manifest in a workspace project. */
+export const rowKey = ({
+  name,
+  workspace,
+}: {
+  name: string
+  workspace?: string
+}): string => (workspace === undefined ? name : `${workspace}:${name}`)
+
 /**
- * The version installed for each of `names` that the root package.json
- * declares, read from `node_modules/<name>/package.json` (a symlink into the
- * store on pnpm). A root dependency always sits there, whatever the manager
- * hoisted or nested. Names declared only by a workspace member, and packages
- * with no node_modules entry (yarn berry's PnP), are left out: there is
- * nothing here to check them against.
+ * The version installed for each row whose manifest declares it, read from
+ * `node_modules/<name>/package.json` (a symlink into the store on pnpm).
+ * A workspace member's own `node_modules` is read first, since the manager
+ * may nest a copy there; the root's holds the hoisted one. In a
+ * single-package project that is the root's only. Names a manifest does not
+ * declare, and packages with no node_modules entry (yarn berry's PnP), are
+ * left out: there is nothing here to check them against.
  */
 export const readInstalledVersions = (
   cwd: string,
-  names: string[],
+  rows: { name: string; workspace?: string }[],
 ): Record<string, string> => {
-  const manifest = readJson(path.join(cwd, 'package.json'))
-  const declared = new Set(
-    DEPENDENCY_FIELDS.flatMap((field) =>
-      Object.keys((manifest?.[field] as Record<string, unknown>) ?? {}),
-    ),
-  )
+  const declaredBy = new Map<string, Set<string>>()
+  const declaredIn = (dir: string): Set<string> => {
+    let declared = declaredBy.get(dir)
+    if (!declared) {
+      const manifest = readJson(path.join(dir, 'package.json'))
+      declared = new Set(
+        DEPENDENCY_FIELDS.flatMap((field) =>
+          Object.keys((manifest?.[field] as Record<string, unknown>) ?? {}),
+        ),
+      )
+      declaredBy.set(dir, declared)
+    }
+    return declared
+  }
 
   const installed: Record<string, string> = {}
-  for (const name of names) {
-    if (!declared.has(name)) continue
-    const version = readJson(
-      path.join(cwd, 'node_modules', name, 'package.json'),
-    )?.version
-    if (typeof version === 'string') installed[name] = version
+  for (const row of rows) {
+    const dir = path.join(cwd, row.workspace ?? '.')
+    if (!declaredIn(dir).has(row.name)) continue
+    const lookups = dir === cwd ? [cwd] : [dir, cwd]
+    for (const base of lookups) {
+      const version = readJson(
+        path.join(base, 'node_modules', row.name, 'package.json'),
+      )?.version
+      if (typeof version === 'string') {
+        installed[rowKey(row)] = version
+        break
+      }
+    }
   }
   return installed
 }
@@ -56,7 +81,7 @@ export const checkApplied = (
   manager: string,
 ): UpdateResult[] =>
   results.map((result) => {
-    const version = installed[result.name]
+    const version = installed[rowKey(result)]
     if (!result.updated || !result.target || version === undefined) {
       return result
     }

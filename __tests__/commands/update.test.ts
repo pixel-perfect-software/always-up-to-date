@@ -27,6 +27,7 @@ import detectPackageManager from '@/detectPackageManager'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import { check, plan, update } from '@/pipeline'
+import logger from '@/utils/logger'
 
 const mockDetectPackageManager = jest.mocked(detectPackageManager)
 const mockPlan = jest.mocked(plan)
@@ -222,5 +223,52 @@ describe('update command', () => {
         discovered: outdated,
       },
     )
+  })
+
+  describe('in a workspace project', () => {
+    const row = (name: string, workspace: string, updated = true) => ({
+      name,
+      workspace,
+      current: '1.0.0',
+      wanted: '1.0.1',
+      latest: '1.0.1',
+      target: updated ? '1.0.1' : undefined,
+      updateType: 'patch' as const,
+      updated,
+      reason: updated ? undefined : 'held',
+    })
+
+    it('interactive mode offers one choice per package, listing its manifests', async () => {
+      mockCheckPackageVersions.mockResolvedValue({
+        ms: { name: 'ms', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+      })
+      mockPlan.mockResolvedValue([row('ms', '.'), row('ms', 'packages/a')])
+      mockCheckbox.mockResolvedValue(['ms'])
+      mockUpdatePackages.mockResolvedValue([])
+
+      await program.parseAsync(['node', 'test', 'update', '--interactive'])
+
+      const { choices } = mockCheckbox.mock.calls[0][0]
+      expect(choices).toEqual([
+        {
+          name: 'ms: 1.0.0 → 1.0.1 (patch) in (root), packages/a',
+          value: 'ms',
+          checked: true,
+        },
+      ])
+    })
+
+    it('carries the workspace on the dry-run skipped rows', async () => {
+      mockCheckPackageVersions.mockResolvedValue({
+        ms: { name: 'ms', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+      })
+      mockPlan.mockResolvedValue([row('ms', 'packages/a', false)])
+
+      await program.parseAsync(['node', 'test', 'update', '--dry-run'])
+
+      expect(logger.printSkippedRows).toHaveBeenCalledWith([
+        expect.objectContaining({ name: 'ms', workspace: 'packages/a' }),
+      ])
+    })
   })
 })

@@ -45,3 +45,21 @@ export const foldWorkspaceEntries = (
 /** A manifest's label in human output: `(root)`, or its path. */
 export const workspaceLabel = (workspacePath: string): string =>
   workspacePath === '.' ? '(root)' : workspacePath
+
+/**
+ * The inverse of `foldWorkspaceEntries`: one row per manifest listed in a
+ * value's `workspaces`, or the value itself when it has none (a
+ * single-package project).
+ */
+export const expandWorkspaces = (
+  outdated: Record<string, PackageInfo>,
+): { name: string; workspace?: string; info: PackageInfo }[] =>
+  Object.entries(outdated).flatMap(([name, info]) =>
+    info.workspaces
+      ? info.workspaces.map(({ path, current, wanted }) => ({
+          name,
+          workspace: path,
+          info: { ...info, current, wanted },
+        }))
+      : [{ name, info }],
+  )

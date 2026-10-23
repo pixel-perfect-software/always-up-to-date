@@ -1,5 +1,6 @@
 import type { SuccessCheck } from '@/commandRunner'
 import type {
+  ManifestPlan,
   OutdatedEntry,
   PackageInfo,
   SupportedPackageManager,
@@ -51,6 +52,8 @@ export interface ApplyPlan {
   withinRange: string[]
   /** Packages moving past their range, to this version: their spec changes. */
   beyondRange: Record<string, string>
+  /** Each manifest with something moving, root first. A single-package project has the root only. */
+  manifests: ManifestPlan[]
   /** The discovery result the plan was made from. */
   discovered: Record<string, PackageInfo>
 }

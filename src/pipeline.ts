@@ -130,7 +130,7 @@ export const update = async (
   if (Object.keys(outdated).length === 0) return []
 
   const results = await plan(project, outdated, targetPackages)
-  const { names, withinRange, beyondRange } = splitUpdates(results)
+  const { names, withinRange, beyondRange, manifests } = splitUpdates(results)
 
   if (names.length === 0) {
     logger.noPackagesToUpdate(messages.noPackagesToUpdate)
@@ -144,14 +144,17 @@ export const update = async (
   await adapter.apply(
     runFor(adapter, cwd, 'apply'),
     cwd,
-    { names, withinRange, beyondRange, discovered: outdated },
+    { names, withinRange, beyondRange, manifests, discovered: outdated },
     workspace,
   )
 
   // Report what the manager installed, not what it was asked to install.
   const applied = checkApplied(
     results,
-    readInstalledVersions(cwd, names),
+    readInstalledVersions(
+      cwd,
+      results.filter((r) => r.updated),
+    ),
     adapter.name,
   )
   logger.notAppliedSummary(applied, adapter.name)

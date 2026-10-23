@@ -3,7 +3,12 @@ import os from 'os'
 import path from 'path'
 import npm from '@/managers/npm'
 import { check, update } from '@/pipeline'
-import { exitError, projectFor, readFixture } from './fixtures'
+import {
+  exitError,
+  projectFor,
+  readFixture,
+  writeWorkspaceProject,
+} from './fixtures'
 
 jest.mock('@/utils/config', () => ({
   ...jest.requireActual('@/utils/config'),
@@ -112,6 +117,69 @@ describe('pipeline', () => {
         target: '4.3.7',
       })
       expect(results.find((r) => r.name === 'express')?.updated).toBe(false)
+    })
+  })
+
+  describe('a workspace project', () => {
+    const install = (dir: string, name: string, version: string) => {
+      const target = path.join(cwd, dir, 'node_modules', name)
+      fs.mkdirSync(target, { recursive: true })
+      fs.writeFileSync(
+        path.join(target, 'package.json'),
+        JSON.stringify({ name, version }),
+      )
+    }
+
+    it('plans and verifies each manifest, reading a member before the root', async () => {
+      writeWorkspaceProject(cwd)
+      install('.', 'dayjs', '1.11.9')
+      install('.', 'ms', '2.1.1')
+      install('.', 'debug', '4.3.1')
+      install('packages/a', 'ms', '2.1.2')
+      jest.mocked(runProcess).mockImplementation(async (_file, args) => {
+        if (args[0] === 'outdated') {
+          throw exitError(1, readFixture('npm/outdated-workspace.stdout'), '')
+        }
+        install('.', 'debug', '4.3.7')
+        install('.', 'ms', '2.1.3')
+        return { stdout: '', stderr: '' }
+      })
+
+      const results = await update(projectFor(npm, cwd))
+
+      const summary = results.map(({ name, workspace, updated, reason }) => ({
+        name,
+        workspace,
+        updated,
+        reason,
+      }))
+      expect(summary).toEqual([
+        {
+          name: 'dayjs',
+          workspace: '.',
+          updated: false,
+          reason: 'patch beyond the range',
+        },
+        {
+          name: 'dayjs',
+          workspace: 'packages/b',
+          updated: false,
+          reason: 'not applied by npm (installed 1.11.9)',
+        },
+        {
+          name: 'debug',
+          workspace: 'packages/b',
+          updated: true,
+          reason: undefined,
+        },
+        { name: 'ms', workspace: '.', updated: true, reason: undefined },
+        {
+          name: 'ms',
+          workspace: 'packages/a',
+          updated: false,
+          reason: 'patch beyond the range',
+        },
+      ])
     })
   })
 })

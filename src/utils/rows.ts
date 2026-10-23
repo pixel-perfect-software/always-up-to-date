@@ -1,5 +1,5 @@
 import type { PackageInfo, UpdateResult } from '@/types'
-import type { OutdatedRow } from './logger'
+import type { OutdatedRow, SkippedRow } from './logger'
 
 const inRangeNote = (
   current: string,
@@ -44,10 +44,21 @@ export const toOutdatedRows = (
 /** A row for the "updating" table: current → target, flagged when it leaves its range. */
 export const toUpdatingRow = (result: UpdateResult): OutdatedRow => ({
   name: result.name,
+  ...(result.workspace === undefined ? {} : { workspace: result.workspace }),
   current: result.current,
   latest: result.target ?? result.latest,
   note:
     [result.target !== result.wanted ? 'beyond range' : '', result.warning]
       .filter(Boolean)
       .join('; ') || undefined,
+})
+
+/** A row for a "skipped" table: current → latest with the reason it stays. */
+export const toSkippedRow = (result: UpdateResult): SkippedRow => ({
+  name: result.name,
+  ...(result.workspace === undefined ? {} : { workspace: result.workspace }),
+  current: result.current,
+  latest: result.latest,
+  updateType: result.updateType,
+  reason: result.reason,
 })

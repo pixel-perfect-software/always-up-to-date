@@ -1,8 +1,9 @@
 import { type Command, Option } from 'commander'
 import { check, plan, update as runUpdate } from '@/pipeline'
 import { openProject, type Project } from '@/project'
-import type { SupportedPackageManager } from '@/types'
-import { logger, toUpdatingRow } from '@/utils'
+import type { SupportedPackageManager, UpdateResult } from '@/types'
+import { logger, toSkippedRow, toUpdatingRow } from '@/utils'
+import { workspaceLabel } from '@/utils/workspaceRows'
 import { pmOption } from './options'
 import reportFailure from './reportFailure'
 
@@ -91,16 +92,29 @@ const dryRun = async (
 
   if (wouldSkip.length > 0) {
     logger.clean(`\nWould skip (${wouldSkip.length})`)
-    logger.printSkippedRows(
-      wouldSkip.map((p) => ({
-        name: p.name,
-        current: p.current,
-        latest: p.latest,
-        updateType: p.updateType,
-        reason: p.reason,
-      })),
-    )
+    logger.printSkippedRows(wouldSkip.map(toSkippedRow))
   }
+}
+
+/** One choice per package: a package in several manifests moves in all of them. */
+const choicesByPackage = (eligible: UpdateResult[]) => {
+  const byName = new Map<string, UpdateResult[]>()
+  for (const result of eligible) {
+    const rows = byName.get(result.name)
+    if (rows) rows.push(result)
+    else byName.set(result.name, [result])
+  }
+  return [...byName].map(([name, rows]) => {
+    const [pkg] = rows
+    const where = rows.some((r) => r.workspace !== undefined)
+      ? ` in ${rows.map((r) => workspaceLabel(r.workspace ?? '.')).join(', ')}`
+      : ''
+    return {
+      name: `${name}: ${pkg.current} → ${pkg.target} (${pkg.updateType}${pkg.target === pkg.wanted ? '' : ', beyond range'})${where}`,
+      value: name,
+      checked: true,
+    }
+  })
 }
 
 const interactiveUpdate = async (project: Project) => {
@@ -120,11 +134,7 @@ const interactiveUpdate = async (project: Project) => {
 
   const selected = await checkbox({
     message: 'Select packages to update:',
-    choices: eligible.map((pkg) => ({
-      name: `${pkg.name}: ${pkg.current} → ${pkg.target} (${pkg.updateType}${pkg.target === pkg.wanted ? '' : ', beyond range'})`,
-      value: pkg.name,
-      checked: true,
-    })),
+    choices: choicesByPackage(eligible),
   })
 
   if (selected.length === 0) {

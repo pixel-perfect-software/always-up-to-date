@@ -1,5 +1,9 @@
 import type { OutdatedEntry } from '@/types'
-import { foldWorkspaceEntries, workspaceLabel } from '@/utils/workspaceRows'
+import {
+  expandWorkspaces,
+  foldWorkspaceEntries,
+  workspaceLabel,
+} from '@/utils/workspaceRows'
 import { WORKSPACE_ENTRIES } from '../fixtures'
 
 const entry = (
@@ -78,5 +82,32 @@ describe('workspaceLabel', () => {
   it('labels the root and shows a member by its path', () => {
     expect(workspaceLabel('.')).toBe('(root)')
     expect(workspaceLabel('packages/a')).toBe('packages/a')
+  })
+})
+
+describe('expandWorkspaces', () => {
+  it('gives back the entries foldWorkspaceEntries grouped', () => {
+    const expanded = expandWorkspaces(foldWorkspaceEntries(WORKSPACE_ENTRIES))
+
+    const asEntries = expanded.map(({ name, workspace, info }) => ({
+      name,
+      workspace,
+      current: info.current,
+      wanted: info.wanted,
+      latest: info.latest,
+    }))
+    expect(asEntries).toHaveLength(WORKSPACE_ENTRIES.length)
+    expect(asEntries).toEqual(expect.arrayContaining(WORKSPACE_ENTRIES))
+  })
+
+  it('gives a single-package value as the one row, without a workspace', () => {
+    const info = {
+      name: 'ms',
+      current: '1.0.0',
+      wanted: '1.0.1',
+      latest: '2.0.0',
+    }
+
+    expect(expandWorkspaces({ ms: info })).toEqual([{ name: 'ms', info }])
   })
 })

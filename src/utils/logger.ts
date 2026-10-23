@@ -2,6 +2,7 @@ import { blue, bold, cyan, gray, green, red, yellow } from 'colorette'
 import type SemVer from 'semver'
 import type { AlwaysUpToDateConfig, UpdateResult } from '@/types'
 import { formatAgeDays } from './duration'
+import { toSkippedRow } from './rows'
 import { workspaceLabel } from './workspaceRows'
 
 export const pluralize = (
@@ -219,15 +220,7 @@ class Logger {
     if (this.muted) return
     const declined = results
       .filter((r) => !r.updated && r.reason?.startsWith('not applied by '))
-      .map(
-        (r): SkippedRow => ({
-          name: r.name,
-          current: r.current,
-          latest: r.latest,
-          updateType: r.updateType,
-          reason: r.reason,
-        }),
-      )
+      .map(toSkippedRow)
     if (declined.length === 0) return
     console.log(
       `\n${yellow('⚠️')} ${bold(`${pluralize(declined.length, 'package')} left in place by ${manager}`)}`,
@@ -243,15 +236,7 @@ class Logger {
     if (this.muted) return
     const gated = results
       .filter((r) => !r.updated && r.reason?.startsWith('cooldown:'))
-      .map(
-        (r): SkippedRow => ({
-          name: r.name,
-          current: r.current,
-          latest: r.latest,
-          updateType: r.updateType,
-          reason: r.reason,
-        }),
-      )
+      .map(toSkippedRow)
     if (gated.length === 0) return
     console.log(
       `\n${blue('⏰')} ${bold(`${pluralize(gated.length, 'package')} held by cooldown`)}`,
