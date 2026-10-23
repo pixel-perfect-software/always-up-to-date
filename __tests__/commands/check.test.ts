@@ -1,23 +1,24 @@
 import { Command } from 'commander'
 
-const mockCheckPackageVersions = jest.fn()
-
 jest.mock('@/detectPackageManager', () => ({
   __esModule: true,
   default: jest.fn().mockReturnValue('npm'),
 }))
 
-jest.mock('@/managers', () => ({
-  PackageManager: jest.fn().mockImplementation(() => ({
-    manager: {
-      checkPackageVersions: mockCheckPackageVersions,
-    },
-  })),
-}))
+jest.mock('@/pipeline', () => ({ check: jest.fn() }))
 
 jest.mock('@/utils/logger')
+jest.mock('@/utils/config')
+jest.mock('@/utils/registry', () => ({
+  clearRegistryCache: jest.fn(),
+  fetchReleaseTimes: jest.fn(),
+}))
 
 import checkCommand from '@/commands/check'
+import npm from '@/managers/npm'
+import { check } from '@/pipeline'
+
+const mockCheckPackageVersions = jest.mocked(check)
 
 describe('check command', () => {
   let program: Command
@@ -34,10 +35,13 @@ describe('check command', () => {
     expect(cmd).toBeDefined()
   })
 
-  it('calls checkPackageVersions on action', async () => {
+  it("runs the check pipeline with the detected manager's adapter", async () => {
     mockCheckPackageVersions.mockResolvedValue({})
     await program.parseAsync(['node', 'test', 'check'])
-    expect(mockCheckPackageVersions).toHaveBeenCalled()
+    expect(mockCheckPackageVersions).toHaveBeenCalledWith(
+      npm,
+      expect.any(String),
+    )
   })
 
   it('outputs JSON when --json flag is passed', async () => {

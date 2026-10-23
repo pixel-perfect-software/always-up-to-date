@@ -40,12 +40,13 @@ src/
   index.ts                  # Entry point (shebang, calls cli)
   cli.ts                    # Commander.js program setup, registers commands
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
-  commandRunner.ts          # Base class: runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
-  detectPackageManager.ts   # Lock file detection logic
+  commandRunner.ts          # runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
+  pipeline.ts               # check / plan / update: detect → discover → plan → apply → report for any adapter
+  detectPackageManager.ts   # Lock file detection from the adapters' lockfiles
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
   commands/                 # CLI command definitions
     CONTEXT.md
-  managers/                 # Package manager implementations
+  managers/                 # One adapter per package manager (adapter.ts interface, index.ts registry)
     CONTEXT.md
   utils/                    # Shared utilities
     CONTEXT.md
@@ -68,11 +69,11 @@ __tests__/
     index.ts                # readFixture(), exitError() helpers
     npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)
   managers/
-    packageManager.test.ts  # Factory pattern tests
-    npm.test.ts, pnpm.test.ts, bun.test.ts  # outdated exit-code semantics on real output
-    yarn.test.ts            # outdated exit codes, upgrade/up descriptors, berry detection
+    adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager
+    npm.test.ts, pnpm.test.ts, bun.test.ts  # outdated exit-code semantics on real output; direct parser tests on fixtures
+    yarn.test.ts            # outdated exit codes, upgrade/up descriptors, berry detection, parser
     realSubprocess.test.ts  # Fake npm on PATH: >1 MB output, names passed as arguments (POSIX)
-    reuseDiscovery.test.ts  # updatePackages with a discovery result runs only the apply command
+    reuseDiscovery.test.ts  # update with a discovery result runs only the apply command
     withinRange.test.ts     # Real output, default config: proposes exactly npm update's set; zero for pins
     applyRanges.test.ts     # In-range apply writes nothing; beyond-range writes the target spec first
     aliases.test.ts         # Real alias output from all four managers: manifest key, no crash on exotic

@@ -1,7 +1,8 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import NPMManager from '@/managers/npm'
+import npm from '@/managers/npm'
+import { check, update } from '@/pipeline'
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils/config')
@@ -17,7 +18,7 @@ jest.mock('@/utils/registry', () => ({
  */
 const posixIt = process.platform === 'win32' ? it.skip : it
 
-describe('NPMManager with a real subprocess', () => {
+describe('npm with a real subprocess', () => {
   let root: string
   let cwd: string
   let argvLog: string
@@ -78,7 +79,7 @@ describe('NPMManager with a real subprocess', () => {
     writeReport(report)
     expect(fs.statSync(reportFile).size).toBeGreaterThan(1.5 * 1024 * 1024)
 
-    const result = await new NPMManager().checkPackageVersions(cwd)
+    const result = await check(npm, cwd)
 
     expect(Object.keys(result)).toHaveLength(10000)
   })
@@ -95,7 +96,7 @@ describe('NPMManager with a real subprocess', () => {
         [name]: { current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
       })
 
-      await new NPMManager().updatePackages(cwd)
+      await update(npm, cwd)
 
       expect(loggedCalls()).toEqual([
         ['outdated', '--json'],

@@ -1,14 +1,10 @@
 import semver, { type ReleaseType } from 'semver'
-import type {
-  PackageInfo,
-  SupportedPackageManager,
-  UpdateResult,
-} from '@/types'
+import type { PackageInfo, UpdateResult } from '@/types'
 import { loadConfig } from './config'
 import { evaluateCooldown, isCooldownEnabled } from './cooldown'
 import { formatAgeDays } from './duration'
 import { loadRegistryConfig } from './npmrcLoader'
-import { findControllingOverrides } from './overrides'
+import type { ControllingOverride } from './overrides'
 import { type PeerRequirement, readInstalledPeers } from './peers'
 import { fetchReleaseTimes } from './registry'
 import updateChecker, {
@@ -20,8 +16,8 @@ interface FilterPackagesOptions {
   targetPackages?: string[]
   cwd?: string
   now?: number
-  /** Whose override fields to honor; without it no package is held for one. */
-  packageManager?: SupportedPackageManager
+  /** Packages pinned by an override the manager enforces; without it no package is held for one. */
+  overrides?: Record<string, ControllingOverride>
 }
 
 /**
@@ -89,12 +85,14 @@ const filterPackages = async (
   outdatedPackages: Record<string, PackageInfo>,
   options: FilterPackagesOptions = {},
 ): Promise<UpdateResult[]> => {
-  const { targetPackages, cwd = process.cwd(), now, packageManager } = options
+  const {
+    targetPackages,
+    cwd = process.cwd(),
+    now,
+    overrides: controlled = {},
+  } = options
   const config = loadConfig(cwd)
   const policy = policyFromConfig(config)
-  const controlled = packageManager
-    ? findControllingOverrides(cwd, packageManager)
-    : {}
   const cooldownActive = isCooldownEnabled(config.cooldown)
   const registryConfig = cooldownActive ? loadRegistryConfig(cwd) : undefined
 

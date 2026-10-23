@@ -1,25 +1,11 @@
-import fs from 'fs'
-
-import CommandRunner, { type SuccessCheck } from '@/commandRunner'
-import messages from '@/messages/en.json'
-import type {
-  PackageInfo,
-  SupportedPackageManager,
-  UpdateResult,
-} from '@/types'
-import {
-  computeReleaseAges,
-  filterPackages,
-  getSortedGroupNames,
-  groupAndSortPackages,
-  logger,
-  splitUpdates,
-  toOutdatedRow,
-  toUpdatingRow,
-} from '@/utils'
+import type { SuccessCheck } from '@/commandRunner'
+import type { ManagerAdapter } from '@/managers/adapter'
+import { hasWorkspacesField } from '@/managers/workspaces'
+import type { PackageInfo } from '@/types'
 import { updatePackageJson } from '@/utils/files'
-import { toManifestNames } from '@/utils/manifestNames'
-import { readSaveStyle } from '@/utils/saveStyle'
+import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
+import { manifestOverrides } from '@/utils/overrides'
+import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
 
 /**
  * `npm outdated` exits 1 whenever something is outdated. It also exits 1 on
@@ -39,137 +25,54 @@ const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
   }
 }
 
-class NPMManager extends CommandRunner {
-  public readonly packageManager: SupportedPackageManager = 'npm'
+/** `npm outdated --json`: already keyed by name, with `wanted` filled. */
+export const parseNpmOutdated = (stdout: string): Record<string, PackageInfo> =>
+  JSON.parse(stdout || '{}')
 
-  checkPackageVersions = async (
-    cwd: string,
-  ): Promise<Record<string, PackageInfo>> => {
-    logger.starting('Checking dependencies', 'npm')
+const npm: ManagerAdapter = {
+  name: 'npm',
+  lockfile: 'package-lock.json',
 
-    const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-    const args = isRunningInWorkspace
-      ? ['outdated', '--json', '--workspaces']
-      : ['outdated', '--json']
+  readWorkspace: (cwd) => ({
+    isWorkspace: hasWorkspacesField(cwd),
+    catalogs: [],
+  }),
 
-    const commandResult = await this.runStep(
-      'discover',
-      this.packageManager,
-      args,
-      cwd,
-      { isSuccess: isOutdatedReport },
+  discover: async (run, _cwd, { isWorkspace }) =>
+    parseNpmOutdated(
+      await run(
+        isWorkspace
+          ? ['outdated', '--json', '--workspaces']
+          : ['outdated', '--json'],
+        { isSuccess: isOutdatedReport },
+      ),
+    ),
+
+  apply: async (run, cwd, { names, beyondRange }, { isWorkspace }) => {
+    // npm installs the highest version each range allows. Only packages
+    // moving past their range need their manifest spec rewritten first.
+    const manifestWritten = Object.keys(beyondRange).length > 0
+    if (manifestWritten) {
+      await updatePackageJson(cwd, beyondRange, npm.saveStyle(cwd))
+    }
+
+    await run(
+      isWorkspace ? ['update', ...names, '--workspaces'] : ['update', ...names],
+      { manifestWritten },
     )
-    const result = toManifestNames(
-      cwd,
-      JSON.parse(commandResult || '{}') as Record<string, PackageInfo>,
-    )
+  },
 
-    if (Object.keys(result).length === 0) {
-      logger.allUpToDate()
-      return {}
+  /** `save-exact` / `save-prefix` in .npmrc. */
+  saveStyle: (cwd) => {
+    const npmrc = loadNpmrc(cwd)
+    const prefix = npmrc['save-prefix']
+    return {
+      exact: npmrcBoolean(npmrc['save-exact']) ?? false,
+      prefix: typeof prefix === 'string' ? prefix : DEFAULT_SAVE_STYLE.prefix,
     }
+  },
 
-    logger.outdatedHeader()
-
-    const releaseAges = await computeReleaseAges(result, cwd)
-    const groupedPackages = groupAndSortPackages(result)
-    const sortedGroupNames = getSortedGroupNames(groupedPackages)
-
-    sortedGroupNames.forEach((groupName) => {
-      logger.packageGroupHeader(groupName)
-      logger.printOutdatedRows(
-        groupedPackages[groupName].map(({ name, info }) =>
-          toOutdatedRow(name, info, releaseAges[name]),
-        ),
-      )
-    })
-
-    return result
-  }
-
-  /**
-   * `discovered` is a result from `checkPackageVersions` the caller already
-   * has (interactive mode), so `outdated` is not run a second time.
-   */
-  updatePackages = async (
-    cwd: string,
-    targetPackages?: string[],
-    discovered?: Record<string, PackageInfo>,
-  ): Promise<UpdateResult[]> => {
-    const outdatedPackages =
-      discovered ?? (await this.checkPackageVersions(cwd))
-
-    if (Object.keys(outdatedPackages).length === 0) {
-      // checkPackageVersions already printed allUpToDate.
-      return []
-    }
-
-    const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-    const results = await filterPackages(outdatedPackages, {
-      targetPackages,
-      cwd,
-      packageManager: this.packageManager,
-    })
-    const { names, beyondRange } = splitUpdates(results)
-
-    if (names.length === 0 && Object.keys(outdatedPackages).length > 0) {
-      logger.noPackagesToUpdate(messages.noPackagesToUpdate)
-      logger.cooldownSummary(results)
-      return results
-    }
-
-    logger.updatingHeader('npm')
-    logger.printUpdatingRows(
-      results.filter((r) => r.updated).map(toUpdatingRow),
-    )
-
-    if (names.length > 0) {
-      // npm installs the highest version each range allows. Only packages
-      // moving past their range need their manifest spec rewritten first.
-      const manifestWritten = Object.keys(beyondRange).length > 0
-      if (manifestWritten) {
-        await updatePackageJson(
-          cwd,
-          beyondRange,
-          readSaveStyle(cwd, this.packageManager),
-        )
-      }
-
-      const args = isRunningInWorkspace
-        ? ['update', ...names, '--workspaces']
-        : ['update', ...names]
-
-      await this.runStep('apply', this.packageManager, args, cwd, {
-        manifestWritten,
-      })
-    }
-
-    logger.cooldownSummary(results)
-    return results
-  }
-
-  checkIfInWorkspace = async (cwd: string): Promise<boolean> => {
-    try {
-      const packageJsonPath = `${cwd}/package.json`
-      const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
-      const packageJson = JSON.parse(packageJsonContent)
-
-      // NPM workspaces can be defined as an array or an object with packages field
-      const hasWorkspaces =
-        packageJson.workspaces &&
-        (Array.isArray(packageJson.workspaces) ||
-          (typeof packageJson.workspaces === 'object' &&
-            packageJson.workspaces.packages))
-
-      if (hasWorkspaces) {
-        logger.workspace('npm')
-      }
-
-      return !!hasWorkspaces
-    } catch {
-      return false
-    }
-  }
+  overrides: (cwd) => manifestOverrides(cwd, ['overrides']),
 }
 
-export default NPMManager
+export default npm

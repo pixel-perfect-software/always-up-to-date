@@ -4,7 +4,11 @@ jest.mock('@/detectPackageManager', () => ({
   __esModule: true,
   default: jest.fn().mockReturnValue('pnpm'),
 }))
-jest.mock('@/managers', () => ({ PackageManager: jest.fn() }))
+jest.mock('@/pipeline', () => ({
+  check: jest.fn(),
+  plan: jest.fn(),
+  update: jest.fn(),
+}))
 jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
@@ -14,7 +18,7 @@ jest.mock('@/utils/registry', () => ({
 import checkCommand from '@/commands/check'
 import updateCommand from '@/commands/update'
 import detectPackageManager from '@/detectPackageManager'
-import { PackageManager } from '@/managers'
+import { check, update } from '@/pipeline'
 import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
 
@@ -28,9 +32,9 @@ const discoverFailed = new StepError(
   'Command execution failed: ERR_PNPM_OUTDATED_REGISTRY_ERROR',
 )
 
-const fakeManager = {
-  checkPackageVersions: jest.fn(),
-  updatePackages: jest.fn(),
+const pipeline = {
+  check: jest.mocked(check),
+  update: jest.mocked(update),
 }
 
 const originalLog = Object.getPrototypeOf(console).log
@@ -47,16 +51,8 @@ describe('command failures', () => {
   }
 
   beforeEach(() => {
-    jest
-      .mocked(PackageManager)
-      .mockImplementation(
-        () =>
-          ({ manager: fakeManager }) as unknown as InstanceType<
-            typeof PackageManager
-          >,
-      )
-    fakeManager.checkPackageVersions.mockReset()
-    fakeManager.updatePackages.mockReset()
+    pipeline.check.mockReset()
+    pipeline.update.mockReset()
 
     stdout = []
     stderr = []
@@ -82,7 +78,7 @@ describe('command failures', () => {
   })
 
   it('update exits 1 and names the failed step and the written manifest', async () => {
-    fakeManager.updatePackages.mockRejectedValue(applyFailed)
+    pipeline.update.mockRejectedValue(applyFailed)
 
     const output = await run('update', 'dayjs')
 
@@ -93,7 +89,7 @@ describe('command failures', () => {
   })
 
   it('update --json exits 1 and prints a JSON error object instead of []', async () => {
-    fakeManager.updatePackages.mockRejectedValue(applyFailed)
+    pipeline.update.mockRejectedValue(applyFailed)
 
     const output = await run('update', '--json', 'dayjs')
 
@@ -108,7 +104,7 @@ describe('command failures', () => {
   })
 
   it('update --dry-run --json reports a discovery failure as JSON', async () => {
-    fakeManager.checkPackageVersions.mockRejectedValue(discoverFailed)
+    pipeline.check.mockRejectedValue(discoverFailed)
 
     const output = await run('update', '--dry-run', '--json')
 
@@ -120,7 +116,7 @@ describe('command failures', () => {
   })
 
   it('check --json reports a discovery failure as JSON', async () => {
-    fakeManager.checkPackageVersions.mockRejectedValue(discoverFailed)
+    pipeline.check.mockRejectedValue(discoverFailed)
 
     const output = await run('check', '--json')
 
@@ -146,7 +142,7 @@ describe('command failures', () => {
   })
 
   it('leaves the exit code alone when the update succeeds', async () => {
-    fakeManager.updatePackages.mockResolvedValue([])
+    pipeline.update.mockResolvedValue([])
 
     await run('update', '--json')
 

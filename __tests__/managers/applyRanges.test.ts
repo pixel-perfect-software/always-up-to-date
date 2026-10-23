@@ -1,10 +1,11 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import BunManager from '@/managers/bun'
-import NPMManager from '@/managers/npm'
-import PNPMManager from '@/managers/pnpm'
-import YarnManager from '@/managers/yarn'
+import bun from '@/managers/bun'
+import npm from '@/managers/npm'
+import pnpm from '@/managers/pnpm'
+import yarn from '@/managers/yarn'
+import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
 
 jest.mock('@/utils/logger')
@@ -43,35 +44,35 @@ const outdated: Record<string, PackageInfo> = {
 describe.each([
   {
     pm: 'npm',
-    create: () => new NPMManager(),
+    adapter: npm,
     inRange: ['update', 'react'],
     mixed: ['update', 'react', 'dayjs'],
     autdWritesManifest: true,
   },
   {
     pm: 'pnpm',
-    create: () => new PNPMManager(),
+    adapter: pnpm,
     inRange: ['update', 'react'],
     mixed: ['update', 'react', 'dayjs'],
     autdWritesManifest: true,
   },
   {
     pm: 'yarn',
-    create: () => new YarnManager(),
+    adapter: yarn,
     inRange: ['upgrade', 'react@^18.2.0'],
     mixed: ['upgrade', 'react@^18.2.0', 'dayjs@1.11.23'],
     autdWritesManifest: false,
   },
   {
     pm: 'bun',
-    create: () => new BunManager(),
+    adapter: bun,
     inRange: ['update', 'react'],
     mixed: ['update', 'react', 'dayjs'],
     autdWritesManifest: true,
   },
 ] as const)(
   '$pm apply',
-  ({ pm, create, inRange, mixed, autdWritesManifest }) => {
+  ({ pm, adapter, inRange, mixed, autdWritesManifest }) => {
     let cwd: string
 
     const writeManifest = (content: Record<string, unknown>) =>
@@ -92,7 +93,7 @@ describe.each([
     })
 
     it('hands an in-range update to the manager without touching package.json', async () => {
-      const results = await create().updatePackages(cwd, undefined, outdated)
+      const results = await update(adapter, cwd, { discovered: outdated })
 
       expect(mockedRunProcess).toHaveBeenCalledTimes(1)
       expect(mockedRunProcess).toHaveBeenCalledWith(pm, [...inRange], { cwd })
@@ -124,7 +125,7 @@ describe.each([
       }
       pinReact[pm]()
 
-      const results = await create().updatePackages(cwd, undefined, outdated)
+      const results = await update(adapter, cwd, { discovered: outdated })
 
       expect(results.find((r) => r.name === 'react')).toMatchObject({
         updated: false,
@@ -139,7 +140,7 @@ describe.each([
         .mocked(loadConfig)
         .mockReturnValue({ ...DEFAULT_CONFIG, allowMinorUpdates: true })
 
-      await create().updatePackages(cwd, undefined, outdated)
+      await update(adapter, cwd, { discovered: outdated })
 
       expect(mockedRunProcess).toHaveBeenCalledWith(pm, [...mixed], { cwd })
       expect(readManifest().dependencies).toEqual(

@@ -1,10 +1,11 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import BunManager from '@/managers/bun'
-import NPMManager from '@/managers/npm'
-import PNPMManager from '@/managers/pnpm'
-import YarnManager from '@/managers/yarn'
+import bun from '@/managers/bun'
+import npm from '@/managers/npm'
+import pnpm from '@/managers/pnpm'
+import yarn from '@/managers/yarn'
+import { update } from '@/pipeline'
 import { StepError } from '@/stepError'
 import type { PackageInfo } from '@/types'
 import { exitError, readFixture } from '../fixtures'
@@ -45,11 +46,11 @@ const applyFailure = () =>
 describe.each([
   // npm, pnpm and bun write package.json before running the manager; yarn
   // writes it itself, so a failed yarn command leaves it untouched.
-  ['npm', () => new NPMManager(), true],
-  ['pnpm', () => new PNPMManager(), true],
-  ['yarn', () => new YarnManager(), false],
-  ['bun', () => new BunManager(), true],
-] as const)('%s step failures', (pm, create, writesManifestFirst) => {
+  ['npm', npm, true],
+  ['pnpm', pnpm, true],
+  ['yarn', yarn, false],
+  ['bun', bun, true],
+] as const)('%s step failures', (pm, adapter, writesManifestFirst) => {
   let cwd: string
 
   beforeEach(() => {
@@ -71,9 +72,10 @@ describe.each([
   it('rejects with an apply StepError when an in-range apply fails', async () => {
     mockedRunProcess.mockRejectedValue(applyFailure())
 
-    const error = await create()
-      .updatePackages(cwd, ['dayjs'], outdatedPackages)
-      .catch((e: unknown) => e)
+    const error = await update(adapter, cwd, {
+      targetPackages: ['dayjs'],
+      discovered: outdatedPackages,
+    }).catch((e: unknown) => e)
 
     // In range, autd hands the name to the manager and writes nothing.
     expect(error).toBeInstanceOf(StepError)
@@ -91,16 +93,17 @@ describe.each([
     )
     mockedRunProcess.mockRejectedValue(applyFailure())
 
-    const error = await create()
-      .updatePackages(cwd, ['dayjs'], {
+    const error = await update(adapter, cwd, {
+      targetPackages: ['dayjs'],
+      discovered: {
         dayjs: {
           name: 'dayjs',
           current: '1.11.9',
           wanted: '1.11.9',
           latest: '1.11.23',
         },
-      })
-      .catch((e: unknown) => e)
+      },
+    }).catch((e: unknown) => e)
 
     expect(error).toMatchObject({
       step: 'apply',
@@ -113,9 +116,9 @@ describe.each([
       exitError(2, '', `${pm}: registry unreachable`),
     )
 
-    const error = await create()
-      .updatePackages(cwd, ['dayjs'])
-      .catch((e: unknown) => e)
+    const error = await update(adapter, cwd, {
+      targetPackages: ['dayjs'],
+    }).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(StepError)
     expect(error).toMatchObject({ step: 'discover', manifestWritten: false })

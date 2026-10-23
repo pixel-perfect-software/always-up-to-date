@@ -1,9 +1,14 @@
+jest.mock('@/utils/registry', () => ({
+  clearRegistryCache: jest.fn(),
+  fetchReleaseTimes: jest.fn(),
+}))
+
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { findControllingOverrides } from '@/utils/overrides'
+import { adapterFor } from '@/managers'
 
-describe('findControllingOverrides', () => {
+describe('adapter.overrides', () => {
   let cwd: string
 
   const write = (manifest: Record<string, unknown>, workspaceYaml?: string) => {
@@ -32,7 +37,7 @@ describe('findControllingOverrides', () => {
         },
       })
 
-      expect(findControllingOverrides(cwd, 'npm')).toEqual({
+      expect(adapterFor('npm').overrides(cwd)).toEqual({
         dayjs: { field: 'overrides', range: '1.11.9' },
         react: { field: 'overrides', range: '18.2.0' },
         '@types/node': { field: 'overrides', range: '20.2.5' },
@@ -49,7 +54,7 @@ describe('findControllingOverrides', () => {
         },
       })
 
-      expect(findControllingOverrides(cwd, 'npm')).toEqual({})
+      expect(adapterFor('npm').overrides(cwd)).toEqual({})
     })
 
     it('ignores fields npm does not read', () => {
@@ -58,7 +63,7 @@ describe('findControllingOverrides', () => {
         pnpm: { overrides: { ms: '2' } },
       })
 
-      expect(findControllingOverrides(cwd, 'npm')).toEqual({})
+      expect(adapterFor('npm').overrides(cwd)).toEqual({})
     })
   })
 
@@ -74,7 +79,7 @@ describe('findControllingOverrides', () => {
         },
       })
 
-      expect(findControllingOverrides(cwd, 'yarn')).toEqual({
+      expect(adapterFor('yarn').overrides(cwd)).toEqual({
         ms: { field: 'resolutions', range: '2.1.1' },
         dayjs: { field: 'resolutions', range: '1.11.9' },
         '@types/react': { field: 'resolutions', range: '18.2.6' },
@@ -88,7 +93,7 @@ describe('findControllingOverrides', () => {
         resolutions: { 'express/qs': '6.11.0', 'a/@scope/pkg': '1.0.0' },
       })
 
-      expect(findControllingOverrides(cwd, 'yarn')).toEqual({})
+      expect(adapterFor('yarn').overrides(cwd)).toEqual({})
     })
 
     it('holds nothing on yarn v1, which does not apply resolutions to a direct dependency', () => {
@@ -96,7 +101,7 @@ describe('findControllingOverrides', () => {
       // still moved to 1.11.23 on upgrade.
       write({ resolutions: { dayjs: '1.11.9' } })
 
-      expect(findControllingOverrides(cwd, 'yarn')).toEqual({})
+      expect(adapterFor('yarn').overrides(cwd)).toEqual({})
     })
   })
 
@@ -117,7 +122,7 @@ describe('findControllingOverrides', () => {
         ].join('\n'),
       )
 
-      expect(findControllingOverrides(cwd, 'pnpm')).toEqual({
+      expect(adapterFor('pnpm').overrides(cwd)).toEqual({
         ms: { field: 'overrides in pnpm-workspace.yaml', range: '2.1.1' },
         dayjs: { field: 'overrides in pnpm-workspace.yaml', range: '1.11.9' },
         '@types/node': {
@@ -134,20 +139,20 @@ describe('findControllingOverrides', () => {
         resolutions: { dayjs: '1.11.9' },
       })
 
-      expect(findControllingOverrides(cwd, 'pnpm')).toEqual({})
+      expect(adapterFor('pnpm').overrides(cwd)).toEqual({})
     })
   })
 
   it('reads both overrides and resolutions for bun', () => {
     write({ overrides: { ms: '2.1.1' }, resolutions: { dayjs: '1.11.9' } })
 
-    expect(findControllingOverrides(cwd, 'bun')).toEqual({
+    expect(adapterFor('bun').overrides(cwd)).toEqual({
       ms: { field: 'overrides', range: '2.1.1' },
       dayjs: { field: 'resolutions', range: '1.11.9' },
     })
   })
 
   it('returns nothing when the manifest cannot be read', () => {
-    expect(findControllingOverrides(cwd, 'npm')).toEqual({})
+    expect(adapterFor('npm').overrides(cwd)).toEqual({})
   })
 })

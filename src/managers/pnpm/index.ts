@@ -1,25 +1,11 @@
-import fs from 'fs'
+import path from 'path'
 
-import CommandRunner, { type SuccessCheck } from '@/commandRunner'
-import messages from '@/messages/en.json'
-import type {
-  PackageInfo,
-  SupportedPackageManager,
-  UpdateResult,
-} from '@/types'
-import {
-  computeReleaseAges,
-  filterPackages,
-  getSortedGroupNames,
-  groupAndSortPackages,
-  logger,
-  splitUpdates,
-  toOutdatedRow,
-  toUpdatingRow,
-} from '@/utils'
+import type { SuccessCheck } from '@/commandRunner'
+import type { ManagerAdapter } from '@/managers/adapter'
+import type { PackageInfo } from '@/types'
 import { updatePackageJson, updatePNPMWorkspaceYAML } from '@/utils/files'
-import { toManifestNames } from '@/utils/manifestNames'
-import { readSaveStyle } from '@/utils/saveStyle'
+import { overridesFromField } from '@/utils/overrides'
+import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
 
 /**
  * `pnpm outdated` exits 1 whenever something is outdated. On real errors it
@@ -36,190 +22,27 @@ const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
   }
 }
 
-class PNPMManager extends CommandRunner {
-  public readonly packageManager: SupportedPackageManager = 'pnpm'
-
-  checkPackageVersions = async (
-    cwd: string,
-  ): Promise<Record<string, PackageInfo>> => {
-    logger.starting('Checking dependencies', 'pnpm')
-
-    const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-    const args = isRunningInWorkspace
-      ? ['outdated', '--json', '-r']
-      : ['outdated', '--json']
-
-    // pnpm's `wanted` is the lockfile's version, not the highest version the
-    // range allows. `outdated --compatible` reports that one as `latest`, so
-    // both run, in parallel.
-    const [report, compatibleReport] = await Promise.all([
-      this.runStep('discover', this.packageManager, args, cwd, {
-        isSuccess: isOutdatedReport,
-      }),
-      this.runStep(
-        'discover',
-        this.packageManager,
-        [...args, '--compatible'],
-        cwd,
-        { isSuccess: isOutdatedReport },
-      ),
-    ])
-    const parsed: Record<string, PackageInfo> = JSON.parse(report || '{}')
-    const compatible: Record<string, PackageInfo> = JSON.parse(
-      compatibleReport || '{}',
-    )
-    for (const [name, info] of Object.entries(parsed)) {
-      info.wanted = compatible[name]?.latest ?? info.wanted
-    }
-    const result = toManifestNames(cwd, parsed)
-
-    if (Object.keys(result).length === 0) {
-      logger.allUpToDate()
-      return {}
-    }
-
-    logger.outdatedHeader()
-
-    const releaseAges = await computeReleaseAges(result, cwd)
-    const groupedPackages = groupAndSortPackages(result)
-    const sortedGroupNames = getSortedGroupNames(groupedPackages)
-
-    sortedGroupNames.forEach((groupName) => {
-      logger.packageGroupHeader(groupName)
-      logger.printOutdatedRows(
-        groupedPackages[groupName].map(({ name, info }) =>
-          toOutdatedRow(name, info, releaseAges[name]),
-        ),
-      )
-    })
-
-    return result
+/**
+ * pnpm's `wanted` is the lockfile's version, not the highest version the
+ * range allows. `outdated --compatible` reports that one as `latest`, so
+ * `wanted` is taken from there.
+ */
+export const parsePnpmOutdated = (
+  report: string,
+  compatibleReport: string,
+): Record<string, PackageInfo> => {
+  const parsed: Record<string, PackageInfo> = JSON.parse(report || '{}')
+  const compatible: Record<string, PackageInfo> = JSON.parse(
+    compatibleReport || '{}',
+  )
+  for (const [name, info] of Object.entries(parsed)) {
+    info.wanted = compatible[name]?.latest ?? info.wanted
   }
-
-  /**
-   * `discovered` is a result from `checkPackageVersions` the caller already
-   * has (interactive mode), so `outdated` is not run a second time.
-   */
-  updatePackages = async (
-    cwd: string,
-    targetPackages?: string[],
-    discovered?: Record<string, PackageInfo>,
-  ): Promise<UpdateResult[]> => {
-    const outdatedPackages =
-      discovered ?? (await this.checkPackageVersions(cwd))
-
-    if (Object.keys(outdatedPackages).length === 0) {
-      // checkPackageVersions already printed allUpToDate.
-      return []
-    }
-
-    const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-    const results = await filterPackages(outdatedPackages, {
-      targetPackages,
-      cwd,
-      packageManager: this.packageManager,
-    })
-    const { names, withinRange, beyondRange } = splitUpdates(results)
-
-    if (names.length === 0 && Object.keys(outdatedPackages).length > 0) {
-      logger.noPackagesToUpdate(messages.noPackagesToUpdate)
-      logger.cooldownSummary(results)
-      return results
-    }
-
-    logger.updatingHeader('pnpm')
-    logger.printUpdatingRows(
-      results.filter((r) => r.updated).map(toUpdatingRow),
-    )
-
-    if (names.length > 0) {
-      // pnpm installs the highest version each range allows. Only packages
-      // moving past their range need their manifest spec rewritten first.
-      const manifestWritten = Object.keys(beyondRange).length > 0
-      // A single-package project can have catalogs too, so they are not tied
-      // to being a workspace.
-      const usesCatalogs = definesCatalogs(cwd)
-
-      if (isRunningInWorkspace || usesCatalogs) {
-        if (manifestWritten) {
-          // Versions live in pnpm-workspace.yaml catalogs or directly in a
-          // package.json. Run both rewrites — each is a no-op for entries it
-          // doesn't own, and updatePackageJson skips `catalog:` /
-          // `workspace:` refs so it can't clobber catalog references.
-          const style = readSaveStyle(cwd, this.packageManager)
-          if (usesCatalogs) {
-            await updatePNPMWorkspaceYAML(cwd, beyondRange, style)
-          }
-          await updatePackageJson(cwd, beyondRange, style)
-
-          // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
-          // and relinks node_modules + lockfile reliably. `pnpm update -r`
-          // can miss catalog mutations.
-          await this.runStep('apply', this.packageManager, ['install'], cwd, {
-            manifestWritten,
-          })
-        }
-
-        // `install` leaves in-range packages where the lockfile has them.
-        if (withinRange.length > 0) {
-          await this.runStep(
-            'apply',
-            this.packageManager,
-            isRunningInWorkspace
-              ? ['update', '-r', ...withinRange]
-              : ['update', ...withinRange],
-            cwd,
-            { manifestWritten },
-          )
-        }
-      } else {
-        if (manifestWritten) {
-          await updatePackageJson(
-            cwd,
-            beyondRange,
-            readSaveStyle(cwd, this.packageManager),
-          )
-        }
-
-        await this.runStep(
-          'apply',
-          this.packageManager,
-          ['update', ...names],
-          cwd,
-          { manifestWritten },
-        )
-      }
-    }
-
-    logger.cooldownSummary(results)
-    return results
-  }
-
-  checkIfInWorkspace = async (cwd: string): Promise<boolean> => {
-    let workspaceFile: string
-    try {
-      workspaceFile = fs.readFileSync(`${cwd}/pnpm-workspace.yaml`, 'utf8')
-    } catch {
-      return false
-    }
-
-    const isWorkspace = listsWorkspacePackages(workspaceFile)
-    if (isWorkspace) logger.workspace('pnpm')
-
-    return isWorkspace
-  }
+  return parsed
 }
 
-/** `catalog:` or `catalogs:` in pnpm-workspace.yaml, which hold versions. */
-const definesCatalogs = (cwd: string): boolean => {
-  try {
-    return /^catalogs?:/m.test(
-      fs.readFileSync(`${cwd}/pnpm-workspace.yaml`, 'utf8'),
-    )
-  } catch {
-    return false
-  }
-}
+const readWorkspaceYaml = (cwd: string): string =>
+  readTextFile(path.join(cwd, 'pnpm-workspace.yaml'))
 
 /**
  * pnpm-workspace.yaml also holds settings (`overrides`, `catalog`,
@@ -242,4 +65,133 @@ const listsWorkspacePackages = (yaml: string): boolean => {
   return false
 }
 
-export default PNPMManager
+/**
+ * Catalogs in pnpm-workspace.yaml: `catalog` for the default one, and each
+ * key of `catalogs:`. A single-package project can have them too.
+ */
+const catalogNames = (yaml: string): string[] => {
+  const names: string[] = []
+  let inCatalogs = false
+  let keyIndent: number | undefined
+  for (const line of yaml.split('\n')) {
+    if (/^\S/.test(line)) {
+      inCatalogs = /^catalogs:/.test(line)
+      keyIndent = undefined
+      if (/^catalog:/.test(line)) names.push('catalog')
+      continue
+    }
+    const key = inCatalogs ? /^( +)(['"]?)([^'"#\s:]+)\2\s*:/.exec(line) : null
+    if (!key) continue
+    keyIndent ??= key[1].length
+    if (key[1].length === keyIndent) names.push(key[3])
+  }
+  return names
+}
+
+/** The `overrides:` block of pnpm-workspace.yaml, read line by line. */
+const readWorkspaceOverrides = (yaml: string): Record<string, string> => {
+  const overrides: Record<string, string> = {}
+  let inBlock = false
+  for (const line of yaml.split('\n')) {
+    if (/^\S/.test(line)) {
+      inBlock = /^overrides:\s*$/.test(line)
+      continue
+    }
+    const entry = inBlock
+      ? /^\s+(['"]?)(.+?)\1\s*:\s*['"]?([^'"#]+?)['"]?\s*(#.*)?$/.exec(line)
+      : null
+    if (entry) overrides[entry[2]] = entry[3]
+  }
+  return overrides
+}
+
+const pnpm: ManagerAdapter = {
+  name: 'pnpm',
+  lockfile: 'pnpm-lock.yaml',
+
+  readWorkspace: (cwd) => {
+    const yaml = readWorkspaceYaml(cwd)
+    return {
+      isWorkspace: listsWorkspacePackages(yaml),
+      catalogs: catalogNames(yaml),
+    }
+  },
+
+  discover: async (run, _cwd, { isWorkspace }) => {
+    const args = isWorkspace
+      ? ['outdated', '--json', '-r']
+      : ['outdated', '--json']
+
+    // Both reports are needed for `wanted`, so they run in parallel.
+    const [report, compatibleReport] = await Promise.all([
+      run(args, { isSuccess: isOutdatedReport }),
+      run([...args, '--compatible'], { isSuccess: isOutdatedReport }),
+    ])
+    return parsePnpmOutdated(report, compatibleReport)
+  },
+
+  apply: async (
+    run,
+    cwd,
+    { names, withinRange, beyondRange },
+    { isWorkspace, catalogs },
+  ) => {
+    // pnpm installs the highest version each range allows. Only packages
+    // moving past their range need their manifest spec rewritten first.
+    const manifestWritten = Object.keys(beyondRange).length > 0
+    const usesCatalogs = catalogs.length > 0
+
+    if (!isWorkspace && !usesCatalogs) {
+      if (manifestWritten) {
+        await updatePackageJson(cwd, beyondRange, pnpm.saveStyle(cwd))
+      }
+      await run(['update', ...names], { manifestWritten })
+      return
+    }
+
+    if (manifestWritten) {
+      // Versions live in pnpm-workspace.yaml catalogs or directly in a
+      // package.json. Run both rewrites — each is a no-op for entries it
+      // doesn't own, and updatePackageJson skips `catalog:` /
+      // `workspace:` refs so it can't clobber catalog references.
+      const style = pnpm.saveStyle(cwd)
+      if (usesCatalogs) {
+        await updatePNPMWorkspaceYAML(cwd, beyondRange, style)
+      }
+      await updatePackageJson(cwd, beyondRange, style)
+
+      // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
+      // and relinks node_modules + lockfile reliably. `pnpm update -r`
+      // can miss catalog mutations.
+      await run(['install'], { manifestWritten })
+    }
+
+    // `install` leaves in-range packages where the lockfile has them.
+    if (withinRange.length > 0) {
+      await run(
+        isWorkspace
+          ? ['update', '-r', ...withinRange]
+          : ['update', ...withinRange],
+        { manifestWritten },
+      )
+    }
+  },
+
+  /** `saveExact` / `savePrefix` in pnpm-workspace.yaml; pnpm 12 ignores .npmrc for these. */
+  saveStyle: (cwd) => {
+    const yaml = readWorkspaceYaml(cwd)
+    return {
+      exact: yamlValue(yaml, 'saveExact') === 'true',
+      prefix: yamlValue(yaml, 'savePrefix') ?? DEFAULT_SAVE_STYLE.prefix,
+    }
+  },
+
+  /** `overrides` in pnpm-workspace.yaml; pnpm 12 ignores `pnpm.overrides` and `resolutions` in package.json. */
+  overrides: (cwd) =>
+    overridesFromField(
+      readWorkspaceOverrides(readWorkspaceYaml(cwd)),
+      'overrides in pnpm-workspace.yaml',
+    ),
+}
+
+export default pnpm

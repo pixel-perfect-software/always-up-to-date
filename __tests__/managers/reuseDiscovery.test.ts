@@ -1,10 +1,11 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import BunManager from '@/managers/bun'
-import NPMManager from '@/managers/npm'
-import PNPMManager from '@/managers/pnpm'
-import YarnManager from '@/managers/yarn'
+import bun from '@/managers/bun'
+import npm from '@/managers/npm'
+import pnpm from '@/managers/pnpm'
+import yarn from '@/managers/yarn'
+import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
 
 jest.mock('@/utils/logger')
@@ -32,41 +33,37 @@ const outdatedPackages: Record<string, PackageInfo> = {
 }
 
 describe.each([
-  ['npm', () => new NPMManager(), ['update', 'dayjs']],
-  ['pnpm', () => new PNPMManager(), ['update', 'dayjs']],
-  ['yarn', () => new YarnManager(), ['upgrade', 'dayjs@^1.11.9']],
-  ['bun', () => new BunManager(), ['update', 'dayjs']],
-] as const)(
-  '%s updatePackages with a discovery result',
-  (pm, create, applyArgs) => {
-    let cwd: string
+  ['npm', npm, ['update', 'dayjs']],
+  ['pnpm', pnpm, ['update', 'dayjs']],
+  ['yarn', yarn, ['upgrade', 'dayjs@^1.11.9']],
+  ['bun', bun, ['update', 'dayjs']],
+] as const)('%s update with a discovery result', (pm, adapter, applyArgs) => {
+  let cwd: string
 
-    beforeEach(() => {
-      cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-reuse-${pm}-`))
-      fs.writeFileSync(
-        path.join(cwd, 'package.json'),
-        JSON.stringify({ dependencies: { dayjs: '^1.11.9' } }),
-      )
-      mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-reuse-${pm}-`))
+    fs.writeFileSync(
+      path.join(cwd, 'package.json'),
+      JSON.stringify({ dependencies: { dayjs: '^1.11.9' } }),
+    )
+    mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('applies without running outdated again', async () => {
+    const results = await update(adapter, cwd, {
+      targetPackages: ['dayjs'],
+      discovered: outdatedPackages,
     })
 
-    afterEach(() => {
-      fs.rmSync(cwd, { recursive: true, force: true })
-    })
-
-    it('applies without running outdated again', async () => {
-      const results = await create().updatePackages(
-        cwd,
-        ['dayjs'],
-        outdatedPackages,
-      )
-
-      expect(mockedRunProcess).toHaveBeenCalledTimes(1)
-      expect(mockedRunProcess).toHaveBeenCalledWith(pm, [...applyArgs], { cwd })
-      expect(logger.outdatedHeader).not.toHaveBeenCalled()
-      expect(results).toEqual([
-        expect.objectContaining({ name: 'dayjs', updated: true }),
-      ])
-    })
-  },
-)
+    expect(mockedRunProcess).toHaveBeenCalledTimes(1)
+    expect(mockedRunProcess).toHaveBeenCalledWith(pm, [...applyArgs], { cwd })
+    expect(logger.outdatedHeader).not.toHaveBeenCalled()
+    expect(results).toEqual([
+      expect.objectContaining({ name: 'dayjs', updated: true }),
+    ])
+  })
+})

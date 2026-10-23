@@ -1,10 +1,11 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import BunManager from '@/managers/bun'
-import NPMManager from '@/managers/npm'
-import PNPMManager from '@/managers/pnpm'
-import YarnManager from '@/managers/yarn'
+import bun from '@/managers/bun'
+import npm from '@/managers/npm'
+import pnpm from '@/managers/pnpm'
+import yarn from '@/managers/yarn'
+import { check, plan } from '@/pipeline'
 import { exitError, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
@@ -18,7 +19,7 @@ jest.mock('@/utils', () => ({
   runProcess: jest.fn(),
 }))
 
-import { filterPackages, runProcess } from '@/utils'
+import { runProcess } from '@/utils'
 import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
@@ -37,29 +38,29 @@ const manifest = {
 describe.each([
   {
     pm: 'npm',
-    create: () => new NPMManager(),
+    adapter: npm,
     report: 'npm/outdated-alias.stdout',
     exitsOne: true,
   },
   {
     pm: 'pnpm',
-    create: () => new PNPMManager(),
+    adapter: pnpm,
     report: 'pnpm/outdated-alias.stdout',
     exitsOne: true,
   },
   {
     pm: 'yarn',
-    create: () => new YarnManager(),
+    adapter: yarn,
     report: 'yarn/v1-outdated-alias.stdout',
     exitsOne: true,
   },
   {
     pm: 'bun',
-    create: () => new BunManager(),
+    adapter: bun,
     report: 'bun/outdated-alias.stdout',
     exitsOne: false,
   },
-] as const)('$pm with an npm: alias', ({ pm, create, report, exitsOne }) => {
+] as const)('$pm with an npm: alias', ({ pm, adapter, report, exitsOne }) => {
   let cwd: string
 
   beforeEach(() => {
@@ -85,7 +86,7 @@ describe.each([
   })
 
   it('reports the alias under its manifest key', async () => {
-    const outdated = await create().checkPackageVersions(cwd)
+    const outdated = await check(adapter, cwd)
 
     expect(Object.keys(outdated)).toContain('dj')
     expect(Object.keys(outdated)).not.toContain('dayjs')
@@ -94,9 +95,9 @@ describe.each([
   })
 
   it('plans the alias without throwing, whatever versions the manager reports', async () => {
-    const outdated = await create().checkPackageVersions(cwd)
+    const outdated = await check(adapter, cwd)
 
-    const results = await filterPackages(outdated, { cwd, packageManager: pm })
+    const results = await plan(adapter, cwd, outdated)
 
     const dj = results.find((r) => r.name === 'dj')
     // yarn v1 reports the alias's latest as "exotic": nothing to move to.

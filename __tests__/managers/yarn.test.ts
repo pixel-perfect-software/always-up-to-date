@@ -1,7 +1,8 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import YarnManager from '@/managers/yarn'
+import yarn, { parseYarnOutdated } from '@/managers/yarn'
+import { check, update } from '@/pipeline'
 import { exitError, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
@@ -20,19 +21,13 @@ import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
-describe('YarnManager.checkPackageVersions (yarn v1)', () => {
-  let manager: YarnManager
-
-  beforeEach(() => {
-    manager = new YarnManager()
-  })
-
+describe('check with yarn v1', () => {
   it('carries wanted from the Wanted column', async () => {
     mockedRunProcess.mockRejectedValue(
       exitError(1, readFixture('yarn/v1-outdated-ranges.stdout'), ''),
     )
 
-    const result = await manager.checkPackageVersions('/project')
+    const result = await check(yarn, '/project')
 
     expect(result.react).toMatchObject({
       current: '18.2.0',
@@ -51,7 +46,7 @@ describe('YarnManager.checkPackageVersions (yarn v1)', () => {
       ),
     )
 
-    const result = await manager.checkPackageVersions('/project')
+    const result = await check(yarn, '/project')
 
     expect(Object.keys(result)).toHaveLength(40)
     expect(result.dayjs).toEqual({
@@ -72,7 +67,7 @@ describe('YarnManager.checkPackageVersions (yarn v1)', () => {
       stderr: readFixture('yarn/v1-outdated.stderr'),
     })
 
-    await expect(manager.checkPackageVersions('/project')).resolves.toEqual({})
+    await expect(check(yarn, '/project')).resolves.toEqual({})
   })
 
   it('fails instead of reporting "up to date" when yarn exits 1 without a table', async () => {
@@ -84,15 +79,12 @@ describe('YarnManager.checkPackageVersions (yarn v1)', () => {
       ),
     )
 
-    await expect(manager.checkPackageVersions('/project')).rejects.toThrow(
-      /ECONNREFUSED/,
-    )
+    await expect(check(yarn, '/project')).rejects.toThrow(/ECONNREFUSED/)
     expect(logger.allUpToDate).not.toHaveBeenCalled()
   })
 })
 
-describe('YarnManager.updatePackages', () => {
-  let manager: YarnManager
+describe('update with yarn', () => {
   let cwd: string
 
   const writeProject = (
@@ -125,7 +117,6 @@ describe('YarnManager.updatePackages', () => {
   }
 
   beforeEach(() => {
-    manager = new YarnManager()
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarn-'))
     // Most cases here move exact pins, which needs a beyond-range level.
     jest
@@ -150,7 +141,7 @@ describe('YarnManager.updatePackages', () => {
     mockedRunProcess
       .mockRejectedValueOnce(outdatedRanges)
       .mockResolvedValueOnce({ stdout: '', stderr: '' })
-    await manager.updatePackages(cwd, ['dayjs'])
+    await update(yarn, cwd, { targetPackages: ['dayjs'] })
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
       ['upgrade', 'dayjs@^1.11.9'],
@@ -165,7 +156,7 @@ describe('YarnManager.updatePackages', () => {
     mockedRunProcess
       .mockRejectedValueOnce(outdatedRanges)
       .mockResolvedValueOnce({ stdout: '', stderr: '' })
-    await manager.updatePackages(cwd, ['dayjs'])
+    await update(yarn, cwd, { targetPackages: ['dayjs'] })
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
       ['up', 'dayjs@^1.11.9'],
@@ -180,7 +171,7 @@ describe('YarnManager.updatePackages', () => {
       readFixture('yarn/v1-upgrade.stderr'),
     )
 
-    const results = await manager.updatePackages(cwd, ['dayjs'])
+    const results = await update(yarn, cwd, { targetPackages: ['dayjs'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -200,7 +191,7 @@ describe('YarnManager.updatePackages', () => {
     writeProject(manifest)
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await manager.updatePackages(cwd, ['dayjs'])
+    await update(yarn, cwd, { targetPackages: ['dayjs'] })
 
     expect(readManifest()).toEqual(manifest)
   })
@@ -209,7 +200,7 @@ describe('YarnManager.updatePackages', () => {
     writeProject({ dependencies: { ms: '^2.1.2' } })
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await manager.updatePackages(cwd, ['ms'])
+    await update(yarn, cwd, { targetPackages: ['ms'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -222,7 +213,7 @@ describe('YarnManager.updatePackages', () => {
     writeProject({ devDependencies: { dayjs: '~1.11.9' } })
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await manager.updatePackages(cwd, ['dayjs'])
+    await update(yarn, cwd, { targetPackages: ['dayjs'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -238,7 +229,7 @@ describe('YarnManager.updatePackages', () => {
     })
     mockOutdatedThenApply(readFixture('yarn/berry-up.stdout'))
 
-    await manager.updatePackages(cwd, ['dayjs'])
+    await update(yarn, cwd, { targetPackages: ['dayjs'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -254,7 +245,7 @@ describe('YarnManager.updatePackages', () => {
     )
     mockOutdatedThenApply(readFixture('yarn/berry-up.stdout'))
 
-    await manager.updatePackages(cwd, ['dayjs'])
+    await update(yarn, cwd, { targetPackages: ['dayjs'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -270,7 +261,7 @@ describe('YarnManager.updatePackages', () => {
     )
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await manager.updatePackages(cwd, ['dayjs'])
+    await update(yarn, cwd, { targetPackages: ['dayjs'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -294,7 +285,9 @@ describe('YarnManager.updatePackages', () => {
         ),
       )
 
-    await expect(manager.updatePackages(cwd, ['dayjs'])).rejects.toMatchObject({
+    await expect(
+      update(yarn, cwd, { targetPackages: ['dayjs'] }),
+    ).rejects.toMatchObject({
       step: 'apply',
       manifestWritten: false,
       message: expect.stringContaining('Command "update" not found'),
@@ -307,7 +300,7 @@ describe('YarnManager.updatePackages', () => {
     writeProject({ dependencies: { dayjs: '1.11.9' } })
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await manager.updatePackages(cwd, ['dayjs', 'ms'])
+    await update(yarn, cwd, { targetPackages: ['dayjs', 'ms'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -315,5 +308,28 @@ describe('YarnManager.updatePackages', () => {
       expect.anything(),
     )
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('ms'))
+  })
+})
+
+describe('parseYarnOutdated', () => {
+  it('reads the rows of the table line, Wanted column included', () => {
+    const result = parseYarnOutdated(
+      readFixture('yarn/v1-outdated-ranges.stdout'),
+    )
+
+    expect(Object.keys(result)).toHaveLength(40)
+    expect(result.react).toEqual({
+      name: 'react',
+      current: '18.2.0',
+      wanted: '18.3.1',
+      latest: '19.3.1',
+    })
+  })
+
+  it('reads output without a table, or no output, as nothing outdated', () => {
+    expect(
+      parseYarnOutdated(readFixture('yarn/v1-outdated-none.stdout')),
+    ).toEqual({})
+    expect(parseYarnOutdated('')).toEqual({})
   })
 })

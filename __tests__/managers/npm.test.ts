@@ -1,4 +1,5 @@
-import NPMManager from '@/managers/npm'
+import npm, { parseNpmOutdated } from '@/managers/npm'
+import { check } from '@/pipeline'
 import { exitError, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
@@ -16,19 +17,13 @@ import { runProcess } from '@/utils'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
-describe('NPMManager.checkPackageVersions', () => {
-  let manager: NPMManager
-
-  beforeEach(() => {
-    manager = new NPMManager()
-  })
-
+describe('check with npm', () => {
   it('carries wanted: the highest version the range allows', async () => {
     mockedRunProcess.mockRejectedValue(
       exitError(1, readFixture('npm/outdated-ranges.stdout'), ''),
     )
 
-    const result = await manager.checkPackageVersions('/project')
+    const result = await check(npm, '/project')
 
     expect(result.react).toMatchObject({
       current: '18.2.0',
@@ -43,7 +38,7 @@ describe('NPMManager.checkPackageVersions', () => {
       exitError(1, readFixture('npm/outdated.stdout'), ''),
     )
 
-    const result = await manager.checkPackageVersions('/project')
+    const result = await check(npm, '/project')
 
     expect(Object.keys(result)).toHaveLength(40)
     expect(result.dayjs).toMatchObject({
@@ -62,16 +57,30 @@ describe('NPMManager.checkPackageVersions', () => {
       ),
     )
 
-    await expect(manager.checkPackageVersions('/project')).rejects.toThrow(
-      /ECONNREFUSED/,
-    )
+    await expect(check(npm, '/project')).rejects.toThrow(/ECONNREFUSED/)
   })
 
   it('fails when npm exits with a code other than 0 or 1', async () => {
     mockedRunProcess.mockRejectedValue(exitError(2, '{}', 'npm error usage'))
 
-    await expect(manager.checkPackageVersions('/project')).rejects.toThrow(
-      /npm error usage/,
-    )
+    await expect(check(npm, '/project')).rejects.toThrow(/npm error usage/)
+  })
+})
+
+describe('parseNpmOutdated', () => {
+  it('reads the report keyed by name, with the range-respecting wanted', () => {
+    const result = parseNpmOutdated(readFixture('npm/outdated-ranges.stdout'))
+
+    expect(Object.keys(result)).toHaveLength(40)
+    expect(result.react).toMatchObject({
+      current: '18.2.0',
+      wanted: '18.3.1',
+      latest: '19.3.1',
+    })
+    expect(result.minimist).toMatchObject({ current: '1.2.7', wanted: '1.2.7' })
+  })
+
+  it('reads empty stdout as nothing outdated', () => {
+    expect(parseNpmOutdated('')).toEqual({})
   })
 })

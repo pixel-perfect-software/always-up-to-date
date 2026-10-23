@@ -1,7 +1,8 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import BunManager from '@/managers/bun'
+import bun, { parseBunOutdated } from '@/managers/bun'
+import { check } from '@/pipeline'
 import { exitError, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
@@ -19,20 +20,14 @@ import { runProcess } from '@/utils'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
-describe('BunManager.checkPackageVersions', () => {
-  let manager: BunManager
-
-  beforeEach(() => {
-    manager = new BunManager()
-  })
-
+describe('check with bun', () => {
   it('carries wanted from the Update column', async () => {
     mockedRunProcess.mockResolvedValue({
       stdout: readFixture('bun/outdated-ranges.stdout'),
       stderr: '',
     })
 
-    const result = await manager.checkPackageVersions('/project')
+    const result = await check(bun, '/project')
 
     expect(result.react).toMatchObject({
       current: '18.2.0',
@@ -48,7 +43,7 @@ describe('BunManager.checkPackageVersions', () => {
       stderr: '',
     })
 
-    const result = await manager.checkPackageVersions('/project')
+    const result = await check(bun, '/project')
 
     expect(Object.keys(result)).toHaveLength(40)
     expect(result.dayjs).toEqual({
@@ -68,9 +63,7 @@ describe('BunManager.checkPackageVersions', () => {
       ),
     )
 
-    await expect(manager.checkPackageVersions('/project')).rejects.toThrow(
-      /ConnectionRefused/,
-    )
+    await expect(check(bun, '/project')).rejects.toThrow(/ConnectionRefused/)
   })
 
   it('passes the workspace filter as a bare * argument', async () => {
@@ -82,7 +75,7 @@ describe('BunManager.checkPackageVersions', () => {
     mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
 
     try {
-      await manager.checkPackageVersions(cwd)
+      await check(bun, cwd)
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true })
     }
@@ -93,5 +86,24 @@ describe('BunManager.checkPackageVersions', () => {
       ['outdated', '--filter', '*'],
       { cwd },
     )
+  })
+})
+
+describe('parseBunOutdated', () => {
+  it('reads the table rows, with the Update column as wanted', () => {
+    const result = parseBunOutdated(readFixture('bun/outdated-ranges.stdout'))
+
+    expect(Object.keys(result)).toHaveLength(40)
+    expect(Object.keys(result)).not.toContain('Package')
+    expect(result.react).toEqual({
+      name: 'react',
+      current: '18.2.0',
+      wanted: '18.3.1',
+      latest: '19.3.1',
+    })
+  })
+
+  it('reads empty output as nothing outdated', () => {
+    expect(parseBunOutdated('')).toEqual({})
   })
 })

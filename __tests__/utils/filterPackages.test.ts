@@ -12,7 +12,6 @@ const mockLogger = {
 
 interface LoadOpts {
   releaseTimes?: Record<string, Record<string, string>>
-  controllingOverrides?: Record<string, { field: string; range: string }>
   installedPeers?: Record<
     string,
     Array<{ name: string; version: string; range: string }>
@@ -49,9 +48,6 @@ function loadFilterWithConfig(
       readInstalledPeers: jest.fn(
         () => new Map(Object.entries(opts.installedPeers ?? {})),
       ),
-    }))
-    jest.doMock('@/utils/overrides', () => ({
-      findControllingOverrides: jest.fn(() => opts.controllingOverrides ?? {}),
     }))
     jest.doMock('@/utils/registry', () => ({
       fetchReleaseTimes: jest.fn(
@@ -189,20 +185,17 @@ describe('filterPackages', () => {
   })
 
   it('holds a target an override does not allow, even with a latest rule', async () => {
-    const filter = loadFilterWithConfig(
-      { rules: { dayjs: 'latest' } },
-      {
-        controllingOverrides: {
-          dayjs: { field: 'resolutions', range: '1.11.9' },
-        },
-      },
-    )
+    const filter = loadFilterWithConfig({ rules: { dayjs: 'latest' } })
     const outdated = makeOutdated([
       { name: 'dayjs', current: '1.11.9', latest: '1.11.23' },
       { name: 'ms', current: '2.1.2', wanted: '2.1.3', latest: '2.1.3' },
     ])
 
-    const results = await filter(outdated, { packageManager: 'yarn' })
+    const results = await filter(outdated, {
+      overrides: {
+        dayjs: { field: 'resolutions', range: '1.11.9' },
+      },
+    })
 
     expect(results.find((r) => r.name === 'dayjs')).toMatchObject({
       updated: false,
@@ -213,19 +206,16 @@ describe('filterPackages', () => {
 
   it('names the override when it is what keeps a package in place', async () => {
     // pnpm reports the overridden version as current and wanted.
-    const filter = loadFilterWithConfig(
-      {},
-      {
-        controllingOverrides: {
-          dayjs: { field: 'overrides in pnpm-workspace.yaml', range: '1.11.9' },
-        },
-      },
-    )
+    const filter = loadFilterWithConfig({})
     const outdated = makeOutdated([
       { name: 'dayjs', current: '1.11.9', latest: '1.11.23' },
     ])
 
-    const [result] = await filter(outdated, { packageManager: 'pnpm' })
+    const [result] = await filter(outdated, {
+      overrides: {
+        dayjs: { field: 'overrides in pnpm-workspace.yaml', range: '1.11.9' },
+      },
+    })
 
     expect(result).toMatchObject({
       updated: false,
@@ -236,14 +226,7 @@ describe('filterPackages', () => {
   it('lets a target through when the override allows it', async () => {
     // npm requires a direct dependency's override to equal its own spec, so
     // an in-range update satisfies it; npm update installs it.
-    const filter = loadFilterWithConfig(
-      {},
-      {
-        controllingOverrides: {
-          dayjs: { field: 'overrides', range: '^1.11.9' },
-        },
-      },
-    )
+    const filter = loadFilterWithConfig({})
     const outdated = makeOutdated([
       {
         name: 'dayjs',
@@ -253,25 +236,26 @@ describe('filterPackages', () => {
       },
     ])
 
-    const [result] = await filter(outdated, { packageManager: 'npm' })
+    const [result] = await filter(outdated, {
+      overrides: {
+        dayjs: { field: 'overrides', range: '^1.11.9' },
+      },
+    })
 
     expect(result).toMatchObject({ updated: true, target: '1.11.23' })
   })
 
   it('holds a beyond-range target outside an override that equals the spec', async () => {
-    const filter = loadFilterWithConfig(
-      { beyondRange: 'major' },
-      {
-        controllingOverrides: {
-          react: { field: 'overrides', range: '^18.2.0' },
-        },
-      },
-    )
+    const filter = loadFilterWithConfig({ beyondRange: 'major' })
     const outdated = makeOutdated([
       { name: 'react', current: '18.2.0', wanted: '18.3.1', latest: '19.3.1' },
     ])
 
-    const [result] = await filter(outdated, { packageManager: 'npm' })
+    const [result] = await filter(outdated, {
+      overrides: {
+        react: { field: 'overrides', range: '^18.2.0' },
+      },
+    })
 
     expect(result).toMatchObject({
       updated: false,
