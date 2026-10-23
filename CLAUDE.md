@@ -69,6 +69,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - Commands registered in `src/commands/`:
   - `init` - Creates `.always-up-to-date.json`
   - `check` - Lists outdated dependencies. Supports `--json` for structured output.
+  - With `--json`, stdout is only the JSON document (`logger.setJsonOutput`); human output goes through `logger`, never `console.log`
   - `update [packages...]` - Updates packages respecting config. Supports `--dry-run` (preview), `-i/--interactive` (checklist selection), `--json` (structured output), and optional package name arguments for targeted updates.
   - `help` - Shows help information
 - Binary aliases: `autd`, `alwaysuptodate`, `always-up-to-date`

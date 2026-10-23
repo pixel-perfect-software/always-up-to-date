@@ -1,6 +1,7 @@
 import type { Command } from 'commander'
 import detectPackageManager from '@/detectPackageManager'
 import { PackageManager } from '@/managers'
+import logger from '@/utils/logger'
 
 const workingDir = process.cwd()
 
@@ -15,14 +16,12 @@ const checkCommand = (program: Command) =>
     .description('Check the dependencies of the project.')
     .option('--json', 'Output results as JSON')
     .action(async (options: { json?: boolean }) => {
+      if (options.json) logger.setJsonOutput(true)
+
       const packageManagerName = detectPackageManager(workingDir)
       const packageManager = new PackageManager(packageManagerName)
 
       if (options.json) {
-        // Suppress logger output and print raw JSON
-        const { default: logger } = await import('@/utils/logger')
-        logger.setQuiet(true)
-
         const result =
           await packageManager.manager.checkPackageVersions(workingDir)
         console.log(JSON.stringify(result, null, 2))

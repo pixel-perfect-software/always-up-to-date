@@ -28,6 +28,52 @@ describe('Logger', () => {
     logSpy.mockRestore()
   })
 
+  describe('JSON output mode', () => {
+    let errorSpy: jest.SpyInstance
+
+    beforeEach(() => {
+      console.error = Object.getPrototypeOf(console).error
+      errorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined)
+      logger.setJsonOutput(true)
+    })
+
+    afterEach(() => {
+      logger.setJsonOutput(false)
+      errorSpy.mockRestore()
+    })
+
+    it('keeps progress output off stdout', () => {
+      logger.starting('Checking dependencies', 'npm')
+      logger.info('hello')
+      logger.outdatedHeader()
+      logger.printOutdatedRows([
+        { name: 'a', current: '1.0.0', latest: '1.0.1' },
+      ])
+      logger.allUpToDate()
+
+      expect(logSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+    })
+
+    it('sends errors and warnings to stderr', () => {
+      logger.warn('careful')
+      logger.error('broke')
+
+      expect(logSpy).not.toHaveBeenCalled()
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('careful'))
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('broke'))
+    })
+
+    it('stays silent when quiet', () => {
+      logger.setQuiet(true)
+      logger.error('broke')
+
+      expect(errorSpy).not.toHaveBeenCalled()
+    })
+  })
+
   describe('basic message methods', () => {
     it('info logs message', () => {
       logger.info('test message')

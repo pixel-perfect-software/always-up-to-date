@@ -57,6 +57,9 @@ schema/
 __tests__/
   setup.ts                  # Global test setup (console suppression)
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
+  commands/
+    check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options
+    jsonOutput.test.ts      # Real logger: stdout is exactly one JSON document with --json
   detectPackageManager.test.ts  # Lock file detection tests
   fixtures/
     index.ts                # readFixture(), exitError() helpers
@@ -73,7 +76,7 @@ __tests__/
     duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests
     filterPackages.test.ts  # Package filtering, targeting, cooldown integration
-    logger.test.ts          # Logger output and quiet mode tests
+    logger.test.ts          # Logger output, quiet and JSON output modes
     npmrcLoader.test.ts     # .npmrc / NPM_CONFIG_* parsing
     packageGrouper.test.ts  # Package grouping tests
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting

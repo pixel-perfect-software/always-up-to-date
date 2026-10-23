@@ -1,4 +1,4 @@
-import type { Command } from 'commander'
+import { type Command, Option } from 'commander'
 import detectPackageManager from '@/detectPackageManager'
 import { PackageManager } from '@/managers'
 import { filterPackages, logger } from '@/utils'
@@ -28,8 +28,12 @@ const update = (program: Command) =>
       '-i, --interactive',
       'Interactively select which packages to update',
     )
-    .option('--json', 'Output results as JSON')
+    .addOption(
+      new Option('--json', 'Output results as JSON').conflicts('interactive'),
+    )
     .action(async (packages: string[], options: UpdateOptions) => {
+      if (options.json) logger.setJsonOutput(true)
+
       const packageManagerName = detectPackageManager(workingDir)
       const packageManager = new PackageManager(packageManagerName)
       const targetPackages = packages.length > 0 ? packages : undefined
@@ -62,7 +66,10 @@ const dryRun = async (
   const outdatedPackages =
     await packageManager.manager.checkPackageVersions(workingDir)
 
-  if (Object.keys(outdatedPackages).length === 0) return
+  if (Object.keys(outdatedPackages).length === 0) {
+    if (json) console.log(JSON.stringify([], null, 2))
+    return
+  }
 
   const results = await filterPackages(outdatedPackages, {
     targetPackages,

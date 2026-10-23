@@ -26,7 +26,7 @@ utils/
   updateChecker.ts    # Semver-based update filtering (single package, sync)
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
-  logger.ts           # Colored logging (colorette)
+  logger.ts           # Colored logging (colorette); setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
   files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML(), updateBunCatalogs(), identifyCatalogPackages(), buildUpdateDescriptors()
 ```
 
