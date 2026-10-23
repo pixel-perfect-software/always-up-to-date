@@ -1,6 +1,7 @@
 import type { Command } from 'commander'
 import detectPackageManager from '@/detectPackageManager'
-import { PackageManager } from '@/managers'
+import { adapterFor } from '@/managers'
+import { check } from '@/pipeline'
 import logger from '@/utils/logger'
 import reportFailure from './reportFailure'
 
@@ -20,11 +21,9 @@ const checkCommand = (program: Command) =>
       if (options.json) logger.setJsonOutput(true)
 
       try {
-        const packageManagerName = detectPackageManager(workingDir)
-        const packageManager = new PackageManager(packageManagerName)
+        const adapter = adapterFor(detectPackageManager(workingDir))
 
-        const result =
-          await packageManager.manager.checkPackageVersions(workingDir)
+        const result = await check(adapter, workingDir)
         if (options.json) console.log(JSON.stringify(result, null, 2))
       } catch (error) {
         reportFailure(error, options.json)

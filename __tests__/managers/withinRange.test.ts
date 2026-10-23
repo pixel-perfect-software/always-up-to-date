@@ -1,7 +1,8 @@
-import BunManager from '@/managers/bun'
-import NPMManager from '@/managers/npm'
-import PNPMManager from '@/managers/pnpm'
-import YarnManager from '@/managers/yarn'
+import bun from '@/managers/bun'
+import npm from '@/managers/npm'
+import pnpm from '@/managers/pnpm'
+import yarn from '@/managers/yarn'
+import { check } from '@/pipeline'
 import { exitError, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
@@ -69,14 +70,14 @@ const mockOutdated = (
 }
 
 describe.each([
-  ['npm', () => new NPMManager()],
-  ['pnpm', () => new PNPMManager()],
-  ['yarn', () => new YarnManager()],
-  ['bun', () => new BunManager()],
-] as const)('%s, default config', (pm, create) => {
+  ['npm', npm],
+  ['pnpm', pnpm],
+  ['yarn', yarn],
+  ['bun', bun],
+] as const)('%s, default config', (pm, adapter) => {
   const proposals = async (project: 'ranges' | 'pinned') => {
     mockOutdated(pm, project)
-    const outdated = await create().checkPackageVersions('/project')
+    const outdated = await check(adapter, '/project')
     const results = await filterPackages(outdated, { cwd: '/project' })
     return Object.fromEntries(
       results.filter((r) => r.updated).map((r) => [r.name, r.target]),

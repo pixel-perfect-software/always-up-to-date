@@ -1,284 +1,175 @@
-import fs from 'fs'
+import path from 'path'
 
-import CommandRunner from '@/commandRunner'
-import messages from '@/messages/en.json'
-import type {
-  PackageInfo,
-  SupportedPackageManager,
-  UpdateResult,
-} from '@/types'
-import {
-  computeReleaseAges,
-  filterPackages,
-  getSortedGroupNames,
-  groupAndSortPackages,
-  logger,
-  splitUpdates,
-  toOutdatedRow,
-  toUpdatingRow,
-} from '@/utils'
+import type { ManagerAdapter } from '@/managers/adapter'
+import { hasWorkspacesField, readManifest } from '@/managers/workspaces'
+import type { PackageInfo } from '@/types'
 import {
   identifyCatalogPackages,
   updateBunCatalogs,
   updatePackageJson,
 } from '@/utils/files'
-import { toManifestNames } from '@/utils/manifestNames'
-import { readSaveStyle } from '@/utils/saveStyle'
+import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
+import { manifestOverrides } from '@/utils/overrides'
+import { DEFAULT_SAVE_STYLE, readTextFile } from '@/utils/saveStyle'
 
-class BunManager extends CommandRunner {
-  public readonly packageManager: SupportedPackageManager = 'bun'
+/**
+ * `bun outdated` prints a table: `| Package | Current | Update | Latest |`.
+ * The Update column is the highest version the range allows.
+ */
+export const parseBunOutdated = (
+  output: string,
+): Record<string, PackageInfo> => {
+  const result: Record<string, PackageInfo> = {}
 
-  checkPackageVersions = async (
-    cwd: string,
-  ): Promise<Record<string, PackageInfo>> => {
-    logger.starting('Checking dependencies', 'bun')
-
-    const { isWorkspace } = await this.checkIfInWorkspace(cwd)
-    const args = isWorkspace ? ['outdated', '--filter', '*'] : ['outdated']
-
-    const commandResult = await this.runStep(
-      'discover',
-      this.packageManager,
-      args,
-      cwd,
-    )
-    const result = toManifestNames(
-      cwd,
-      this.parseBunOutdatedOutput(commandResult || ''),
-    )
-
-    if (Object.keys(result).length === 0) {
-      logger.allUpToDate()
-      return {}
-    }
-
-    logger.outdatedHeader()
-
-    const releaseAges = await computeReleaseAges(result, cwd)
-    const groupedPackages = groupAndSortPackages(result)
-    const sortedGroupNames = getSortedGroupNames(groupedPackages)
-
-    sortedGroupNames.forEach((groupName) => {
-      logger.packageGroupHeader(groupName)
-      logger.printOutdatedRows(
-        groupedPackages[groupName].map(({ name, info }) =>
-          toOutdatedRow(name, info, releaseAges[name]),
-        ),
-      )
-    })
-
-    return result
-  }
-
-  /**
-   * `discovered` is a result from `checkPackageVersions` the caller already
-   * has (interactive mode), so `outdated` is not run a second time.
-   */
-  updatePackages = async (
-    cwd: string,
-    targetPackages?: string[],
-    discovered?: Record<string, PackageInfo>,
-  ): Promise<UpdateResult[]> => {
-    const outdatedPackages =
-      discovered ?? (await this.checkPackageVersions(cwd))
-
-    if (Object.keys(outdatedPackages).length === 0) {
-      // checkPackageVersions already printed allUpToDate.
-      return []
-    }
-
-    const { isWorkspace, hasCatalogs } = await this.checkIfInWorkspace(cwd)
-    const results = await filterPackages(outdatedPackages, {
-      targetPackages,
-      cwd,
-      packageManager: this.packageManager,
-    })
-    const { names, withinRange, beyondRange } = splitUpdates(results)
-
-    if (names.length === 0 && Object.keys(outdatedPackages).length > 0) {
-      logger.noPackagesToUpdate(messages.noPackagesToUpdate)
-      logger.cooldownSummary(results)
-      return results
-    }
-
-    logger.updatingHeader('bun')
-    logger.printUpdatingRows(
-      results.filter((r) => r.updated).map(toUpdatingRow),
+  // Split output into lines and filter out header/separator lines
+  const lines = output
+    .split('\n')
+    .filter(
+      (line) =>
+        line.trim() &&
+        !line.includes('|---') &&
+        !line.includes('Package') &&
+        line.includes('|'),
     )
 
-    if (names.length > 0) {
-      // bun installs the highest version each range allows. Only packages
-      // moving past their range need their manifest spec rewritten first.
-      const manifestWritten = Object.keys(beyondRange).length > 0
+  for (const line of lines) {
+    // Split by | and clean up whitespace
+    const columns = line
+      .split('|')
+      .map((col) => col.trim())
+      .filter((col) => col)
 
-      if (isWorkspace && hasCatalogs) {
-        const { catalogPackages } = identifyCatalogPackages(
-          cwd,
-          outdatedPackages,
-        )
-        const catalogVersions: Record<string, string> = {}
-        const rootVersions: Record<string, string> = {}
-        for (const [name, version] of Object.entries(beyondRange)) {
-          if (catalogPackages.includes(name)) catalogVersions[name] = version
-          else rootVersions[name] = version
-        }
+    if (columns.length >= 4) {
+      const packageNameRaw = columns[0]
+      const current = columns[1]
+      // bun's "Update" column: the highest version the range allows.
+      const wanted = columns[2]
+      const latest = columns[3]
 
-        if (Object.keys(catalogVersions).length > 0) {
-          await updateBunCatalogs(
-            cwd,
-            catalogVersions,
-            readSaveStyle(cwd, this.packageManager),
-          )
-        }
+      // Extract package name (remove dev/prod indicators)
+      const packageName = packageNameRaw
+        .replace(/\s*\(dev\)|\s*\(prod\)/, '')
+        .trim()
 
-        if (Object.keys(rootVersions).length > 0) {
-          await updatePackageJson(
-            cwd,
-            rootVersions,
-            readSaveStyle(cwd, this.packageManager),
-          )
-        }
-
-        if (manifestWritten) {
-          await this.runStep('apply', this.packageManager, ['install'], cwd, {
-            manifestWritten,
-          })
-        }
-
-        // `install` leaves in-range packages where the lockfile has them.
-        if (withinRange.length > 0) {
-          await this.runStep(
-            'apply',
-            this.packageManager,
-            ['update', ...withinRange, '--filter', '*'],
-            cwd,
-            { manifestWritten },
-          )
-        }
-      } else {
-        if (manifestWritten) {
-          await updatePackageJson(
-            cwd,
-            beyondRange,
-            readSaveStyle(cwd, this.packageManager),
-          )
-        }
-
-        const args = isWorkspace
-          ? ['update', ...names, '--filter', '*']
-          : ['update', ...names]
-
-        await this.runStep('apply', this.packageManager, args, cwd, {
-          manifestWritten,
-        })
-      }
-    }
-
-    logger.cooldownSummary(results)
-    return results
-  }
-
-  checkIfInWorkspace = async (
-    cwd: string,
-  ): Promise<{
-    isWorkspace: boolean
-    hasCatalogs: boolean
-    catalogNames: string[]
-  }> => {
-    try {
-      const packageJsonPath = `${cwd}/package.json`
-      const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
-      const packageJson = JSON.parse(packageJsonContent)
-
-      // Bun uses the same workspace format as NPM - workspaces can be defined as an array or an object with packages field
-      const hasWorkspaces =
-        packageJson.workspaces &&
-        (Array.isArray(packageJson.workspaces) ||
-          (typeof packageJson.workspaces === 'object' &&
-            packageJson.workspaces.packages))
-
-      // Check for catalogs (Bun's centralized dependency management)
-      // Can be "catalog" (singular, default) or "catalogs" (plural, named)
-      const hasDefaultCatalog =
-        !!packageJson.catalog && typeof packageJson.catalog === 'object'
-      const hasNamedCatalogs =
-        !!packageJson.catalogs && typeof packageJson.catalogs === 'object'
-      const hasCatalogs = hasDefaultCatalog || hasNamedCatalogs
-
-      const catalogNames: string[] = []
-      if (hasDefaultCatalog) {
-        catalogNames.push('catalog')
-      }
-      if (hasNamedCatalogs) {
-        catalogNames.push(...Object.keys(packageJson.catalogs))
-      }
-
-      if (hasWorkspaces) {
-        logger.workspace('bun')
-        if (hasCatalogs) {
-          logger.info(`Detected Bun catalogs: ${catalogNames.join(', ')}`)
-        }
-      }
-
-      return {
-        isWorkspace: !!hasWorkspaces,
-        hasCatalogs,
-        catalogNames,
-      }
-    } catch {
-      return { isWorkspace: false, hasCatalogs: false, catalogNames: [] }
-    }
-  }
-
-  private parseBunOutdatedOutput = (
-    output: string,
-  ): Record<string, PackageInfo> => {
-    const result: Record<string, PackageInfo> = {}
-
-    // Split output into lines and filter out header/separator lines
-    const lines = output
-      .split('\n')
-      .filter(
-        (line) =>
-          line.trim() &&
-          !line.includes('|---') &&
-          !line.includes('Package') &&
-          line.includes('|'),
-      )
-
-    for (const line of lines) {
-      // Split by | and clean up whitespace
-      const columns = line
-        .split('|')
-        .map((col) => col.trim())
-        .filter((col) => col)
-
-      if (columns.length >= 4) {
-        const packageNameRaw = columns[0]
-        const current = columns[1]
-        // bun's "Update" column: the highest version the range allows.
-        const wanted = columns[2]
-        const latest = columns[3]
-
-        // Extract package name (remove dev/prod indicators)
-        const packageName = packageNameRaw
-          .replace(/\s*\(dev\)|\s*\(prod\)/, '')
-          .trim()
-
-        // Only include packages that have updates available (current !== latest)
-        if (current !== latest) {
-          result[packageName] = {
-            name: packageName,
-            current,
-            wanted,
-            latest,
-          }
+      // Only include packages that have updates available (current !== latest)
+      if (current !== latest) {
+        result[packageName] = {
+          name: packageName,
+          current,
+          wanted,
+          latest,
         }
       }
     }
-
-    return result
   }
+
+  return result
 }
 
-export default BunManager
+/** `exact = true` inside bunfig.toml's `[install]` table. */
+const bunfigExact = (content: string): boolean => {
+  let inInstall = false
+  for (const line of content.split('\n')) {
+    const table = /^\s*\[([^\]]+)\]/.exec(line)
+    if (table) {
+      inInstall = table[1].trim() === 'install'
+      continue
+    }
+    if (inInstall && /^\s*exact\s*=\s*true\s*(#.*)?$/.test(line)) return true
+  }
+  return false
+}
+
+/**
+ * Catalogs in package.json: `catalog` (the default one) and the keys of
+ * `catalogs` (named ones).
+ */
+const catalogNames = (cwd: string): string[] => {
+  const manifest = readManifest(cwd)
+  const names: string[] = []
+  if (manifest?.catalog && typeof manifest.catalog === 'object') {
+    names.push('catalog')
+  }
+  if (manifest?.catalogs && typeof manifest.catalogs === 'object') {
+    names.push(...Object.keys(manifest.catalogs))
+  }
+  return names
+}
+
+const bun: ManagerAdapter = {
+  name: 'bun',
+  lockfile: 'bun.lock',
+
+  readWorkspace: (cwd) => ({
+    isWorkspace: hasWorkspacesField(cwd),
+    catalogs: catalogNames(cwd),
+  }),
+
+  discover: async (run, _cwd, { isWorkspace }) =>
+    parseBunOutdated(
+      await run(isWorkspace ? ['outdated', '--filter', '*'] : ['outdated']),
+    ),
+
+  apply: async (
+    run,
+    cwd,
+    { names, withinRange, beyondRange, discovered },
+    { isWorkspace, catalogs },
+  ) => {
+    // bun installs the highest version each range allows. Only packages
+    // moving past their range need their manifest spec rewritten first.
+    const manifestWritten = Object.keys(beyondRange).length > 0
+
+    if (!isWorkspace || catalogs.length === 0) {
+      if (manifestWritten) {
+        await updatePackageJson(cwd, beyondRange, bun.saveStyle(cwd))
+      }
+      await run(
+        isWorkspace
+          ? ['update', ...names, '--filter', '*']
+          : ['update', ...names],
+        { manifestWritten },
+      )
+      return
+    }
+
+    const { catalogPackages } = identifyCatalogPackages(cwd, discovered)
+    const catalogVersions: Record<string, string> = {}
+    const rootVersions: Record<string, string> = {}
+    for (const [name, version] of Object.entries(beyondRange)) {
+      if (catalogPackages.includes(name)) catalogVersions[name] = version
+      else rootVersions[name] = version
+    }
+
+    if (Object.keys(catalogVersions).length > 0) {
+      await updateBunCatalogs(cwd, catalogVersions, bun.saveStyle(cwd))
+    }
+
+    if (Object.keys(rootVersions).length > 0) {
+      await updatePackageJson(cwd, rootVersions, bun.saveStyle(cwd))
+    }
+
+    if (manifestWritten) {
+      await run(['install'], { manifestWritten })
+    }
+
+    // `install` leaves in-range packages where the lockfile has them.
+    if (withinRange.length > 0) {
+      await run(['update', ...withinRange, '--filter', '*'], {
+        manifestWritten,
+      })
+    }
+  },
+
+  /** `exact` in bunfig.toml's `[install]`, or `save-exact` in .npmrc; bun has no prefix setting. */
+  saveStyle: (cwd) => ({
+    exact:
+      bunfigExact(readTextFile(path.join(cwd, 'bunfig.toml'))) ||
+      (npmrcBoolean(loadNpmrc(cwd)['save-exact']) ?? false),
+    prefix: DEFAULT_SAVE_STYLE.prefix,
+  }),
+
+  overrides: (cwd) => manifestOverrides(cwd, ['overrides', 'resolutions']),
+}
+
+export default bun

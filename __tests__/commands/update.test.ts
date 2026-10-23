@@ -5,8 +5,10 @@ jest.mock('@/detectPackageManager', () => ({
   default: jest.fn(),
 }))
 
-jest.mock('@/managers', () => ({
-  PackageManager: jest.fn(),
+jest.mock('@/pipeline', () => ({
+  check: jest.fn(),
+  plan: jest.fn(),
+  update: jest.fn(),
 }))
 
 jest.mock('@/utils/logger')
@@ -15,10 +17,6 @@ jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
 }))
-jest.mock('@/utils/filterPackages', () => ({
-  __esModule: true,
-  default: jest.fn(),
-}))
 jest.mock('@inquirer/prompts', () => ({
   checkbox: jest.fn(),
 }))
@@ -26,16 +24,15 @@ jest.mock('@inquirer/prompts', () => ({
 import { checkbox } from '@inquirer/prompts'
 import updateCommand from '@/commands/update'
 import detectPackageManager from '@/detectPackageManager'
-import { PackageManager } from '@/managers'
-import filterPackages from '@/utils/filterPackages'
+import npm from '@/managers/npm'
+import { check, plan, update } from '@/pipeline'
 
 const mockDetectPackageManager = jest.mocked(detectPackageManager)
-const mockPackageManager = jest.mocked(PackageManager)
-const mockFilterPackages = jest.mocked(filterPackages)
+const mockPlan = jest.mocked(plan)
 const mockCheckbox = jest.mocked(checkbox)
 
-const mockUpdatePackages = jest.fn()
-const mockCheckPackageVersions = jest.fn()
+const mockUpdatePackages = jest.mocked(update)
+const mockCheckPackageVersions = jest.mocked(check)
 
 describe('update command', () => {
   let program: Command
@@ -44,16 +41,7 @@ describe('update command', () => {
     mockDetectPackageManager.mockReturnValue('npm')
     mockUpdatePackages.mockReset()
     mockCheckPackageVersions.mockReset()
-    mockPackageManager.mockImplementation(
-      () =>
-        ({
-          manager: {
-            updatePackages: mockUpdatePackages,
-            checkPackageVersions: mockCheckPackageVersions,
-          },
-        }) as unknown as InstanceType<typeof PackageManager>,
-    )
-    mockFilterPackages.mockReset().mockResolvedValue([])
+    mockPlan.mockReset().mockResolvedValue([])
 
     program = new Command()
     program.exitOverride()
@@ -65,25 +53,23 @@ describe('update command', () => {
     expect(cmd).toBeDefined()
   })
 
-  it('calls updatePackages on action', async () => {
+  it('runs the update pipeline on action', async () => {
     mockUpdatePackages.mockResolvedValue([])
     await program.parseAsync(['node', 'test', 'update'])
-    expect(mockUpdatePackages).toHaveBeenCalledWith(
-      expect.any(String),
-      undefined,
-    )
+    expect(mockUpdatePackages).toHaveBeenCalledWith(npm, expect.any(String), {
+      targetPackages: undefined,
+    })
   })
 
   it('passes target packages when specified', async () => {
     mockUpdatePackages.mockResolvedValue([])
     await program.parseAsync(['node', 'test', 'update', 'react', 'lodash'])
-    expect(mockUpdatePackages).toHaveBeenCalledWith(expect.any(String), [
-      'react',
-      'lodash',
-    ])
+    expect(mockUpdatePackages).toHaveBeenCalledWith(npm, expect.any(String), {
+      targetPackages: ['react', 'lodash'],
+    })
   })
 
-  it('runs dry-run without calling updatePackages', async () => {
+  it('runs dry-run without applying', async () => {
     mockCheckPackageVersions.mockResolvedValue({
       react: {
         name: 'react',
@@ -92,7 +78,7 @@ describe('update command', () => {
         latest: '18.0.1',
       },
     })
-    mockFilterPackages.mockResolvedValue([
+    mockPlan.mockResolvedValue([
       {
         name: 'react',
         current: '18.0.0',
@@ -128,7 +114,7 @@ describe('update command', () => {
         latest: '18.0.1',
       },
     })
-    mockFilterPackages.mockResolvedValue(results)
+    mockPlan.mockResolvedValue(results)
 
     const consoleSpy = jest.spyOn(console, 'log').mockImplementation()
     await program.parseAsync(['node', 'test', 'update', '--dry-run', '--json'])
@@ -162,7 +148,7 @@ describe('update command', () => {
 
     await program.parseAsync(['node', 'test', 'update', '--dry-run'])
 
-    expect(mockFilterPackages).not.toHaveBeenCalled()
+    expect(mockPlan).not.toHaveBeenCalled()
     expect(mockUpdatePackages).not.toHaveBeenCalled()
   })
 
@@ -182,7 +168,7 @@ describe('update command', () => {
       },
     }
     mockCheckPackageVersions.mockResolvedValue(outdated)
-    mockFilterPackages.mockResolvedValue([
+    mockPlan.mockResolvedValue([
       {
         name: 'react',
         current: '18.0.0',
@@ -206,10 +192,9 @@ describe('update command', () => {
     await program.parseAsync(['node', 'test', 'update', '--interactive'])
 
     expect(mockCheckPackageVersions).toHaveBeenCalledTimes(1)
-    expect(mockUpdatePackages).toHaveBeenCalledWith(
-      expect.any(String),
-      ['react'],
-      outdated,
-    )
+    expect(mockUpdatePackages).toHaveBeenCalledWith(npm, expect.any(String), {
+      targetPackages: ['react'],
+      discovered: outdated,
+    })
   })
 })

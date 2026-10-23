@@ -26,8 +26,8 @@ commands/
 
 ### Command Flow (check/update)
 1. Detect package manager via `detectPackageManager(cwd)`
-2. Create `PackageManager` factory instance
-3. Call `manager.checkPackageVersions(cwd)` or `manager.updatePackages(cwd)`
+2. Get its adapter with `adapterFor(name)` (`src/managers`)
+3. Run the pipeline (`src/pipeline.ts`): `check(adapter, cwd)`, or `update(adapter, cwd, { targetPackages })`. Dry-run is `check` then `plan`
 
 ### Command Options
 
@@ -37,7 +37,7 @@ commands/
 #### `update [packages...]`
 - Accepts optional variadic package names to target specific packages
 - `--dry-run` - Preview which packages would be updated without making changes: each row shows `current → target`, flagged `beyond range` when it leaves its manifest range; held rows show the policy's reason
-- `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). Discovery runs once: the checklist's `checkPackageVersions` result is passed to `updatePackages(cwd, selected, discovered)`
+- `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). Discovery runs once: the checklist's `check` result is passed to `update(adapter, cwd, { targetPackages: selected, discovered })`
 - `--json` - Output `UpdateResult[]` as JSON (`[]` when nothing is outdated, including with `--dry-run`). Conflicts with `--interactive`
 
 ### JSON output
@@ -55,6 +55,6 @@ Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodat
 
 ## Integration Points
 - `src/detectPackageManager.ts` for package manager detection
-- `src/managers/packageManager.ts` factory for manager instantiation
+- `src/managers` `adapterFor(name)` for the detected manager's adapter
+- `src/pipeline.ts` `check`, `plan` and `update`
 - `src/utils/config.ts` for loading/saving configuration
-- `src/utils/filterPackages.ts` for dry-run and interactive filtering

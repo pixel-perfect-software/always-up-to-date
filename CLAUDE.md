@@ -39,16 +39,16 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 
 ### Core Components
 
-**Package Manager Abstraction**
-- `src/detectPackageManager.ts` detects the package manager by checking for lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lock)
-- `src/managers/packageManager.ts` is a factory that instantiates the correct manager based on detection
-- Each manager (npm, yarn, pnpm, bun) extends `CommandRunner` and implements:
-  - `checkPackageVersions(cwd)` - Returns `Record<string, PackageInfo>` of outdated packages
-  - `updatePackages(cwd, targetPackages?, discovered?)` - Updates packages, returns `UpdateResult[]`. Optional `targetPackages` scopes to specific packages; optional `discovered` is a `checkPackageVersions` result the caller already has, so discovery is not run twice.
-  - `checkIfInWorkspace(cwd)` - Detects workspace/monorepo configuration
+**Pipeline and manager adapters**
+- `src/pipeline.ts` runs detect → discover → plan → apply → report once for every manager:
+  - `check(adapter, cwd)` - Returns `Record<string, PackageInfo>` of outdated packages, keyed by package.json name, and prints them
+  - `plan(adapter, cwd, outdated, targetPackages?)` - The policy's `UpdateResult[]` (dry-run, interactive)
+  - `update(adapter, cwd, { targetPackages?, discovered? })` - Plans, applies, returns `UpdateResult[]`. `discovered` is a `check` result the caller already has, so discovery is not run twice
+- Each manager is an adapter (`src/managers/<pm>/index.ts`, interface in `src/managers/adapter.ts`) holding only what is specific to it: `lockfile`, `readWorkspace`, `discover` (with an exported pure parser), `apply`, `saveStyle`, `overrides`. A new manager is its adapter, its registry entry in `src/managers/index.ts`, and its fixtures
+- `src/detectPackageManager.ts` detects the package manager from the adapters' lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lock); `adapterFor(name)` returns its adapter
 
 **Command Runner Pattern**
-- `src/commandRunner.ts` provides the base `runCommand()` method that all package managers use
+- `src/commandRunner.ts` provides `runCommand()` / `runStep()`; the pipeline hands adapters a `run` bound to the step
 - Executes package manager commands via `runProcess` (`src/utils/runProcess.ts`): `execFile` with an argument array, no shell, no output cap. Commands are always built as arrays, never strings
 - Success is judged per call by exit code plus parsable stdout (a `SuccessCheck`), never by stderr, which is logged at debug level
 - All manager commands go through this abstraction for consistency

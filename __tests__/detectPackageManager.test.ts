@@ -1,3 +1,8 @@
+jest.mock('@/utils/registry', () => ({
+  clearRegistryCache: jest.fn(),
+  fetchReleaseTimes: jest.fn(),
+}))
+
 import fs from 'fs'
 import path from 'path'
 import detectPackageManager from '@/detectPackageManager'

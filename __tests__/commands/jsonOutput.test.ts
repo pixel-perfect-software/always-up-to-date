@@ -4,27 +4,26 @@ jest.mock('@/detectPackageManager', () => ({
   __esModule: true,
   default: jest.fn().mockReturnValue('npm'),
 }))
-jest.mock('@/managers', () => ({ PackageManager: jest.fn() }))
+jest.mock('@/pipeline', () => ({
+  check: jest.fn(),
+  plan: jest.fn(),
+  update: jest.fn(),
+}))
 jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
 }))
-jest.mock('@/utils/filterPackages', () => ({
-  __esModule: true,
-  default: jest.fn(),
-}))
 
 import checkCommand from '@/commands/check'
 import updateCommand from '@/commands/update'
-import { PackageManager } from '@/managers'
+import { check, plan, update } from '@/pipeline'
 import type { PackageInfo, UpdateResult } from '@/types'
-import filterPackages from '@/utils/filterPackages'
 import logger from '@/utils/logger'
 
 /**
- * The logger is real here. The fake manager reports progress through it the
- * way the real managers do, so any human output that reaches stdout breaks
+ * The logger is real here. The fake pipeline reports progress through it the
+ * way the real one does, so any human output that reaches stdout breaks
  * JSON.parse on what the command printed.
  */
 const outdated: Record<string, PackageInfo> = {
@@ -46,20 +45,20 @@ const results: UpdateResult[] = [
   },
 ]
 
-const fakeManager = {
-  checkPackageVersions: jest.fn(async () => {
+const fakePipeline = {
+  check: async () => {
     logger.starting('Checking dependencies', 'npm')
     logger.outdatedHeader()
     logger.printOutdatedRows([
       { name: 'dayjs', current: '1.11.9', latest: '1.11.23' },
     ])
     return outdated
-  }),
-  updatePackages: jest.fn(async () => {
+  },
+  update: async () => {
     logger.updatingHeader('npm')
     logger.warn('Skipped ms: not listed in the root package.json.')
     return results
-  }),
+  },
 }
 
 const originalLog = Object.getPrototypeOf(console).log
@@ -76,15 +75,9 @@ describe('--json output', () => {
   }
 
   beforeEach(() => {
-    jest
-      .mocked(PackageManager)
-      .mockImplementation(
-        () =>
-          ({ manager: fakeManager }) as unknown as InstanceType<
-            typeof PackageManager
-          >,
-      )
-    jest.mocked(filterPackages).mockResolvedValue(results)
+    jest.mocked(check).mockImplementation(fakePipeline.check)
+    jest.mocked(update).mockImplementation(fakePipeline.update)
+    jest.mocked(plan).mockResolvedValue(results)
 
     stdout = []
     stderr = []
@@ -115,7 +108,7 @@ describe('--json output', () => {
   })
 
   it('update --dry-run --json prints [] when nothing is outdated', async () => {
-    fakeManager.checkPackageVersions.mockImplementationOnce(async () => {
+    jest.mocked(check).mockImplementationOnce(async () => {
       logger.allUpToDate()
       return {}
     })
@@ -137,6 +130,6 @@ describe('--json output', () => {
     await expect(run('update', '--interactive', '--json')).rejects.toThrow(
       /cannot be used with/,
     )
-    expect(fakeManager.checkPackageVersions).not.toHaveBeenCalled()
+    expect(check).not.toHaveBeenCalled()
   })
 })
