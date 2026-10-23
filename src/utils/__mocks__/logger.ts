@@ -18,6 +18,7 @@ const logger = {
   clean: jest.fn(),
   debug: jest.fn(),
   setQuiet: jest.fn(),
+  setJsonOutput: jest.fn(),
 }
 
 export const pluralize = jest.fn(

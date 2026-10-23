@@ -31,13 +31,16 @@ commands/
 ### Command Options
 
 #### `check`
-- `--json` - Output raw JSON instead of formatted display (suppresses logger)
+- `--json` - Output raw JSON instead of formatted display
 
 #### `update [packages...]`
 - Accepts optional variadic package names to target specific packages
 - `--dry-run` - Preview which packages would be updated without making changes
 - `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). Discovery runs once: the checklist's `checkPackageVersions` result is passed to `updatePackages(cwd, selected, discovered)`
-- `--json` - Output `UpdateResult[]` as JSON after updating
+- `--json` - Output `UpdateResult[]` as JSON (`[]` when nothing is outdated, including with `--dry-run`). Conflicts with `--interactive`
+
+### JSON output
+With `--json`, stdout carries exactly one JSON document. The action calls `logger.setJsonOutput(true)` before anything else: progress output is dropped, and errors, warnings and debug lines go to stderr. All human-facing output must go through `logger`; a bare `console.log` anywhere on the command path breaks `--json`.
 
 ### Binary Aliases
 Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodate`, `always-up-to-date`. All point to `dist/index.js`.

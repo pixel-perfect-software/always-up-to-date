@@ -26,25 +26,46 @@ export interface SkippedRow extends OutdatedRow {
 
 class Logger {
   private quiet: boolean = config.silent
+  private jsonOutput = false
 
   setQuiet(quiet: boolean): void {
     this.quiet = quiet
   }
 
+  /**
+   * `--json` mode: stdout carries only the JSON document. Progress output is
+   * dropped; errors, warnings and debug lines go to stderr.
+   */
+  setJsonOutput(jsonOutput: boolean): void {
+    this.jsonOutput = jsonOutput
+  }
+
+  /** Progress output is dropped when quiet and in `--json` mode. */
+  private get muted(): boolean {
+    return this.quiet || this.jsonOutput
+  }
+
+  /** Errors, warnings and debug lines: stderr in `--json` mode. */
+  private diagnostic(line: string): void {
+    if (this.quiet) return
+    if (this.jsonOutput) console.error(line)
+    else console.log(line)
+  }
+
   info(message: string): void {
-    if (!this.quiet) console.log(`${blue('ℹ️')} ${message}`)
+    if (!this.muted) console.log(`${blue('ℹ️')} ${message}`)
   }
 
   success(message: string): void {
-    if (!this.quiet) console.log(`${green('✅')} ${green(message)}`)
+    if (!this.muted) console.log(`${green('✅')} ${green(message)}`)
   }
 
   warn(message: string): void {
-    if (!this.quiet) console.log(`${yellow('⚠️')} ${yellow(message)}`)
+    this.diagnostic(`${yellow('⚠️')} ${yellow(message)}`)
   }
 
   error(message: string): void {
-    if (!this.quiet) console.log(`${red('❌')} ${red(message)}`)
+    this.diagnostic(`${red('❌')} ${red(message)}`)
   }
 
   /**
@@ -52,19 +73,17 @@ class Logger {
    * Used for shell-out commands which are noisy for normal CLI use.
    */
   command(command: string): void {
-    if (!this.quiet && config.debug) {
-      console.log(`${gray('$')} ${gray(command)}`)
-    }
+    if (config.debug) this.diagnostic(`${gray('$')} ${gray(command)}`)
   }
 
   workspace(manager: string): void {
-    if (!this.quiet) {
+    if (!this.muted) {
       console.log(`${blue('🏢')} ${blue(`Detected ${manager} workspace.`)}`)
     }
   }
 
   allUpToDate(): void {
-    if (!this.quiet) {
+    if (!this.muted) {
       console.log(`\n${green('🎉')} ${green('All packages are up to date.')}`)
     }
   }
@@ -74,7 +93,7 @@ class Logger {
    * allow/deny legend when those lists are actually populated.
    */
   outdatedHeader(): void {
-    if (this.quiet) return
+    if (this.muted) return
     console.log(`\n${yellow('📈')} ${bold('Outdated packages found')}`)
 
     const hasDeny = (config.updateDenylist?.length ?? 0) > 0
@@ -90,7 +109,7 @@ class Logger {
   }
 
   packageGroupHeader(groupName: string): void {
-    if (this.quiet) return
+    if (this.muted) return
     const displayName =
       groupName === 'unscoped' ? 'Other packages' : `${groupName} packages`
     console.log(`\n${cyan('🏷️')}  ${bold(cyan(displayName))}`)
@@ -101,7 +120,7 @@ class Logger {
    * Pads name and current-version columns based on the widest entry.
    */
   printOutdatedRows(rows: OutdatedRow[]): void {
-    if (this.quiet || rows.length === 0) return
+    if (this.muted || rows.length === 0) return
     const widths = computeWidths(rows)
     for (const row of rows) {
       console.log(formatRow(row, widths, undefined))
@@ -109,7 +128,7 @@ class Logger {
   }
 
   updatingHeader(manager: string): void {
-    if (this.quiet) return
+    if (this.muted) return
     console.log(`\n${blue('🔄')} ${bold(`Updating packages with ${manager}`)}`)
   }
 
@@ -117,7 +136,7 @@ class Logger {
    * Print a column-aligned block of packages being updated.
    */
   printUpdatingRows(rows: OutdatedRow[]): void {
-    if (this.quiet || rows.length === 0) return
+    if (this.muted || rows.length === 0) return
     const widths = computeWidths(rows)
     for (const row of rows) {
       console.log(formatRow(row, widths, undefined))
@@ -128,7 +147,7 @@ class Logger {
    * Print a column-aligned block of skipped packages with reason.
    */
   printSkippedRows(rows: SkippedRow[]): void {
-    if (this.quiet || rows.length === 0) return
+    if (this.muted || rows.length === 0) return
     const widths = computeWidths(rows)
     for (const row of rows) {
       const note = row.reason ?? `${row.updateType} update skipped`
@@ -137,18 +156,16 @@ class Logger {
   }
 
   starting(operation: string, manager: string): void {
-    if (this.quiet) return
+    if (this.muted) return
     console.log(`${blue('🚀')} ${blue(`${operation} with ${bold(manager)}`)}`)
   }
 
   clean(message: string): void {
-    if (!this.quiet) console.log(message)
+    if (!this.muted) console.log(message)
   }
 
   debug(message: string): void {
-    if (!this.quiet && config.debug) {
-      console.log(gray(`  ${message}`))
-    }
+    if (config.debug) this.diagnostic(gray(`  ${message}`))
   }
 
   /**
@@ -156,7 +173,7 @@ class Logger {
    * but the config skipped them all. Header + indented body lines.
    */
   noPackagesToUpdate(body: string[] | string): void {
-    if (this.quiet) return
+    if (this.muted) return
     const lines = Array.isArray(body) ? body : [body]
     console.log(`\n${yellow('🤔')} ${bold('No packages to update')}`)
     for (const line of lines) {
@@ -169,7 +186,7 @@ class Logger {
    * No-op when nothing is gated.
    */
   cooldownSummary(results: UpdateResult[]): void {
-    if (this.quiet) return
+    if (this.muted) return
     const gated = results
       .filter((r) => !r.updated && r.reason?.startsWith('cooldown:'))
       .map(
