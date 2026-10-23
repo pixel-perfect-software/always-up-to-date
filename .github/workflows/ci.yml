@@ -56,10 +56,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
         pm: [npm, pnpm, yarn, berry, bun]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       AUTD_INTEGRATION_PM: ${{ matrix.pm }}
     steps:
