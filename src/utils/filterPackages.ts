@@ -9,8 +9,12 @@ import { evaluateCooldown, isCooldownEnabled } from './cooldown'
 import { formatAgeDays } from './duration'
 import { loadRegistryConfig } from './npmrcLoader'
 import { findControllingOverrides } from './overrides'
+import { type PeerRequirement, readInstalledPeers } from './peers'
 import { fetchReleaseTimes } from './registry'
-import updateChecker, { policyFromConfig } from './updateChecker'
+import updateChecker, {
+  policyFromConfig,
+  type UpdatePolicy,
+} from './updateChecker'
 
 interface FilterPackagesOptions {
   targetPackages?: string[]
@@ -18,6 +22,53 @@ interface FilterPackagesOptions {
   now?: number
   /** Whose override fields to honor; without it no package is held for one. */
   packageManager?: SupportedPackageManager
+}
+
+/**
+ * Holds targets an installed package's peer range excludes. A range declared
+ * by a package that is itself moving in this run doesn't count: its new
+ * version's peers can't be known offline. Holding one package can expose a
+ * conflict for another, so this repeats until nothing changes. A `latest`
+ * rule still moves, with the conflict as a warning.
+ */
+const holdPeerConflicts = (
+  results: UpdateResult[],
+  peers: Map<string, PeerRequirement[]>,
+  policy: UpdatePolicy,
+): UpdateResult[] => {
+  let current = results
+  for (;;) {
+    const moving = new Set(current.filter((r) => r.updated).map((r) => r.name))
+    let changed = false
+
+    current = current.map((result) => {
+      const { name, target } = result
+      if (!result.updated || !target || result.warning) return result
+
+      const conflict = (peers.get(name) ?? []).find(
+        (peer) =>
+          !moving.has(peer.name) &&
+          !semver.satisfies(target, peer.range, { includePrerelease: true }),
+      )
+      if (!conflict) return result
+
+      const message = `peer conflict: ${conflict.name}@${conflict.version} needs ${name} ${conflict.range}`
+      if (policy.ruleFor(name) === 'latest') {
+        return { ...result, warning: message }
+      }
+
+      changed = true
+      return {
+        ...result,
+        target: undefined,
+        updated: false,
+        updateType: semver.diff(result.current, result.latest),
+        reason: message,
+      }
+    })
+
+    if (!changed) return current
+  }
 }
 
 /**
@@ -92,10 +143,14 @@ const filterPackages = async (
     },
   )
 
-  if (!cooldownActive || !registryConfig) return initialResults
+  const results = initialResults.some((r) => r.updated)
+    ? holdPeerConflicts(initialResults, readInstalledPeers(cwd), policy)
+    : initialResults
+
+  if (!cooldownActive || !registryConfig) return results
 
   return Promise.all(
-    initialResults.map(async (result) => {
+    results.map(async (result) => {
       if (!result.updated || !result.target) return result
 
       const releaseTimes = await fetchReleaseTimes(result.name, registryConfig)

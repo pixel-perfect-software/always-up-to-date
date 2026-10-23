@@ -58,6 +58,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
   - `rules` - Per package or `*` glob: `"hold"`, `"followRange"`, `"latest"`. Exact name beats glob; longest glob wins
   - Deprecated, still read: `allowMinorUpdates` / `allowMajorUpdates` (→ `beyondRange`), `updateAllowlist` / `updateDenylist` (→ `latest` / `hold` rules). The new fields win when both are set
   - Overrides the manager enforces (`src/utils/overrides.ts`) beat everything: a target outside an override's range is held as `controlled by …`
+  - A target an installed package's peer range excludes is held (`src/utils/peers.ts`, `peer conflict: …`); a `latest` rule moves anyway and sets `UpdateResult.warning`
 - Support the current version of each manager only; verify its behavior with a real run rather than reading fields older versions honored
   - `debug` / `silent` - Logging control
   - `cooldown` - Hold off on suggesting freshly-published versions. Accepts a number (days), a duration string (`"1 week"`, `"24h"`), or a per-update-type object (`{ patch, minor, major }` whose values can be either form). Defaults to `0` (disabled).

@@ -13,6 +13,10 @@ const mockLogger = {
 interface LoadOpts {
   releaseTimes?: Record<string, Record<string, string>>
   controllingOverrides?: Record<string, { field: string; range: string }>
+  installedPeers?: Record<
+    string,
+    Array<{ name: string; version: string; range: string }>
+  >
 }
 
 function loadFilterWithConfig(
@@ -40,6 +44,11 @@ function loadFilterWithConfig(
         scopedRegistries: {},
         authTokens: {},
       }),
+    }))
+    jest.doMock('@/utils/peers', () => ({
+      readInstalledPeers: jest.fn(
+        () => new Map(Object.entries(opts.installedPeers ?? {})),
+      ),
     }))
     jest.doMock('@/utils/overrides', () => ({
       findControllingOverrides: jest.fn(() => opts.controllingOverrides ?? {}),
@@ -267,6 +276,112 @@ describe('filterPackages', () => {
     expect(result).toMatchObject({
       updated: false,
       reason: 'controlled by overrides (^18.2.0)',
+    })
+  })
+
+  describe('installed peer ranges', () => {
+    // On the benchmark project: react-query 4 and next 14 accept react 18 only.
+    const peersOnReact = {
+      react: [
+        {
+          name: '@tanstack/react-query',
+          version: '4.29.5',
+          range: '^16.8.0 || ^17.0.0 || ^18.0.0',
+        },
+        { name: 'react-dom', version: '18.2.0', range: '^18.2.0' },
+      ],
+      'react-dom': [
+        {
+          name: '@tanstack/react-query',
+          version: '4.29.5',
+          range: '^16.8.0 || ^17.0.0 || ^18.0.0',
+        },
+      ],
+    }
+    const reactPair = makeOutdated([
+      { name: 'react', current: '18.2.0', wanted: '18.3.1', latest: '19.3.1' },
+      {
+        name: 'react-dom',
+        current: '18.2.0',
+        wanted: '18.3.1',
+        latest: '19.3.1',
+      },
+    ])
+
+    it('holds a target an installed peer range excludes, naming the package', async () => {
+      const filter = loadFilterWithConfig(
+        { beyondRange: 'major' },
+        { installedPeers: peersOnReact },
+      )
+
+      const results = await filter(reactPair)
+
+      expect(results.find((r) => r.name === 'react')).toMatchObject({
+        updated: false,
+        reason:
+          'peer conflict: @tanstack/react-query@4.29.5 needs react ^16.8.0 || ^17.0.0 || ^18.0.0',
+      })
+    })
+
+    it('ignores the peer ranges of packages moving in the same run', async () => {
+      const filter = loadFilterWithConfig(
+        { beyondRange: 'major' },
+        { installedPeers: { react: [peersOnReact.react[1]] } },
+      )
+
+      const results = await filter(reactPair)
+
+      // react-dom 18.2.0 needs react ^18.2.0, but react-dom moves to 19 too.
+      expect(results.find((r) => r.name === 'react')).toMatchObject({
+        updated: true,
+        target: '19.3.1',
+      })
+    })
+
+    it('holds packages whose co-update was held, until nothing changes', async () => {
+      // react-dom is held by react-query's peer range; react-dom 18.2.0
+      // then stays, and its own peer range blocks react 19.
+      const filter = loadFilterWithConfig(
+        { beyondRange: 'major' },
+        {
+          installedPeers: {
+            react: [peersOnReact.react[1]],
+            'react-dom': peersOnReact['react-dom'],
+          },
+        },
+      )
+
+      const results = await filter(reactPair)
+
+      expect(results.find((r) => r.name === 'react-dom')?.updated).toBe(false)
+      expect(results.find((r) => r.name === 'react')).toMatchObject({
+        updated: false,
+        reason: 'peer conflict: react-dom@18.2.0 needs react ^18.2.0',
+      })
+    })
+
+    it('keeps an in-range target the installed peers accept', async () => {
+      const filter = loadFilterWithConfig({}, { installedPeers: peersOnReact })
+
+      const results = await filter(reactPair)
+
+      expect(results.map((r) => r.target)).toEqual(['18.3.1', '18.3.1'])
+    })
+
+    it('lets a latest rule through with a warning', async () => {
+      const filter = loadFilterWithConfig(
+        { rules: { react: 'latest' } },
+        { installedPeers: peersOnReact },
+      )
+
+      const results = await filter(makeOutdated([reactPair.react]))
+
+      expect(results[0]).toMatchObject({
+        updated: true,
+        target: '19.3.1',
+        warning:
+          'peer conflict: @tanstack/react-query@4.29.5 needs react ^16.8.0 || ^17.0.0 || ^18.0.0',
+      })
     })
   })
 

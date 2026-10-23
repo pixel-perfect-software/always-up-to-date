@@ -167,6 +167,8 @@ Run `autd init` to create `.always-up-to-date.json` in your project root:
 
 Keys are package names or `*` globs (`"@types/*"`, `"eslint-*"`, `"*"`). An exact name beats a glob, and among globs the longest pattern wins.
 
+An update that an installed package's peer range would reject is held too, naming the package: `react` stays on 18 while `@tanstack/react-query` 4, which accepts react up to 18, stays installed. A `"latest"` rule still moves it, with a warning.
+
 A package your package manager pins with an override is held when the update would leave the override's range, with the reason `controlled by …`: npm `overrides`, yarn berry `resolutions`, pnpm `overrides` in `pnpm-workspace.yaml`, and bun `overrides` or `resolutions`.
 
 When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"` becomes `"^19.3.1"` and `"1.11.9"` becomes `"1.11.23"`. Run `autd update --dry-run` to see where each package would move, or why it is held.

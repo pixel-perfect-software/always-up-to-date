@@ -20,6 +20,8 @@ export interface UpdateResult {
   updateType: ReleaseType | null
   updated: boolean
   reason?: string
+  /** Set when an update goes ahead despite a problem (a `latest` rule over a peer conflict). */
+  warning?: string
   releaseAge?: number
 }
 

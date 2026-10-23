@@ -88,6 +88,7 @@ __tests__/
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping
     overrides.test.ts       # Which override keys pin a package, per manager's current version
+    peers.test.ts           # Installed peer ranges from hoisted node_modules and the pnpm store
 ```
 
 ## Tech Stack
