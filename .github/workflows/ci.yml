@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+  pull_request:
 
 jobs:
   test:
@@ -26,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check formatting and lint
+        run: pnpm run format-and-lint
+
       - name: Run tests
         run: pnpm test --passWithNoTests
 
@@ -33,4 +37,4 @@ jobs:
         run: pnpm run build
 
       - name: Check TypeScript
-        run: npx tsc --noEmit
+        run: pnpm run check-types

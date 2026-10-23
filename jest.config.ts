@@ -6,7 +6,12 @@ export default {
     '^.+\\.(t|j)sx?$': '@swc/jest',
   },
   collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts'],
-  coveragePathIgnorePatterns: ['node_modules/', 'index.ts'],
+  // Only the re-export barrels. Every other file, including each manager's
+  // index.ts and the CLI entry, is measured.
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    '<rootDir>/src/(commands|managers|utils)/index\\.ts$',
+  ],
   coverageReporters: ['text', 'lcov', 'html', 'json-summary'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
