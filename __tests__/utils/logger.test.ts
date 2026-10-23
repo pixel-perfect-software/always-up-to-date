@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from 'util'
 import type { UpdateResult } from '@/types'
 import logger, { pluralize } from '@/utils/logger'
 
@@ -177,7 +178,11 @@ describe('Logger', () => {
         { name: 'c', current: '1.0.0', latest: '1.0.1' },
       ])
 
-      const lines = logSpy.mock.calls.map(([line]) => line as string)
+      // CI colors the output (colorette turns colors on there), so names
+      // sit inside escape codes unless they are stripped.
+      const lines = logSpy.mock.calls.map(([line]) =>
+        stripVTControlCharacters(line as string),
+      )
       expect(lines.some((l) => l.includes('in updateDenylist'))).toBe(true)
       expect(lines.some((l) => l.includes('in updateAllowlist'))).toBe(true)
       expect(
