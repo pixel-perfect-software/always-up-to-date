@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import type { PackageInfo } from '@/types'
 
-const DEPENDENCY_FIELDS = [
+export const DEPENDENCY_FIELDS = [
   'dependencies',
   'devDependencies',
   'optionalDependencies',

@@ -14,6 +14,7 @@ import {
   toOutdatedRow,
   toUpdatingRow,
 } from '@/utils'
+import { checkApplied, readInstalledVersions } from '@/utils/installed'
 import { toManifestNames } from '@/utils/manifestNames'
 
 const runner = new CommandRunner()
@@ -136,6 +137,13 @@ export const update = async (
     workspace,
   )
 
-  logger.cooldownSummary(results)
-  return results
+  // Report what the manager installed, not what it was asked to install.
+  const applied = checkApplied(
+    results,
+    readInstalledVersions(cwd, names),
+    adapter.name,
+  )
+  logger.notAppliedSummary(applied, adapter.name)
+  logger.cooldownSummary(applied)
+  return applied
 }

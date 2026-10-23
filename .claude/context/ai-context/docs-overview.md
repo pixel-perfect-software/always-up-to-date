@@ -62,7 +62,7 @@ __tests__/
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
   project.test.ts           # openProject: config loaded once, logger configured before detection
-  pipeline.test.ts          # The pipeline plans with project.config and never loads it
+  pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   commands/
     check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options
@@ -97,6 +97,7 @@ __tests__/
     peers.test.ts           # Installed peer ranges from hoisted node_modules and the pnpm store
     saveStyle.test.ts       # Where each manager keeps save-exact / save-prefix
     manifestNames.test.ts   # Report names mapped back to package.json keys
+    installed.test.ts       # Installed root-dependency versions (hoisted, scoped, alias, pnpm symlink); checkApplied
 ```
 
 ## Tech Stack

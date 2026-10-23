@@ -29,6 +29,7 @@ utils/
   peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, pnpm store)
   saveStyle.ts        # SaveStyle, DEFAULT_SAVE_STYLE, readTextFile(), yamlValue(): what adapters' saveStyle() builds on
   manifestNames.ts    # toManifestNames(cwd, outdated): re-keys a report by package.json names (npm: aliases)
+  installed.ts        # readInstalledVersions(cwd, names): root dependencies' versions in node_modules; checkApplied(): rows the manager left in place become `not applied by <pm> (installed …)`
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
   logger.ts           # Colored logging (colorette); configure(config) takes `debug`, `silent` and the deprecated allow/deny lists (defaults before it: debug off, not quiet, no lists), setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr

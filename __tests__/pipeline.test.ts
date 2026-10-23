@@ -66,4 +66,52 @@ describe('pipeline', () => {
     expect(held.find((r) => r.name === 'dayjs')?.updated).toBe(false)
     expect(moved.find((r) => r.name === 'dayjs')?.updated).toBe(true)
   })
+
+  describe('a package the manager leaves in place', () => {
+    const install = (name: string, version: string) => {
+      fs.mkdirSync(path.join(cwd, 'node_modules', name), { recursive: true })
+      fs.writeFileSync(
+        path.join(cwd, 'node_modules', name, 'package.json'),
+        JSON.stringify({ name, version }),
+      )
+    }
+
+    // npm 11.19.1: express's send@0.17.1 pins ms@2.1.1 exactly, so
+    // `npm update debug ms` moves debug and keeps the hoisted ms.
+    it('reports the hoisted pin as not applied while the package that moved stays updated', async () => {
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({
+          dependencies: { ms: '~2.1.1', express: '4.17.1', debug: '~4.3.1' },
+        }),
+      )
+      install('ms', '2.1.1')
+      install('debug', '4.3.1')
+      install('express', '4.17.1')
+      jest.mocked(runProcess).mockImplementation(async (_file, args) => {
+        if (args[0] === 'outdated') {
+          throw exitError(1, readFixture('npm/outdated-hoisted-pin.stdout'), '')
+        }
+        install('debug', '4.3.7')
+        return { stdout: '', stderr: '' }
+      })
+
+      const results = await update(projectFor(npm, cwd))
+
+      const updateCall = jest
+        .mocked(runProcess)
+        .mock.calls.find(([, args]) => args[0] === 'update')
+      expect(updateCall?.[1]).toEqual(['update', 'debug', 'ms'])
+      expect(results.find((r) => r.name === 'ms')).toMatchObject({
+        updated: false,
+        target: undefined,
+        reason: 'not applied by npm (installed 2.1.1)',
+      })
+      expect(results.find((r) => r.name === 'debug')).toMatchObject({
+        updated: true,
+        target: '4.3.7',
+      })
+      expect(results.find((r) => r.name === 'express')?.updated).toBe(false)
+    })
+  })
 })

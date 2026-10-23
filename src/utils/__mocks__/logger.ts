@@ -14,6 +14,7 @@ const logger = {
   updatingHeader: jest.fn(),
   noPackagesToUpdate: jest.fn(),
   cooldownSummary: jest.fn(),
+  notAppliedSummary: jest.fn(),
   starting: jest.fn(),
   clean: jest.fn(),
   debug: jest.fn(),

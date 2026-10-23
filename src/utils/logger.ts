@@ -209,6 +209,30 @@ class Logger {
   }
 
   /**
+   * Packages the manager was asked to move but left in place (`not applied
+   * by …` rows from `checkApplied`). No-op when every package moved.
+   */
+  notAppliedSummary(results: UpdateResult[], manager: string): void {
+    if (this.muted) return
+    const declined = results
+      .filter((r) => !r.updated && r.reason?.startsWith('not applied by '))
+      .map(
+        (r): SkippedRow => ({
+          name: r.name,
+          current: r.current,
+          latest: r.latest,
+          updateType: r.updateType,
+          reason: r.reason,
+        }),
+      )
+    if (declined.length === 0) return
+    console.log(
+      `\n${yellow('⚠️')} ${bold(`${pluralize(declined.length, 'package')} left in place by ${manager}`)}`,
+    )
+    this.printSkippedRows(declined)
+  }
+
+  /**
    * Summarise packages held back by the cooldown gate.
    * No-op when nothing is gated.
    */

@@ -317,6 +317,60 @@ describe('Logger', () => {
     })
   })
 
+  describe('notAppliedSummary', () => {
+    const makeResult = (overrides: Partial<UpdateResult>): UpdateResult => ({
+      name: 'ms',
+      current: '2.1.1',
+      wanted: '2.1.3',
+      latest: '2.1.3',
+      updateType: 'patch',
+      updated: false,
+      ...overrides,
+    })
+    const notApplied = makeResult({
+      reason: 'not applied by npm (installed 2.1.1)',
+    })
+
+    it('prints header and row for a package the manager left in place', () => {
+      logger.notAppliedSummary([notApplied], 'npm')
+      expect(logSpy).toHaveBeenCalledTimes(2)
+      expect(logSpy.mock.calls[0][0]).toContain(
+        '1 package left in place by npm',
+      )
+      expect(logSpy.mock.calls[1][0]).toContain('ms')
+      expect(logSpy.mock.calls[1][0]).toContain(
+        'not applied by npm (installed 2.1.1)',
+      )
+    })
+
+    it('is a no-op when every package moved or was held for another reason', () => {
+      logger.notAppliedSummary(
+        [
+          makeResult({ updated: true }),
+          makeResult({ reason: 'cooldown: released 3d ago, requires 30d' }),
+        ],
+        'npm',
+      )
+      expect(logSpy).not.toHaveBeenCalled()
+    })
+
+    it('prints nothing when quiet', () => {
+      logger.setQuiet(true)
+      logger.notAppliedSummary([notApplied], 'npm')
+      expect(logSpy).not.toHaveBeenCalled()
+    })
+
+    it('prints nothing in JSON mode', () => {
+      logger.setJsonOutput(true)
+      try {
+        logger.notAppliedSummary([notApplied], 'npm')
+        expect(logSpy).not.toHaveBeenCalled()
+      } finally {
+        logger.setJsonOutput(false)
+      }
+    })
+  })
+
   describe('quiet mode', () => {
     it('suppresses all output when quiet is true', () => {
       logger.setQuiet(true)
