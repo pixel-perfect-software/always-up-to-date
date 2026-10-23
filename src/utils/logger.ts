@@ -17,6 +17,7 @@ export interface OutdatedRow {
   current: string
   latest: string
   releaseAge?: number
+  note?: string
 }
 
 export interface SkippedRow extends OutdatedRow {
@@ -123,7 +124,7 @@ class Logger {
     if (this.muted || rows.length === 0) return
     const widths = computeWidths(rows)
     for (const row of rows) {
-      console.log(formatRow(row, widths, undefined))
+      console.log(formatRow(row, widths, row.note))
     }
   }
 
@@ -139,7 +140,7 @@ class Logger {
     if (this.muted || rows.length === 0) return
     const widths = computeWidths(rows)
     for (const row of rows) {
-      console.log(formatRow(row, widths, undefined))
+      console.log(formatRow(row, widths, row.note))
     }
   }
 

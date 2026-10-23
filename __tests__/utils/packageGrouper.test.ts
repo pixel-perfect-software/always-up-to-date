@@ -7,6 +7,7 @@ import {
 const makeInfo = (name: string): PackageInfo => ({
   name,
   current: '1.0.0',
+  wanted: '1.0.0',
   latest: '2.0.0',
 })
 

@@ -23,7 +23,8 @@ utils/
   duration.ts         # parseDuration() (number | '1 week' | '24h' → days), formatAgeDays(), MS_PER_DAY
   npmrcLoader.ts      # loadRegistryConfig() reads .npmrc + ~/.npmrc + NPM_CONFIG_* env, returns RegistryConfig
   registry.ts         # fetchReleaseTimes() wraps npm-registry-fetch with in-memory per-run cache
-  updateChecker.ts    # Semver-based update filtering (single package, sync)
+  updateChecker.ts    # Update policy: within range by default, beyondRange level, per-package rules (pure)
+  rows.ts             # toOutdatedRow() / toUpdatingRow(): display rows (in-range note, beyond-range flag)
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
   logger.ts           # Colored logging (colorette); setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
@@ -39,20 +40,20 @@ utils/
 - Schema: `AlwaysUpToDateConfig` (see `src/types.ts`)
 - `cooldown` accepts: number (days), duration string (`'1 week'`, `'24h'`), or per-update-type object `{ patch, minor, major }` whose values are themselves numbers or duration strings
 
-### Update Logic (`updateChecker.ts`)
-Priority order:
-1. Invalid semver -> reject
-2. In `updateAllowlist` -> always allow
-3. In `updateDenylist` -> always reject
-4. No version diff -> reject
-5. By type: `patch` always allowed, `minor` if `allowMinorUpdates`, `major` if `allowMajorUpdates`
-6. `allowMajorUpdates: true` implicitly enables minor updates
+### Update Policy (`updateChecker.ts`)
+`updateChecker(info, policy)` is pure: it returns `{ target }` (where the package moves) or `{ reason }` (why it is held). `filterPackages` builds the policy per run with `policyFromConfig(loadConfig(cwd))`.
+1. Invalid semver: held (`invalid version …`)
+2. Rule `hold`: held. Rule `latest`: target `latest`, any step size
+3. Default: stay within the manifest range. Target is `wanted` (the highest version the range allows) when it is ahead of `current`; an exact pin has `wanted == current`, so it is held (`patch beyond the range`, etc.)
+4. `beyondRange` (`none` | `patch` | `minor` | `major`) lets a package move past its range to `latest` when the step `current → latest` is at most that size. It applies to exact pins too. Rule `followRange` opts a package out
+- Legacy fields form the policy: `allowMajorUpdates` → `major`, `allowMinorUpdates` → `minor`, neither → `none`; `updateAllowlist` → rule `latest`, `updateDenylist` → rule `hold` (allowlist wins)
+- `stepLevel()` folds pre-release diffs into patch/minor/major
 
 ### Cooldown (`cooldown.ts` + `duration.ts`)
 - `cooldown.ts` is gate logic: normalize the user's config to `{ patch, minor, major }` days, decide if a release is too fresh given its update type and timestamp
 - `duration.ts` is the generic time/format layer: `parseDuration` accepts numbers, bare numeric strings, and `<n><unit>` (s/min/h/d/w/mo/y) — fails to 0 so callers can fail open
 - `evaluateCooldown` returns `{ gated, ageDays, requiredDays }` — gating is a soft signal, callers decide what to do
-- Cooldown gating only runs after semver eligibility — packages already rejected by `updateChecker` never trigger network calls
+- Cooldown gating judges the chosen `target` version, not `latest`, and only runs for packages with a target, so held packages never trigger network calls
 
 ### Registry / .npmrc (`registry.ts` + `npmrcLoader.ts`)
 - `loadRegistryConfig(cwd)` parses `.npmrc` (cwd → ~/.npmrc → `NPM_CONFIG_*` env, highest wins) into `RegistryConfig`. Substitutes `${VAR}` env references. Recognizes registry, scoped registries, auth tokens, always-auth, strict-ssl, ca/cafile.
@@ -70,9 +71,10 @@ Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Gr
 
 ### Package Filtering (`filterPackages.ts`)
 - Async. Signature: `filterPackages(outdated, { targetPackages?, cwd?, now? })`
-- Wraps `updateChecker` for batch operations across all outdated packages
-- When cooldown is enabled (`cooldown > 0` for any update type), fetches release times from the registry for semver-eligible packages and applies the gate
-- Returns `UpdateResult[]` with name, current, latest, updateType, updated (boolean), reason, and optional `releaseAge`
+- Runs `updateChecker` on every outdated package with the policy for `cwd`
+- When cooldown is enabled (`cooldown > 0` for any update type), fetches release times from the registry for packages with a target and applies the gate
+- Returns `UpdateResult[]` with name, current, wanted, latest, `target` (when updated), updateType (`current → target`, else `current → latest`), updated, reason, and optional `releaseAge`
+- `splitUpdates(results)` divides the chosen updates into `withinRange` names (target == wanted: hand to the manager, write nothing) and `beyondRange` name → version (write the manifest spec first)
 - Used by all manager `updatePackages()` methods, dry-run, and interactive mode
 
 ## Integration Points

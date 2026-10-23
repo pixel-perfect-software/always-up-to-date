@@ -10,6 +10,13 @@ import {
 
 jest.mock('fs')
 
+// The writers take name -> new version; these tests move each package to latest.
+const versionsOf = (
+  names: string[],
+  outdated: Record<string, PackageInfo>,
+): Record<string, string> =>
+  Object.fromEntries(names.map((name) => [name, outdated[name].latest]))
+
 const mockedFs = jest.mocked(fs)
 
 describe('checkIfFileExists', () => {
@@ -33,10 +40,16 @@ describe('checkIfFileExists', () => {
 
 describe('updatePackageJson', () => {
   const outdatedPackages: Record<string, PackageInfo> = {
-    react: { name: 'react', current: '18.0.0', latest: '19.0.0' },
+    react: {
+      name: 'react',
+      current: '18.0.0',
+      wanted: '18.0.0',
+      latest: '19.0.0',
+    },
     typescript: {
       name: 'typescript',
       current: '5.0.0',
+      wanted: '5.0.0',
       latest: '5.5.0',
     },
   }
@@ -49,7 +62,10 @@ describe('updatePackageJson', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePackageJson('/test', ['react', 'typescript'], outdatedPackages)
+    await updatePackageJson(
+      '/test',
+      versionsOf(['react', 'typescript'], outdatedPackages),
+    )
 
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
@@ -68,7 +84,7 @@ describe('updatePackageJson', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePackageJson('/test', ['react'], outdatedPackages)
+    await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
@@ -86,7 +102,7 @@ describe('updatePackageJson', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePackageJson('/test', ['react'], outdatedPackages)
+    await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
@@ -101,7 +117,7 @@ describe('updatePackageJson', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePackageJson('/test', ['react'], outdatedPackages)
+    await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
@@ -119,7 +135,7 @@ describe('updatePackageJson', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePackageJson('/test', ['react'], outdatedPackages)
+    await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
@@ -137,7 +153,7 @@ describe('updatePackageJson', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePackageJson('/test', ['react'], outdatedPackages)
+    await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
@@ -148,7 +164,12 @@ describe('updatePackageJson', () => {
 
 describe('updatePNPMWorkspaceYAML', () => {
   const outdatedPackages: Record<string, PackageInfo> = {
-    react: { name: 'react', current: '18.0.0', latest: '19.0.0' },
+    react: {
+      name: 'react',
+      current: '18.0.0',
+      wanted: '18.0.0',
+      latest: '19.0.0',
+    },
   }
 
   it('updates versions in pnpm-workspace.yaml preserving decorators', async () => {
@@ -156,7 +177,10 @@ describe('updatePNPMWorkspaceYAML', () => {
     mockedFs.readFileSync.mockReturnValue(yaml)
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePNPMWorkspaceYAML('/test', ['react'], outdatedPackages)
+    await updatePNPMWorkspaceYAML(
+      '/test',
+      versionsOf(['react'], outdatedPackages),
+    )
 
     const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
     expect(written).toContain('^19.0.0')
@@ -168,7 +192,10 @@ describe('updatePNPMWorkspaceYAML', () => {
     mockedFs.readFileSync.mockReturnValue(yaml)
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePNPMWorkspaceYAML('/test', ['react'], outdatedPackages)
+    await updatePNPMWorkspaceYAML(
+      '/test',
+      versionsOf(['react'], outdatedPackages),
+    )
 
     const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
     expect(written).toContain("'^19.0.0'")
@@ -179,7 +206,10 @@ describe('updatePNPMWorkspaceYAML', () => {
     mockedFs.readFileSync.mockReturnValue(yaml)
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePNPMWorkspaceYAML('/test', ['react'], outdatedPackages)
+    await updatePNPMWorkspaceYAML(
+      '/test',
+      versionsOf(['react'], outdatedPackages),
+    )
 
     const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
     expect(written).toBe(`catalog:\n  react: 19.0.0\n  lodash: '4.17.0'`)
@@ -190,7 +220,10 @@ describe('updatePNPMWorkspaceYAML', () => {
     mockedFs.readFileSync.mockReturnValue(yaml)
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updatePNPMWorkspaceYAML('/test', ['react'], outdatedPackages)
+    await updatePNPMWorkspaceYAML(
+      '/test',
+      versionsOf(['react'], outdatedPackages),
+    )
 
     const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
     expect(written).toBe(`catalog:\n  react: '19.0.0'`)
@@ -199,8 +232,18 @@ describe('updatePNPMWorkspaceYAML', () => {
 
 describe('updateBunCatalogs', () => {
   const outdatedPackages: Record<string, PackageInfo> = {
-    react: { name: 'react', current: '18.0.0', latest: '19.0.0' },
-    lodash: { name: 'lodash', current: '4.17.0', latest: '4.18.0' },
+    react: {
+      name: 'react',
+      current: '18.0.0',
+      wanted: '18.0.0',
+      latest: '19.0.0',
+    },
+    lodash: {
+      name: 'lodash',
+      current: '4.17.0',
+      wanted: '4.17.0',
+      latest: '4.18.0',
+    },
   }
 
   it('updates default catalog entries', async () => {
@@ -210,7 +253,10 @@ describe('updateBunCatalogs', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updateBunCatalogs('/test', ['react', 'lodash'], outdatedPackages)
+    await updateBunCatalogs(
+      '/test',
+      versionsOf(['react', 'lodash'], outdatedPackages),
+    )
 
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
@@ -229,7 +275,10 @@ describe('updateBunCatalogs', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updateBunCatalogs('/test', ['react', 'lodash'], outdatedPackages)
+    await updateBunCatalogs(
+      '/test',
+      versionsOf(['react', 'lodash'], outdatedPackages),
+    )
 
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
@@ -246,7 +295,10 @@ describe('updateBunCatalogs', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updateBunCatalogs('/test', ['react', 'lodash'], outdatedPackages)
+    await updateBunCatalogs(
+      '/test',
+      versionsOf(['react', 'lodash'], outdatedPackages),
+    )
 
     const written = JSON.parse(
       (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
@@ -262,7 +314,7 @@ describe('updateBunCatalogs', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
-    await updateBunCatalogs('/test', ['react'], outdatedPackages)
+    await updateBunCatalogs('/test', versionsOf(['react'], outdatedPackages))
 
     expect(mockedFs.writeFileSync).not.toHaveBeenCalled()
   })
@@ -277,9 +329,24 @@ describe('identifyCatalogPackages', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
 
     const outdatedPackages: Record<string, PackageInfo> = {
-      react: { name: 'react', current: '18.0.0', latest: '19.0.0' },
-      lodash: { name: 'lodash', current: '4.17.0', latest: '4.18.0' },
-      express: { name: 'express', current: '4.0.0', latest: '5.0.0' },
+      react: {
+        name: 'react',
+        current: '18.0.0',
+        wanted: '18.0.0',
+        latest: '19.0.0',
+      },
+      lodash: {
+        name: 'lodash',
+        current: '4.17.0',
+        wanted: '4.17.0',
+        latest: '4.18.0',
+      },
+      express: {
+        name: 'express',
+        current: '4.0.0',
+        wanted: '4.0.0',
+        latest: '5.0.0',
+      },
     }
 
     const result = identifyCatalogPackages('/test', outdatedPackages)
@@ -295,7 +362,12 @@ describe('identifyCatalogPackages', () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
 
     const outdatedPackages: Record<string, PackageInfo> = {
-      react: { name: 'react', current: '18.0.0', latest: '19.0.0' },
+      react: {
+        name: 'react',
+        current: '18.0.0',
+        wanted: '18.0.0',
+        latest: '19.0.0',
+      },
     }
 
     const result = identifyCatalogPackages('/test', outdatedPackages)

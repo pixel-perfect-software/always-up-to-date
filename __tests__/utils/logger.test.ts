@@ -239,6 +239,7 @@ describe('Logger', () => {
     const makeResult = (overrides: Partial<UpdateResult>): UpdateResult => ({
       name: 'foo',
       current: '1.0.0',
+      wanted: '1.0.0',
       latest: '1.0.1',
       updateType: 'patch',
       updated: false,

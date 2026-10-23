@@ -5,18 +5,29 @@ export type SupportedPackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
 export interface PackageInfo {
   name: string
   current: string
+  /** Highest version the manifest range allows: what the manager would install. */
+  wanted: string
   latest: string
 }
 
 export interface UpdateResult {
   name: string
   current: string
+  wanted: string
   latest: string
+  /** Version the update moves to, when `updated`. Equal to `wanted` when it stays within the range. */
+  target?: string
   updateType: ReleaseType | null
   updated: boolean
   reason?: string
   releaseAge?: number
 }
+
+/** How far past its manifest range a package may move. */
+export type BeyondRange = 'none' | 'patch' | 'minor' | 'major'
+
+/** Per-package override: never, within range only, or always latest. */
+export type PackageRule = 'hold' | 'followRange' | 'latest'
 
 export type CooldownValue = number | string
 

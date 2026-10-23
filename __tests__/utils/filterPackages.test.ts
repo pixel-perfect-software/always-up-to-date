@@ -53,11 +53,17 @@ function loadFilterWithConfig(
 }
 
 const makeOutdated = (
-  packages: Array<{ name: string; current: string; latest: string }>,
+  packages: Array<{
+    name: string
+    current: string
+    wanted?: string
+    latest: string
+  }>,
 ): Record<string, PackageInfo> => {
   const result: Record<string, PackageInfo> = {}
   for (const pkg of packages) {
-    result[pkg.name] = pkg
+    // Without a wanted version the range is treated as an exact pin.
+    result[pkg.name] = { ...pkg, wanted: pkg.wanted ?? pkg.current }
   }
   return result
 }
@@ -66,8 +72,8 @@ describe('filterPackages', () => {
   it('returns update results for all packages', async () => {
     const filter = loadFilterWithConfig({})
     const outdated = makeOutdated([
-      { name: 'foo', current: '1.0.0', latest: '1.0.1' },
-      { name: 'bar', current: '1.0.0', latest: '2.0.0' },
+      { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+      { name: 'bar', current: '1.0.0', wanted: '1.0.0', latest: '2.0.0' },
     ])
 
     const results = await filter(outdated)
@@ -79,14 +85,31 @@ describe('filterPackages', () => {
     expect(results[1].name).toBe('bar')
     expect(results[1].updated).toBe(false)
     expect(results[1].updateType).toBe('major')
+    expect(results[1].reason).toBe('major beyond the range')
+  })
+
+  it('reports the in-range target and wanted version', async () => {
+    const filter = loadFilterWithConfig({})
+    const outdated = makeOutdated([
+      { name: 'react', current: '18.2.0', wanted: '18.3.1', latest: '19.3.1' },
+    ])
+
+    const [result] = await filter(outdated)
+
+    expect(result).toMatchObject({
+      wanted: '18.3.1',
+      target: '18.3.1',
+      updated: true,
+      updateType: 'minor',
+    })
   })
 
   it('marks targeted packages as eligible and others as not targeted', async () => {
     const filter = loadFilterWithConfig({})
     const outdated = makeOutdated([
-      { name: 'foo', current: '1.0.0', latest: '1.0.1' },
-      { name: 'bar', current: '1.0.0', latest: '1.0.2' },
-      { name: 'baz', current: '1.0.0', latest: '1.0.3' },
+      { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+      { name: 'bar', current: '1.0.0', wanted: '1.0.2', latest: '1.0.2' },
+      { name: 'baz', current: '1.0.0', wanted: '1.0.3', latest: '1.0.3' },
     ])
 
     const results = await filter(outdated, { targetPackages: ['foo', 'baz'] })
@@ -100,16 +123,14 @@ describe('filterPackages', () => {
   it('respects config when targeting packages', async () => {
     const filter = loadFilterWithConfig({ updateDenylist: ['foo'] })
     const outdated = makeOutdated([
-      { name: 'foo', current: '1.0.0', latest: '1.0.1' },
-      { name: 'bar', current: '1.0.0', latest: '1.0.2' },
+      { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+      { name: 'bar', current: '1.0.0', wanted: '1.0.2', latest: '1.0.2' },
     ])
 
     const results = await filter(outdated, { targetPackages: ['foo', 'bar'] })
 
     expect(results.find((r) => r.name === 'foo')?.updated).toBe(false)
-    expect(results.find((r) => r.name === 'foo')?.reason).toBe(
-      'skipped by config',
-    )
+    expect(results.find((r) => r.name === 'foo')?.reason).toBe('held by rule')
     expect(results.find((r) => r.name === 'bar')?.updated).toBe(true)
   })
 
@@ -143,7 +164,7 @@ describe('filterPackages', () => {
   it('handles empty target packages array same as no targeting', async () => {
     const filter = loadFilterWithConfig({})
     const outdated = makeOutdated([
-      { name: 'foo', current: '1.0.0', latest: '1.0.1' },
+      { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
     ])
 
     const withEmpty = await filter(outdated, { targetPackages: [] })
@@ -168,13 +189,42 @@ describe('filterPackages', () => {
       )
 
       const results = await filter(
-        makeOutdated([{ name: 'foo', current: '1.0.0', latest: '1.0.1' }]),
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
         { now: NOW },
       )
 
       expect(results[0].updated).toBe(false)
       expect(results[0].reason).toMatch(/cooldown/)
       expect(Math.round(results[0].releaseAge ?? 0)).toBe(2)
+    })
+
+    it('judges the version it would move to, not latest', async () => {
+      // In range: 18.3.1 is old; 19.3.1 (out of range) was published today.
+      const filter = loadFilterWithConfig(
+        { cooldown: 7 },
+        {
+          releaseTimes: {
+            react: { '18.3.1': daysAgo(30), '19.3.1': daysAgo(0) },
+          },
+        },
+      )
+
+      const [result] = await filter(
+        makeOutdated([
+          {
+            name: 'react',
+            current: '18.2.0',
+            wanted: '18.3.1',
+            latest: '19.3.1',
+          },
+        ]),
+        { now: NOW },
+      )
+
+      expect(result).toMatchObject({ updated: true, target: '18.3.1' })
+      expect(Math.round(result.releaseAge ?? 0)).toBe(30)
     })
 
     it('lets a package through once cooldown has elapsed', async () => {
@@ -186,7 +236,9 @@ describe('filterPackages', () => {
       )
 
       const results = await filter(
-        makeOutdated([{ name: 'foo', current: '1.0.0', latest: '1.0.1' }]),
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
         { now: NOW },
       )
 
@@ -230,7 +282,9 @@ describe('filterPackages', () => {
       )
 
       const results = await filter(
-        makeOutdated([{ name: 'foo', current: '1.0.0', latest: '1.0.1' }]),
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
       )
 
       expect(results[0].updated).toBe(true)
@@ -248,9 +302,9 @@ describe('filterPackages', () => {
         { now: NOW },
       )
 
-      // Major update is blocked by config, so cooldown reason shouldn't apply.
+      // The policy already holds it, so the cooldown reason shouldn't apply.
       expect(results[0].updated).toBe(false)
-      expect(results[0].reason).toBe('skipped by config')
+      expect(results[0].reason).toBe('major beyond the range')
     })
 
     it('fails open when registry returns no time for the version', async () => {
@@ -260,7 +314,9 @@ describe('filterPackages', () => {
       )
 
       const results = await filter(
-        makeOutdated([{ name: 'foo', current: '1.0.0', latest: '1.0.1' }]),
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
         { now: NOW },
       )
 

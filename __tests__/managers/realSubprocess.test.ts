@@ -89,10 +89,10 @@ describe('NPMManager with a real subprocess', () => {
       const name = 'left-pad;touch pwned'
       fs.writeFileSync(
         path.join(cwd, 'package.json'),
-        JSON.stringify({ dependencies: { [name]: '1.0.0' } }),
+        JSON.stringify({ dependencies: { [name]: '^1.0.0' } }),
       )
       writeReport({
-        [name]: { current: '1.0.0', wanted: '1.0.0', latest: '1.0.1' },
+        [name]: { current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
       })
 
       await new NPMManager().updatePackages(cwd)

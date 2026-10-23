@@ -26,6 +26,22 @@ describe('BunManager.checkPackageVersions', () => {
     manager = new BunManager()
   })
 
+  it('carries wanted from the Update column', async () => {
+    mockedRunProcess.mockResolvedValue({
+      stdout: readFixture('bun/outdated-ranges.stdout'),
+      stderr: '',
+    })
+
+    const result = await manager.checkPackageVersions('/project')
+
+    expect(result.react).toMatchObject({
+      current: '18.2.0',
+      wanted: '18.3.1',
+      latest: '19.3.1',
+    })
+    expect(result.minimist).toMatchObject({ current: '1.2.7', wanted: '1.2.7' })
+  })
+
   it('lists outdated packages when bun exits 0 with its table', async () => {
     mockedRunProcess.mockResolvedValue({
       stdout: readFixture('bun/outdated.stdout'),
@@ -38,6 +54,7 @@ describe('BunManager.checkPackageVersions', () => {
     expect(result.dayjs).toEqual({
       name: 'dayjs',
       current: '1.11.9',
+      wanted: '1.11.9',
       latest: '1.11.23',
     })
   })

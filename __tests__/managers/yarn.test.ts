@@ -16,6 +16,7 @@ jest.mock('@/utils', () => ({
 }))
 
 import { logger, runProcess } from '@/utils'
+import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -24,6 +25,21 @@ describe('YarnManager.checkPackageVersions (yarn v1)', () => {
 
   beforeEach(() => {
     manager = new YarnManager()
+  })
+
+  it('carries wanted from the Wanted column', async () => {
+    mockedRunProcess.mockRejectedValue(
+      exitError(1, readFixture('yarn/v1-outdated-ranges.stdout'), ''),
+    )
+
+    const result = await manager.checkPackageVersions('/project')
+
+    expect(result.react).toMatchObject({
+      current: '18.2.0',
+      wanted: '18.3.1',
+      latest: '19.3.1',
+    })
+    expect(result.minimist).toMatchObject({ current: '1.2.7', wanted: '1.2.7' })
   })
 
   it('lists outdated packages when yarn exits 1 with a Node deprecation warning on stderr', async () => {
@@ -41,6 +57,7 @@ describe('YarnManager.checkPackageVersions (yarn v1)', () => {
     expect(result.dayjs).toEqual({
       name: 'dayjs',
       current: '1.11.9',
+      wanted: '1.11.9',
       latest: '1.11.23',
     })
     expect(logger.debug).toHaveBeenCalledWith(
@@ -110,10 +127,50 @@ describe('YarnManager.updatePackages', () => {
   beforeEach(() => {
     manager = new YarnManager()
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarn-'))
+    // Most cases here move exact pins, which needs a beyond-range level.
+    jest
+      .mocked(loadConfig)
+      .mockReturnValue({ ...DEFAULT_CONFIG, allowMinorUpdates: true })
   })
 
   afterEach(() => {
+    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
     fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('keeps the current spec for an in-range update, on v1 and berry', async () => {
+    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+    const outdatedRanges = exitError(
+      1,
+      readFixture('yarn/v1-outdated-ranges.stdout'),
+      '',
+    )
+
+    writeProject({ dependencies: { dayjs: '^1.11.9' } })
+    mockedRunProcess
+      .mockRejectedValueOnce(outdatedRanges)
+      .mockResolvedValueOnce({ stdout: '', stderr: '' })
+    await manager.updatePackages(cwd, ['dayjs'])
+    expect(mockedRunProcess).toHaveBeenLastCalledWith(
+      'yarn',
+      ['upgrade', 'dayjs@^1.11.9'],
+      expect.anything(),
+    )
+
+    // A bare `yarn up dayjs` on berry would jump to latest and rewrite the spec.
+    writeProject({
+      packageManager: 'yarn@4.18.1',
+      dependencies: { dayjs: '^1.11.9' },
+    })
+    mockedRunProcess
+      .mockRejectedValueOnce(outdatedRanges)
+      .mockResolvedValueOnce({ stdout: '', stderr: '' })
+    await manager.updatePackages(cwd, ['dayjs'])
+    expect(mockedRunProcess).toHaveBeenLastCalledWith(
+      'yarn',
+      ['up', 'dayjs@^1.11.9'],
+      expect.anything(),
+    )
   })
 
   it('runs `yarn upgrade` on v1 with a descriptor that keeps an exact pin exact', async () => {

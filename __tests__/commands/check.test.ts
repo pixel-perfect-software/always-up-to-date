@@ -42,7 +42,12 @@ describe('check command', () => {
 
   it('outputs JSON when --json flag is passed', async () => {
     const mockData = {
-      react: { name: 'react', current: '18.0.0', latest: '19.0.0' },
+      react: {
+        name: 'react',
+        current: '18.0.0',
+        wanted: '18.0.0',
+        latest: '19.0.0',
+      },
     }
     mockCheckPackageVersions.mockResolvedValue(mockData)
 

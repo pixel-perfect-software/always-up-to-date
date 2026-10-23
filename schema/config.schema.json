@@ -13,12 +13,12 @@
     "allowMinorUpdates": {
       "type": "boolean",
       "default": false,
-      "description": "Allow minor version bumps (e.g., 1.2.x → 1.3.0). Patch updates are always allowed."
+      "description": "Let a dependency move past its package.json range, to the latest version, when that is at most a minor step (e.g., 1.2.x → 1.3.0). Exact pins move too. Without this, updates stay within each range."
     },
     "allowMajorUpdates": {
       "type": "boolean",
       "default": false,
-      "description": "Allow major version bumps (e.g., 1.x → 2.0.0). Implies allowMinorUpdates."
+      "description": "Let a dependency move past its package.json range, to the latest version, up to a major step (e.g., 1.x → 2.0.0). Implies allowMinorUpdates."
     },
     "debug": {
       "type": "boolean",
@@ -34,7 +34,7 @@
       "type": "array",
       "items": { "type": "string" },
       "default": [],
-      "description": "Package names that are always eligible to update, regardless of allowMinor/allowMajor settings."
+      "description": "Package names that always move to their latest version, regardless of their range and the allowMinor/allowMajor settings."
     },
     "updateDenylist": {
       "type": "array",

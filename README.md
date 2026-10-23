@@ -135,16 +135,18 @@ Run `autd init` to create a `.always-up-to-date.json` file in your project root:
 }
 ```
 
+By default, `autd update` stays within the version range each dependency has in `package.json`, the same set `npm update` would install. `"^18.2.0"` can move to the newest `18.x`, `"~7.5.0"` to the newest `7.5.x`, and an exact pin like `"1.11.9"` is left alone. The options below let you go further.
+
 | Option | Default | Description |
 |--------|---------|-------------|
-| `allowMinorUpdates` | `false` | Allow minor version updates (e.g., 1.0.0 → 1.1.0) |
-| `allowMajorUpdates` | `false` | Allow major version updates (e.g., 1.0.0 → 2.0.0). Implies `allowMinorUpdates`. |
-| `updateAllowlist` | `[]` | Packages that are always updated regardless of version type |
+| `allowMinorUpdates` | `false` | Let a dependency move past its range, to the latest version, when that is at most a minor step (e.g., 1.0.0 → 1.1.0). Exact pins move too. |
+| `allowMajorUpdates` | `false` | Same, up to a major step (e.g., 1.0.0 → 2.0.0). Implies `allowMinorUpdates`. |
+| `updateAllowlist` | `[]` | Packages that always move to their latest version |
 | `updateDenylist` | `[]` | Packages that are never updated |
 | `debug` | `false` | Enable debug logging |
 | `silent` | `false` | Suppress all output |
 
-Patch updates (e.g., 1.0.0 → 1.0.1) are always allowed unless a package is on the deny list.
+When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"` becomes `"^19.3.1"` and `"1.11.9"` becomes `"1.11.23"`. Run `autd update --dry-run` to see where each package would move, or why it is held.
 
 ## 🤝 Contributing
 
