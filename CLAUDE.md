@@ -16,7 +16,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 ### Testing
 - `pnpm test` - Run all tests (silent mode)
 - `pnpm run test:coverage` - Run tests with coverage report
-- `pnpm run test:integration` - The integration matrix: builds, then runs the built CLI against real npm, pnpm, yarn v1, yarn berry and bun on temp copies of `testRepos/`. Needs network access and the managers on PATH (yarn through Corepack: `corepack enable yarn`). Outside `pnpm test` and coverage. `AUTD_INTEGRATION_PM=npm,bun` selects managers (an unknown name fails fast); `AUTD_INTEGRATION_KEEP=1` keeps the temp copies and prints their paths
+- `pnpm run test:integration` - The integration matrix: builds, then runs the built CLI against real npm, pnpm, yarn v1, yarn berry and bun on temp copies of `testRepos/`. Needs network access and the managers on PATH (yarn through Corepack: `corepack enable yarn`). Outside `pnpm test` and coverage. `AUTD_INTEGRATION_PM=npm,bun` selects managers (an unknown name fails fast); `AUTD_INTEGRATION_KEEP=1` keeps the temp copies and prints their paths. CI runs it per manager on ubuntu-latest and windows-latest
 - `pnpm run test:badges` - Regenerate the coverage badges in `./badges`, shown in the README. They are static files: rerun and commit them when coverage changes
 - Single test: `pnpm test -- __tests__/path/to/test.test.ts`
 
