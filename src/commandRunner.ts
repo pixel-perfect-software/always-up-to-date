@@ -1,5 +1,5 @@
 import type { SupportedPackageManager } from '@/types'
-import { execAsync, logger } from '@/utils'
+import { logger, runProcess } from '@/utils'
 
 interface ExecError extends Error {
   code?: number | string
@@ -24,20 +24,17 @@ const exitedZero: SuccessCheck = ({ exitCode }) => exitCode === 0
 class CommandRunner {
   public runCommand = async (
     packageManager: SupportedPackageManager,
-    command: string,
+    args: string[],
     cwd: string,
     isSuccess: SuccessCheck = exitedZero,
   ): Promise<string> => {
-    logger.command(`${packageManager} ${command}`)
+    logger.command(`${packageManager} ${args.join(' ')}`)
 
     let output: CommandOutput
     let stderr: string
 
     try {
-      const result = await execAsync(`${packageManager} ${command}`, {
-        cwd,
-        encoding: 'utf8',
-      })
+      const result = await runProcess(packageManager, args, { cwd })
       output = { exitCode: 0, stdout: result.stdout }
       stderr = result.stderr
     } catch (error) {

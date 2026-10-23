@@ -9,12 +9,12 @@ jest.mock('@/utils/registry', () => ({
 }))
 jest.mock('@/utils', () => ({
   ...jest.requireActual('@/utils'),
-  execAsync: jest.fn(),
+  runProcess: jest.fn(),
 }))
 
-import { execAsync } from '@/utils'
+import { runProcess } from '@/utils'
 
-const mockedExecAsync = jest.mocked(execAsync)
+const mockedRunProcess = jest.mocked(runProcess)
 
 describe('NPMManager.checkPackageVersions', () => {
   let manager: NPMManager
@@ -24,7 +24,7 @@ describe('NPMManager.checkPackageVersions', () => {
   })
 
   it('lists outdated packages when npm exits 1 with a JSON report', async () => {
-    mockedExecAsync.mockRejectedValue(
+    mockedRunProcess.mockRejectedValue(
       exitError(1, readFixture('npm/outdated.stdout'), ''),
     )
 
@@ -35,7 +35,7 @@ describe('NPMManager.checkPackageVersions', () => {
   })
 
   it('fails when npm exits 1 with its JSON error object instead of a report', async () => {
-    mockedExecAsync.mockRejectedValue(
+    mockedRunProcess.mockRejectedValue(
       exitError(
         1,
         readFixture('npm/outdated-error.stdout'),
@@ -49,7 +49,7 @@ describe('NPMManager.checkPackageVersions', () => {
   })
 
   it('fails when npm exits with a code other than 0 or 1', async () => {
-    mockedExecAsync.mockRejectedValue(exitError(2, '{}', 'npm error usage'))
+    mockedRunProcess.mockRejectedValue(exitError(2, '{}', 'npm error usage'))
 
     await expect(manager.checkPackageVersions('/project')).rejects.toThrow(
       /npm error usage/,

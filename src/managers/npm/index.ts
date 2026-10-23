@@ -43,13 +43,13 @@ class NPMManager extends CommandRunner {
     logger.starting('Checking dependencies', 'npm')
 
     const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-    const command = isRunningInWorkspace
-      ? 'outdated --json --workspaces'
-      : 'outdated --json'
+    const args = isRunningInWorkspace
+      ? ['outdated', '--json', '--workspaces']
+      : ['outdated', '--json']
 
     const commandResult = await this.runCommand(
       this.packageManager,
-      command,
+      args,
       cwd,
       isOutdatedReport,
     )
@@ -123,11 +123,11 @@ class NPMManager extends CommandRunner {
       if (packagesToUpdate.length > 0) {
         await updatePackageJson(cwd, packagesToUpdate, outdatedPackages)
 
-        const command = isRunningInWorkspace
-          ? `update ${packagesToUpdate.join(' ')} --workspaces`
-          : `update ${packagesToUpdate.join(' ')}`
+        const args = isRunningInWorkspace
+          ? ['update', ...packagesToUpdate, '--workspaces']
+          : ['update', ...packagesToUpdate]
 
-        await this.runCommand(this.packageManager, command, cwd)
+        await this.runCommand(this.packageManager, args, cwd)
       }
 
       logger.cooldownSummary(results)

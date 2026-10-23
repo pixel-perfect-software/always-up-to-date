@@ -1,3 +1,6 @@
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import BunManager from '@/managers/bun'
 import { exitError, readFixture } from '../fixtures'
 
@@ -9,12 +12,12 @@ jest.mock('@/utils/registry', () => ({
 }))
 jest.mock('@/utils', () => ({
   ...jest.requireActual('@/utils'),
-  execAsync: jest.fn(),
+  runProcess: jest.fn(),
 }))
 
-import { execAsync } from '@/utils'
+import { runProcess } from '@/utils'
 
-const mockedExecAsync = jest.mocked(execAsync)
+const mockedRunProcess = jest.mocked(runProcess)
 
 describe('BunManager.checkPackageVersions', () => {
   let manager: BunManager
@@ -24,7 +27,7 @@ describe('BunManager.checkPackageVersions', () => {
   })
 
   it('lists outdated packages when bun exits 0 with its table', async () => {
-    mockedExecAsync.mockResolvedValue({
+    mockedRunProcess.mockResolvedValue({
       stdout: readFixture('bun/outdated.stdout'),
       stderr: '',
     })
@@ -40,7 +43,7 @@ describe('BunManager.checkPackageVersions', () => {
   })
 
   it('fails when bun exits 1, even though it printed part of a report', async () => {
-    mockedExecAsync.mockRejectedValue(
+    mockedRunProcess.mockRejectedValue(
       exitError(
         1,
         readFixture('bun/outdated-error.stdout'),
@@ -50,6 +53,28 @@ describe('BunManager.checkPackageVersions', () => {
 
     await expect(manager.checkPackageVersions('/project')).rejects.toThrow(
       /ConnectionRefused/,
+    )
+  })
+
+  it('passes the workspace filter as a bare * argument', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-bun-'))
+    fs.writeFileSync(
+      path.join(cwd, 'package.json'),
+      JSON.stringify({ workspaces: ['packages/*'] }),
+    )
+    mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
+
+    try {
+      await manager.checkPackageVersions(cwd)
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+
+    // Before argument arrays this was the shell string `--filter '*'`.
+    expect(mockedRunProcess).toHaveBeenCalledWith(
+      'bun',
+      ['outdated', '--filter', '*'],
+      { cwd },
     )
   })
 })

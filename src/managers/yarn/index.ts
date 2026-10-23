@@ -32,10 +32,6 @@ const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
   })
 }
 
-// Until #38 moves to an argument array, descriptors pass through a shell,
-// where specs like `>=1.2.3` would otherwise be read as redirects.
-const shellQuote = (arg: string): string => `'${arg.replaceAll("'", `'\\''`)}'`
-
 class YarnManager extends CommandRunner {
   public readonly packageManager: SupportedPackageManager = 'yarn'
 
@@ -45,13 +41,13 @@ class YarnManager extends CommandRunner {
     logger.starting('Checking dependencies', 'yarn')
 
     const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-    const command = isRunningInWorkspace
-      ? 'outdated --json --recursive'
-      : 'outdated --json'
+    const args = isRunningInWorkspace
+      ? ['outdated', '--json', '--recursive']
+      : ['outdated', '--json']
 
     const commandResult = await this.runCommand(
       this.packageManager,
-      command,
+      args,
       cwd,
       isOutdatedReport,
     )
@@ -141,9 +137,11 @@ class YarnManager extends CommandRunner {
           // `--recursive`: v1 ignores it and berry's means "re-resolve
           // transitive dependencies", which rejects explicit ranges.
           const subcommand = this.isBerry(cwd) ? 'up' : 'upgrade'
-          const command = `${subcommand} ${descriptors.map(shellQuote).join(' ')}`
-
-          await this.runCommand(this.packageManager, command, cwd)
+          await this.runCommand(
+            this.packageManager,
+            [subcommand, ...descriptors],
+            cwd,
+          )
         }
       }
 

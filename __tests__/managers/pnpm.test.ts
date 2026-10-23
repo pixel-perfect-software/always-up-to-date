@@ -9,12 +9,12 @@ jest.mock('@/utils/registry', () => ({
 }))
 jest.mock('@/utils', () => ({
   ...jest.requireActual('@/utils'),
-  execAsync: jest.fn(),
+  runProcess: jest.fn(),
 }))
 
-import { execAsync } from '@/utils'
+import { runProcess } from '@/utils'
 
-const mockedExecAsync = jest.mocked(execAsync)
+const mockedRunProcess = jest.mocked(runProcess)
 
 describe('PNPMManager.checkPackageVersions', () => {
   let manager: PNPMManager
@@ -24,7 +24,7 @@ describe('PNPMManager.checkPackageVersions', () => {
   })
 
   it('lists outdated packages when pnpm exits 1 with a JSON report', async () => {
-    mockedExecAsync.mockRejectedValue(
+    mockedRunProcess.mockRejectedValue(
       exitError(1, readFixture('pnpm/outdated.stdout'), ''),
     )
 
@@ -35,7 +35,7 @@ describe('PNPMManager.checkPackageVersions', () => {
   })
 
   it('fails when pnpm exits 1 with an error and no report', async () => {
-    mockedExecAsync.mockRejectedValue(
+    mockedRunProcess.mockRejectedValue(
       exitError(1, '', readFixture('pnpm/outdated-error.stderr')),
     )
 

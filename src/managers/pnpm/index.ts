@@ -40,13 +40,13 @@ class PNPMManager extends CommandRunner {
     logger.starting('Checking dependencies', 'pnpm')
 
     const isRunningInWorkspace = await this.checkIfInWorkspace(cwd)
-    const command = isRunningInWorkspace
-      ? 'outdated --json -r'
-      : 'outdated --json'
+    const args = isRunningInWorkspace
+      ? ['outdated', '--json', '-r']
+      : ['outdated', '--json']
 
     const commandResult = await this.runCommand(
       this.packageManager,
-      command,
+      args,
       cwd,
       isOutdatedReport,
     )
@@ -134,11 +134,11 @@ class PNPMManager extends CommandRunner {
         // re-reads both manifest and pnpm-workspace.yaml and relinks
         // node_modules + lockfile reliably. `pnpm update -r` can miss
         // catalog mutations, so prefer install in workspace mode.
-        const command = isRunningInWorkspace
-          ? 'install'
-          : `update ${packagesToUpdate.join(' ')}`
+        const args = isRunningInWorkspace
+          ? ['install']
+          : ['update', ...packagesToUpdate]
 
-        await this.runCommand(this.packageManager, command, cwd)
+        await this.runCommand(this.packageManager, args, cwd)
       }
 
       logger.cooldownSummary(results)
