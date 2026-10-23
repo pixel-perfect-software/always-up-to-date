@@ -144,7 +144,7 @@ export const update = async (
   await adapter.apply(
     runFor(adapter, cwd, 'apply'),
     cwd,
-    { names, withinRange, beyondRange, manifests, discovered: outdated },
+    { names, withinRange, beyondRange, manifests },
     workspace,
   )
 

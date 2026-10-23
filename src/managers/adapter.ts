@@ -54,8 +54,6 @@ export interface ApplyPlan {
   beyondRange: Record<string, string>
   /** Each manifest with something moving, root first. A single-package project has the root only. */
   manifests: ManifestPlan[]
-  /** The discovery result the plan was made from. */
-  discovered: Record<string, PackageInfo>
 }
 
 /**

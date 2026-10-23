@@ -5,7 +5,11 @@ import type { ManagerAdapter } from '@/managers/adapter'
 import { readWorkspaceManifests, toPosix } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
-import { updatePackageJson, updatePNPMWorkspaceYAML } from '@/utils/files'
+import {
+  splitCatalogUpdates,
+  updatePackageJson,
+  updatePNPMWorkspaceYAML,
+} from '@/utils/files'
 import { overridesFromField } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
 
@@ -230,47 +234,60 @@ const pnpm: ManagerAdapter = {
   apply: async (
     run,
     cwd,
-    { names, withinRange, beyondRange },
+    { names, withinRange, beyondRange, manifests },
     { isWorkspace, catalogs },
   ) => {
     // pnpm installs the highest version each range allows. Only packages
     // moving past their range need their manifest spec rewritten first.
-    const manifestWritten = Object.keys(beyondRange).length > 0
-    const usesCatalogs = catalogs.length > 0
+    const style = pnpm.saveStyle(cwd)
 
-    if (!isWorkspace && !usesCatalogs) {
-      if (manifestWritten) {
-        await updatePackageJson(cwd, beyondRange, pnpm.saveStyle(cwd))
+    if (!isWorkspace) {
+      const manifestWritten = Object.keys(beyondRange).length > 0
+      if (catalogs.length === 0) {
+        if (manifestWritten) await updatePackageJson(cwd, beyondRange, style)
+        await run(['update', ...names], { manifestWritten })
+        return
       }
-      await run(['update', ...names], { manifestWritten })
+
+      if (manifestWritten) {
+        // Versions live in pnpm-workspace.yaml catalogs or directly in a
+        // package.json. Run both rewrites: each is a no-op for entries it
+        // doesn't own, and updatePackageJson skips `catalog:` /
+        // `workspace:` refs so it can't clobber catalog references.
+        await updatePNPMWorkspaceYAML(cwd, beyondRange, style)
+        await updatePackageJson(cwd, beyondRange, style)
+
+        // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
+        // and relinks node_modules + lockfile reliably. `pnpm update`
+        // can miss catalog mutations.
+        await run(['install'], { manifestWritten })
+      }
+      if (withinRange.length > 0) {
+        await run(['update', ...withinRange], { manifestWritten })
+      }
       return
     }
 
-    if (manifestWritten) {
-      // Versions live in pnpm-workspace.yaml catalogs or directly in a
-      // package.json. Run both rewrites — each is a no-op for entries it
-      // doesn't own, and updatePackageJson skips `catalog:` /
-      // `workspace:` refs so it can't clobber catalog references.
-      const style = pnpm.saveStyle(cwd)
-      if (usesCatalogs) {
-        await updatePNPMWorkspaceYAML(cwd, beyondRange, style)
-      }
-      await updatePackageJson(cwd, beyondRange, style)
-
-      // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
-      // and relinks node_modules + lockfile reliably. `pnpm update -r`
-      // can miss catalog mutations.
-      await run(['install'], { manifestWritten })
+    // A row whose owning spec is `catalog:` moves the catalog entry in
+    // pnpm-workspace.yaml; every other row moves in the manifest that owns it.
+    const { catalog, byManifest } = splitCatalogUpdates(cwd, manifests)
+    const manifestWritten =
+      Object.keys(catalog).length > 0 || byManifest.length > 0
+    if (Object.keys(catalog).length > 0) {
+      await updatePNPMWorkspaceYAML(cwd, catalog, style)
     }
+    for (const m of byManifest) {
+      await updatePackageJson(path.join(cwd, m.path), m.versions, style)
+    }
+
+    // `pnpm install` re-reads every manifest and pnpm-workspace.yaml and
+    // relinks node_modules + lockfile reliably. `pnpm update -r` can miss
+    // catalog mutations.
+    if (manifestWritten) await run(['install'], { manifestWritten })
 
     // `install` leaves in-range packages where the lockfile has them.
     if (withinRange.length > 0) {
-      await run(
-        isWorkspace
-          ? ['update', '-r', ...withinRange]
-          : ['update', ...withinRange],
-        { manifestWritten },
-      )
+      await run(['update', '-r', ...withinRange], { manifestWritten })
     }
   },
 

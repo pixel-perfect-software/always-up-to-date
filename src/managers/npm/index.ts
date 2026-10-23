@@ -151,18 +151,21 @@ const npm: ManagerAdapter = {
       : { kind: 'single', outdated: parseNpmOutdated(stdout, locked) }
   },
 
-  apply: async (run, cwd, { names, beyondRange }, { isWorkspace }) => {
+  apply: async (run, cwd, { names, manifests }) => {
     // npm installs the highest version each range allows. Only packages
-    // moving past their range need their manifest spec rewritten first.
-    const manifestWritten = Object.keys(beyondRange).length > 0
-    if (manifestWritten) {
-      await updatePackageJson(cwd, beyondRange, npm.saveStyle(cwd))
+    // moving past their range need their manifest spec rewritten first, in
+    // the manifest that owns it.
+    const style = npm.saveStyle(cwd)
+    const written = manifests.filter(
+      (m) => Object.keys(m.beyondRange).length > 0,
+    )
+    for (const m of written) {
+      await updatePackageJson(path.join(cwd, m.path), m.beyondRange, style)
     }
 
-    await run(
-      isWorkspace ? ['update', ...names, '--workspaces'] : ['update', ...names],
-      { manifestWritten },
-    )
+    // `npm update` at the root moves every workspace's ranges too;
+    // `--workspaces` would skip the root's own.
+    await run(['update', ...names], { manifestWritten: written.length > 0 })
   },
 
   /** `save-exact` / `save-prefix` in .npmrc. */

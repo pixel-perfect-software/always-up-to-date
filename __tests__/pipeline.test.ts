@@ -153,6 +153,12 @@ describe('pipeline', () => {
         updated,
         reason,
       }))
+      // One workspace-wide command; --workspaces would skip the root's own.
+      const applied = jest
+        .mocked(runProcess)
+        .mock.calls.map(([, args]) => args)
+        .filter((args) => args[0] === 'update')
+      expect(applied).toEqual([['update', 'dayjs', 'debug', 'ms']])
       expect(summary).toEqual([
         {
           name: 'dayjs',
@@ -180,6 +186,37 @@ describe('pipeline', () => {
           reason: 'patch beyond the range',
         },
       ])
+    })
+
+    it('writes a beyond-range move into the manifest that owns it and verifies it there', async () => {
+      writeWorkspaceProject(cwd)
+      install('.', 'dayjs', '1.11.9')
+      install('.', 'ms', '2.1.1')
+      install('.', 'debug', '4.3.1')
+      install('packages/a', 'ms', '2.1.2')
+      jest.mocked(runProcess).mockImplementation(async (_file, args) => {
+        if (args[0] === 'outdated') {
+          throw exitError(1, readFixture('npm/outdated-workspace.stdout'), '')
+        }
+        install('.', 'dayjs', '1.11.23')
+        install('.', 'debug', '4.3.7')
+        install('.', 'ms', '2.1.3')
+        install('packages/a', 'ms', '2.1.3')
+        return { stdout: '', stderr: '' }
+      })
+
+      const results = await update(
+        projectFor(npm, cwd, { beyondRange: 'patch' }),
+      )
+
+      const read = (file: string) =>
+        JSON.parse(fs.readFileSync(path.join(cwd, file), 'utf8')).dependencies
+      expect(read('package.json').dayjs).toBe('1.11.23')
+      expect(read('packages/a/package.json').ms).toBe('2.1.3')
+      expect(read('packages/b/package.json').dayjs).toBe('^1.11.9')
+      expect(
+        results.find((r) => r.name === 'ms' && r.workspace === 'packages/a'),
+      ).toMatchObject({ updated: true })
     })
   })
 })

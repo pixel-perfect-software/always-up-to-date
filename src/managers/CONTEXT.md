@@ -11,7 +11,7 @@ All four package managers are implemented with workspace support. Yarn berry has
   - `name`, `lockfile`: what detection looks for
   - `readWorkspace(cwd)` → `{ isWorkspace, catalogs, manifests }`, read once per run and passed back to `discover` and `apply`. `manifests` is the root (`{ path: '.', name? }`) first, then each member directory the workspace patterns match, sorted by path
   - `discover(run, cwd, workspace)` → a `Discovery`: `{ kind: 'single', outdated: Record<string, PackageInfo> }` in a single-package project, `{ kind: 'workspace', entries: OutdatedEntry[] }` (one entry per package per owning manifest) in a workspace. The output parsers are exported pure functions (`parseNpmOutdated`, `parsePnpmOutdated`, `parseYarnOutdated`, `parseBunOutdated`, and for workspaces `parseNpmWorkspaceOutdated`, `parsePnpmWorkspaceOutdated`, `parseYarnWorkspaceOutdated`, `parseBunWorkspaceOutdated`) with direct tests on captured fixtures. Every row has a `current`: pnpm, yarn v1 and bun read it from their lockfile, while `npm outdated` reads node_modules and omits it for a package that isn't installed, so `parseNpmOutdated` takes it from `package-lock.json` (`readLockedVersions`), else `missing`
-  - `apply(run, cwd, plan, workspace)`: writes the specs the manager does not write itself, then runs its update commands. `plan` is `{ names, withinRange, beyondRange, manifests, discovered }`; `manifests` is the same split per manifest (`ManifestPlan[]`), which adapters do not read yet
+  - `apply(run, cwd, plan, workspace)`: writes the specs the manager does not write itself, then runs its update commands. `plan` is `{ names, withinRange, beyondRange, manifests }`; the first three are unions across manifests, `manifests` is the same split per manifest (`ManifestPlan[]`, root first), which a workspace apply reads
   - `saveStyle(cwd)`: exact or prefix for specs that can't keep their shape, read from where the manager's current version keeps it
   - `overrides(cwd)`: packages pinned by an override field the manager enforces
 - Adapters never log progress, group output, run the policy or catch failures: the pipeline does. `run` is bound to the step, so a failure is already a `StepError`
@@ -73,7 +73,7 @@ The member map (`readWorkspaceManifests`) expands the patterns with `readdirSync
 ## Integration Points
 - `src/pipeline.ts`: `check(project)`, `plan(project, outdated, targets?)`, `update(project, { targetPackages?, discovered? })`, where a `Project` is `{ cwd, config, adapter }`. `openProject(cwd, { pm? })` (`src/project.ts`) builds it with `adapterFor(detectPackageManager(cwd, pm))` after loading the config
 - `plan` runs `src/utils/filterPackages.ts` with `project.config` and `adapter.overrides(cwd)`
-- `src/utils/files.ts` `updatePackageJson()` writes version updates before running the manager's update command (npm, pnpm, bun), only for packages moving past their range
+- `src/utils/files.ts` `updatePackageJson(dir, …)` writes version updates before running the manager's update command (npm, pnpm, bun), only for packages moving past their range, once per owning manifest (`ManifestPlan.beyondRange`). `splitCatalogUpdates()` routes a workspace's beyond-range rows: an owning spec of `catalog:` (read with `readSpec()`) writes the catalog, every other row its own manifest
 - `src/utils/overrides.ts` (`overridesFromField`, `manifestOverrides`) and `src/utils/saveStyle.ts` (`readTextFile`, `yamlValue`) hold the generic readers adapters build on
 
 ### Discovery: names
@@ -85,12 +85,15 @@ Every parser fills `PackageInfo.wanted`, the highest version the manifest range 
 ### Apply: within range vs beyond range
 - In-range updates (`target == wanted`) go to the manager by name with no manifest write: `npm update`, `pnpm update`, `bun update`, yarn `upgrade name@<current spec>`. Each manager installs `wanted`; npm and yarn leave package.json alone, pnpm and bun raise the range floor (their own convention)
 - Beyond-range updates get their spec rewritten to the target first (decorator kept), then the same command
-- pnpm workspaces, and single-package projects with `catalog:` / `catalogs:` in pnpm-workspace.yaml, run `install` after manifest/catalog writes, then `update <in-range names>` (`-r` only in a workspace); bun catalogs the same with `install` then `update <names> --filter *`
+- npm: writes each manifest in `plan.manifests` that has beyond-range rows, then one `npm update <names>` at the root. No `--workspaces`: that would skip the root's own dependencies, while a root `npm update` moves every workspace's ranges (verified on npm 11.19.1, including a member spec autd just rewrote, so no `install` is needed between)
+- pnpm: a workspace writes catalog rows to pnpm-workspace.yaml and the rest to their own package.json, runs `install` if anything was written, then `update -r <in-range names>`. A single-package project with catalogs keeps its own branch (both rewrites, `install`, `update <names>`)
+- bun: a workspace without catalogs writes each manifest, then `update <names> --filter *`. With catalogs it writes catalog entries (`updateBunCatalogs`) and the rest per manifest, runs `install` if anything was written, then `update <in-range names> --filter *`. A single-package project always takes the plain path
+- A manager may leave a row where it was (npm dedupes a member's `dayjs` onto the root's pin, pnpm keeps root `ms` at its lockfile version); the post-apply check reads each row's installed version member-first and reports `not applied by <pm> (installed …)`
 
 ### Yarn apply (`src/managers/yarn/index.ts`)
 - yarn writes the manifest itself: autd passes `name@spec` descriptors from `buildUpdateDescriptors()` and never pre-writes `package.json` (v1 then fails with "Outdated lockfile")
-- v1 runs `yarn upgrade <descriptors>`, berry runs `yarn up <descriptors>`; neither has `update`. No `--recursive` on apply: v1 has no such flag and berry's rejects explicit ranges
+- v1 runs `yarn upgrade <descriptors>`, berry runs `yarn up <descriptors>`; neither has `update`. In a v1 workspace `upgrade` at the root only touches the root manifest, so each manifest in `plan.manifests` gets its own command: `upgrade` for the root, `workspace <name> upgrade` for a member (the name comes from `Workspace.manifests`; a member without one is an `apply` StepError), then one `install` if any member command ran, since a member upgrade leaves node_modules unlinked. Berry keeps its single root `up` (#79) No `--recursive` on apply: v1 has no such flag and berry's rejects explicit ranges
 - A bare `yarn up name` on berry rewrites an exact pin to `^`, so descriptors always carry the spec
 - `isYarnBerry(cwd)` (exported here; also decides save style and overrides): `packageManager: yarn@2+` wins; otherwise a `.yarnrc.yml` means berry
-- Packages missing from the root manifest are skipped with a warning: v1 `upgrade` at a workspace root adds them as root dependencies
+- Packages a manifest does not list are skipped with a warning naming it: v1 `upgrade` at a workspace root adds them as root dependencies
 - Berry has no `outdated`, so discovery (and therefore `check`/`update`) does not run on berry yet (#79)

@@ -1,6 +1,8 @@
 import fs from 'fs'
+import path from 'path'
 import semver from 'semver'
-import type { PackageInfo } from '@/types'
+import type { ManifestPlan } from '@/types'
+import { DEPENDENCY_FIELDS } from './manifestNames'
 import { DEFAULT_SAVE_STYLE, type SaveStyle } from './saveStyle'
 
 export const checkIfFileExists = (filePath: string): boolean => {
@@ -345,45 +347,51 @@ export const updateBunCatalogs = async (
   }
 }
 
-export const identifyCatalogPackages = (
+/**
+ * The spec the manifest in `dir` declares for `name`, from the first
+ * dependency field that lists it. Undefined when the manifest can't be read
+ * or doesn't declare the package.
+ */
+export const readSpec = (dir: string, name: string): string | undefined => {
+  let manifest: Record<string, Record<string, unknown> | undefined>
+  try {
+    manifest = JSON.parse(fs.readFileSync(`${dir}/package.json`, 'utf8'))
+  } catch {
+    return undefined
+  }
+  for (const field of DEPENDENCY_FIELDS) {
+    const spec = manifest[field]?.[name]
+    if (typeof spec === 'string') return spec
+  }
+  return undefined
+}
+
+/**
+ * Sorts the beyond-range writes of a workspace plan by where the version
+ * lives: a manifest whose spec is `catalog:` reads its version from the
+ * catalog, so the move is a catalog write; every other row is written into
+ * the manifest that owns it. The same package can be both, in different
+ * manifests.
+ */
+export const splitCatalogUpdates = (
   cwd: string,
-  outdatedPackages: Record<string, PackageInfo>,
-): { catalogPackages: string[]; rootPackages: string[] } => {
-  const packageJsonPath = `${cwd}/package.json`
-  const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
-  const packageJson = JSON.parse(packageJsonContent)
-
-  const catalogPackages: string[] = []
-  const rootPackages: string[] = []
-
-  // Build a set of all packages defined in catalogs
-  const catalogDefinedPackages = new Set<string>()
-
-  // Check the default "catalog" field (singular)
-  if (packageJson.catalog && typeof packageJson.catalog === 'object') {
-    Object.keys(packageJson.catalog).forEach((pkg) =>
-      catalogDefinedPackages.add(pkg),
-    )
-  }
-
-  // Check named catalogs (plural)
-  if (packageJson.catalogs && typeof packageJson.catalogs === 'object') {
-    for (const catalogName of Object.keys(packageJson.catalogs)) {
-      const catalog = packageJson.catalogs[catalogName]
-      if (catalog && typeof catalog === 'object') {
-        Object.keys(catalog).forEach((pkg) => catalogDefinedPackages.add(pkg))
-      }
+  manifests: ManifestPlan[],
+): {
+  catalog: Record<string, string>
+  byManifest: { path: string; versions: Record<string, string> }[]
+} => {
+  const catalog: Record<string, string> = {}
+  const byManifest: { path: string; versions: Record<string, string> }[] = []
+  for (const manifest of manifests) {
+    const versions: Record<string, string> = {}
+    for (const [name, version] of Object.entries(manifest.beyondRange)) {
+      const spec = readSpec(path.join(cwd, manifest.path), name)
+      if (spec?.startsWith('catalog:')) catalog[name] = version
+      else versions[name] = version
+    }
+    if (Object.keys(versions).length > 0) {
+      byManifest.push({ path: manifest.path, versions })
     }
   }
-
-  // Categorize outdated packages
-  for (const packageName of Object.keys(outdatedPackages)) {
-    if (catalogDefinedPackages.has(packageName)) {
-      catalogPackages.push(packageName)
-    } else {
-      rootPackages.push(packageName)
-    }
-  }
-
-  return { catalogPackages, rootPackages }
+  return { catalog, byManifest }
 }

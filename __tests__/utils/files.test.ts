@@ -2,7 +2,8 @@ import fs from 'fs'
 import type { PackageInfo } from '@/types'
 import {
   checkIfFileExists,
-  identifyCatalogPackages,
+  readSpec,
+  splitCatalogUpdates,
   updateBunCatalogs,
   updatePackageJson,
   updatePNPMWorkspaceYAML,
@@ -515,59 +516,67 @@ describe('updateBunCatalogs', () => {
   })
 })
 
-describe('identifyCatalogPackages', () => {
-  it('separates catalog packages from root packages', () => {
-    const packageJson = {
-      catalog: { react: '^18.0.0' },
-      catalogs: { utils: { lodash: '^4.17.0' } },
-    }
-    mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
-
-    const outdatedPackages: Record<string, PackageInfo> = {
-      react: {
-        name: 'react',
-        current: '18.0.0',
-        wanted: '18.0.0',
-        latest: '19.0.0',
-      },
-      lodash: {
-        name: 'lodash',
-        current: '4.17.0',
-        wanted: '4.17.0',
-        latest: '4.18.0',
-      },
-      express: {
-        name: 'express',
-        current: '4.0.0',
-        wanted: '4.0.0',
-        latest: '5.0.0',
-      },
-    }
-
-    const result = identifyCatalogPackages('/test', outdatedPackages)
-
-    expect(result.catalogPackages).toEqual(
-      expect.arrayContaining(['react', 'lodash']),
+describe('readSpec', () => {
+  it('reads the first dependency field that lists the package', () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        devDependencies: { react: '^18.0.0' },
+        peerDependencies: { react: '>=17' },
+      }),
     )
-    expect(result.rootPackages).toEqual(['express'])
+
+    expect(readSpec('/test', 'react')).toBe('^18.0.0')
+    expect(readSpec('/test', 'vue')).toBeUndefined()
   })
 
-  it('returns all as root when no catalogs exist', () => {
-    const packageJson = { dependencies: { react: '^18.0.0' } }
-    mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
+  it('is undefined when the manifest cannot be read', () => {
+    mockedFs.readFileSync.mockImplementation(() => {
+      throw new Error('ENOENT')
+    })
 
-    const outdatedPackages: Record<string, PackageInfo> = {
-      react: {
-        name: 'react',
-        current: '18.0.0',
-        wanted: '18.0.0',
-        latest: '19.0.0',
+    expect(readSpec('/test', 'react')).toBeUndefined()
+  })
+})
+
+describe('splitCatalogUpdates', () => {
+  it('sends catalog: specs to the catalog and the rest to their own manifest', () => {
+    const manifests: Record<string, unknown> = {
+      '/test/package.json': { dependencies: { dayjs: '1.11.9' } },
+      '/test/packages/a/package.json': {
+        dependencies: { dayjs: 'catalog:', ms: '2.1.2' },
       },
     }
+    mockedFs.readFileSync.mockImplementation((file) =>
+      JSON.stringify(manifests[String(file)]),
+    )
 
-    const result = identifyCatalogPackages('/test', outdatedPackages)
+    const result = splitCatalogUpdates('/test', [
+      { path: '.', withinRange: [], beyondRange: { dayjs: '1.11.23' } },
+      {
+        path: 'packages/a',
+        withinRange: [],
+        beyondRange: { dayjs: '1.11.23', ms: '2.1.3' },
+      },
+    ])
 
-    expect(result.catalogPackages).toEqual([])
-    expect(result.rootPackages).toEqual(['react'])
+    expect(result).toEqual({
+      catalog: { dayjs: '1.11.23' },
+      byManifest: [
+        { path: '.', versions: { dayjs: '1.11.23' } },
+        { path: 'packages/a', versions: { ms: '2.1.3' } },
+      ],
+    })
+  })
+
+  it('leaves out a manifest with nothing to write', () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ dependencies: { dayjs: 'catalog:' } }),
+    )
+
+    expect(
+      splitCatalogUpdates('/test', [
+        { path: '.', withinRange: [], beyondRange: { dayjs: '1.11.23' } },
+      ]),
+    ).toEqual({ catalog: { dayjs: '1.11.23' }, byManifest: [] })
   })
 })

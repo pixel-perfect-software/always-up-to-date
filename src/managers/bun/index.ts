@@ -11,7 +11,7 @@ import {
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
 import {
-  identifyCatalogPackages,
+  splitCatalogUpdates,
   updateBunCatalogs,
   updatePackageJson,
 } from '@/utils/files'
@@ -189,45 +189,38 @@ const bun: ManagerAdapter = {
   apply: async (
     run,
     cwd,
-    { names, withinRange, beyondRange, discovered },
+    { names, withinRange, beyondRange, manifests },
     { isWorkspace, catalogs },
   ) => {
     // bun installs the highest version each range allows. Only packages
     // moving past their range need their manifest spec rewritten first.
-    const manifestWritten = Object.keys(beyondRange).length > 0
+    const style = bun.saveStyle(cwd)
 
-    if (!isWorkspace || catalogs.length === 0) {
-      if (manifestWritten) {
-        await updatePackageJson(cwd, beyondRange, bun.saveStyle(cwd))
-      }
-      await run(
-        isWorkspace
-          ? ['update', ...names, '--filter', '*']
-          : ['update', ...names],
-        { manifestWritten },
-      )
+    if (!isWorkspace) {
+      const manifestWritten = Object.keys(beyondRange).length > 0
+      if (manifestWritten) await updatePackageJson(cwd, beyondRange, style)
+      await run(['update', ...names], { manifestWritten })
       return
     }
 
-    const { catalogPackages } = identifyCatalogPackages(cwd, discovered)
-    const catalogVersions: Record<string, string> = {}
-    const rootVersions: Record<string, string> = {}
-    for (const [name, version] of Object.entries(beyondRange)) {
-      if (catalogPackages.includes(name)) catalogVersions[name] = version
-      else rootVersions[name] = version
+    // A row whose owning spec is `catalog:` moves the catalog entry (in the
+    // root package.json); every other row moves in the manifest that owns it.
+    const { catalog, byManifest } = splitCatalogUpdates(cwd, manifests)
+    const manifestWritten =
+      Object.keys(catalog).length > 0 || byManifest.length > 0
+    if (Object.keys(catalog).length > 0) {
+      await updateBunCatalogs(cwd, catalog, style)
+    }
+    for (const m of byManifest) {
+      await updatePackageJson(path.join(cwd, m.path), m.versions, style)
     }
 
-    if (Object.keys(catalogVersions).length > 0) {
-      await updateBunCatalogs(cwd, catalogVersions, bun.saveStyle(cwd))
+    if (catalogs.length === 0) {
+      await run(['update', ...names, '--filter', '*'], { manifestWritten })
+      return
     }
 
-    if (Object.keys(rootVersions).length > 0) {
-      await updatePackageJson(cwd, rootVersions, bun.saveStyle(cwd))
-    }
-
-    if (manifestWritten) {
-      await run(['install'], { manifestWritten })
-    }
+    if (manifestWritten) await run(['install'], { manifestWritten })
 
     // `install` leaves in-range packages where the lockfile has them.
     if (withinRange.length > 0) {

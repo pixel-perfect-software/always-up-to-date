@@ -175,30 +175,82 @@ const yarn: ManagerAdapter = {
       : { kind: 'single', outdated: parseYarnOutdated(output) }
   },
 
-  apply: async (run, cwd, { withinRange, beyondRange }) => {
+  apply: async (
+    run,
+    cwd,
+    { withinRange, beyondRange, manifests },
+    { isWorkspace, manifests: members },
+  ) => {
     // yarn rewrites the manifest itself: v1 refuses to upgrade against a
     // pre-written package.json ("Outdated lockfile"). Hand it `name@spec`
     // descriptors instead: the current spec for in-range packages, the new
     // version with the entry's decorator for packages moving past it.
-    const { descriptors, notInManifest } = buildUpdateDescriptors(cwd, {
-      withinRange,
-      newVersions: beyondRange,
-      style: yarn.saveStyle(cwd),
-    })
+    const style = yarn.saveStyle(cwd)
+    const berry = isYarnBerry(cwd)
 
-    if (notInManifest.length > 0) {
-      logger.warn(
-        `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`,
+    // v1 is `upgrade`, berry is `up`; neither has `update`. No
+    // `--recursive`: v1 ignores it and berry's means "re-resolve
+    // transitive dependencies", which rejects explicit ranges.
+    const subcommand = berry ? 'up' : 'upgrade'
+
+    if (!isWorkspace || berry) {
+      const { descriptors, notInManifest } = buildUpdateDescriptors(cwd, {
+        withinRange,
+        newVersions: beyondRange,
+        style,
+      })
+
+      if (notInManifest.length > 0) {
+        logger.warn(
+          `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`,
+        )
+      }
+
+      if (descriptors.length > 0) {
+        await run([subcommand, ...descriptors], { manifestWritten: false })
+      }
+      return
+    }
+
+    // v1 workspaces: `yarn upgrade` at the root only touches the root's
+    // manifest, so each member with something moving gets its own
+    // `yarn workspace <name> upgrade`, and yarn writes every manifest.
+    let memberRan = false
+    for (const m of manifests) {
+      const { descriptors, notInManifest } = buildUpdateDescriptors(
+        path.join(cwd, m.path),
+        { withinRange: m.withinRange, newVersions: m.beyondRange, style },
       )
+
+      if (notInManifest.length > 0) {
+        logger.warn(
+          m.path === '.'
+            ? `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`
+            : `Skipped ${notInManifest.join(', ')}: not listed in ${m.path}/package.json.`,
+        )
+      }
+      if (descriptors.length === 0) continue
+
+      if (m.path === '.') {
+        await run(['upgrade', ...descriptors], { manifestWritten: false })
+        continue
+      }
+
+      const name = members.find((w) => w.path === m.path)?.name
+      if (!name) {
+        throw new StepError(
+          'apply',
+          `${m.path}/package.json has no name, so yarn cannot upgrade it as a workspace`,
+        )
+      }
+      await run(['workspace', name, 'upgrade', ...descriptors], {
+        manifestWritten: false,
+      })
+      memberRan = true
     }
 
-    if (descriptors.length > 0) {
-      // v1 is `upgrade`, berry is `up`; neither has `update`. No
-      // `--recursive`: v1 ignores it and berry's means "re-resolve
-      // transitive dependencies", which rejects explicit ranges.
-      const subcommand = isYarnBerry(cwd) ? 'up' : 'upgrade'
-      await run([subcommand, ...descriptors], { manifestWritten: false })
-    }
+    // A member's upgrade leaves node_modules unlinked until an install.
+    if (memberRan) await run(['install'], { manifestWritten: false })
   },
 
   /** berry: `defaultSemverRangePrefix` in .yarnrc.yml, where `''` means exact. Yarn v1 keeps the default. */
