@@ -105,6 +105,7 @@ class NPMManager extends CommandRunner {
     const results = await filterPackages(outdatedPackages, {
       targetPackages,
       cwd,
+      packageManager: this.packageManager,
     })
     const { names, beyondRange } = splitUpdates(results)
 

@@ -79,6 +79,7 @@ const dryRun = async (
   const results = await filterPackages(outdatedPackages, {
     targetPackages,
     cwd: workingDir,
+    packageManager: packageManager.manager.packageManager,
   })
   const wouldUpdate = results.filter((r) => r.updated)
   const wouldSkip = results.filter((r) => !r.updated)
@@ -115,7 +116,10 @@ const interactiveUpdate = async (
 
   if (Object.keys(outdatedPackages).length === 0) return
 
-  const results = await filterPackages(outdatedPackages, { cwd: workingDir })
+  const results = await filterPackages(outdatedPackages, {
+    cwd: workingDir,
+    packageManager: packageManager.manager.packageManager,
+  })
   const eligible = results.filter((r) => r.updated)
 
   if (eligible.length === 0) {

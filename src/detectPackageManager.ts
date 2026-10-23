@@ -37,4 +37,22 @@ const detectPackageManager = (cwd: string): SupportedPackageManager => {
   return pm
 }
 
+/**
+ * Yarn 2+ ("berry") is identified by the `packageManager` field when it is
+ * present, otherwise by a `.yarnrc.yml`, which yarn v1 does not use.
+ */
+export const isYarnBerry = (cwd: string): boolean => {
+  try {
+    const packageJson = JSON.parse(
+      fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'),
+    )
+    const declared = /^yarn@(\d+)\./.exec(packageJson.packageManager ?? '')
+    if (declared) return Number(declared[1]) >= 2
+  } catch {
+    // Unreadable manifest: fall back to the rc file.
+  }
+
+  return fs.existsSync(path.join(cwd, '.yarnrc.yml'))
+}
+
 export default detectPackageManager
