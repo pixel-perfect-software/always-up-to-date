@@ -1,4 +1,4 @@
-import type { PackageInfo } from '@/types'
+import type { CooldownConfig, PackageInfo } from '@/types'
 import type { computeReleaseAges as computeReleaseAgesType } from '@/utils/releaseAges'
 
 const NOW = Date.parse('2026-04-29T12:00:00Z')
@@ -6,24 +6,12 @@ const isoDaysAgo = (days: number) =>
   new Date(NOW - days * 24 * 60 * 60 * 1000).toISOString()
 
 interface LoadOpts {
-  cooldown?: unknown
   releaseTimes?: Record<string, Record<string, string>>
 }
 
 function loadComputeReleaseAges(opts: LoadOpts = {}) {
   let fn: typeof computeReleaseAgesType
   jest.isolateModules(() => {
-    jest.doMock('@/utils/config', () => ({
-      loadConfig: () => ({
-        allowMinorUpdates: false,
-        allowMajorUpdates: false,
-        debug: false,
-        silent: false,
-        updateAllowlist: [],
-        updateDenylist: [],
-        cooldown: opts.cooldown ?? 0,
-      }),
-    }))
     jest.doMock('@/utils/npmrcLoader', () => ({
       loadRegistryConfig: () => ({
         registry: 'https://registry.npmjs.org/',
@@ -40,16 +28,18 @@ function loadComputeReleaseAges(opts: LoadOpts = {}) {
     // biome-ignore lint/style/noCommonJs: jest.isolateModules requires sync require
     fn = require('@/utils/releaseAges').computeReleaseAges
   })
-  return fn!
+  return (packages: Record<string, PackageInfo>, cooldown: CooldownConfig) =>
+    fn!(packages, '/proj', cooldown, NOW)
 }
 
 const outdated = (pkgs: PackageInfo[]): Record<string, PackageInfo> =>
   Object.fromEntries(pkgs.map((p) => [p.name, p]))
 
+const COOLDOWN = '7 days'
+
 describe('computeReleaseAges', () => {
   it('returns an empty map when cooldown is disabled', async () => {
     const compute = loadComputeReleaseAges({
-      cooldown: 0,
       releaseTimes: { foo: { '1.0.1': isoDaysAgo(5) } },
     })
 
@@ -57,8 +47,7 @@ describe('computeReleaseAges', () => {
       outdated([
         { name: 'foo', current: '1.0.0', wanted: '1.0.0', latest: '1.0.1' },
       ]),
-      '/proj',
-      NOW,
+      0,
     )
 
     expect(ages).toEqual({})
@@ -66,7 +55,6 @@ describe('computeReleaseAges', () => {
 
   it('computes ages for each package when cooldown is enabled', async () => {
     const compute = loadComputeReleaseAges({
-      cooldown: '7 days',
       releaseTimes: {
         foo: { '1.0.1': isoDaysAgo(2) },
         bar: { '2.0.0': isoDaysAgo(30) },
@@ -78,8 +66,7 @@ describe('computeReleaseAges', () => {
         { name: 'foo', current: '1.0.0', wanted: '1.0.0', latest: '1.0.1' },
         { name: 'bar', current: '1.0.0', wanted: '1.0.0', latest: '2.0.0' },
       ]),
-      '/proj',
-      NOW,
+      COOLDOWN,
     )
 
     expect(Math.round(ages.foo)).toBe(2)
@@ -88,7 +75,6 @@ describe('computeReleaseAges', () => {
 
   it('omits packages whose latest version has no published timestamp', async () => {
     const compute = loadComputeReleaseAges({
-      cooldown: '7 days',
       releaseTimes: { foo: {} },
     })
 
@@ -96,8 +82,7 @@ describe('computeReleaseAges', () => {
       outdated([
         { name: 'foo', current: '1.0.0', wanted: '1.0.0', latest: '1.0.1' },
       ]),
-      '/proj',
-      NOW,
+      COOLDOWN,
     )
 
     expect(ages.foo).toBeUndefined()
@@ -105,7 +90,6 @@ describe('computeReleaseAges', () => {
 
   it('skips entries with unparseable timestamps', async () => {
     const compute = loadComputeReleaseAges({
-      cooldown: '7 days',
       releaseTimes: { foo: { '1.0.1': 'not-a-date' } },
     })
 
@@ -113,8 +97,7 @@ describe('computeReleaseAges', () => {
       outdated([
         { name: 'foo', current: '1.0.0', wanted: '1.0.0', latest: '1.0.1' },
       ]),
-      '/proj',
-      NOW,
+      COOLDOWN,
     )
 
     expect(ages.foo).toBeUndefined()

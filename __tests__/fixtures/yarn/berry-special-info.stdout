@@ -1,0 +1,5 @@
+{"value":"@sindresorhus/is@npm:4.0.0","children":{"Version":"4.0.0"}}
+{"value":"dayjs@npm:1.11.9","children":{"Version":"1.11.9"}}
+{"value":"local@link:./local::locator=special%40workspace%3A.","children":{"Version":"0.0.0"}}
+{"value":"special@workspace:.","children":{"Version":"1.0.0","Dependencies":[{"descriptor":"@sindresorhus/is@npm:^4.0.0","locator":"@sindresorhus/is@npm:4.0.0"},{"descriptor":"dj@npm:dayjs@^1.11.9","locator":"dayjs@npm:1.11.9"},{"descriptor":"local@link:./local::locator=special%40workspace%3A.","locator":"local@link:./local::locator=special%40workspace%3A."},{"descriptor":"typescript@patch:typescript@npm%3A^5.4.0#optional!builtin<compat/typescript>","locator":"typescript@patch:typescript@npm%3A5.4.5#optional!builtin<compat/typescript>::version=5.4.5&hash=5adc0c"}]}}
+{"value":"typescript@patch:typescript@npm%3A5.4.5#optional!builtin<compat/typescript>::version=5.4.5&hash=5adc0c","children":{"Version":"5.4.5","Exported Binaries":["tsc","tsserver"]}}

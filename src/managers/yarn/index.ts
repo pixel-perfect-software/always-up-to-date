@@ -3,10 +3,21 @@ import path from 'path'
 
 import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
-import { hasWorkspacesField, readManifest } from '@/managers/workspaces'
-import type { PackageInfo } from '@/types'
+import {
+  packageJsonWorkspace,
+  readManifest,
+  workspaceOwner,
+} from '@/managers/workspaces'
+import {
+  applyBerry,
+  discoverBerry,
+  installedBerry,
+} from '@/managers/yarn/berry'
+import { StepError } from '@/stepError'
+import type { OutdatedEntry, PackageInfo } from '@/types'
 import { logger } from '@/utils'
-import { buildUpdateDescriptors } from '@/utils/files'
+import { buildUpdateDescriptors, type DescriptorField } from '@/utils/files'
+import { readInstalledVersions } from '@/utils/installed'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
 
@@ -86,50 +97,188 @@ export const parseYarnOutdated = (
   }
 }
 
+/**
+ * `yarn outdated --json --recursive` (v1) in a workspace project: the table's
+ * header names the columns, and each body row is one package in one workspace.
+ * The `Workspace` column holds a workspace's package name, `ownerOf` turns it
+ * into the manifest's directory. Unlike the single-package parser, output it
+ * cannot read fails discovery.
+ */
+export const parseYarnWorkspaceOutdated = (
+  output: string,
+  ownerOf: (workspaceName: string) => string,
+): OutdatedEntry[] => {
+  if (!output.trim()) return []
+
+  const lines = output.split('\n').filter((line) => line.trim())
+  const table = lines
+    .map((line) => JSON.parse(line))
+    .find((item) => item?.type === 'table')
+  const head: unknown = table?.data?.head
+  const body: unknown = table?.data?.body
+  if (!Array.isArray(head) || !Array.isArray(body)) return []
+
+  const column = (title: string): number => {
+    const index = head.indexOf(title)
+    if (index === -1) {
+      throw new StepError(
+        'discover',
+        `yarn outdated --recursive printed no ${title} column`,
+      )
+    }
+    return index
+  }
+  const [name, current, wanted, latest, workspace] = [
+    'Package',
+    'Current',
+    'Wanted',
+    'Latest',
+    'Workspace',
+  ].map(column)
+
+  return (body as string[][]).map((row) => ({
+    name: row[name],
+    current: row[current],
+    wanted: row[wanted],
+    latest: row[latest],
+    workspace: ownerOf(row[workspace]),
+  }))
+}
+
+/** The `yarn workspace <name> upgrade` flag that keeps each field's packages in it. */
+const MEMBER_FIELD_FLAGS: [DescriptorField, string[]][] = [
+  ['dependencies', []],
+  ['devDependencies', ['-D']],
+  ['optionalDependencies', ['-O']],
+]
+
 const yarn: ManagerAdapter = {
   name: 'yarn',
   lockfile: 'yarn.lock',
 
   readWorkspace: (cwd) => ({
-    isWorkspace: hasWorkspacesField(cwd),
+    ...packageJsonWorkspace(cwd),
     catalogs: [],
   }),
 
-  discover: async (run, _cwd, { isWorkspace }) =>
-    parseYarnOutdated(
-      await run(
-        isWorkspace
-          ? ['outdated', '--json', '--recursive']
-          : ['outdated', '--json'],
-        { isSuccess: isOutdatedReport },
-      ),
-    ),
+  discover: async (run, cwd, { isWorkspace, manifests }) => {
+    // berry has no `outdated`: it reads `yarn info` and the registry instead.
+    if (isYarnBerry(cwd)) return discoverBerry(run, isWorkspace)
 
-  apply: async (run, cwd, { withinRange, beyondRange }) => {
-    // yarn rewrites the manifest itself: v1 refuses to upgrade against a
-    // pre-written package.json ("Outdated lockfile"). Hand it `name@spec`
-    // descriptors instead: the current spec for in-range packages, the new
-    // version with the entry's decorator for packages moving past it.
-    const { descriptors, notInManifest } = buildUpdateDescriptors(cwd, {
-      withinRange,
-      newVersions: beyondRange,
-      style: yarn.saveStyle(cwd),
-    })
+    const output = await run(
+      isWorkspace
+        ? ['outdated', '--json', '--recursive']
+        : ['outdated', '--json'],
+      { isSuccess: isOutdatedReport },
+    )
+    return isWorkspace
+      ? {
+          kind: 'workspace',
+          entries: parseYarnWorkspaceOutdated(
+            output,
+            workspaceOwner(manifests, 'yarn'),
+          ),
+        }
+      : { kind: 'single', outdated: parseYarnOutdated(output) }
+  },
 
-    if (notInManifest.length > 0) {
-      logger.warn(
-        `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`,
+  apply: async (
+    run,
+    cwd,
+    { withinRange, beyondRange, manifests },
+    { isWorkspace, manifests: members },
+  ) => {
+    // berry: autd writes the specs that move past their range, yarn locks.
+    if (isYarnBerry(cwd)) {
+      return applyBerry(
+        run,
+        cwd,
+        { withinRange, manifests },
+        yarn.saveStyle(cwd),
       )
     }
 
-    if (descriptors.length > 0) {
-      // v1 is `upgrade`, berry is `up`; neither has `update`. No
-      // `--recursive`: v1 ignores it and berry's means "re-resolve
-      // transitive dependencies", which rejects explicit ranges.
-      const subcommand = isYarnBerry(cwd) ? 'up' : 'upgrade'
-      await run([subcommand, ...descriptors], { manifestWritten: false })
+    // v1 rewrites the manifest itself and refuses to upgrade against a
+    // pre-written package.json ("Outdated lockfile"). Hand it `name@spec`
+    // descriptors instead: the current spec for in-range packages, the new
+    // version with the entry's decorator for packages moving past it.
+    const style = yarn.saveStyle(cwd)
+
+    // No `--recursive`: v1 ignores it.
+    if (!isWorkspace) {
+      const { descriptors, notInManifest } = buildUpdateDescriptors(cwd, {
+        withinRange,
+        newVersions: beyondRange,
+        style,
+      })
+
+      if (notInManifest.length > 0) {
+        logger.warn(
+          `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`,
+        )
+      }
+
+      if (descriptors.length > 0) {
+        await run(['upgrade', ...descriptors], { manifestWritten: false })
+      }
+      return
     }
+
+    // v1 workspaces: `yarn upgrade` at the root only touches the root's
+    // manifest, so each member with something moving gets its own
+    // `yarn workspace <name> upgrade`, and yarn writes every manifest.
+    let memberRan = false
+    for (const m of manifests) {
+      const { descriptors, byField, notInManifest } = buildUpdateDescriptors(
+        path.join(cwd, m.path),
+        { withinRange: m.withinRange, newVersions: m.beyondRange, style },
+      )
+
+      if (notInManifest.length > 0) {
+        logger.warn(
+          m.path === '.'
+            ? `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`
+            : `Skipped ${notInManifest.join(', ')}: not listed in ${m.path}/package.json.`,
+        )
+      }
+      if (descriptors.length === 0) continue
+
+      if (m.path === '.') {
+        await run(['upgrade', ...descriptors], { manifestWritten: false })
+        continue
+      }
+
+      const name = members.find((w) => w.path === m.path)?.name
+      if (!name) {
+        throw new StepError(
+          'apply',
+          `${m.path}/package.json has no name, so yarn cannot upgrade it as a workspace`,
+        )
+      }
+      // `yarn workspace <name> upgrade` writes a devDependency into
+      // `dependencies` as well unless told its field (1.22.22), so each
+      // field gets its own command with that field's flag.
+      for (const [field, flags] of MEMBER_FIELD_FLAGS) {
+        if (byField[field].length === 0) continue
+        await run(['workspace', name, 'upgrade', ...flags, ...byField[field]], {
+          manifestWritten: false,
+        })
+      }
+      memberRan = true
+    }
+
+    // A member's upgrade leaves node_modules unlinked until an install.
+    if (memberRan) await run(['install'], { manifestWritten: false })
   },
+
+  /**
+   * berry locks versions in `yarn.lock` and, under PnP, has no node_modules,
+   * so the versions come from `yarn info`. Yarn v1 reads node_modules.
+   */
+  installed: (run, cwd, rows) =>
+    isYarnBerry(cwd)
+      ? installedBerry(run, rows)
+      : Promise.resolve(readInstalledVersions(cwd, rows)),
 
   /** berry: `defaultSemverRangePrefix` in .yarnrc.yml, where `''` means exact. Yarn v1 keeps the default. */
   saveStyle: (cwd) => {

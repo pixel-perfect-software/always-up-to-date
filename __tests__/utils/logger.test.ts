@@ -1,15 +1,5 @@
-jest.mock('@/utils/config', () => ({
-  loadConfig: jest.fn(() => ({
-    allowMinorUpdates: false,
-    allowMajorUpdates: false,
-    debug: false,
-    silent: false,
-    updateAllowlist: [],
-    updateDenylist: [],
-    cooldown: 0,
-  })),
-}))
-
+import { bold, gray, green, red } from 'colorette'
+import { stripVTControlCharacters } from 'util'
 import type { UpdateResult } from '@/types'
 import logger, { pluralize } from '@/utils/logger'
 
@@ -21,6 +11,7 @@ describe('Logger', () => {
   beforeEach(() => {
     console.log = originalLog
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    logger.configure({})
     logger.setQuiet(false)
   })
 
@@ -147,7 +138,94 @@ describe('Logger', () => {
     })
   })
 
+  describe('configure', () => {
+    it('prints command and debug lines once debug is on', () => {
+      logger.configure({ debug: true })
+
+      logger.command('npm outdated')
+      logger.debug('debug info')
+
+      expect(logSpy.mock.calls[0][0]).toContain('npm outdated')
+      expect(logSpy.mock.calls[1][0]).toContain('debug info')
+    })
+
+    it('mutes output when silent', () => {
+      logger.configure({ silent: true })
+
+      logger.info('hello')
+      logger.allUpToDate()
+
+      expect(logSpy).not.toHaveBeenCalled()
+    })
+
+    it('goes back to the defaults when configured with nothing', () => {
+      logger.configure({ debug: true, silent: true })
+      logger.configure({})
+
+      logger.info('hello')
+      logger.debug('debug info')
+
+      expect(logSpy).toHaveBeenCalledTimes(1)
+      expect(logSpy.mock.calls[0][0]).toContain('hello')
+    })
+
+    it('shows the legend and tags for the allow and deny lists', () => {
+      logger.configure({ updateAllowlist: ['a'], updateDenylist: ['b'] })
+
+      logger.outdatedHeader()
+      logger.printOutdatedRows([
+        { name: 'a', current: '1.0.0', latest: '1.0.1' },
+        { name: 'b', current: '1.0.0', latest: '1.0.1' },
+        { name: 'c', current: '1.0.0', latest: '1.0.1' },
+      ])
+
+      // CI colors the output (colorette turns colors on there), so names
+      // sit inside escape codes unless they are stripped.
+      const lines = logSpy.mock.calls.map(([line]) =>
+        stripVTControlCharacters(line as string),
+      )
+      expect(lines.some((l) => l.includes('in updateDenylist'))).toBe(true)
+      expect(lines.some((l) => l.includes('in updateAllowlist'))).toBe(true)
+      expect(
+        lines.find((l) => l.includes('1.0.0') && l.includes('a')),
+      ).toContain('[allowed]')
+      expect(lines.find((l) => l.includes('  b'))).toContain('[ignored]')
+      expect(lines.find((l) => l.includes('  c'))).not.toMatch(
+        /\[(allowed|ignored)\]/,
+      )
+    })
+  })
+
   describe('printOutdatedRows', () => {
+    it('adds a workspace column when rows carry a workspace', () => {
+      logger.printOutdatedRows([
+        { name: 'ms', workspace: '.', current: '2.1.1', latest: '2.1.3' },
+        {
+          name: 'ms',
+          workspace: 'packages/a',
+          current: '2.1.2',
+          latest: '2.1.3',
+        },
+      ])
+
+      const lines = logSpy.mock.calls.map(([line]) => line as string)
+      expect(lines[0]).toContain('(root)')
+      expect(lines[1]).toContain('packages/a')
+      // Both versions start in the same column.
+      expect(lines[0].indexOf('2.1.1')).toBe(lines[1].indexOf('2.1.2'))
+    })
+
+    it('prints rows without a workspace exactly as before', () => {
+      logger.printOutdatedRows([
+        { name: 'react', current: '18.0.0', latest: '19.0.0' },
+      ])
+
+      expect(logSpy.mock.calls[0][0]).not.toContain('(root)')
+      expect(logSpy.mock.calls[0][0]).toBe(
+        `  ${bold('react')}  ${red('18.0.0')} ${gray('→')} ${green('19.0.0')}`,
+      )
+    })
+
     it('renders one line per row with name + versions', () => {
       logger.printOutdatedRows([
         { name: 'react', current: '18.0.0', latest: '19.0.0' },
@@ -271,6 +349,115 @@ describe('Logger', () => {
       expect(logSpy.mock.calls[0][0]).toContain('held by cooldown')
       expect(logSpy.mock.calls[1][0]).toContain('react')
       expect(logSpy.mock.calls[1][0]).toContain('cooldown: released 3d ago')
+    })
+  })
+
+  describe('workspace rows in the update summaries', () => {
+    const base: UpdateResult = {
+      name: 'ms',
+      current: '2.1.1',
+      wanted: '2.1.3',
+      latest: '2.1.3',
+      updateType: 'patch',
+      updated: false,
+    }
+
+    it('shows the manifest in the skipped block', () => {
+      logger.printSkippedRows([
+        {
+          name: 'ms',
+          workspace: 'packages/a',
+          current: '2.1.2',
+          latest: '2.1.3',
+          updateType: 'patch',
+          reason: 'patch beyond the range',
+        },
+      ])
+      expect(logSpy.mock.calls[0][0]).toContain('packages/a')
+    })
+
+    it('shows the manifest in the updating block', () => {
+      logger.printUpdatingRows([
+        { name: 'ms', workspace: '.', current: '2.1.1', latest: '2.1.3' },
+      ])
+      expect(logSpy.mock.calls[0][0]).toContain('(root)')
+    })
+
+    it('shows the manifest in the left-in-place and cooldown blocks', () => {
+      logger.notAppliedSummary(
+        [
+          {
+            ...base,
+            workspace: '.',
+            reason: 'not applied by npm (installed 2.1.1)',
+          },
+        ],
+        'npm',
+      )
+      logger.cooldownSummary([
+        {
+          ...base,
+          workspace: 'packages/b',
+          reason: 'cooldown: released 3d ago, requires 30d',
+        },
+      ])
+
+      expect(logSpy.mock.calls[1][0]).toContain('(root)')
+      expect(logSpy.mock.calls[3][0]).toContain('packages/b')
+    })
+  })
+
+  describe('notAppliedSummary', () => {
+    const makeResult = (overrides: Partial<UpdateResult>): UpdateResult => ({
+      name: 'ms',
+      current: '2.1.1',
+      wanted: '2.1.3',
+      latest: '2.1.3',
+      updateType: 'patch',
+      updated: false,
+      ...overrides,
+    })
+    const notApplied = makeResult({
+      reason: 'not applied by npm (installed 2.1.1)',
+    })
+
+    it('prints header and row for a package the manager left in place', () => {
+      logger.notAppliedSummary([notApplied], 'npm')
+      expect(logSpy).toHaveBeenCalledTimes(2)
+      expect(logSpy.mock.calls[0][0]).toContain(
+        '1 package left in place by npm',
+      )
+      expect(logSpy.mock.calls[1][0]).toContain('ms')
+      expect(logSpy.mock.calls[1][0]).toContain(
+        'not applied by npm (installed 2.1.1)',
+      )
+    })
+
+    it('is a no-op when every package moved or was held for another reason', () => {
+      logger.notAppliedSummary(
+        [
+          makeResult({ updated: true }),
+          makeResult({ reason: 'cooldown: released 3d ago, requires 30d' }),
+        ],
+        'npm',
+      )
+      expect(logSpy).not.toHaveBeenCalled()
+    })
+
+    it('prints nothing when quiet', () => {
+      logger.setQuiet(true)
+      logger.notAppliedSummary([notApplied], 'npm')
+      expect(logSpy).not.toHaveBeenCalled()
+    })
+
+    it('prints nothing in JSON mode', () => {
+      logger.setJsonOutput(true)
+      try {
+        logger.notAppliedSummary([notApplied], 'npm')
+        expect(logSpy).not.toHaveBeenCalled()
+      } finally {
+        logger.setJsonOutput(false)
+      }
     })
   })
 

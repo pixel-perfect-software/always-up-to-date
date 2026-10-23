@@ -1,13 +1,5 @@
-import { ConfigError } from '@/utils/config'
-
-// Loading the CLI loads the config file (the logger reads it on import), so
-// a bad config surfaces while `./cli` is being imported.
 jest.mock('@/cli', () => {
-  const { ConfigError: ActualConfigError } =
-    jest.requireActual('@/utils/config')
-  throw new ActualConfigError(
-    'Failed to load JSON config from /project/.always-up-to-date.json: rules["react"] must be one of "hold", "followRange", "latest" (got "hodl")',
-  )
+  throw new Error('boom')
 })
 
 import { main } from '@/index'
@@ -29,16 +21,10 @@ describe('CLI entry', () => {
       .mockImplementation(() => undefined as never)
   })
 
-  it('prints a config error as one line and exits 1', async () => {
+  it('reports a failure to start the CLI and exits 1', async () => {
     await main()
 
     expect(exit).toHaveBeenCalledWith(1)
-    expect(stderr).toEqual([
-      'autd: Failed to load JSON config from /project/.always-up-to-date.json: rules["react"] must be one of "hold", "followRange", "latest" (got "hodl")',
-    ])
-  })
-
-  it('exports ConfigError for the entry to recognise', () => {
-    expect(new ConfigError('x')).toBeInstanceOf(Error)
+    expect(stderr).toEqual(['An error occurred: Error: boom'])
   })
 })

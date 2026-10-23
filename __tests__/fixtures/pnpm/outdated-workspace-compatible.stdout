@@ -1,0 +1,41 @@
+{
+  "dayjs": {
+    "current": "1.11.9",
+    "latest": "1.11.23",
+    "wanted": "1.11.9",
+    "isDeprecated": false,
+    "dependencyType": "dependencies",
+    "dependentPackages": [
+      {
+        "name": "@ws/b",
+        "location": "/project/packages/b"
+      }
+    ]
+  },
+  "debug": {
+    "current": "4.3.1",
+    "latest": "4.3.7",
+    "wanted": "4.3.1",
+    "isDeprecated": false,
+    "dependencyType": "dependencies",
+    "dependentPackages": [
+      {
+        "name": "@ws/b",
+        "location": "/project/packages/b"
+      }
+    ]
+  },
+  "ms": {
+    "current": "2.1.1",
+    "latest": "2.1.3",
+    "wanted": "2.1.1",
+    "isDeprecated": false,
+    "dependencyType": "dependencies",
+    "dependentPackages": [
+      {
+        "name": "ws-root",
+        "location": "/project"
+      }
+    ]
+  }
+}

@@ -14,9 +14,11 @@ const logger = {
   updatingHeader: jest.fn(),
   noPackagesToUpdate: jest.fn(),
   cooldownSummary: jest.fn(),
+  notAppliedSummary: jest.fn(),
   starting: jest.fn(),
   clean: jest.fn(),
   debug: jest.fn(),
+  configure: jest.fn(),
   setQuiet: jest.fn(),
   setJsonOutput: jest.fn(),
 }

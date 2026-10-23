@@ -1,11 +1,17 @@
 import type { Command } from 'commander'
-import detectPackageManager from '@/detectPackageManager'
-import { adapterFor } from '@/managers'
 import { check } from '@/pipeline'
+import { openProject } from '@/project'
+import type { SupportedPackageManager } from '@/types'
 import logger from '@/utils/logger'
+import { pmOption } from './options'
 import reportFailure from './reportFailure'
 
 const workingDir = process.cwd()
+
+interface CheckOptions {
+  json?: boolean
+  pm?: SupportedPackageManager
+}
 
 /**
  * The "check" command.
@@ -17,13 +23,14 @@ const checkCommand = (program: Command) =>
     .command('check')
     .description('Check the dependencies of the project.')
     .option('--json', 'Output results as JSON')
-    .action(async (options: { json?: boolean }) => {
+    .addOption(pmOption())
+    .action(async (options: CheckOptions) => {
       if (options.json) logger.setJsonOutput(true)
 
       try {
-        const adapter = adapterFor(detectPackageManager(workingDir))
+        const project = openProject(workingDir, { pm: options.pm })
 
-        const result = await check(adapter, workingDir)
+        const result = await check(project)
         if (options.json) console.log(JSON.stringify(result, null, 2))
       } catch (error) {
         reportFailure(error, options.json)

@@ -1,6 +1,10 @@
 import semver, { type ReleaseType } from 'semver'
-import type { PackageInfo, UpdateResult } from '@/types'
-import { loadConfig } from './config'
+import type {
+  AlwaysUpToDateConfig,
+  ManifestPlan,
+  PackageInfo,
+  UpdateResult,
+} from '@/types'
 import { evaluateCooldown, isCooldownEnabled } from './cooldown'
 import { formatAgeDays } from './duration'
 import { loadRegistryConfig } from './npmrcLoader'
@@ -11,8 +15,10 @@ import updateChecker, {
   policyFromConfig,
   type UpdatePolicy,
 } from './updateChecker'
+import { byPath, expandWorkspaces } from './workspaceRows'
 
 interface FilterPackagesOptions {
+  config: AlwaysUpToDateConfig
   targetPackages?: string[]
   cwd?: string
   now?: number
@@ -76,6 +82,42 @@ const holdPeerConflicts = (
 }
 
 /**
+ * A package moves in every manifest or none. The in-range commands are
+ * workspace-wide, so a row held while its range allows newer (a cooldown,
+ * a peer conflict, an override: holds that depend on the target) would move
+ * anyway with its package's other rows. Those rows are held with it. An
+ * exact pin (`wanted` equals `current`) has nothing to move and blocks
+ * nothing.
+ */
+const holdTogether = (results: UpdateResult[]): UpdateResult[] => {
+  const blocking = new Map<string, UpdateResult>()
+  for (const r of results) {
+    if (r.workspace === undefined || r.updated || blocking.has(r.name)) continue
+    if (
+      semver.valid(r.current) &&
+      semver.valid(r.wanted) &&
+      semver.gt(r.wanted, r.current)
+    ) {
+      blocking.set(r.name, r)
+    }
+  }
+  if (blocking.size === 0) return results
+
+  return results.map((r) => {
+    const by = blocking.get(r.name)
+    if (!by || !r.updated) return r
+    const where = by.workspace === '.' ? 'the root' : by.workspace
+    return {
+      ...r,
+      target: undefined,
+      updated: false,
+      updateType: stepType(r.current, r.latest),
+      reason: `held with ${where} (${by.reason})`,
+    }
+  })
+}
+
+/**
  * Decides each outdated package's target (`updateChecker`: within the
  * manifest range by default, further only when the policy allows), then
  * applies the cooldown gate to that target. Network calls only happen for
@@ -83,22 +125,23 @@ const holdPeerConflicts = (
  */
 const filterPackages = async (
   outdatedPackages: Record<string, PackageInfo>,
-  options: FilterPackagesOptions = {},
+  options: FilterPackagesOptions,
 ): Promise<UpdateResult[]> => {
   const {
+    config,
     targetPackages,
     cwd = process.cwd(),
     now,
     overrides: controlled = {},
   } = options
-  const config = loadConfig(cwd)
   const policy = policyFromConfig(config)
   const cooldownActive = isCooldownEnabled(config.cooldown)
   const registryConfig = cooldownActive ? loadRegistryConfig(cwd) : undefined
 
-  const initialResults: UpdateResult[] = Object.entries(outdatedPackages).map(
-    ([name, packageInfo]) => {
+  const initialResults: UpdateResult[] = expandWorkspaces(outdatedPackages).map(
+    ({ name, workspace, info: packageInfo }) => {
       const { current, wanted, latest } = packageInfo
+      const owner = workspace === undefined ? {} : { workspace }
 
       if (
         targetPackages &&
@@ -107,6 +150,7 @@ const filterPackages = async (
       ) {
         return {
           name,
+          ...owner,
           current,
           wanted,
           latest,
@@ -127,6 +171,7 @@ const filterPackages = async (
       if (override && !semver.satisfies(target ?? latest, override.range)) {
         return {
           name,
+          ...owner,
           current,
           wanted,
           latest,
@@ -138,6 +183,7 @@ const filterPackages = async (
 
       return {
         name,
+        ...owner,
         current,
         wanted,
         latest,
@@ -149,13 +195,31 @@ const filterPackages = async (
     },
   )
 
-  const results = initialResults.some((r) => r.updated)
-    ? holdPeerConflicts(initialResults, readInstalledPeers(cwd), policy)
-    : initialResults
+  const peers = initialResults.some((r) => r.updated)
+    ? readInstalledPeers(cwd)
+    : undefined
+
+  // A peer hold can hold a package's other rows (holdTogether), and a row
+  // held for any reason stops counting as moving for the peer check, so
+  // both repeat until nothing changes. Each only ever holds, so this ends.
+  const settle = (rows: UpdateResult[]): UpdateResult[] => {
+    let current = rows
+    for (;;) {
+      const next = holdTogether(
+        peers ? holdPeerConflicts(current, peers, policy) : current,
+      )
+      if (next.every((row, i) => row.updated === current[i].updated)) {
+        return next
+      }
+      current = next
+    }
+  }
+
+  const results = settle(initialResults)
 
   if (!cooldownActive || !registryConfig) return results
 
-  return Promise.all(
+  const gated = await Promise.all(
     results.map(async (result) => {
       if (!result.updated || !result.target) return result
 
@@ -183,13 +247,16 @@ const filterPackages = async (
       return { ...result, releaseAge: evaluation.ageDays }
     }),
   )
+  return settle(gated)
 }
 
 /**
  * Splits the updates the policy chose. `withinRange` packages go to the
  * manager by name, which installs the highest version the range allows.
  * `beyondRange` maps each package moving past its range to its new version,
- * which must be written into the manifest first.
+ * which must be written into the manifest first. `manifests` is the same
+ * split per manifest (root first, then by path), for the writes that belong
+ * to one manifest; a single-package project has the root only.
  */
 export const splitUpdates = (
   results: UpdateResult[],
@@ -197,19 +264,33 @@ export const splitUpdates = (
   names: string[]
   withinRange: string[]
   beyondRange: Record<string, string>
+  manifests: ManifestPlan[]
 } => {
   const names: string[] = []
   const withinRange: string[] = []
   const beyondRange: Record<string, string> = {}
+  const byManifest = new Map<string, ManifestPlan>()
 
-  for (const { name, updated, target, wanted } of results) {
+  for (const { name, workspace = '.', updated, target, wanted } of results) {
     if (!updated || !target) continue
-    names.push(name)
-    if (target === wanted) withinRange.push(name)
-    else beyondRange[name] = target
+    const inRange = target === wanted
+    if (!names.includes(name)) names.push(name)
+    if (inRange) {
+      if (!withinRange.includes(name)) withinRange.push(name)
+    } else beyondRange[name] = target
+
+    let manifest = byManifest.get(workspace)
+    if (!manifest) {
+      manifest = { path: workspace, withinRange: [], beyondRange: {} }
+      byManifest.set(workspace, manifest)
+    }
+    if (inRange) {
+      if (!manifest.withinRange.includes(name)) manifest.withinRange.push(name)
+    } else manifest.beyondRange[name] = target
   }
 
-  return { names, withinRange, beyondRange }
+  const manifests = [...byManifest.values()].sort(byPath)
+  return { names, withinRange, beyondRange, manifests }
 }
 
 export default filterPackages

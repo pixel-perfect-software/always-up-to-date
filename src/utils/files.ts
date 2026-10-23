@@ -1,6 +1,8 @@
 import fs from 'fs'
+import path from 'path'
 import semver from 'semver'
-import type { PackageInfo } from '@/types'
+import type { ManifestPlan } from '@/types'
+import { DEPENDENCY_FIELDS } from './manifestNames'
 import { DEFAULT_SAVE_STYLE, type SaveStyle } from './saveStyle'
 
 export const checkIfFileExists = (filePath: string): boolean => {
@@ -174,6 +176,15 @@ export const updatePackageJson = async (
  * Packages the root manifest does not list are returned separately: handing
  * those to yarn at the root would add them as new root dependencies.
  */
+/** The fields a yarn descriptor can come from, in the order they are looked up. */
+const DESCRIPTOR_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+] as const
+
+export type DescriptorField = (typeof DESCRIPTOR_FIELDS)[number]
+
 export const buildUpdateDescriptors = (
   cwd: string,
   {
@@ -185,72 +196,102 @@ export const buildUpdateDescriptors = (
     newVersions?: Record<string, string>
     style?: SaveStyle
   },
-): { descriptors: string[]; notInManifest: string[] } => {
+): {
+  descriptors: string[]
+  /** The same descriptors, grouped by the field that declares each package. */
+  byField: Record<DescriptorField, string[]>
+  notInManifest: string[]
+} => {
   const packageJson = JSON.parse(fs.readFileSync(`${cwd}/package.json`, 'utf8'))
 
   const descriptors: string[] = []
+  const byField: Record<DescriptorField, string[]> = {
+    dependencies: [],
+    devDependencies: [],
+    optionalDependencies: [],
+  }
   const notInManifest: string[] = []
 
   for (const packageName of [...withinRange, ...Object.keys(newVersions)]) {
-    const currentVersion = [
-      packageJson?.dependencies?.[packageName],
-      packageJson?.devDependencies?.[packageName],
-      packageJson?.optionalDependencies?.[packageName],
-    ].find(
-      (spec): spec is string =>
-        typeof spec === 'string' && !isWorkspaceReference(spec),
-    )
+    const field = DESCRIPTOR_FIELDS.find((name) => {
+      const spec = packageJson?.[name]?.[packageName]
+      return typeof spec === 'string' && !isWorkspaceReference(spec)
+    })
 
-    if (currentVersion) {
+    if (field) {
+      const currentVersion: string = packageJson[field][packageName]
       const newVersion = newVersions[packageName]
       const spec = newVersion
         ? nextVersionSpec(currentVersion, newVersion, style)
         : currentVersion
       descriptors.push(`${packageName}@${spec}`)
+      byField[field].push(`${packageName}@${spec}`)
     } else {
       notInManifest.push(packageName)
     }
   }
 
-  return { descriptors, notInManifest }
+  return { descriptors, byField, notInManifest }
 }
 
+/**
+ * A `name: version` entry: indent, the name with its quotes, the separator,
+ * the version with its quotes, and whatever follows (a comment).
+ */
+const YAML_ENTRY =
+  /^(\s+)(['"]?)([^'"\s#][^'"\s]*)\2(\s*:\s*)(['"]?)([^'"\s#]+)\5(.*)$/
+
+/**
+ * Rewrites catalog versions in pnpm-workspace.yaml: the entries under
+ * `catalog:` and under each named catalog in `catalogs:`. Every other block
+ * (`overrides`, `peerDependencyRules`, …) and every other line stays as it
+ * was, and an entry keeps its quotes and trailing comment.
+ */
 export const updatePNPMWorkspaceYAML = async (
   cwd: string,
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): Promise<void> => {
   const pnpmWorkspaceYamlPath = `${cwd}/pnpm-workspace.yaml`
-  const pnpmWorkspaceYamlContent = fs.readFileSync(
-    pnpmWorkspaceYamlPath,
-    'utf8',
-  )
+  const lines = fs.readFileSync(pnpmWorkspaceYamlPath, 'utf8').split('\n')
 
-  const lines = pnpmWorkspaceYamlContent.split('\n')
+  // The top-level key the current line sits under, and, inside `catalogs:`,
+  // the indent of the named catalog it belongs to.
+  let block: string | undefined
+  let catalogIndent: number | undefined
 
   const updatedLines = lines.map((line) => {
-    const match = line.match(
-      /^\s*\s*['"]?([^'"]+)['"]?\s*:\s*['"]?([^'"]+)['"]?/,
-    )
+    if (/^\S/.test(line)) {
+      if (!line.startsWith('#')) {
+        block = /^(['"]?)([^'"\s:]+)\1\s*:/.exec(line)?.[2]
+        catalogIndent = undefined
+      }
+      return line
+    }
+    if (block !== 'catalog' && block !== 'catalogs') return line
+    if (/^\s*(#|$)/.test(line)) return line
 
-    if (match && Object.hasOwn(versions, match[1])) {
-      const packageName = match[1]
-      const currentVersion = match[2]
-      const targetVersion = versions[packageName]
-
-      const newVersion = nextVersionSpec(currentVersion, targetVersion, style)
-
-      // Update the version in the line, preserving quotes if they exist
-      const hasQuotes =
-        line.includes(`"${currentVersion}"`) ||
-        line.includes(`'${currentVersion}'`)
-      const versionToInsert = hasQuotes ? `'${newVersion}'` : newVersion
-
-      return line.replace(/:\s*['"]?[^'"]+['"]?$/, `: ${versionToInsert}`)
+    if (block === 'catalogs') {
+      const catalogKey = /^(\s+)(['"]?)[^'"\s:]+\2\s*:\s*(#.*)?$/.exec(line)
+      if (catalogKey) {
+        catalogIndent = catalogKey[1].length
+        return line
+      }
     }
 
-    // Return the line unchanged if no package to update is found
-    return line
+    const entry = YAML_ENTRY.exec(line)
+    if (!entry) return line
+    const [, indent, keyQuote, name, separator, quote, spec, rest] = entry
+    if (
+      block === 'catalogs' &&
+      !(indent.length > (catalogIndent ?? Infinity))
+    ) {
+      return line
+    }
+    if (!Object.hasOwn(versions, name)) return line
+
+    const newSpec = nextVersionSpec(spec, versions[name], style)
+    return `${indent}${keyQuote}${name}${keyQuote}${separator}${quote}${newSpec}${quote}${rest}`
   })
 
   fs.writeFileSync(pnpmWorkspaceYamlPath, updatedLines.join('\n'), 'utf8')
@@ -323,45 +364,51 @@ export const updateBunCatalogs = async (
   }
 }
 
-export const identifyCatalogPackages = (
+/**
+ * The spec the manifest in `dir` declares for `name`, from the first
+ * dependency field that lists it. Undefined when the manifest can't be read
+ * or doesn't declare the package.
+ */
+export const readSpec = (dir: string, name: string): string | undefined => {
+  let manifest: Record<string, Record<string, unknown> | undefined>
+  try {
+    manifest = JSON.parse(fs.readFileSync(`${dir}/package.json`, 'utf8'))
+  } catch {
+    return undefined
+  }
+  for (const field of DEPENDENCY_FIELDS) {
+    const spec = manifest[field]?.[name]
+    if (typeof spec === 'string') return spec
+  }
+  return undefined
+}
+
+/**
+ * Sorts the beyond-range writes of a workspace plan by where the version
+ * lives: a manifest whose spec is `catalog:` reads its version from the
+ * catalog, so the move is a catalog write; every other row is written into
+ * the manifest that owns it. The same package can be both, in different
+ * manifests.
+ */
+export const splitCatalogUpdates = (
   cwd: string,
-  outdatedPackages: Record<string, PackageInfo>,
-): { catalogPackages: string[]; rootPackages: string[] } => {
-  const packageJsonPath = `${cwd}/package.json`
-  const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
-  const packageJson = JSON.parse(packageJsonContent)
-
-  const catalogPackages: string[] = []
-  const rootPackages: string[] = []
-
-  // Build a set of all packages defined in catalogs
-  const catalogDefinedPackages = new Set<string>()
-
-  // Check the default "catalog" field (singular)
-  if (packageJson.catalog && typeof packageJson.catalog === 'object') {
-    Object.keys(packageJson.catalog).forEach((pkg) =>
-      catalogDefinedPackages.add(pkg),
-    )
-  }
-
-  // Check named catalogs (plural)
-  if (packageJson.catalogs && typeof packageJson.catalogs === 'object') {
-    for (const catalogName of Object.keys(packageJson.catalogs)) {
-      const catalog = packageJson.catalogs[catalogName]
-      if (catalog && typeof catalog === 'object') {
-        Object.keys(catalog).forEach((pkg) => catalogDefinedPackages.add(pkg))
-      }
+  manifests: ManifestPlan[],
+): {
+  catalog: Record<string, string>
+  byManifest: { path: string; versions: Record<string, string> }[]
+} => {
+  const catalog: Record<string, string> = {}
+  const byManifest: { path: string; versions: Record<string, string> }[] = []
+  for (const manifest of manifests) {
+    const versions: Record<string, string> = {}
+    for (const [name, version] of Object.entries(manifest.beyondRange)) {
+      const spec = readSpec(path.join(cwd, manifest.path), name)
+      if (spec?.startsWith('catalog:')) catalog[name] = version
+      else versions[name] = version
+    }
+    if (Object.keys(versions).length > 0) {
+      byManifest.push({ path: manifest.path, versions })
     }
   }
-
-  // Categorize outdated packages
-  for (const packageName of Object.keys(outdatedPackages)) {
-    if (catalogDefinedPackages.has(packageName)) {
-      catalogPackages.push(packageName)
-    } else {
-      rootPackages.push(packageName)
-    }
-  }
-
-  return { catalogPackages, rootPackages }
+  return { catalog, byManifest }
 }

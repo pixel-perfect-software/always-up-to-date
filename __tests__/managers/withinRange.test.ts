@@ -3,10 +3,9 @@ import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
 import { check } from '@/pipeline'
-import { exitError, readFixture } from '../fixtures'
+import { exitError, projectFor, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -75,10 +74,14 @@ describe.each([
   ['yarn', yarn],
   ['bun', bun],
 ] as const)('%s, default config', (pm, adapter) => {
-  const proposals = async (project: 'ranges' | 'pinned') => {
-    mockOutdated(pm, project)
-    const outdated = await check(adapter, '/project')
-    const results = await filterPackages(outdated, { cwd: '/project' })
+  const proposals = async (layout: 'ranges' | 'pinned') => {
+    mockOutdated(pm, layout)
+    const project = projectFor(adapter, '/project')
+    const outdated = await check(project)
+    const results = await filterPackages(outdated, {
+      config: project.config,
+      cwd: '/project',
+    })
     return Object.fromEntries(
       results.filter((r) => r.updated).map((r) => [r.name, r.target]),
     )

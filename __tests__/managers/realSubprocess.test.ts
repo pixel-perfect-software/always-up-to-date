@@ -3,9 +3,9 @@ import os from 'os'
 import path from 'path'
 import npm from '@/managers/npm'
 import { check, update } from '@/pipeline'
+import { projectFor } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -79,7 +79,7 @@ describe('npm with a real subprocess', () => {
     writeReport(report)
     expect(fs.statSync(reportFile).size).toBeGreaterThan(1.5 * 1024 * 1024)
 
-    const result = await check(npm, cwd)
+    const result = await check(projectFor(npm, cwd))
 
     expect(Object.keys(result)).toHaveLength(10000)
   })
@@ -96,7 +96,7 @@ describe('npm with a real subprocess', () => {
         [name]: { current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
       })
 
-      await update(npm, cwd)
+      await update(projectFor(npm, cwd))
 
       expect(loggedCalls()).toEqual([
         ['outdated', '--json'],

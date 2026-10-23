@@ -1,5 +1,8 @@
-import type { PackageInfo } from '@/types'
+import type { AlwaysUpToDateConfig, PackageInfo } from '@/types'
 import type filterPackagesType from '@/utils/filterPackages'
+import type { splitUpdates as splitUpdatesType } from '@/utils/filterPackages'
+import { foldWorkspaceEntries } from '@/utils/workspaceRows'
+import { WORKSPACE_ENTRIES } from '../fixtures'
 
 const mockLogger = {
   __esModule: true,
@@ -18,24 +21,24 @@ interface LoadOpts {
   >
 }
 
+const DEFAULTS = {
+  allowMinorUpdates: false,
+  allowMajorUpdates: false,
+  debug: false,
+  silent: false,
+  updateAllowlist: [],
+  updateDenylist: [],
+  cooldown: 0,
+  rules: {},
+} as AlwaysUpToDateConfig
+
 function loadFilterWithConfig(
-  config: Record<string, unknown>,
+  config: Partial<AlwaysUpToDateConfig>,
   opts: LoadOpts = {},
 ) {
   let filter: typeof filterPackagesType
+  let split: typeof splitUpdatesType
   jest.isolateModules(() => {
-    jest.doMock('@/utils/config', () => ({
-      loadConfig: () => ({
-        allowMinorUpdates: false,
-        allowMajorUpdates: false,
-        debug: false,
-        silent: false,
-        updateAllowlist: [],
-        updateDenylist: [],
-        cooldown: 0,
-        ...config,
-      }),
-    }))
     jest.doMock('@/utils/logger', () => mockLogger)
     jest.doMock('@/utils/npmrcLoader', () => ({
       loadRegistryConfig: () => ({
@@ -56,9 +59,15 @@ function loadFilterWithConfig(
       clearRegistryCache: jest.fn(),
     }))
     // biome-ignore lint/style/noCommonJs: jest.isolateModules requires synchronous require
-    filter = require('@/utils/filterPackages').default
+    const loaded = require('@/utils/filterPackages')
+    filter = loaded.default
+    split = loaded.splitUpdates
   })
-  return filter!
+  const run = (
+    outdated: Record<string, PackageInfo>,
+    options: Omit<Parameters<typeof filterPackagesType>[1], 'config'> = {},
+  ) => filter!(outdated, { config: { ...DEFAULTS, ...config }, ...options })
+  return Object.assign(run, { split: split! })
 }
 
 const makeOutdated = (
@@ -515,6 +524,233 @@ describe('filterPackages', () => {
       )
 
       expect(results[0].updated).toBe(true)
+    })
+  })
+
+  describe('workspace projects', () => {
+    const NOW = Date.parse('2026-04-29T12:00:00Z')
+    const daysAgo = (days: number) =>
+      new Date(NOW - days * 24 * 60 * 60 * 1000).toISOString()
+    const workspaceOutdated = () => foldWorkspaceEntries(WORKSPACE_ENTRIES)
+
+    it('plans one result per package and manifest, workspace second in key order', async () => {
+      const results = await loadFilterWithConfig({})(workspaceOutdated())
+
+      expect(results.map((r) => [r.name, r.workspace])).toEqual([
+        ['dayjs', '.'],
+        ['dayjs', 'packages/b'],
+        ['debug', 'packages/b'],
+        ['ms', '.'],
+        ['ms', 'packages/a'],
+      ])
+      expect(Object.keys(results[0]).slice(0, 2)).toEqual(['name', 'workspace'])
+      expect(results.map((r) => r.updated)).toEqual([
+        false,
+        true,
+        true,
+        true,
+        false,
+      ])
+      expect(results[0].reason).toBe('patch beyond the range')
+      expect(results[4].reason).toBe('patch beyond the range')
+    })
+
+    it('leaves a workspace key off single-package results', async () => {
+      const [result] = await loadFilterWithConfig({})(
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
+      )
+
+      expect(Object.keys(result)).toEqual([
+        'name',
+        'current',
+        'wanted',
+        'latest',
+        'target',
+        'updateType',
+        'updated',
+        'reason',
+      ])
+    })
+
+    it('holds every manifest of a package a hold rule names', async () => {
+      const results = await loadFilterWithConfig({ rules: { dayjs: 'hold' } })(
+        workspaceOutdated(),
+      )
+
+      expect(
+        results.filter((r) => r.name === 'dayjs').map((r) => r.updated),
+      ).toEqual([false, false])
+    })
+
+    const together = () =>
+      foldWorkspaceEntries([
+        {
+          name: 'foo',
+          workspace: '.',
+          current: '1.10.0',
+          wanted: '1.10.8',
+          latest: '1.11.23',
+        },
+        {
+          name: 'foo',
+          workspace: 'packages/m',
+          current: '1.0.0',
+          wanted: '1.11.23',
+          latest: '1.11.23',
+        },
+      ])
+
+    it('re-checks peers once the together rule holds a package', async () => {
+      // The root's P is held by Q's peer range, packages/m's P moves within
+      // its own. The together rule then holds P everywhere, so P@1.0.0 stays
+      // installed and its peer range on x must hold x's move as well.
+      const filter = loadFilterWithConfig(
+        {},
+        {
+          installedPeers: {
+            P: [{ name: 'Q', version: '1.0.0', range: '<1.2.0' }],
+            x: [{ name: 'P', version: '1.0.0', range: '1.0.x' }],
+          },
+        },
+      )
+
+      const results = await filter(
+        foldWorkspaceEntries([
+          {
+            name: 'P',
+            workspace: '.',
+            current: '1.0.0',
+            wanted: '1.2.0',
+            latest: '1.2.0',
+          },
+          {
+            name: 'P',
+            workspace: 'packages/m',
+            current: '1.0.0',
+            wanted: '1.1.0',
+            latest: '1.2.0',
+          },
+          {
+            name: 'x',
+            workspace: '.',
+            current: '1.0.0',
+            wanted: '1.5.0',
+            latest: '1.5.0',
+          },
+        ]),
+      )
+
+      expect(
+        results.map((r) => [r.name, r.workspace, r.updated, r.reason]),
+      ).toEqual([
+        ['P', '.', false, 'peer conflict: Q@1.0.0 needs P <1.2.0'],
+        [
+          'P',
+          'packages/m',
+          false,
+          'held with the root (peer conflict: Q@1.0.0 needs P <1.2.0)',
+        ],
+        ['x', '.', false, 'peer conflict: P@1.0.0 needs x 1.0.x'],
+      ])
+    })
+
+    it('holds the package in every manifest when one is held by the cooldown', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 7 },
+        {
+          releaseTimes: {
+            foo: { '1.11.23': daysAgo(2), '1.10.8': daysAgo(60) },
+          },
+        },
+      )
+
+      const results = await filter(together(), { now: NOW })
+
+      expect(results.map((r) => r.updated)).toEqual([false, false])
+      expect(results[0].reason).toMatch(/^held with packages\/m \(cooldown: /)
+      expect(results[1].reason).toMatch(/^cooldown: /)
+    })
+
+    it('names the root as the blocker when the root row is the held one', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 7 },
+        {
+          releaseTimes: {
+            foo: { '1.10.8': daysAgo(2), '1.11.23': daysAgo(60) },
+          },
+        },
+      )
+
+      const results = await filter(together(), { now: NOW })
+
+      expect(results[1].reason).toMatch(/^held with the root \(cooldown: /)
+    })
+
+    it('does not let a held exact pin block the other manifests', async () => {
+      const results = await loadFilterWithConfig({})(
+        foldWorkspaceEntries([
+          {
+            name: 'foo',
+            workspace: '.',
+            current: '1.0.0',
+            wanted: '1.0.0',
+            latest: '1.0.5',
+          },
+          {
+            name: 'foo',
+            workspace: 'packages/m',
+            current: '1.0.0',
+            wanted: '1.0.3',
+            latest: '1.0.5',
+          },
+        ]),
+      )
+
+      expect(results.map((r) => r.updated)).toEqual([false, true])
+    })
+
+    it('splits the plan per manifest, root first', async () => {
+      const filter = loadFilterWithConfig({ beyondRange: 'patch' })
+      const results = await filter(workspaceOutdated())
+
+      const { names, withinRange, beyondRange, manifests } =
+        filter.split(results)
+
+      expect(names).toEqual(['dayjs', 'debug', 'ms'])
+      expect(withinRange).toEqual(['dayjs', 'debug', 'ms'])
+      expect(beyondRange).toEqual({ dayjs: '1.11.23', ms: '2.1.3' })
+      expect(manifests).toEqual([
+        {
+          path: '.',
+          withinRange: ['ms'],
+          beyondRange: { dayjs: '1.11.23' },
+        },
+        {
+          path: 'packages/a',
+          withinRange: [],
+          beyondRange: { ms: '2.1.3' },
+        },
+        {
+          path: 'packages/b',
+          withinRange: ['dayjs', 'debug'],
+          beyondRange: {},
+        },
+      ])
+    })
+
+    it('gives a single-package project the root as its only manifest', async () => {
+      const filter = loadFilterWithConfig({})
+      const results = await filter(
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
+      )
+
+      const { withinRange, beyondRange, manifests } = filter.split(results)
+
+      expect(manifests).toEqual([{ path: '.', withinRange, beyondRange }])
     })
   })
 })

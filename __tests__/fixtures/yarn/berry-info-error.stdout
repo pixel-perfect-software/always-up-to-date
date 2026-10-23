@@ -1,0 +1,11 @@
+[31m[1mInternal Error[22m[39m: un@workspace:.: This package doesn't seem to be present in your lockfile; run "yarn install" to update the lockfile
+    at jR.getCandidates (/corepack/yarn/4.12.0/yarn.js:204:4607)
+    at rm.getCandidates (/corepack/yarn/4.12.0/yarn.js:141:1311)
+    at /corepack/yarn/4.12.0/yarn.js:209:8420
+    at qE (/corepack/yarn/4.12.0/yarn.js:140:45054)
+    at mt (/corepack/yarn/4.12.0/yarn.js:209:8400)
+    at async Promise.allSettled (index 0)
+    at async Uu (/corepack/yarn/4.12.0/yarn.js:140:44382)
+    at async /corepack/yarn/4.12.0/yarn.js:209:9166
+    at async ki.startProgressPromise (/corepack/yarn/4.12.0/yarn.js:140:129679)
+    at async t.resolveEverything (/corepack/yarn/4.12.0/yarn.js:209:7138)

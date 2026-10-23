@@ -19,6 +19,11 @@ export type { GroupedPackages } from './packageGrouper'
 export { getSortedGroupNames, groupAndSortPackages } from './packageGrouper'
 export { clearRegistryCache, fetchReleaseTimes } from './registry'
 export { computeReleaseAges } from './releaseAges'
-export { toOutdatedRow, toUpdatingRow } from './rows'
+export {
+  toOutdatedRow,
+  toOutdatedRows,
+  toSkippedRow,
+  toUpdatingRow,
+} from './rows'
 export { runProcess } from './runProcess'
 export { default as updateChecker } from './updateChecker'

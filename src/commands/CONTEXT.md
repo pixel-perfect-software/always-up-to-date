@@ -25,20 +25,22 @@ commands/
 ## Architectural Patterns
 
 ### Command Flow (check/update)
-1. Detect package manager via `detectPackageManager(cwd)`
-2. Get its adapter with `adapterFor(name)` (`src/managers`)
-3. Run the pipeline (`src/pipeline.ts`): `check(adapter, cwd)`, or `update(adapter, cwd, { targetPackages })`. Dry-run is `check` then `plan`
+1. Open the project inside the `try` with `openProject(cwd, { pm: options.pm })` (`src/project.ts`): loads the config, configures the logger, detects the manager (or takes `--pm`) and gets its adapter. A bad config or no manager fails here and goes through `reportFailure` like any other failure
+2. Run the pipeline (`src/pipeline.ts`) with that project: `check(project)`, or `update(project, { targetPackages })`. Dry-run is `check` then `plan(project, outdated, targetPackages)`
 
 ### Command Options
 
+#### `check` and `update`
+- `--pm <npm|yarn|pnpm|bun>` - Use this manager instead of detecting one (`pmOption()` in `src/commands/options.ts`; commander rejects other values)
+
 #### `check`
-- `--json` - Output raw JSON instead of formatted display
+- `--json` - Output raw JSON instead of formatted display: a `Record<name, PackageInfo>`. In a workspace project each value is `{ name, current, wanted, latest, workspaces: [{ path, current, wanted }] }`, one `workspaces` element per manifest declaring the package (root `'.'` first, then by path); top-level `current`/`wanted` repeat the root's, else the first member's. Manager pass-through fields are dropped in workspace projects. Human output adds a gray workspace column (`(root)` or the path)
 
 #### `update [packages...]`
 - Accepts optional variadic package names to target specific packages
 - `--dry-run` - Preview which packages would be updated without making changes: each row shows `current → target`, flagged `beyond range` when it leaves its manifest range; held rows show the policy's reason
-- `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). Discovery runs once: the checklist's `check` result is passed to `update(adapter, cwd, { targetPackages: selected, discovered })`
-- `--json` - Output `UpdateResult[]` as JSON (`[]` when nothing is outdated, including with `--dry-run`). Conflicts with `--interactive`
+- `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). The checklist has one choice per package, listing its manifests in a workspace project; targeting stays by name. Discovery runs once: the checklist's `check` result is passed to `update(project, { targetPackages: selected, discovered })`
+- `--json` - Output `UpdateResult[]` as JSON (one row per package and manifest; in a workspace project each row has `workspace`, `'.'` for the root) (`[]` when nothing is outdated, including with `--dry-run`). Conflicts with `--interactive`
 
 ### JSON output
 With `--json`, stdout carries exactly one JSON document. The action calls `logger.setJsonOutput(true)` before anything else: progress output is dropped, and errors, warnings and debug lines go to stderr. All human-facing output must go through `logger`; a bare `console.log` anywhere on the command path breaks `--json`.
@@ -55,6 +57,6 @@ Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodat
 
 ## Integration Points
 - `src/detectPackageManager.ts` for package manager detection
-- `src/managers` `adapterFor(name)` for the detected manager's adapter
+- `src/project.ts` `openProject(cwd, { pm })` for the config, logger setup and the detected manager's adapter
 - `src/pipeline.ts` `check`, `plan` and `update`
 - `src/utils/config.ts` for loading/saving configuration

@@ -1,8 +1,10 @@
 import { type Command, Option } from 'commander'
-import detectPackageManager from '@/detectPackageManager'
-import { adapterFor, type ManagerAdapter } from '@/managers'
 import { check, plan, update as runUpdate } from '@/pipeline'
-import { logger, toUpdatingRow } from '@/utils'
+import { openProject, type Project } from '@/project'
+import type { SupportedPackageManager, UpdateResult } from '@/types'
+import { logger, toSkippedRow, toUpdatingRow } from '@/utils'
+import { workspaceLabel } from '@/utils/workspaceRows'
+import { pmOption } from './options'
 import reportFailure from './reportFailure'
 
 const workingDir = process.cwd()
@@ -11,6 +13,7 @@ interface UpdateOptions {
   dryRun?: boolean
   interactive?: boolean
   json?: boolean
+  pm?: SupportedPackageManager
 }
 
 /**
@@ -33,26 +36,25 @@ const update = (program: Command) =>
     .addOption(
       new Option('--json', 'Output results as JSON').conflicts('interactive'),
     )
+    .addOption(pmOption())
     .action(async (packages: string[], options: UpdateOptions) => {
       if (options.json) logger.setJsonOutput(true)
 
       try {
-        const adapter = adapterFor(detectPackageManager(workingDir))
+        const project = openProject(workingDir, { pm: options.pm })
         const targetPackages = packages.length > 0 ? packages : undefined
 
         if (options.dryRun) {
-          await dryRun(adapter, targetPackages, options.json)
+          await dryRun(project, targetPackages, options.json)
           return
         }
 
         if (options.interactive) {
-          await interactiveUpdate(adapter)
+          await interactiveUpdate(project)
           return
         }
 
-        const results = await runUpdate(adapter, workingDir, {
-          targetPackages,
-        })
+        const results = await runUpdate(project, { targetPackages })
 
         if (options.json) {
           console.log(JSON.stringify(results, null, 2))
@@ -63,23 +65,18 @@ const update = (program: Command) =>
     })
 
 const dryRun = async (
-  adapter: ManagerAdapter,
+  project: Project,
   targetPackages?: string[],
   json?: boolean,
 ) => {
-  const outdatedPackages = await check(adapter, workingDir)
+  const outdatedPackages = await check(project)
 
   if (Object.keys(outdatedPackages).length === 0) {
     if (json) console.log(JSON.stringify([], null, 2))
     return
   }
 
-  const results = await plan(
-    adapter,
-    workingDir,
-    outdatedPackages,
-    targetPackages,
-  )
+  const results = await plan(project, outdatedPackages, targetPackages)
   const wouldUpdate = results.filter((r) => r.updated)
   const wouldSkip = results.filter((r) => !r.updated)
 
@@ -95,24 +92,37 @@ const dryRun = async (
 
   if (wouldSkip.length > 0) {
     logger.clean(`\nWould skip (${wouldSkip.length})`)
-    logger.printSkippedRows(
-      wouldSkip.map((p) => ({
-        name: p.name,
-        current: p.current,
-        latest: p.latest,
-        updateType: p.updateType,
-        reason: p.reason,
-      })),
-    )
+    logger.printSkippedRows(wouldSkip.map(toSkippedRow))
   }
 }
 
-const interactiveUpdate = async (adapter: ManagerAdapter) => {
-  const outdatedPackages = await check(adapter, workingDir)
+/** One choice per package: a package in several manifests moves in all of them. */
+const choicesByPackage = (eligible: UpdateResult[]) => {
+  const byName = new Map<string, UpdateResult[]>()
+  for (const result of eligible) {
+    const rows = byName.get(result.name)
+    if (rows) rows.push(result)
+    else byName.set(result.name, [result])
+  }
+  const step = (r: UpdateResult) =>
+    `${r.current} → ${r.target} (${r.updateType}${r.target === r.wanted ? '' : ', beyond range'})`
+
+  // Selecting a package moves every manifest listed, so each shows its own move.
+  return [...byName].map(([name, rows]) => ({
+    name: rows.some((r) => r.workspace !== undefined)
+      ? `${name}: ${rows.map((r) => `${workspaceLabel(r.workspace ?? '.')} ${step(r)}`).join(', ')}`
+      : `${name}: ${step(rows[0])}`,
+    value: name,
+    checked: true,
+  }))
+}
+
+const interactiveUpdate = async (project: Project) => {
+  const outdatedPackages = await check(project)
 
   if (Object.keys(outdatedPackages).length === 0) return
 
-  const results = await plan(adapter, workingDir, outdatedPackages)
+  const results = await plan(project, outdatedPackages)
   const eligible = results.filter((r) => r.updated)
 
   if (eligible.length === 0) {
@@ -124,11 +134,7 @@ const interactiveUpdate = async (adapter: ManagerAdapter) => {
 
   const selected = await checkbox({
     message: 'Select packages to update:',
-    choices: eligible.map((pkg) => ({
-      name: `${pkg.name}: ${pkg.current} → ${pkg.target} (${pkg.updateType}${pkg.target === pkg.wanted ? '' : ', beyond range'})`,
-      value: pkg.name,
-      checked: true,
-    })),
+    choices: choicesByPackage(eligible),
   })
 
   if (selected.length === 0) {
@@ -136,7 +142,7 @@ const interactiveUpdate = async (adapter: ManagerAdapter) => {
     return
   }
 
-  await runUpdate(adapter, workingDir, {
+  await runUpdate(project, {
     targetPackages: selected,
     discovered: outdatedPackages,
   })

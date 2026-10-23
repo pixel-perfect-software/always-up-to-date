@@ -2,7 +2,8 @@ import fs from 'fs'
 import type { PackageInfo } from '@/types'
 import {
   checkIfFileExists,
-  identifyCatalogPackages,
+  readSpec,
+  splitCatalogUpdates,
   updateBunCatalogs,
   updatePackageJson,
   updatePNPMWorkspaceYAML,
@@ -320,18 +321,80 @@ describe('updatePNPMWorkspaceYAML', () => {
     expect(written).toContain('^4.17.0') // lodash unchanged
   })
 
-  it('preserves quoted versions', async () => {
-    const yaml = `catalog:\n  react: "^18.0.0"`
+  const write = async (yaml: string, versions: Record<string, string>) => {
     mockedFs.readFileSync.mockReturnValue(yaml)
     mockedFs.writeFileSync.mockImplementation(() => undefined)
+    await updatePNPMWorkspaceYAML('/test', versions)
+    return (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+  }
 
-    await updatePNPMWorkspaceYAML(
-      '/test',
-      versionsOf(['react'], outdatedPackages),
+  it('keeps the quotes a version was written with', async () => {
+    // Before: double quotes came back as single quotes.
+    expect(
+      await write(`catalog:\n  react: "^18.0.0"`, { react: '19.0.0' }),
+    ).toBe(`catalog:\n  react: "^19.0.0"`)
+  })
+
+  it('leaves overrides alone while it moves the catalog entry', async () => {
+    // #80: the override's floor used to move from 1.11.0 to 1.11.23.
+    const yaml =
+      'packages:\n  - packages/*\ncatalog:\n  dayjs: 1.11.9\noverrides:\n  dayjs: ^1.11.0\n'
+
+    expect(await write(yaml, { dayjs: '1.11.23' })).toBe(
+      'packages:\n  - packages/*\ncatalog:\n  dayjs: 1.11.23\noverrides:\n  dayjs: ^1.11.0\n',
     )
+  })
 
-    const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
-    expect(written).toContain("'^19.0.0'")
+  it('rewrites named catalogs and nothing nested elsewhere', async () => {
+    const yaml = [
+      'catalogs:',
+      '  react18:',
+      '    react: ^18.2.0',
+      '  tools:',
+      '    dayjs: 1.11.9',
+      'peerDependencyRules:',
+      '  allowedVersions:',
+      '    dayjs: 1.11.9',
+    ].join('\n')
+
+    expect(await write(yaml, { dayjs: '1.11.23', react: '19.3.1' })).toBe(
+      [
+        'catalogs:',
+        '  react18:',
+        '    react: ^19.3.1',
+        '  tools:',
+        '    dayjs: 1.11.23',
+        'peerDependencyRules:',
+        '  allowedVersions:',
+        '    dayjs: 1.11.9',
+      ].join('\n'),
+    )
+  })
+
+  it('moves an entry with a trailing comment and keeps the comment', async () => {
+    // Before: the comment was read as part of the version and nothing moved.
+    expect(
+      await write('catalog:\n  dayjs: 1.11.9 # pinned for the date picker\n', {
+        dayjs: '1.11.23',
+      }),
+    ).toBe('catalog:\n  dayjs: 1.11.23 # pinned for the date picker\n')
+  })
+
+  it('reads a quoted scoped name', async () => {
+    expect(
+      await write(`catalog:\n  '@types/node': ^20.0.0\n`, {
+        '@types/node': '22.1.0',
+      }),
+    ).toBe(`catalog:\n  '@types/node': ^22.1.0\n`)
+  })
+
+  it('leaves comment lines and other keys untouched', async () => {
+    const yaml =
+      '# dayjs: 1.0.0\ncatalog:\n  # dayjs: 1.0.0\n  react: ^18.0.0\nsavePrefix: "~"\n'
+
+    expect(await write(yaml, { dayjs: '1.11.23', savePrefix: '1.0.0' })).toBe(
+      yaml,
+    )
   })
 
   it('keeps an exact pin exact', async () => {
@@ -453,59 +516,67 @@ describe('updateBunCatalogs', () => {
   })
 })
 
-describe('identifyCatalogPackages', () => {
-  it('separates catalog packages from root packages', () => {
-    const packageJson = {
-      catalog: { react: '^18.0.0' },
-      catalogs: { utils: { lodash: '^4.17.0' } },
-    }
-    mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
-
-    const outdatedPackages: Record<string, PackageInfo> = {
-      react: {
-        name: 'react',
-        current: '18.0.0',
-        wanted: '18.0.0',
-        latest: '19.0.0',
-      },
-      lodash: {
-        name: 'lodash',
-        current: '4.17.0',
-        wanted: '4.17.0',
-        latest: '4.18.0',
-      },
-      express: {
-        name: 'express',
-        current: '4.0.0',
-        wanted: '4.0.0',
-        latest: '5.0.0',
-      },
-    }
-
-    const result = identifyCatalogPackages('/test', outdatedPackages)
-
-    expect(result.catalogPackages).toEqual(
-      expect.arrayContaining(['react', 'lodash']),
+describe('readSpec', () => {
+  it('reads the first dependency field that lists the package', () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        devDependencies: { react: '^18.0.0' },
+        peerDependencies: { react: '>=17' },
+      }),
     )
-    expect(result.rootPackages).toEqual(['express'])
+
+    expect(readSpec('/test', 'react')).toBe('^18.0.0')
+    expect(readSpec('/test', 'vue')).toBeUndefined()
   })
 
-  it('returns all as root when no catalogs exist', () => {
-    const packageJson = { dependencies: { react: '^18.0.0' } }
-    mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
+  it('is undefined when the manifest cannot be read', () => {
+    mockedFs.readFileSync.mockImplementation(() => {
+      throw new Error('ENOENT')
+    })
 
-    const outdatedPackages: Record<string, PackageInfo> = {
-      react: {
-        name: 'react',
-        current: '18.0.0',
-        wanted: '18.0.0',
-        latest: '19.0.0',
+    expect(readSpec('/test', 'react')).toBeUndefined()
+  })
+})
+
+describe('splitCatalogUpdates', () => {
+  it('sends catalog: specs to the catalog and the rest to their own manifest', () => {
+    const manifests: Record<string, unknown> = {
+      '/test/package.json': { dependencies: { dayjs: '1.11.9' } },
+      '/test/packages/a/package.json': {
+        dependencies: { dayjs: 'catalog:', ms: '2.1.2' },
       },
     }
+    mockedFs.readFileSync.mockImplementation((file) =>
+      JSON.stringify(manifests[String(file)]),
+    )
 
-    const result = identifyCatalogPackages('/test', outdatedPackages)
+    const result = splitCatalogUpdates('/test', [
+      { path: '.', withinRange: [], beyondRange: { dayjs: '1.11.23' } },
+      {
+        path: 'packages/a',
+        withinRange: [],
+        beyondRange: { dayjs: '1.11.23', ms: '2.1.3' },
+      },
+    ])
 
-    expect(result.catalogPackages).toEqual([])
-    expect(result.rootPackages).toEqual(['react'])
+    expect(result).toEqual({
+      catalog: { dayjs: '1.11.23' },
+      byManifest: [
+        { path: '.', versions: { dayjs: '1.11.23' } },
+        { path: 'packages/a', versions: { ms: '2.1.3' } },
+      ],
+    })
+  })
+
+  it('leaves out a manifest with nothing to write', () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ dependencies: { dayjs: 'catalog:' } }),
+    )
+
+    expect(
+      splitCatalogUpdates('/test', [
+        { path: '.', withinRange: [], beyondRange: { dayjs: '1.11.23' } },
+      ]),
+    ).toEqual({ catalog: { dayjs: '1.11.23' }, byManifest: [] })
   })
 })

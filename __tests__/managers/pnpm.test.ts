@@ -1,13 +1,22 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import pnpm, { parsePnpmOutdated } from '@/managers/pnpm'
+import pnpm, {
+  parsePnpmOutdated,
+  parsePnpmWorkspaceOutdated,
+} from '@/managers/pnpm'
 import { check, update } from '@/pipeline'
+import { StepError } from '@/stepError'
 import type { PackageInfo } from '@/types'
-import { exitError, readFixture } from '../fixtures'
+import {
+  exitError,
+  projectFor,
+  readFixture,
+  WORKSPACE_ENTRIES,
+  writeWorkspaceProject,
+} from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -18,7 +27,6 @@ jest.mock('@/utils', () => ({
 }))
 
 import { runProcess } from '@/utils'
-import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -37,7 +45,7 @@ describe('check with pnpm', () => {
   it('lists outdated packages when pnpm exits 1 with a JSON report', async () => {
     mockReports('pnpm/outdated.stdout', 'pnpm/outdated-compatible.stdout')
 
-    const result = await check(pnpm, '/project')
+    const result = await check(projectFor(pnpm, '/project'))
 
     expect(Object.keys(result)).toHaveLength(40)
     expect(result.dayjs).toMatchObject({
@@ -53,7 +61,7 @@ describe('check with pnpm', () => {
       'pnpm/outdated-ranges-compatible.stdout',
     )
 
-    const result = await check(pnpm, '/project')
+    const result = await check(projectFor(pnpm, '/project'))
 
     // react ^18.2.0: pnpm's own `wanted` is the lockfile's 18.2.0.
     expect(
@@ -78,7 +86,7 @@ describe('check with pnpm', () => {
       exitError(1, '', readFixture('pnpm/outdated-error.stderr')),
     )
 
-    await expect(check(pnpm, '/project')).rejects.toThrow(
+    await expect(check(projectFor(pnpm, '/project'))).rejects.toThrow(
       /ERR_PNPM_OUTDATED_REGISTRY_ERROR/,
     )
   })
@@ -147,7 +155,7 @@ describe('pnpm.readWorkspace', () => {
     writeWorkspaceYaml('onlyBuiltDependencies: []\n')
     mockedRunProcess.mockResolvedValue({ stdout: '{}', stderr: '' })
 
-    await check(pnpm, cwd)
+    await check(projectFor(pnpm, cwd))
 
     expect(mockedRunProcess).toHaveBeenCalledWith(
       'pnpm',
@@ -188,13 +196,9 @@ describe('update with pnpm in a single-package project', () => {
   beforeEach(() => {
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-single-'))
     mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
-    jest
-      .mocked(loadConfig)
-      .mockReturnValue({ ...DEFAULT_CONFIG, beyondRange: 'patch' })
   })
 
   afterEach(() => {
-    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
@@ -205,7 +209,9 @@ describe('update with pnpm in a single-package project', () => {
     )
     write('pnpm-workspace.yaml', 'onlyBuiltDependencies: []\n')
 
-    await update(pnpm, cwd, { discovered: outdated })
+    await update(projectFor(pnpm, cwd, { beyondRange: 'patch' }), {
+      discovered: outdated,
+    })
 
     expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
       ['update', 'react', 'dayjs'],
@@ -220,12 +226,15 @@ describe('update with pnpm in a single-package project', () => {
     )
     write('pnpm-workspace.yaml', 'catalog:\n  dayjs: 1.11.9\n')
 
-    await update(pnpm, cwd, { discovered: outdated })
+    await update(projectFor(pnpm, cwd, { beyondRange: 'patch' }), {
+      discovered: outdated,
+    })
 
     expect(read('pnpm-workspace.yaml')).toBe('catalog:\n  dayjs: 1.11.23\n')
     expect(JSON.parse(read('package.json')).dependencies.dayjs).toBe('catalog:')
+    // Not frozen: CI makes a plain `pnpm install` refuse the rewritten catalog.
     expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
-      ['install'],
+      ['install', '--no-frozen-lockfile'],
       ['update', 'react'],
     ])
   })
@@ -256,5 +265,85 @@ describe('parsePnpmOutdated', () => {
     )
 
     expect(result.react.wanted).toBe('18.2.0')
+  })
+})
+
+describe('parsePnpmWorkspaceOutdated', () => {
+  const report = readFixture('pnpm/outdated-workspace.stdout')
+  const compatible = readFixture('pnpm/outdated-workspace-compatible.stdout')
+
+  it('parses one entry per dependent package, wanted from --compatible', () => {
+    const entries = parsePnpmWorkspaceOutdated(report, compatible, '/project')
+
+    expect(entries).toHaveLength(5)
+    expect(entries).toEqual(expect.arrayContaining(WORKSPACE_ENTRIES))
+  })
+
+  it('strips the @current suffix pnpm adds to a name at several versions', () => {
+    expect(JSON.parse(report)).toHaveProperty(['ms@2.1.1'])
+
+    const entries = parsePnpmWorkspaceOutdated(report, compatible, '/project')
+
+    expect(entries.map((e) => e.name)).not.toContain('ms@2.1.1')
+    expect(entries.map((e) => e.name)).not.toContain('ms@2.1.2')
+  })
+
+  it('fails discovery for a location outside the project', () => {
+    expect(() =>
+      parsePnpmWorkspaceOutdated(report, compatible, '/elsewhere'),
+    ).toThrow(StepError)
+  })
+
+  it('fails discovery for a row that names no dependent packages', () => {
+    // Dropping it would read as "up to date".
+    const parsed = JSON.parse(report)
+    delete parsed.debug.dependentPackages
+
+    expect(() =>
+      parsePnpmWorkspaceOutdated(
+        JSON.stringify(parsed),
+        compatible,
+        '/project',
+      ),
+    ).toThrow('pnpm outdated -r reported debug with no dependentPackages')
+  })
+})
+
+describe('pnpm.readWorkspace manifests', () => {
+  it('lists the root, then the members the patterns match', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-manifests-'))
+    try {
+      writeWorkspaceProject(cwd, { pnpm: true })
+
+      expect(pnpm.readWorkspace(cwd).manifests).toEqual([
+        { path: '.', name: 'ws-root' },
+        { path: 'packages/a', name: '@ws/a' },
+        { path: 'packages/b', name: '@ws/b' },
+      ])
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('reads quoted block items and flow lists', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-manifests-'))
+    try {
+      writeWorkspaceProject(cwd, { pnpm: true })
+      fs.writeFileSync(
+        path.join(cwd, 'pnpm-workspace.yaml'),
+        'packages: [\'packages/a\', "packages/b"] # members\n',
+      )
+
+      expect(pnpm.readWorkspace(cwd)).toMatchObject({
+        isWorkspace: true,
+        manifests: [
+          { path: '.' },
+          { path: 'packages/a' },
+          { path: 'packages/b' },
+        ],
+      })
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
   })
 })

@@ -1,7 +1,20 @@
 import type { SuccessCheck } from '@/commandRunner'
-import type { PackageInfo, SupportedPackageManager } from '@/types'
+import type {
+  ManifestPlan,
+  OutdatedEntry,
+  PackageInfo,
+  SupportedPackageManager,
+} from '@/types'
 import type { ControllingOverride } from '@/utils/overrides'
 import type { SaveStyle } from '@/utils/saveStyle'
+
+/** One package.json in the project: the root, or a workspace member. */
+export interface WorkspaceManifest {
+  /** The manifest's directory relative to the root, POSIX separators; '.' is the root. */
+  path: string
+  /** The manifest's `name`, when it has one. */
+  name?: string
+}
 
 /** The project's layout as the manager sees it, read once per run. */
 export interface Workspace {
@@ -9,7 +22,17 @@ export interface Workspace {
   isWorkspace: boolean
   /** Catalogs that hold versions instead of package.json, by name. */
   catalogs: string[]
+  /**
+   * The root (`{ path: '.' }`) first, then each member directory the
+   * workspace patterns match, sorted by path. Only the root outside a workspace.
+   */
+  manifests: WorkspaceManifest[]
 }
+
+/** What `discover` found, in the shape the project calls for. */
+export type Discovery =
+  | { kind: 'single'; outdated: Record<string, PackageInfo> }
+  | { kind: 'workspace'; entries: OutdatedEntry[] }
 
 /**
  * Runs the manager with `args` as one pipeline step. A failure rejects with
@@ -29,8 +52,8 @@ export interface ApplyPlan {
   withinRange: string[]
   /** Packages moving past their range, to this version: their spec changes. */
   beyondRange: Record<string, string>
-  /** The discovery result the plan was made from. */
-  discovered: Record<string, PackageInfo>
+  /** Each manifest with something moving, root first. A single-package project has the root only. */
+  manifests: ManifestPlan[]
 }
 
 /**
@@ -42,12 +65,15 @@ export interface ManagerAdapter {
   /** The lockfile that marks a project as this manager's. */
   lockfile: string
   readWorkspace(cwd: string): Workspace
-  /** Outdated packages as the manager reports them, keyed by its own names. */
+  /**
+   * Outdated packages as the manager reports them, under its own names: a
+   * record in a single-package project, one entry per manifest in a workspace.
+   */
   discover(
     run: RunManager,
     cwd: string,
     workspace: Workspace,
-  ): Promise<Record<string, PackageInfo>>
+  ): Promise<Discovery>
   /** Writes the specs the manager does not write itself, then runs its update commands. */
   apply(
     run: RunManager,
@@ -55,6 +81,16 @@ export interface ManagerAdapter {
     plan: ApplyPlan,
     workspace: Workspace,
   ): Promise<void>
+  /**
+   * The versions installed for these rows after apply, keyed by `rowKey`,
+   * for a manager whose installs can't be read from node_modules (yarn
+   * berry's PnP). Without it the pipeline reads node_modules.
+   */
+  installed?(
+    run: RunManager,
+    cwd: string,
+    rows: { name: string; workspace?: string }[],
+  ): Promise<Record<string, string>>
   /** How the manager writes a new spec, read from where its current version keeps that setting. */
   saveStyle(cwd: string): SaveStyle
   /** Packages pinned by an override this manager enforces. */

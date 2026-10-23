@@ -1,5 +1,4 @@
-import type { PackageInfo } from '@/types'
-import { loadConfig } from './config'
+import type { CooldownConfig, PackageInfo } from '@/types'
 import { isCooldownEnabled } from './cooldown'
 import { MS_PER_DAY } from './duration'
 import { loadRegistryConfig } from './npmrcLoader'
@@ -13,10 +12,10 @@ import { fetchReleaseTimes } from './registry'
 export const computeReleaseAges = async (
   outdated: Record<string, PackageInfo>,
   cwd: string,
+  cooldown: CooldownConfig,
   now: number = Date.now(),
 ): Promise<Record<string, number>> => {
-  const config = loadConfig(cwd)
-  if (!isCooldownEnabled(config.cooldown)) return {}
+  if (!isCooldownEnabled(cooldown)) return {}
 
   const registryConfig = loadRegistryConfig(cwd)
   const ages: Record<string, number> = {}

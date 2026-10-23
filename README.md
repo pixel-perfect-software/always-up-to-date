@@ -12,7 +12,7 @@
   <a href="https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/ci.yml"><img src="https://github.com/pixel-perfect-software/always-up-to-date/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/@pixel-perfect-software/always-up-to-date"><img src="https://img.shields.io/npm/v/@pixel-perfect-software/always-up-to-date?label=npm%20package&color=cb3837" alt="Latest version on npm" /></a>
   <img src="https://img.shields.io/node/v/@pixel-perfect-software/always-up-to-date?color=339933" alt="Node.js version" />
-  <img src="https://img.shields.io/badge/managers-npm%20%7C%20pnpm%20%7C%20yarn%20v1%20%7C%20bun-4C6EF5" alt="Package managers: npm, pnpm, yarn v1 and bun" />
+  <img src="https://img.shields.io/badge/managers-npm%20%7C%20pnpm%20%7C%20yarn%20%7C%20bun-4C6EF5" alt="Package managers: npm, pnpm, yarn and bun" />
   <img src="https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/badges/badge-lines.svg" alt="Coverage: lines" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
 </p>
@@ -22,8 +22,8 @@ dependency moves to the newest version its package.json range allows, the same s
 installs, while an exact pin like `"18.2.0"` stays exactly where it is. When you want more, a
 small config file lets one package, a scope, or everything move past its range.
 
-It works with npm, pnpm, yarn and bun, in single projects and workspaces, and picks the package
-manager from your lockfile.
+It works with npm, pnpm, yarn and bun, in single projects and workspaces, and uses the package
+manager your package.json declares, or the one your lockfile belongs to.
 
 ```console
 $ autd update --dry-run
@@ -62,7 +62,7 @@ What happens to each kind of spec:
 ## 📋 Requirements
 
 - **Node.js** 24 or higher
-- **npm**, **pnpm**, **yarn** v1 or **bun**. yarn 2+ (berry) isn't supported yet ([#79](https://github.com/pixel-perfect-software/always-up-to-date/issues/79)).
+- **npm**, **pnpm**, **yarn** (v1, or 2+ with the PnP or `node-modules` linker) or **bun**.
 
 ## 🚀 Install
 
@@ -92,6 +92,7 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 | `autd update --dry-run` | Show where each package would move, or why it's held, without changing anything |
 | `autd update -i, --interactive` | Pick the packages to update from a checklist |
 | `autd update --json` | Print the update results as JSON (combines with `--dry-run`, not with `--interactive`) |
+| `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager |
 | `autd init` | Create `.always-up-to-date.json` in the current directory |
 | `autd help` | Show help |
 
@@ -152,18 +153,23 @@ When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"
 
 ## 📦 Package managers and workspaces
 
-| Manager | Detected from | Workspaces from |
+autd uses the first of these that names a manager: the `--pm` option, the `packageManager` field in package.json (`"pnpm@12.14.0"`, as Corepack reads it), `devEngines.packageManager`, then the lockfile. A lockfile from another manager than the declared one is ignored, with a warning when the declared manager has no lockfile of its own. With several lockfiles and nothing declared, autd warns and picks in the order bun, pnpm, yarn, npm.
+
+| Manager | Lockfile | Workspaces from |
 |---------|---------------|-----------------|
 | npm | `package-lock.json` | the `workspaces` field in package.json |
 | pnpm | `pnpm-lock.yaml` | the `packages` list in `pnpm-workspace.yaml`, including catalogs |
-| yarn v1 | `yarn.lock` | the `workspaces` field in package.json |
+| yarn (v1 and 2+) | `yarn.lock` | the `workspaces` field in package.json |
 | bun | `bun.lock` | the `workspaces` field in package.json, including catalogs |
+
+In a workspace, autd plans each package once per manifest that declares it, and `update --json` has one row per package and manifest, each with a `workspace` (`.` is the root). A package that moves past its range is rewritten in the manifest that declares it; if that spec is a `catalog:` reference, the catalog entry is rewritten instead. A package that can move in one manifest but is held in another (a cooldown, a peer conflict, an override) is held everywhere, with the reason `held with <path> (…)`, so the manifests don't drift apart.
 
 ## 🩺 Troubleshooting
 
-- **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)` or `peer conflict: …`.
+- **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)` or `peer conflict: …`. After `autd update`, a package your manager was asked to move but left where it was is listed under "left in place by …" and reported with `"updated": false` and `not applied by npm (installed …)`. npm does this to a package another dependency pins exactly, and to a workspace member's copy it dedupes onto the root's. In a workspace, `held with <path> (…)` means the same package is held in that manifest, so its other manifests wait for it.
 - **`check` or `update` exits 1.** The message names the step that failed (`detect`, `discover` or `apply`) and says whether package.json was already written. Set `"debug": true` to see each package-manager command and its stderr.
-- **"No package manager detected".** autd looks for a lockfile in the current directory; run your package manager's install first.
+- **"No package manager detected".** package.json declares no manager and there's no lockfile in the current directory. Set `"packageManager"`, pass `--pm`, or run your package manager's install first.
+- **The wrong package manager runs.** A leftover lockfile decided it. Set `"packageManager"` in package.json or pass `--pm`; with `"debug": true`, autd logs which lockfiles it ignored.
 
 ## 🔄 Upgrading from 1.x
 
