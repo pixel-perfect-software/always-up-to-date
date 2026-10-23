@@ -29,6 +29,12 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - `pnpm run update-deps` - Update dependencies
 - After building, the CLI can be tested locally with: `node dist/index.js <command>`
 
+### Releasing
+- `/ship:release <major|minor|patch>` bumps `version` in `package.json` and adds the version's `CHANGELOG.md` entry (`## <date> — <version>: <headline>`) in a `Release <version>` PR
+- Once that merges, pushing a `v<version>` tag on `main` runs `.github/workflows/release.yml`. It checks that the tag matches `package.json`, sits on `main` and has a `CHANGELOG.md` entry, runs the gates, publishes with `pnpm publish`, and creates the GitHub release with that entry as its notes. pnpm, not npm: it writes the `catalog:` ranges as real versions in the published manifest
+- npm authenticates the publish through trusted publishing (OIDC); no token is stored in the repository. The workflow is registered as the package's trusted publisher on npmjs.com, so renaming `release.yml` breaks publishing until that setting is updated
+- Don't publish from a local checkout: `prepack` builds over `dist/` without cleaning it, so files left from another branch ship
+
 ## Architecture
 
 ### Core Components
