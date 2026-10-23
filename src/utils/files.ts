@@ -262,7 +262,7 @@ export const updatePNPMWorkspaceYAML = async (
   let block: string | undefined
   let catalogIndent: number | undefined
 
-  const updatedLines = lines.map((line) => {
+  const rewriteLine = (line: string): string => {
     if (/^\S/.test(line)) {
       if (!line.startsWith('#')) {
         block = /^(['"]?)([^'"\s:]+)\1\s*:/.exec(line)?.[2]
@@ -294,7 +294,14 @@ export const updatePNPMWorkspaceYAML = async (
 
     const newSpec = nextVersionSpec(spec, versions[name], style)
     return `${indent}${keyQuote}${name}${keyQuote}${separator}${quote}${newSpec}${quote}${rest}`
-  })
+  }
+
+  // A CRLF file keeps its `\r`: the line is rewritten without it and gets it back.
+  const updatedLines = lines.map((line) =>
+    line.endsWith('\r')
+      ? `${rewriteLine(line.slice(0, -1))}\r`
+      : rewriteLine(line),
+  )
 
   fs.writeFileSync(pnpmWorkspaceYamlPath, updatedLines.join('\n'), 'utf8')
 }

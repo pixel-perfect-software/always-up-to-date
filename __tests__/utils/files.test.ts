@@ -398,6 +398,26 @@ describe('updatePNPMWorkspaceYAML', () => {
     )
   })
 
+  it('keeps CRLF line endings and changes only the catalog line', async () => {
+    const yaml = [
+      'packages:',
+      '  - "packages/*"',
+      'catalog:',
+      '  react: ^18.0.0',
+      '  lodash: ^4.17.0',
+      'overrides:',
+      '  react: ^18.0.0',
+      '',
+    ].join('\r\n')
+
+    expect(await write(yaml, { react: '19.0.0' })).toBe(
+      yaml.replace(
+        '  react: ^18.0.0\r\n  lodash',
+        '  react: ^19.0.0\r\n  lodash',
+      ),
+    )
+  })
+
   it('keeps an exact pin exact', async () => {
     const yaml = `catalog:\n  react: 18.0.0\n  lodash: '4.17.0'`
     mockedFs.readFileSync.mockReturnValue(yaml)
