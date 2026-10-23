@@ -57,6 +57,7 @@ schema/
   config.schema.json        # JSON schema for .always-up-to-date.json (referenced via $schema)
 __tests__/
   setup.ts                  # Global test setup (console suppression)
+  index.test.ts             # CLI entry: a bad config prints one line and exits 1
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   commands/
     check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options

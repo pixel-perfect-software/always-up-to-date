@@ -15,7 +15,7 @@ Four commands implemented: `init`, `check`, `update`, `help`.
 ```
 commands/
   index.ts    # Re-exports check, help, init, update
-  init.ts     # Creates .always-up-to-date.json with DEFAULT_CONFIG
+  init.ts     # Creates .always-up-to-date.json with INITIAL_CONFIG (beyondRange, rules, cooldown, debug, silent)
   check.ts    # Detects package manager, lists outdated deps (grouped by scope)
   update.ts   # Detects package manager, updates packages per config rules
   reportFailure.ts  # Reports a failed command once (human or JSON) and sets exit code 1

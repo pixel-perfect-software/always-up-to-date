@@ -122,31 +122,63 @@ Full support for workspaces and monorepos:
 
 ## ⚙️ Configuration
 
-Run `autd init` to create a `.always-up-to-date.json` file in your project root:
+By default, `autd update` stays within the version range each dependency has in `package.json`, the same set `npm update` would install. `"^18.2.0"` can move to the newest `18.x`, `"~7.5.0"` to the newest `7.5.x`, and an exact pin like `"1.11.9"` is left alone. You only need a config file to go further.
+
+Run `autd init` to create `.always-up-to-date.json` in your project root:
 
 ```json
 {
-  "allowMinorUpdates": false,
-  "allowMajorUpdates": false,
-  "updateAllowlist": [],
-  "updateDenylist": [],
+  "beyondRange": "none",
+  "rules": {},
+  "cooldown": 0,
   "debug": false,
   "silent": false
 }
 ```
 
-By default, `autd update` stays within the version range each dependency has in `package.json`, the same set `npm update` would install. `"^18.2.0"` can move to the newest `18.x`, `"~7.5.0"` to the newest `7.5.x`, and an exact pin like `"1.11.9"` is left alone. The options below let you go further.
-
 | Option | Default | Description |
 |--------|---------|-------------|
-| `allowMinorUpdates` | `false` | Let a dependency move past its range, to the latest version, when that is at most a minor step (e.g., 1.0.0 → 1.1.0). Exact pins move too. |
-| `allowMajorUpdates` | `false` | Same, up to a major step (e.g., 1.0.0 → 2.0.0). Implies `allowMinorUpdates`. |
-| `updateAllowlist` | `[]` | Packages that always move to their latest version |
-| `updateDenylist` | `[]` | Packages that are never updated |
+| `beyondRange` | `"none"` | How far past its range a dependency may move, to its latest version: `"none"`, `"patch"`, `"minor"` or `"major"`. Applies to exact pins too, so `"patch"` moves `"1.11.9"` to `"1.11.23"`. |
+| `rules` | `{}` | Per-package overrides (see below). |
+| `cooldown` | `0` | Skip versions published more recently than this: days (`7`), a duration (`"1 week"`, `"24h"`), or per update type (`{ "major": "30 days" }`). |
 | `debug` | `false` | Enable debug logging |
 | `silent` | `false` | Suppress all output |
 
+### Rules
+
+`rules` overrides the policy for single packages or groups:
+
+```json
+{
+  "beyondRange": "minor",
+  "rules": {
+    "react": "hold",
+    "typescript": "latest",
+    "@types/*": "followRange"
+  }
+}
+```
+
+| Rule | Effect |
+|------|--------|
+| `"hold"` | Never update this package. |
+| `"followRange"` | Stay within the range, even when `beyondRange` allows more. |
+| `"latest"` | Always move to the latest version, whatever the range or step size. |
+
+Keys are package names or `*` globs (`"@types/*"`, `"eslint-*"`, `"*"`). An exact name beats a glob, and among globs the longest pattern wins.
+
 When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"` becomes `"^19.3.1"` and `"1.11.9"` becomes `"1.11.23"`. Run `autd update --dry-run` to see where each package would move, or why it is held.
+
+### Older config files
+
+These fields still work, and `beyondRange` and `rules` win when both are set:
+
+| Old field | Same as |
+|-----------|---------|
+| `"allowMinorUpdates": true` | `"beyondRange": "minor"` |
+| `"allowMajorUpdates": true` | `"beyondRange": "major"` |
+| `"updateAllowlist": ["x"]` | `"rules": { "x": "latest" }` |
+| `"updateDenylist": ["x"]` | `"rules": { "x": "hold" }` |
 
 ## 🤝 Contributing
 

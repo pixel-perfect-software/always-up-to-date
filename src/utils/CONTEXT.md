@@ -18,7 +18,7 @@ Core utilities fully implemented. Central barrel export via `index.ts`.
 utils/
   index.ts            # Barrel: re-exports runProcess, config, cooldown, duration, logger, filterPackages, npmrcLoader, packageGrouper, registry, updateChecker, files
   runProcess.ts       # runProcess() (execFile + args, no output cap), buildWindowsCommand()
-  config.ts           # loadConfig(), saveJsonConfig(), DEFAULT_CONFIG (now includes cooldown)
+  config.ts           # loadConfig(), saveJsonConfig(), DEFAULT_CONFIG, INITIAL_CONFIG, ConfigError
   cooldown.ts         # normalizeCooldown(), isCooldownEnabled(), cooldownDaysFor(), evaluateCooldown()
   duration.ts         # parseDuration() (number | '1 week' | '24h' → days), formatAgeDays(), MS_PER_DAY
   npmrcLoader.ts      # loadRegistryConfig() reads .npmrc + ~/.npmrc + NPM_CONFIG_* env, returns RegistryConfig
@@ -36,8 +36,10 @@ utils/
 ### Configuration (`config.ts`)
 - Config file: `.always-up-to-date.json` in project root
 - `loadConfig(workingDir?)` reads JSON, merges with `DEFAULT_CONFIG`
-- `saveJsonConfig(config, filePath)` writes formatted JSON
-- Schema: `AlwaysUpToDateConfig` (see `src/types.ts`)
+- `saveJsonConfig(config, filePath)` writes formatted JSON; `autd init` writes `INITIAL_CONFIG` (`beyondRange`, `rules`, `cooldown`, `debug`, `silent`), never the deprecated fields
+- Schema: `AlwaysUpToDateConfig` (see `src/types.ts`); `ConfigFile` is any subset of it plus `$schema`
+- `beyondRange` and `rules` are validated strictly: an unknown level or rule throws instead of being ignored (ignoring `"react": "hodl"` would update a package meant to be held). `beyondRange` stays `undefined` when absent so the deprecated fields can still decide
+- Every load failure (malformed JSON, invalid value) is a `ConfigError`. The logger loads config on import, so it surfaces while the CLI is being imported; `src/index.ts` imports the CLI inside its `try` and prints it as one `autd: …` line, exit 1
 - `cooldown` accepts: number (days), duration string (`'1 week'`, `'24h'`), or per-update-type object `{ patch, minor, major }` whose values are themselves numbers or duration strings
 
 ### Update Policy (`updateChecker.ts`)
@@ -46,7 +48,7 @@ utils/
 2. Rule `hold`: held. Rule `latest`: target `latest`, any step size
 3. Default: stay within the manifest range. Target is `wanted` (the highest version the range allows) when it is ahead of `current`; an exact pin has `wanted == current`, so it is held (`patch beyond the range`, etc.)
 4. `beyondRange` (`none` | `patch` | `minor` | `major`) lets a package move past its range to `latest` when the step `current → latest` is at most that size. It applies to exact pins too. Rule `followRange` opts a package out
-- Legacy fields form the policy: `allowMajorUpdates` → `major`, `allowMinorUpdates` → `minor`, neither → `none`; `updateAllowlist` → rule `latest`, `updateDenylist` → rule `hold` (allowlist wins)
+- `policyFromConfig()`: `beyondRange` if set, else the deprecated `allowMajorUpdates` → `major` / `allowMinorUpdates` → `minor` / `none`. `ruleFor(name)`: exact key in `rules`, then the longest matching `*` glob, then the deprecated lists (`updateAllowlist` → `latest`, `updateDenylist` → `hold`). `*` is the only wildcard
 - `stepLevel()` folds pre-release diffs into patch/minor/major
 
 ### Cooldown (`cooldown.ts` + `duration.ts`)
@@ -81,4 +83,4 @@ Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Gr
 - `src/commandRunner.ts` uses `runProcess` and `logger`
 - `src/managers/*/index.ts` use `filterPackages`, `logger`, `groupAndSortPackages`, `updatePackageJson`
 - `src/commands/update.ts` uses `filterPackages` for dry-run and interactive mode
-- `src/commands/init.ts` uses `saveJsonConfig` and `DEFAULT_CONFIG`
+- `src/commands/init.ts` uses `saveJsonConfig` and `INITIAL_CONFIG`

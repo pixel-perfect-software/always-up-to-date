@@ -39,14 +39,25 @@ describe('init command', () => {
     mockCheckIfFileExists.mockReturnValue(false)
     await program.parseAsync(['node', 'test', 'init'])
 
-    const writtenConfig = mockedSaveJsonConfig.mock.calls[0][0] as unknown as {
-      $schema?: string
-      allowMinorUpdates: boolean
-      cooldown: number
-    }
+    const writtenConfig = mockedSaveJsonConfig.mock.calls[0][0]
     expect(writtenConfig.$schema).toMatch(/config\.schema\.json$/)
-    expect(writtenConfig.allowMinorUpdates).toBe(false)
     expect(writtenConfig.cooldown).toBe(0)
+  })
+
+  it('writes the beyondRange and rules shape, without the legacy fields', async () => {
+    mockCheckIfFileExists.mockReturnValue(false)
+    await program.parseAsync(['node', 'test', 'init'])
+
+    const writtenConfig = mockedSaveJsonConfig.mock.calls[0][0]
+    expect(writtenConfig).toMatchObject({ beyondRange: 'none', rules: {} })
+    for (const legacy of [
+      'allowMinorUpdates',
+      'allowMajorUpdates',
+      'updateAllowlist',
+      'updateDenylist',
+    ]) {
+      expect(writtenConfig).not.toHaveProperty(legacy)
+    }
   })
 
   it('does not create config when one already exists', async () => {

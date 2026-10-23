@@ -10,15 +10,34 @@
       "type": "string",
       "description": "URL of this JSON schema. Enables IDE autocomplete and validation."
     },
+    "beyondRange": {
+      "type": "string",
+      "enum": ["none", "patch", "minor", "major"],
+      "default": "none",
+      "description": "How far past its package.json range a dependency may move, to its latest version. \"none\" stays within each range, so exact pins are held. \"patch\", \"minor\" and \"major\" allow a step up to that size, and apply to exact pins too."
+    },
+    "rules": {
+      "type": "object",
+      "default": {},
+      "description": "Per-package overrides, keyed by package name or a * glob such as \"@types/*\". An exact name beats a glob; among globs the longest pattern wins. \"hold\": never update. \"followRange\": stay within the range even when beyondRange allows more. \"latest\": always move to the latest version.",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["hold", "followRange", "latest"]
+      }
+    },
     "allowMinorUpdates": {
       "type": "boolean",
       "default": false,
-      "description": "Let a dependency move past its package.json range, to the latest version, when that is at most a minor step (e.g., 1.2.x → 1.3.0). Exact pins move too. Without this, updates stay within each range."
+      "deprecated": true,
+      "deprecationMessage": "Use \"beyondRange\": \"minor\" instead.",
+      "description": "Deprecated: use \"beyondRange\": \"minor\". Let a dependency move past its package.json range, to the latest version, when that is at most a minor step (e.g., 1.2.x → 1.3.0). Ignored when beyondRange is set."
     },
     "allowMajorUpdates": {
       "type": "boolean",
       "default": false,
-      "description": "Let a dependency move past its package.json range, to the latest version, up to a major step (e.g., 1.x → 2.0.0). Implies allowMinorUpdates."
+      "deprecated": true,
+      "deprecationMessage": "Use \"beyondRange\": \"major\" instead.",
+      "description": "Deprecated: use \"beyondRange\": \"major\". Let a dependency move past its package.json range, to the latest version, up to a major step (e.g., 1.x → 2.0.0). Ignored when beyondRange is set."
     },
     "debug": {
       "type": "boolean",
@@ -34,13 +53,17 @@
       "type": "array",
       "items": { "type": "string" },
       "default": [],
-      "description": "Package names that always move to their latest version, regardless of their range and the allowMinor/allowMajor settings."
+      "deprecated": true,
+      "deprecationMessage": "Use a \"latest\" rule instead: \"rules\": { \"<name>\": \"latest\" }.",
+      "description": "Deprecated: use a \"latest\" rule. Package names that always move to their latest version. A matching rule wins."
     },
     "updateDenylist": {
       "type": "array",
       "items": { "type": "string" },
       "default": [],
-      "description": "Package names that are never updated."
+      "deprecated": true,
+      "deprecationMessage": "Use a \"hold\" rule instead: \"rules\": { \"<name>\": \"hold\" }.",
+      "description": "Deprecated: use a \"hold\" rule. Package names that are never updated. A matching rule wins."
     },
     "cooldown": {
       "default": 0,

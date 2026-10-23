@@ -40,14 +40,25 @@ export interface CooldownByType {
 export type CooldownConfig = CooldownValue | CooldownByType
 
 export interface AlwaysUpToDateConfig {
+  /** How far past its range a package may move. Unset: the legacy fields decide. */
+  beyondRange?: BeyondRange
+  /** Per-package overrides, keyed by exact name or `*` glob. */
+  rules: Record<string, PackageRule>
+  /** @deprecated Use `beyondRange: "minor"`. */
   allowMinorUpdates: boolean
+  /** @deprecated Use `beyondRange: "major"`. */
   allowMajorUpdates: boolean
   debug: boolean
   silent: boolean
+  /** @deprecated Use a `"latest"` rule. */
   updateAllowlist: string[]
+  /** @deprecated Use a `"hold"` rule. */
   updateDenylist: string[]
   cooldown: CooldownConfig
 }
+
+/** What `.always-up-to-date.json` may contain: any subset of the config. */
+export type ConfigFile = Partial<AlwaysUpToDateConfig> & { $schema?: string }
 
 export interface RegistryConfig {
   registry: string
