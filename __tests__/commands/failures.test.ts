@@ -20,6 +20,7 @@ import updateCommand from '@/commands/update'
 import detectPackageManager from '@/detectPackageManager'
 import { check, update } from '@/pipeline'
 import { StepError } from '@/stepError'
+import { loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
 
 const applyFailed = new StepError(
@@ -30,6 +31,10 @@ const applyFailed = new StepError(
 const discoverFailed = new StepError(
   'discover',
   'Command execution failed: ERR_PNPM_OUTDATED_REGISTRY_ERROR',
+)
+
+const configFailed = new (jest.requireActual('@/utils/config').ConfigError)(
+  'Failed to load JSON config from /project/.always-up-to-date.json: rules["react"] must be one of "hold", "followRange", "latest" (got "hodl")',
 )
 
 const pipeline = {
@@ -140,6 +145,43 @@ describe('command failures', () => {
       message: 'No package manager detected in the current directory.',
     })
   })
+
+  it.each([['check'], ['update']])(
+    '%s reports a malformed config once and exits 1',
+    async (command) => {
+      jest.mocked(loadConfig).mockImplementationOnce(() => {
+        throw configFailed
+      })
+
+      const output = await run(command)
+
+      expect(process.exitCode).toBe(1)
+      expect(output).toContain(configFailed.message)
+      expect(stdout.filter((line) => line.includes('❌'))).toHaveLength(1)
+      expect(pipeline.check).not.toHaveBeenCalled()
+      expect(pipeline.update).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each([
+    ['check', '--json'],
+    ['update', '--json'],
+  ])(
+    '%s --json prints a malformed config as the JSON error object',
+    async (...args) => {
+      jest.mocked(loadConfig).mockImplementationOnce(() => {
+        throw configFailed
+      })
+
+      const output = await run(...args)
+
+      expect(process.exitCode).toBe(1)
+      expect(JSON.parse(output)).toEqual({
+        error: { message: configFailed.message, manifestWritten: false },
+      })
+      expect(stdout).toHaveLength(1)
+    },
+  )
 
   it('leaves the exit code alone when the update succeeds', async () => {
     pipeline.update.mockResolvedValue([])

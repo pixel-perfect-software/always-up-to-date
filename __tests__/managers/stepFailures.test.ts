@@ -8,10 +8,9 @@ import yarn from '@/managers/yarn'
 import { update } from '@/pipeline'
 import { StepError } from '@/stepError'
 import type { PackageInfo } from '@/types'
-import { exitError, readFixture } from '../fixtures'
+import { exitError, projectFor, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -22,7 +21,6 @@ jest.mock('@/utils', () => ({
 }))
 
 import { runProcess } from '@/utils'
-import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -65,14 +63,10 @@ describe.each([
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  afterEach(() => {
-    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
-  })
-
   it('rejects with an apply StepError when an in-range apply fails', async () => {
     mockedRunProcess.mockRejectedValue(applyFailure())
 
-    const error = await update(adapter, cwd, {
+    const error = await update(projectFor(adapter, cwd), {
       targetPackages: ['dayjs'],
       discovered: outdatedPackages,
     }).catch((e: unknown) => e)
@@ -84,26 +78,26 @@ describe.each([
   })
 
   it('flags the written manifest when a beyond-range apply fails', async () => {
-    jest
-      .mocked(loadConfig)
-      .mockReturnValue({ ...DEFAULT_CONFIG, allowMinorUpdates: true })
     fs.writeFileSync(
       path.join(cwd, 'package.json'),
       JSON.stringify({ dependencies: { dayjs: '1.11.9' } }),
     )
     mockedRunProcess.mockRejectedValue(applyFailure())
 
-    const error = await update(adapter, cwd, {
-      targetPackages: ['dayjs'],
-      discovered: {
-        dayjs: {
-          name: 'dayjs',
-          current: '1.11.9',
-          wanted: '1.11.9',
-          latest: '1.11.23',
+    const error = await update(
+      projectFor(adapter, cwd, { allowMinorUpdates: true }),
+      {
+        targetPackages: ['dayjs'],
+        discovered: {
+          dayjs: {
+            name: 'dayjs',
+            current: '1.11.9',
+            wanted: '1.11.9',
+            latest: '1.11.23',
+          },
         },
       },
-    }).catch((e: unknown) => e)
+    ).catch((e: unknown) => e)
 
     expect(error).toMatchObject({
       step: 'apply',
@@ -116,7 +110,7 @@ describe.each([
       exitError(2, '', `${pm}: registry unreachable`),
     )
 
-    const error = await update(adapter, cwd, {
+    const error = await update(projectFor(adapter, cwd), {
       targetPackages: ['dayjs'],
     }).catch((e: unknown) => e)
 

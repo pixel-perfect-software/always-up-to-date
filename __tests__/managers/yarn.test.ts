@@ -3,10 +3,9 @@ import os from 'os'
 import path from 'path'
 import yarn, { parseYarnOutdated } from '@/managers/yarn'
 import { check, update } from '@/pipeline'
-import { exitError, readFixture } from '../fixtures'
+import { exitError, projectFor, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -17,7 +16,6 @@ jest.mock('@/utils', () => ({
 }))
 
 import { logger, runProcess } from '@/utils'
-import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -27,7 +25,7 @@ describe('check with yarn v1', () => {
       exitError(1, readFixture('yarn/v1-outdated-ranges.stdout'), ''),
     )
 
-    const result = await check(yarn, '/project')
+    const result = await check(projectFor(yarn, '/project'))
 
     expect(result.react).toMatchObject({
       current: '18.2.0',
@@ -46,7 +44,7 @@ describe('check with yarn v1', () => {
       ),
     )
 
-    const result = await check(yarn, '/project')
+    const result = await check(projectFor(yarn, '/project'))
 
     expect(Object.keys(result)).toHaveLength(40)
     expect(result.dayjs).toEqual({
@@ -67,7 +65,7 @@ describe('check with yarn v1', () => {
       stderr: readFixture('yarn/v1-outdated.stderr'),
     })
 
-    await expect(check(yarn, '/project')).resolves.toEqual({})
+    await expect(check(projectFor(yarn, '/project'))).resolves.toEqual({})
   })
 
   it('fails instead of reporting "up to date" when yarn exits 1 without a table', async () => {
@@ -79,13 +77,18 @@ describe('check with yarn v1', () => {
       ),
     )
 
-    await expect(check(yarn, '/project')).rejects.toThrow(/ECONNREFUSED/)
+    await expect(check(projectFor(yarn, '/project'))).rejects.toThrow(
+      /ECONNREFUSED/,
+    )
     expect(logger.allUpToDate).not.toHaveBeenCalled()
   })
 })
 
 describe('update with yarn', () => {
   let cwd: string
+
+  // Most cases here move exact pins, which needs a beyond-range level.
+  const movePins = { allowMinorUpdates: true }
 
   const writeProject = (
     manifest: Record<string, unknown>,
@@ -118,19 +121,13 @@ describe('update with yarn', () => {
 
   beforeEach(() => {
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarn-'))
-    // Most cases here move exact pins, which needs a beyond-range level.
-    jest
-      .mocked(loadConfig)
-      .mockReturnValue({ ...DEFAULT_CONFIG, allowMinorUpdates: true })
   })
 
   afterEach(() => {
-    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('keeps the current spec for an in-range update, on v1 and berry', async () => {
-    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
     const outdatedRanges = exitError(
       1,
       readFixture('yarn/v1-outdated-ranges.stdout'),
@@ -141,7 +138,7 @@ describe('update with yarn', () => {
     mockedRunProcess
       .mockRejectedValueOnce(outdatedRanges)
       .mockResolvedValueOnce({ stdout: '', stderr: '' })
-    await update(yarn, cwd, { targetPackages: ['dayjs'] })
+    await update(projectFor(yarn, cwd), { targetPackages: ['dayjs'] })
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
       ['upgrade', 'dayjs@^1.11.9'],
@@ -156,7 +153,7 @@ describe('update with yarn', () => {
     mockedRunProcess
       .mockRejectedValueOnce(outdatedRanges)
       .mockResolvedValueOnce({ stdout: '', stderr: '' })
-    await update(yarn, cwd, { targetPackages: ['dayjs'] })
+    await update(projectFor(yarn, cwd), { targetPackages: ['dayjs'] })
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
       ['up', 'dayjs@^1.11.9'],
@@ -171,7 +168,9 @@ describe('update with yarn', () => {
       readFixture('yarn/v1-upgrade.stderr'),
     )
 
-    const results = await update(yarn, cwd, { targetPackages: ['dayjs'] })
+    const results = await update(projectFor(yarn, cwd, movePins), {
+      targetPackages: ['dayjs'],
+    })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -191,7 +190,7 @@ describe('update with yarn', () => {
     writeProject(manifest)
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await update(yarn, cwd, { targetPackages: ['dayjs'] })
+    await update(projectFor(yarn, cwd, movePins), { targetPackages: ['dayjs'] })
 
     expect(readManifest()).toEqual(manifest)
   })
@@ -200,7 +199,7 @@ describe('update with yarn', () => {
     writeProject({ dependencies: { ms: '^2.1.2' } })
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await update(yarn, cwd, { targetPackages: ['ms'] })
+    await update(projectFor(yarn, cwd, movePins), { targetPackages: ['ms'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -213,7 +212,7 @@ describe('update with yarn', () => {
     writeProject({ devDependencies: { dayjs: '~1.11.9' } })
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await update(yarn, cwd, { targetPackages: ['dayjs'] })
+    await update(projectFor(yarn, cwd, movePins), { targetPackages: ['dayjs'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -229,7 +228,7 @@ describe('update with yarn', () => {
     })
     mockOutdatedThenApply(readFixture('yarn/berry-up.stdout'))
 
-    await update(yarn, cwd, { targetPackages: ['dayjs'] })
+    await update(projectFor(yarn, cwd, movePins), { targetPackages: ['dayjs'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -245,7 +244,7 @@ describe('update with yarn', () => {
     )
     mockOutdatedThenApply(readFixture('yarn/berry-up.stdout'))
 
-    await update(yarn, cwd, { targetPackages: ['dayjs'] })
+    await update(projectFor(yarn, cwd, movePins), { targetPackages: ['dayjs'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -261,7 +260,7 @@ describe('update with yarn', () => {
     )
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await update(yarn, cwd, { targetPackages: ['dayjs'] })
+    await update(projectFor(yarn, cwd, movePins), { targetPackages: ['dayjs'] })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',
@@ -286,7 +285,7 @@ describe('update with yarn', () => {
       )
 
     await expect(
-      update(yarn, cwd, { targetPackages: ['dayjs'] }),
+      update(projectFor(yarn, cwd, movePins), { targetPackages: ['dayjs'] }),
     ).rejects.toMatchObject({
       step: 'apply',
       manifestWritten: false,
@@ -300,7 +299,9 @@ describe('update with yarn', () => {
     writeProject({ dependencies: { dayjs: '1.11.9' } })
     mockOutdatedThenApply(readFixture('yarn/v1-upgrade.stdout'))
 
-    await update(yarn, cwd, { targetPackages: ['dayjs', 'ms'] })
+    await update(projectFor(yarn, cwd, movePins), {
+      targetPackages: ['dayjs', 'ms'],
+    })
 
     expect(mockedRunProcess).toHaveBeenLastCalledWith(
       'yarn',

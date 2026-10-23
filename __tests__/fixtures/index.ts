@@ -1,5 +1,9 @@
 import fs from 'fs'
 import path from 'path'
+import type { ManagerAdapter } from '@/managers'
+import type { Project } from '@/project'
+import type { AlwaysUpToDateConfig } from '@/types'
+import { DEFAULT_CONFIG } from '@/utils/config'
 
 /**
  * Real package-manager output captured on the 40-dependency benchmark
@@ -22,3 +26,10 @@ export const exitError = (
     stdout,
     stderr,
   })
+
+/** A project for the pipeline: the default config with `config` laid over it. */
+export const projectFor = (
+  adapter: ManagerAdapter,
+  cwd: string,
+  config: Partial<AlwaysUpToDateConfig> = {},
+): Project => ({ adapter, cwd, config: { ...DEFAULT_CONFIG, ...config } })

@@ -4,10 +4,9 @@ import path from 'path'
 import pnpm, { parsePnpmOutdated } from '@/managers/pnpm'
 import { check, update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
-import { exitError, readFixture } from '../fixtures'
+import { exitError, projectFor, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -18,7 +17,6 @@ jest.mock('@/utils', () => ({
 }))
 
 import { runProcess } from '@/utils'
-import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -37,7 +35,7 @@ describe('check with pnpm', () => {
   it('lists outdated packages when pnpm exits 1 with a JSON report', async () => {
     mockReports('pnpm/outdated.stdout', 'pnpm/outdated-compatible.stdout')
 
-    const result = await check(pnpm, '/project')
+    const result = await check(projectFor(pnpm, '/project'))
 
     expect(Object.keys(result)).toHaveLength(40)
     expect(result.dayjs).toMatchObject({
@@ -53,7 +51,7 @@ describe('check with pnpm', () => {
       'pnpm/outdated-ranges-compatible.stdout',
     )
 
-    const result = await check(pnpm, '/project')
+    const result = await check(projectFor(pnpm, '/project'))
 
     // react ^18.2.0: pnpm's own `wanted` is the lockfile's 18.2.0.
     expect(
@@ -78,7 +76,7 @@ describe('check with pnpm', () => {
       exitError(1, '', readFixture('pnpm/outdated-error.stderr')),
     )
 
-    await expect(check(pnpm, '/project')).rejects.toThrow(
+    await expect(check(projectFor(pnpm, '/project'))).rejects.toThrow(
       /ERR_PNPM_OUTDATED_REGISTRY_ERROR/,
     )
   })
@@ -147,7 +145,7 @@ describe('pnpm.readWorkspace', () => {
     writeWorkspaceYaml('onlyBuiltDependencies: []\n')
     mockedRunProcess.mockResolvedValue({ stdout: '{}', stderr: '' })
 
-    await check(pnpm, cwd)
+    await check(projectFor(pnpm, cwd))
 
     expect(mockedRunProcess).toHaveBeenCalledWith(
       'pnpm',
@@ -188,13 +186,9 @@ describe('update with pnpm in a single-package project', () => {
   beforeEach(() => {
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-single-'))
     mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
-    jest
-      .mocked(loadConfig)
-      .mockReturnValue({ ...DEFAULT_CONFIG, beyondRange: 'patch' })
   })
 
   afterEach(() => {
-    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
@@ -205,7 +199,9 @@ describe('update with pnpm in a single-package project', () => {
     )
     write('pnpm-workspace.yaml', 'onlyBuiltDependencies: []\n')
 
-    await update(pnpm, cwd, { discovered: outdated })
+    await update(projectFor(pnpm, cwd, { beyondRange: 'patch' }), {
+      discovered: outdated,
+    })
 
     expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
       ['update', 'react', 'dayjs'],
@@ -220,7 +216,9 @@ describe('update with pnpm in a single-package project', () => {
     )
     write('pnpm-workspace.yaml', 'catalog:\n  dayjs: 1.11.9\n')
 
-    await update(pnpm, cwd, { discovered: outdated })
+    await update(projectFor(pnpm, cwd, { beyondRange: 'patch' }), {
+      discovered: outdated,
+    })
 
     expect(read('pnpm-workspace.yaml')).toBe('catalog:\n  dayjs: 1.11.23\n')
     expect(JSON.parse(read('package.json')).dependencies.dayjs).toBe('catalog:')

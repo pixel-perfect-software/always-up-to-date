@@ -1,7 +1,6 @@
 import { type Command, Option } from 'commander'
-import detectPackageManager from '@/detectPackageManager'
-import { adapterFor, type ManagerAdapter } from '@/managers'
 import { check, plan, update as runUpdate } from '@/pipeline'
+import { openProject, type Project } from '@/project'
 import { logger, toUpdatingRow } from '@/utils'
 import reportFailure from './reportFailure'
 
@@ -37,22 +36,20 @@ const update = (program: Command) =>
       if (options.json) logger.setJsonOutput(true)
 
       try {
-        const adapter = adapterFor(detectPackageManager(workingDir))
+        const project = openProject(workingDir)
         const targetPackages = packages.length > 0 ? packages : undefined
 
         if (options.dryRun) {
-          await dryRun(adapter, targetPackages, options.json)
+          await dryRun(project, targetPackages, options.json)
           return
         }
 
         if (options.interactive) {
-          await interactiveUpdate(adapter)
+          await interactiveUpdate(project)
           return
         }
 
-        const results = await runUpdate(adapter, workingDir, {
-          targetPackages,
-        })
+        const results = await runUpdate(project, { targetPackages })
 
         if (options.json) {
           console.log(JSON.stringify(results, null, 2))
@@ -63,23 +60,18 @@ const update = (program: Command) =>
     })
 
 const dryRun = async (
-  adapter: ManagerAdapter,
+  project: Project,
   targetPackages?: string[],
   json?: boolean,
 ) => {
-  const outdatedPackages = await check(adapter, workingDir)
+  const outdatedPackages = await check(project)
 
   if (Object.keys(outdatedPackages).length === 0) {
     if (json) console.log(JSON.stringify([], null, 2))
     return
   }
 
-  const results = await plan(
-    adapter,
-    workingDir,
-    outdatedPackages,
-    targetPackages,
-  )
+  const results = await plan(project, outdatedPackages, targetPackages)
   const wouldUpdate = results.filter((r) => r.updated)
   const wouldSkip = results.filter((r) => !r.updated)
 
@@ -107,12 +99,12 @@ const dryRun = async (
   }
 }
 
-const interactiveUpdate = async (adapter: ManagerAdapter) => {
-  const outdatedPackages = await check(adapter, workingDir)
+const interactiveUpdate = async (project: Project) => {
+  const outdatedPackages = await check(project)
 
   if (Object.keys(outdatedPackages).length === 0) return
 
-  const results = await plan(adapter, workingDir, outdatedPackages)
+  const results = await plan(project, outdatedPackages)
   const eligible = results.filter((r) => r.updated)
 
   if (eligible.length === 0) {
@@ -136,7 +128,7 @@ const interactiveUpdate = async (adapter: ManagerAdapter) => {
     return
   }
 
-  await runUpdate(adapter, workingDir, {
+  await runUpdate(project, {
     targetPackages: selected,
     discovered: outdatedPackages,
   })

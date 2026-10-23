@@ -62,8 +62,8 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 `catalogs` lists catalog names (pnpm: `catalog` and the keys of `catalogs:` in pnpm-workspace.yaml; bun: the same fields in package.json). The pipeline logs the workspace once per run, and the catalogs when it is a workspace.
 
 ## Integration Points
-- `src/pipeline.ts`: `check(adapter, cwd)`, `plan(adapter, cwd, outdated, targets?)`, `update(adapter, cwd, { targetPackages?, discovered? })`. The commands get the adapter with `adapterFor(detectPackageManager(cwd))`
-- `plan` runs `src/utils/filterPackages.ts` with `adapter.overrides(cwd)`
+- `src/pipeline.ts`: `check(project)`, `plan(project, outdated, targets?)`, `update(project, { targetPackages?, discovered? })`, where a `Project` is `{ cwd, config, adapter }`. `openProject(cwd)` (`src/project.ts`) builds it with `adapterFor(detectPackageManager(cwd))` after loading the config
+- `plan` runs `src/utils/filterPackages.ts` with `project.config` and `adapter.overrides(cwd)`
 - `src/utils/files.ts` `updatePackageJson()` writes version updates before running the manager's update command (npm, pnpm, bun), only for packages moving past their range
 - `src/utils/overrides.ts` (`overridesFromField`, `manifestOverrides`) and `src/utils/saveStyle.ts` (`readTextFile`, `yamlValue`) hold the generic readers adapters build on
 

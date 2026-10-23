@@ -1,6 +1,5 @@
 import semver, { type ReleaseType } from 'semver'
-import type { PackageInfo, UpdateResult } from '@/types'
-import { loadConfig } from './config'
+import type { AlwaysUpToDateConfig, PackageInfo, UpdateResult } from '@/types'
 import { evaluateCooldown, isCooldownEnabled } from './cooldown'
 import { formatAgeDays } from './duration'
 import { loadRegistryConfig } from './npmrcLoader'
@@ -13,6 +12,7 @@ import updateChecker, {
 } from './updateChecker'
 
 interface FilterPackagesOptions {
+  config: AlwaysUpToDateConfig
   targetPackages?: string[]
   cwd?: string
   now?: number
@@ -83,15 +83,15 @@ const holdPeerConflicts = (
  */
 const filterPackages = async (
   outdatedPackages: Record<string, PackageInfo>,
-  options: FilterPackagesOptions = {},
+  options: FilterPackagesOptions,
 ): Promise<UpdateResult[]> => {
   const {
+    config,
     targetPackages,
     cwd = process.cwd(),
     now,
     overrides: controlled = {},
   } = options
-  const config = loadConfig(cwd)
   const policy = policyFromConfig(config)
   const cooldownActive = isCooldownEnabled(config.cooldown)
   const registryConfig = cooldownActive ? loadRegistryConfig(cwd) : undefined

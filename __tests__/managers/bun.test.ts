@@ -3,10 +3,9 @@ import os from 'os'
 import path from 'path'
 import bun, { parseBunOutdated } from '@/managers/bun'
 import { check } from '@/pipeline'
-import { exitError, readFixture } from '../fixtures'
+import { exitError, projectFor, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -27,7 +26,7 @@ describe('check with bun', () => {
       stderr: '',
     })
 
-    const result = await check(bun, '/project')
+    const result = await check(projectFor(bun, '/project'))
 
     expect(result.react).toMatchObject({
       current: '18.2.0',
@@ -43,7 +42,7 @@ describe('check with bun', () => {
       stderr: '',
     })
 
-    const result = await check(bun, '/project')
+    const result = await check(projectFor(bun, '/project'))
 
     expect(Object.keys(result)).toHaveLength(40)
     expect(result.dayjs).toEqual({
@@ -63,7 +62,9 @@ describe('check with bun', () => {
       ),
     )
 
-    await expect(check(bun, '/project')).rejects.toThrow(/ConnectionRefused/)
+    await expect(check(projectFor(bun, '/project'))).rejects.toThrow(
+      /ConnectionRefused/,
+    )
   })
 
   it('passes the workspace filter as a bare * argument', async () => {
@@ -75,7 +76,7 @@ describe('check with bun', () => {
     mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
 
     try {
-      await check(bun, cwd)
+      await check(projectFor(bun, cwd))
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true })
     }

@@ -56,17 +56,23 @@ describe('update command', () => {
   it('runs the update pipeline on action', async () => {
     mockUpdatePackages.mockResolvedValue([])
     await program.parseAsync(['node', 'test', 'update'])
-    expect(mockUpdatePackages).toHaveBeenCalledWith(npm, expect.any(String), {
-      targetPackages: undefined,
-    })
+    expect(mockUpdatePackages).toHaveBeenCalledWith(
+      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      {
+        targetPackages: undefined,
+      },
+    )
   })
 
   it('passes target packages when specified', async () => {
     mockUpdatePackages.mockResolvedValue([])
     await program.parseAsync(['node', 'test', 'update', 'react', 'lodash'])
-    expect(mockUpdatePackages).toHaveBeenCalledWith(npm, expect.any(String), {
-      targetPackages: ['react', 'lodash'],
-    })
+    expect(mockUpdatePackages).toHaveBeenCalledWith(
+      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      {
+        targetPackages: ['react', 'lodash'],
+      },
+    )
   })
 
   it('runs dry-run without applying', async () => {
@@ -192,9 +198,12 @@ describe('update command', () => {
     await program.parseAsync(['node', 'test', 'update', '--interactive'])
 
     expect(mockCheckPackageVersions).toHaveBeenCalledTimes(1)
-    expect(mockUpdatePackages).toHaveBeenCalledWith(npm, expect.any(String), {
-      targetPackages: ['react'],
-      discovered: outdated,
-    })
+    expect(mockUpdatePackages).toHaveBeenCalledWith(
+      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      {
+        targetPackages: ['react'],
+        discovered: outdated,
+      },
+    )
   })
 })

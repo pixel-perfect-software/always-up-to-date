@@ -1,6 +1,7 @@
 import CommandRunner from '@/commandRunner'
 import type { ManagerAdapter, RunManager, Workspace } from '@/managers'
 import messages from '@/messages/en.json'
+import type { Project } from '@/project'
 import type { PipelineStep } from '@/stepError'
 import type { PackageInfo, UpdateResult } from '@/types'
 import {
@@ -36,10 +37,11 @@ const readWorkspace = (adapter: ManagerAdapter, cwd: string): Workspace => {
  * detect → discover → report: the outdated packages keyed by their
  * package.json names, printed in groups.
  */
-const discover = async (
-  adapter: ManagerAdapter,
-  cwd: string,
-): Promise<{
+const discover = async ({
+  adapter,
+  cwd,
+  config,
+}: Project): Promise<{
   outdated: Record<string, PackageInfo>
   workspace: Workspace
 }> => {
@@ -58,7 +60,7 @@ const discover = async (
 
   logger.outdatedHeader()
 
-  const releaseAges = await computeReleaseAges(outdated, cwd)
+  const releaseAges = await computeReleaseAges(outdated, cwd, config.cooldown)
   const groupedPackages = groupAndSortPackages(outdated)
   for (const groupName of getSortedGroupNames(groupedPackages)) {
     logger.packageGroupHeader(groupName)
@@ -74,22 +76,20 @@ const discover = async (
 
 /** The outdated packages, printed in groups. */
 export const check = async (
-  adapter: ManagerAdapter,
-  cwd: string,
-): Promise<Record<string, PackageInfo>> =>
-  (await discover(adapter, cwd)).outdated
+  project: Project,
+): Promise<Record<string, PackageInfo>> => (await discover(project)).outdated
 
 /**
  * Each outdated package's target or hold reason: the config's policy, the
  * overrides the manager enforces, installed peer ranges and the cooldown.
  */
 export const plan = (
-  adapter: ManagerAdapter,
-  cwd: string,
+  { adapter, cwd, config }: Project,
   outdated: Record<string, PackageInfo>,
   targetPackages?: string[],
 ): Promise<UpdateResult[]> =>
   filterPackages(outdated, {
+    config,
     targetPackages,
     cwd,
     overrides: adapter.overrides(cwd),
@@ -100,8 +100,7 @@ export const plan = (
  * caller already has (interactive mode), so discovery does not run again.
  */
 export const update = async (
-  adapter: ManagerAdapter,
-  cwd: string,
+  project: Project,
   {
     targetPackages,
     discovered,
@@ -110,14 +109,15 @@ export const update = async (
     discovered?: Record<string, PackageInfo>
   } = {},
 ): Promise<UpdateResult[]> => {
+  const { adapter, cwd } = project
   const { outdated, workspace } = discovered
     ? { outdated: discovered, workspace: adapter.readWorkspace(cwd) }
-    : await discover(adapter, cwd)
+    : await discover(project)
 
   // discover already printed allUpToDate.
   if (Object.keys(outdated).length === 0) return []
 
-  const results = await plan(adapter, cwd, outdated, targetPackages)
+  const results = await plan(project, outdated, targetPackages)
   const { names, withinRange, beyondRange } = splitUpdates(results)
 
   if (names.length === 0) {

@@ -31,7 +31,7 @@ utils/
   manifestNames.ts    # toManifestNames(cwd, outdated): re-keys a report by package.json names (npm: aliases)
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
-  logger.ts           # Colored logging (colorette); setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
+  logger.ts           # Colored logging (colorette); configure(config) takes `debug`, `silent` and the deprecated allow/deny lists (defaults before it: debug off, not quiet, no lists), setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
   files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML(), updateBunCatalogs(), identifyCatalogPackages(), buildUpdateDescriptors()
 ```
 
@@ -39,15 +39,15 @@ utils/
 
 ### Configuration (`config.ts`)
 - Config file: `.always-up-to-date.json` in project root
-- `loadConfig(workingDir?)` reads JSON, merges with `DEFAULT_CONFIG`
+- `loadConfig(workingDir?)` reads JSON, merges with `DEFAULT_CONFIG`. Only `openProject` (`src/project.ts`) calls it for a command run; everything else takes the loaded config as a parameter
 - `saveJsonConfig(config, filePath)` writes formatted JSON; `autd init` writes `INITIAL_CONFIG` (`beyondRange`, `rules`, `cooldown`, `debug`, `silent`), never the deprecated fields
 - Schema: `AlwaysUpToDateConfig` (see `src/types.ts`); `ConfigFile` is any subset of it plus `$schema`
 - `beyondRange` and `rules` are validated strictly: an unknown level or rule throws instead of being ignored (ignoring `"react": "hodl"` would update a package meant to be held). `beyondRange` stays `undefined` when absent so the deprecated fields can still decide
-- Every load failure (malformed JSON, invalid value) is a `ConfigError`. The logger loads config on import, so it surfaces while the CLI is being imported; `src/index.ts` imports the CLI inside its `try` and prints it as one `autd: …` line, exit 1
+- Every load failure (malformed JSON, invalid value) is a `ConfigError`. `openProject` throws it inside the command's `try`, so `reportFailure` prints it as one `❌` line with exit 1 (or the `--json` error object). Importing the CLI, `--help`, `--version` and `init` never load the config
 - `cooldown` accepts: number (days), duration string (`'1 week'`, `'24h'`), or per-update-type object `{ patch, minor, major }` whose values are themselves numbers or duration strings
 
 ### Update Policy (`updateChecker.ts`)
-`updateChecker(info, policy)` is pure: it returns `{ target }` (where the package moves) or `{ reason }` (why it is held). `filterPackages` builds the policy per run with `policyFromConfig(loadConfig(cwd))`.
+`updateChecker(info, policy)` is pure: it returns `{ target }` (where the package moves) or `{ reason }` (why it is held). `filterPackages` builds the policy per run with `policyFromConfig(config)`.
 1. Invalid semver: held (`invalid version …`)
 2. Rule `hold`: held. Rule `latest`: target `latest`, any step size
 3. Default: stay within the manifest range. Target is `wanted` (the highest version the range allows) when it is ahead of `current`; an exact pin has `wanted == current`, so it is held (`patch beyond the range`, etc.)
@@ -78,7 +78,7 @@ utils/
 Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Groups sorted alphabetically.
 
 ### Package Filtering (`filterPackages.ts`)
-- Async. Signature: `filterPackages(outdated, { targetPackages?, cwd?, now? })`
+- Async. Signature: `filterPackages(outdated, { config, targetPackages?, cwd?, now?, overrides? })`; `config` is the project's loaded config, never loaded inside
 - Runs `updateChecker` on every outdated package with the policy for `cwd`
 - When cooldown is enabled (`cooldown > 0` for any update type), fetches release times from the registry for packages with a target and applies the gate
 - Returns `UpdateResult[]` with name, current, wanted, latest, `target` (when updated), updateType (`current → target`, else `current → latest`), updated, reason, and optional `releaseAge`

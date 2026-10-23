@@ -1,10 +1,7 @@
 import { blue, bold, cyan, gray, green, red, yellow } from 'colorette'
 import type SemVer from 'semver'
-import type { UpdateResult } from '@/types'
-import { loadConfig } from './config'
+import type { AlwaysUpToDateConfig, UpdateResult } from '@/types'
 import { formatAgeDays } from './duration'
-
-const config = loadConfig()
 
 export const pluralize = (
   count: number,
@@ -25,9 +22,38 @@ export interface SkippedRow extends OutdatedRow {
   reason?: string
 }
 
+/** The config fields the logger reads. */
+export type LoggerConfig = Partial<
+  Pick<
+    AlwaysUpToDateConfig,
+    'debug' | 'silent' | 'updateAllowlist' | 'updateDenylist'
+  >
+>
+
+/** The deprecated allow/deny lists, shown as tags and a legend. */
+interface TagLists {
+  allowlist: string[]
+  denylist: string[]
+}
+
 class Logger {
-  private quiet: boolean = config.silent
+  private quiet = false
+  private debugEnabled = false
   private jsonOutput = false
+  private tags: TagLists = { allowlist: [], denylist: [] }
+
+  /**
+   * Applies the loaded config. Until it is called, debug is off, output is
+   * not quiet and no allow/deny tags show.
+   */
+  configure(config: LoggerConfig): void {
+    this.quiet = config.silent ?? false
+    this.debugEnabled = config.debug ?? false
+    this.tags = {
+      allowlist: config.updateAllowlist ?? [],
+      denylist: config.updateDenylist ?? [],
+    }
+  }
 
   setQuiet(quiet: boolean): void {
     this.quiet = quiet
@@ -74,7 +100,7 @@ class Logger {
    * Used for shell-out commands which are noisy for normal CLI use.
    */
   command(command: string): void {
-    if (config.debug) this.diagnostic(`${gray('$')} ${gray(command)}`)
+    if (this.debugEnabled) this.diagnostic(`${gray('$')} ${gray(command)}`)
   }
 
   workspace(manager: string): void {
@@ -97,8 +123,8 @@ class Logger {
     if (this.muted) return
     console.log(`\n${yellow('📈')} ${bold('Outdated packages found')}`)
 
-    const hasDeny = (config.updateDenylist?.length ?? 0) > 0
-    const hasAllow = (config.updateAllowlist?.length ?? 0) > 0
+    const hasDeny = this.tags.denylist.length > 0
+    const hasAllow = this.tags.allowlist.length > 0
     if (!hasDeny && !hasAllow) return
 
     if (hasDeny) {
@@ -124,7 +150,7 @@ class Logger {
     if (this.muted || rows.length === 0) return
     const widths = computeWidths(rows)
     for (const row of rows) {
-      console.log(formatRow(row, widths, row.note))
+      console.log(formatRow(row, widths, row.note, this.tags))
     }
   }
 
@@ -140,7 +166,7 @@ class Logger {
     if (this.muted || rows.length === 0) return
     const widths = computeWidths(rows)
     for (const row of rows) {
-      console.log(formatRow(row, widths, row.note))
+      console.log(formatRow(row, widths, row.note, this.tags))
     }
   }
 
@@ -152,7 +178,7 @@ class Logger {
     const widths = computeWidths(rows)
     for (const row of rows) {
       const note = row.reason ?? `${row.updateType} update skipped`
-      console.log(formatRow(row, widths, note))
+      console.log(formatRow(row, widths, note, this.tags))
     }
   }
 
@@ -166,7 +192,7 @@ class Logger {
   }
 
   debug(message: string): void {
-    if (config.debug) this.diagnostic(gray(`  ${message}`))
+    if (this.debugEnabled) this.diagnostic(gray(`  ${message}`))
   }
 
   /**
@@ -223,6 +249,7 @@ const formatRow = (
   row: OutdatedRow,
   widths: ColumnWidths,
   trailingNote: string | undefined,
+  tags: TagLists,
 ): string => {
   const name = bold(row.name.padEnd(widths.name))
   const current = red(row.current.padEnd(widths.current))
@@ -238,9 +265,9 @@ const formatRow = (
   if (tail.length > 0) line += `  ${gray(`(${tail.join(' · ')})`)}`
 
   // Indicate allow/deny decoration as a tag on the right
-  if (config.updateDenylist?.includes(row.name)) {
+  if (tags.denylist.includes(row.name)) {
     line += `  ${red('[ignored]')}`
-  } else if (config.updateAllowlist?.includes(row.name)) {
+  } else if (tags.allowlist.includes(row.name)) {
     line += `  ${green('[allowed]')}`
   }
 

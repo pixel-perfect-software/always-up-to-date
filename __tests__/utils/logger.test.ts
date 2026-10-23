@@ -1,15 +1,3 @@
-jest.mock('@/utils/config', () => ({
-  loadConfig: jest.fn(() => ({
-    allowMinorUpdates: false,
-    allowMajorUpdates: false,
-    debug: false,
-    silent: false,
-    updateAllowlist: [],
-    updateDenylist: [],
-    cooldown: 0,
-  })),
-}))
-
 import type { UpdateResult } from '@/types'
 import logger, { pluralize } from '@/utils/logger'
 
@@ -21,6 +9,7 @@ describe('Logger', () => {
   beforeEach(() => {
     console.log = originalLog
     logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    logger.configure({})
     logger.setQuiet(false)
   })
 
@@ -144,6 +133,60 @@ describe('Logger', () => {
     it('debug stays silent when debug is off', () => {
       logger.debug('debug info')
       expect(logSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('configure', () => {
+    it('prints command and debug lines once debug is on', () => {
+      logger.configure({ debug: true })
+
+      logger.command('npm outdated')
+      logger.debug('debug info')
+
+      expect(logSpy.mock.calls[0][0]).toContain('npm outdated')
+      expect(logSpy.mock.calls[1][0]).toContain('debug info')
+    })
+
+    it('mutes output when silent', () => {
+      logger.configure({ silent: true })
+
+      logger.info('hello')
+      logger.allUpToDate()
+
+      expect(logSpy).not.toHaveBeenCalled()
+    })
+
+    it('goes back to the defaults when configured with nothing', () => {
+      logger.configure({ debug: true, silent: true })
+      logger.configure({})
+
+      logger.info('hello')
+      logger.debug('debug info')
+
+      expect(logSpy).toHaveBeenCalledTimes(1)
+      expect(logSpy.mock.calls[0][0]).toContain('hello')
+    })
+
+    it('shows the legend and tags for the allow and deny lists', () => {
+      logger.configure({ updateAllowlist: ['a'], updateDenylist: ['b'] })
+
+      logger.outdatedHeader()
+      logger.printOutdatedRows([
+        { name: 'a', current: '1.0.0', latest: '1.0.1' },
+        { name: 'b', current: '1.0.0', latest: '1.0.1' },
+        { name: 'c', current: '1.0.0', latest: '1.0.1' },
+      ])
+
+      const lines = logSpy.mock.calls.map(([line]) => line as string)
+      expect(lines.some((l) => l.includes('in updateDenylist'))).toBe(true)
+      expect(lines.some((l) => l.includes('in updateAllowlist'))).toBe(true)
+      expect(
+        lines.find((l) => l.includes('1.0.0') && l.includes('a')),
+      ).toContain('[allowed]')
+      expect(lines.find((l) => l.includes('  b'))).toContain('[ignored]')
+      expect(lines.find((l) => l.includes('  c'))).not.toMatch(
+        /\[(allowed|ignored)\]/,
+      )
     })
   })
 

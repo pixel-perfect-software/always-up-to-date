@@ -41,7 +41,8 @@ src/
   cli.ts                    # Commander.js program setup, registers commands
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
   commandRunner.ts          # runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
-  pipeline.ts               # check / plan / update: detect → discover → plan → apply → report for any adapter
+  project.ts                # openProject(cwd): loads the config once, configures the logger, detects the manager → Project
+  pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter
   detectPackageManager.ts   # Lock file detection from the adapters' lockfiles
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
   commands/                 # CLI command definitions
@@ -58,12 +59,15 @@ schema/
   config.schema.json        # JSON schema for .always-up-to-date.json (referenced via $schema)
 __tests__/
   setup.ts                  # Global test setup (console suppression)
-  index.test.ts             # CLI entry: a bad config prints one line and exits 1
+  index.test.ts             # CLI entry: a failure to start prints and exits 1
+  cli.test.ts               # Loading the CLI reads no config
+  project.test.ts           # openProject: config loaded once, logger configured before detection
+  pipeline.test.ts          # The pipeline plans with project.config and never loads it
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   commands/
     check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options
     jsonOutput.test.ts      # Real logger: stdout is exactly one JSON document with --json
-    failures.test.ts        # Failed steps: exit code 1, one message, JSON error object
+    failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, JSON error object
   detectPackageManager.test.ts  # Lock file detection tests
   fixtures/
     index.ts                # readFixture(), exitError() helpers
@@ -84,7 +88,7 @@ __tests__/
     duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests
     filterPackages.test.ts  # Package filtering, targeting, cooldown integration
-    logger.test.ts          # Logger output, quiet and JSON output modes
+    logger.test.ts          # Logger output, configure(), quiet and JSON output modes
     npmrcLoader.test.ts     # .npmrc / NPM_CONFIG_* parsing
     packageGrouper.test.ts  # Package grouping tests
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting

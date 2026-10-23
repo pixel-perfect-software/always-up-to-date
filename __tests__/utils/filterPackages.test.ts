@@ -1,4 +1,4 @@
-import type { PackageInfo } from '@/types'
+import type { AlwaysUpToDateConfig, PackageInfo } from '@/types'
 import type filterPackagesType from '@/utils/filterPackages'
 
 const mockLogger = {
@@ -18,24 +18,23 @@ interface LoadOpts {
   >
 }
 
+const DEFAULTS = {
+  allowMinorUpdates: false,
+  allowMajorUpdates: false,
+  debug: false,
+  silent: false,
+  updateAllowlist: [],
+  updateDenylist: [],
+  cooldown: 0,
+  rules: {},
+} as AlwaysUpToDateConfig
+
 function loadFilterWithConfig(
-  config: Record<string, unknown>,
+  config: Partial<AlwaysUpToDateConfig>,
   opts: LoadOpts = {},
 ) {
   let filter: typeof filterPackagesType
   jest.isolateModules(() => {
-    jest.doMock('@/utils/config', () => ({
-      loadConfig: () => ({
-        allowMinorUpdates: false,
-        allowMajorUpdates: false,
-        debug: false,
-        silent: false,
-        updateAllowlist: [],
-        updateDenylist: [],
-        cooldown: 0,
-        ...config,
-      }),
-    }))
     jest.doMock('@/utils/logger', () => mockLogger)
     jest.doMock('@/utils/npmrcLoader', () => ({
       loadRegistryConfig: () => ({
@@ -58,7 +57,10 @@ function loadFilterWithConfig(
     // biome-ignore lint/style/noCommonJs: jest.isolateModules requires synchronous require
     filter = require('@/utils/filterPackages').default
   })
-  return filter!
+  return (
+    outdated: Record<string, PackageInfo>,
+    options: Omit<Parameters<typeof filterPackagesType>[1], 'config'> = {},
+  ) => filter!(outdated, { config: { ...DEFAULTS, ...config }, ...options })
 }
 
 const makeOutdated = (

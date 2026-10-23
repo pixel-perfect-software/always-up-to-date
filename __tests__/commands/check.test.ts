@@ -39,8 +39,7 @@ describe('check command', () => {
     mockCheckPackageVersions.mockResolvedValue({})
     await program.parseAsync(['node', 'test', 'check'])
     expect(mockCheckPackageVersions).toHaveBeenCalledWith(
-      npm,
-      expect.any(String),
+      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
     )
   })
 

@@ -1,9 +1,8 @@
 import npm, { parseNpmOutdated } from '@/managers/npm'
 import { check } from '@/pipeline'
-import { exitError, readFixture } from '../fixtures'
+import { exitError, projectFor, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -23,7 +22,7 @@ describe('check with npm', () => {
       exitError(1, readFixture('npm/outdated-ranges.stdout'), ''),
     )
 
-    const result = await check(npm, '/project')
+    const result = await check(projectFor(npm, '/project'))
 
     expect(result.react).toMatchObject({
       current: '18.2.0',
@@ -38,7 +37,7 @@ describe('check with npm', () => {
       exitError(1, readFixture('npm/outdated.stdout'), ''),
     )
 
-    const result = await check(npm, '/project')
+    const result = await check(projectFor(npm, '/project'))
 
     expect(Object.keys(result)).toHaveLength(40)
     expect(result.dayjs).toMatchObject({
@@ -57,13 +56,17 @@ describe('check with npm', () => {
       ),
     )
 
-    await expect(check(npm, '/project')).rejects.toThrow(/ECONNREFUSED/)
+    await expect(check(projectFor(npm, '/project'))).rejects.toThrow(
+      /ECONNREFUSED/,
+    )
   })
 
   it('fails when npm exits with a code other than 0 or 1', async () => {
     mockedRunProcess.mockRejectedValue(exitError(2, '{}', 'npm error usage'))
 
-    await expect(check(npm, '/project')).rejects.toThrow(/npm error usage/)
+    await expect(check(projectFor(npm, '/project'))).rejects.toThrow(
+      /npm error usage/,
+    )
   })
 })
 

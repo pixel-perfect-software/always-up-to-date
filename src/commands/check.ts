@@ -1,7 +1,6 @@
 import type { Command } from 'commander'
-import detectPackageManager from '@/detectPackageManager'
-import { adapterFor } from '@/managers'
 import { check } from '@/pipeline'
+import { openProject } from '@/project'
 import logger from '@/utils/logger'
 import reportFailure from './reportFailure'
 
@@ -21,9 +20,9 @@ const checkCommand = (program: Command) =>
       if (options.json) logger.setJsonOutput(true)
 
       try {
-        const adapter = adapterFor(detectPackageManager(workingDir))
+        const project = openProject(workingDir)
 
-        const result = await check(adapter, workingDir)
+        const result = await check(project)
         if (options.json) console.log(JSON.stringify(result, null, 2))
       } catch (error) {
         reportFailure(error, options.json)

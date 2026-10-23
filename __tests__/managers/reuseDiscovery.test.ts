@@ -7,9 +7,9 @@ import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
 import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
+import { projectFor } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -54,7 +54,7 @@ describe.each([
   })
 
   it('applies without running outdated again', async () => {
-    const results = await update(adapter, cwd, {
+    const results = await update(projectFor(adapter, cwd), {
       targetPackages: ['dayjs'],
       discovered: outdatedPackages,
     })

@@ -7,9 +7,9 @@ import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
 import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
+import { projectFor } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -20,7 +20,6 @@ jest.mock('@/utils', () => ({
 }))
 
 import { runProcess } from '@/utils'
-import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -88,12 +87,13 @@ describe.each([
     })
 
     afterEach(() => {
-      jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
       fs.rmSync(cwd, { recursive: true, force: true })
     })
 
     it('hands an in-range update to the manager without touching package.json', async () => {
-      const results = await update(adapter, cwd, { discovered: outdated })
+      const results = await update(projectFor(adapter, cwd), {
+        discovered: outdated,
+      })
 
       expect(mockedRunProcess).toHaveBeenCalledTimes(1)
       expect(mockedRunProcess).toHaveBeenCalledWith(pm, [...inRange], { cwd })
@@ -125,7 +125,9 @@ describe.each([
       }
       pinReact[pm]()
 
-      const results = await update(adapter, cwd, { discovered: outdated })
+      const results = await update(projectFor(adapter, cwd), {
+        discovered: outdated,
+      })
 
       expect(results.find((r) => r.name === 'react')).toMatchObject({
         updated: false,
@@ -136,11 +138,9 @@ describe.each([
 
     it('writes the new spec only for packages moving past their range', async () => {
       // allowMinorUpdates lets the pinned dayjs move by a patch.
-      jest
-        .mocked(loadConfig)
-        .mockReturnValue({ ...DEFAULT_CONFIG, allowMinorUpdates: true })
-
-      await update(adapter, cwd, { discovered: outdated })
+      await update(projectFor(adapter, cwd, { allowMinorUpdates: true }), {
+        discovered: outdated,
+      })
 
       expect(mockedRunProcess).toHaveBeenCalledWith(pm, [...mixed], { cwd })
       expect(readManifest().dependencies).toEqual(

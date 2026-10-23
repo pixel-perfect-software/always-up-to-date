@@ -6,10 +6,9 @@ import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
 import { check, plan } from '@/pipeline'
-import { exitError, readFixture } from '../fixtures'
+import { exitError, projectFor, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
   clearRegistryCache: jest.fn(),
   fetchReleaseTimes: jest.fn(),
@@ -20,7 +19,6 @@ jest.mock('@/utils', () => ({
 }))
 
 import { runProcess } from '@/utils'
-import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -75,18 +73,16 @@ describe.each([
       if (!exitsOne) return { stdout, stderr: '' }
       throw exitError(1, stdout, '')
     })
-    jest
-      .mocked(loadConfig)
-      .mockReturnValue({ ...DEFAULT_CONFIG, beyondRange: 'major' })
   })
 
   afterEach(() => {
-    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('reports the alias under its manifest key', async () => {
-    const outdated = await check(adapter, cwd)
+    const outdated = await check(
+      projectFor(adapter, cwd, { beyondRange: 'major' }),
+    )
 
     expect(Object.keys(outdated)).toContain('dj')
     expect(Object.keys(outdated)).not.toContain('dayjs')
@@ -95,9 +91,14 @@ describe.each([
   })
 
   it('plans the alias without throwing, whatever versions the manager reports', async () => {
-    const outdated = await check(adapter, cwd)
+    const outdated = await check(
+      projectFor(adapter, cwd, { beyondRange: 'major' }),
+    )
 
-    const results = await plan(adapter, cwd, outdated)
+    const results = await plan(
+      projectFor(adapter, cwd, { beyondRange: 'major' }),
+      outdated,
+    )
 
     const dj = results.find((r) => r.name === 'dj')
     // yarn v1 reports the alias's latest as "exotic": nothing to move to.
