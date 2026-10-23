@@ -75,6 +75,7 @@ __tests__/
     reuseDiscovery.test.ts  # updatePackages with a discovery result runs only the apply command
     withinRange.test.ts     # Real output, default config: proposes exactly npm update's set; zero for pins
     applyRanges.test.ts     # In-range apply writes nothing; beyond-range writes the target spec first
+    aliases.test.ts         # Real alias output from all four managers: manifest key, no crash on exotic
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
   utils/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants)
@@ -90,6 +91,7 @@ __tests__/
     overrides.test.ts       # Which override keys pin a package, per manager's current version
     peers.test.ts           # Installed peer ranges from hoisted node_modules and the pnpm store
     saveStyle.test.ts       # Where each manager keeps save-exact / save-prefix
+    manifestNames.test.ts   # Report names mapped back to package.json keys
 ```
 
 ## Tech Stack

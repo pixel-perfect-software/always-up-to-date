@@ -60,6 +60,9 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 - `src/utils/packageGrouper.ts` groups check output by scope for display
 - `src/utils/files.ts` `updatePackageJson()` writes version updates before running the manager's update command (npm, pnpm, bun), only for packages moving past their range
 
+### Discovery: names
+Every parser's report goes through `toManifestNames()`, so results are keyed by the package.json name. An `npm:` alias (`"dj": "npm:dayjs@1.11.9"`) otherwise comes back as `dj:dayjs@1.11.9` (npm) or the target name `dayjs` (pnpm, bun); yarn v1 reports `dj` but with `exotic` as wanted and latest, which the policy holds as an invalid version. The managers' own `update dj` accepts the alias key.
+
 ### Discovery: `wanted`
 Every parser fills `PackageInfo.wanted`, the highest version the manifest range allows: npm's `wanted`, yarn v1's `Wanted` column, bun's `Update` column. pnpm's own `wanted` is the lockfile's version, so pnpm also runs `outdated --compatible` (in parallel) and takes `wanted` from its `latest`.
 

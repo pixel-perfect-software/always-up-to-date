@@ -1,0 +1,30 @@
+{
+  "dayjs": {
+    "current": "1.11.9",
+    "latest": "1.11.23",
+    "wanted": "1.11.9",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "semver": {
+    "current": "7.6.3",
+    "latest": "7.8.5",
+    "wanted": "7.6.3",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "express": {
+    "current": "4.22.3",
+    "latest": "5.3.0",
+    "wanted": "4.22.3",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  },
+  "zod": {
+    "current": "3.25.76",
+    "latest": "4.6.7",
+    "wanted": "3.25.76",
+    "isDeprecated": false,
+    "dependencyType": "dependencies"
+  }
+}
