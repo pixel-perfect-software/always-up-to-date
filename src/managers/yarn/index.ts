@@ -19,6 +19,7 @@ import {
   toUpdatingRow,
 } from '@/utils'
 import { buildUpdateDescriptors } from '@/utils/files'
+import { toManifestNames } from '@/utils/manifestNames'
 import { readSaveStyle } from '@/utils/saveStyle'
 
 /**
@@ -57,7 +58,10 @@ class YarnManager extends CommandRunner {
       cwd,
       { isSuccess: isOutdatedReport },
     )
-    const result = this.parseYarnOutdatedResult(commandResult || '')
+    const result = toManifestNames(
+      cwd,
+      this.parseYarnOutdatedResult(commandResult || ''),
+    )
 
     if (Object.keys(result).length === 0) {
       logger.allUpToDate()

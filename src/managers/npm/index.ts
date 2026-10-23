@@ -18,6 +18,7 @@ import {
   toUpdatingRow,
 } from '@/utils'
 import { updatePackageJson } from '@/utils/files'
+import { toManifestNames } from '@/utils/manifestNames'
 import { readSaveStyle } from '@/utils/saveStyle'
 
 /**
@@ -58,8 +59,9 @@ class NPMManager extends CommandRunner {
       cwd,
       { isSuccess: isOutdatedReport },
     )
-    const result: Record<string, PackageInfo> = JSON.parse(
-      commandResult || '{}',
+    const result = toManifestNames(
+      cwd,
+      JSON.parse(commandResult || '{}') as Record<string, PackageInfo>,
     )
 
     if (Object.keys(result).length === 0) {

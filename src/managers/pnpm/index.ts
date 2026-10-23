@@ -18,6 +18,7 @@ import {
   toUpdatingRow,
 } from '@/utils'
 import { updatePackageJson, updatePNPMWorkspaceYAML } from '@/utils/files'
+import { toManifestNames } from '@/utils/manifestNames'
 import { readSaveStyle } from '@/utils/saveStyle'
 
 /**
@@ -63,13 +64,14 @@ class PNPMManager extends CommandRunner {
         { isSuccess: isOutdatedReport },
       ),
     ])
-    const result: Record<string, PackageInfo> = JSON.parse(report || '{}')
+    const parsed: Record<string, PackageInfo> = JSON.parse(report || '{}')
     const compatible: Record<string, PackageInfo> = JSON.parse(
       compatibleReport || '{}',
     )
-    for (const [name, info] of Object.entries(result)) {
+    for (const [name, info] of Object.entries(parsed)) {
       info.wanted = compatible[name]?.latest ?? info.wanted
     }
+    const result = toManifestNames(cwd, parsed)
 
     if (Object.keys(result).length === 0) {
       logger.allUpToDate()

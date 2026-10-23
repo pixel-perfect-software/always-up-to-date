@@ -1,0 +1,30 @@
+{
+  "dj:dayjs@1.11.9": {
+    "current": "1.11.9",
+    "wanted": "1.11.9",
+    "latest": "1.11.23",
+    "dependent": "project",
+    "location": "/project/node_modules/dj"
+  },
+  "express": {
+    "current": "4.22.3",
+    "wanted": "4.22.3",
+    "latest": "5.3.0",
+    "dependent": "project",
+    "location": "/project/node_modules/express"
+  },
+  "semver": {
+    "current": "7.6.3",
+    "wanted": "7.6.3",
+    "latest": "7.8.5",
+    "dependent": "project",
+    "location": "/project/node_modules/semver"
+  },
+  "zod": {
+    "current": "3.25.76",
+    "wanted": "3.25.76",
+    "latest": "4.6.7",
+    "dependent": "project",
+    "location": "/project/node_modules/zod"
+  }
+}

@@ -28,6 +28,7 @@ utils/
   overrides.ts        # findControllingOverrides(cwd, pm): packages an override pins, with field and range
   peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, pnpm store)
   saveStyle.ts        # readSaveStyle(cwd, pm): exact or prefix for specs that can't keep their shape
+  manifestNames.ts    # toManifestNames(cwd, outdated): re-keys a report by package.json names (npm: aliases)
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
   logger.ts           # Colored logging (colorette); setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr

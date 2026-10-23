@@ -22,6 +22,7 @@ import {
   updateBunCatalogs,
   updatePackageJson,
 } from '@/utils/files'
+import { toManifestNames } from '@/utils/manifestNames'
 import { readSaveStyle } from '@/utils/saveStyle'
 
 class BunManager extends CommandRunner {
@@ -41,7 +42,10 @@ class BunManager extends CommandRunner {
       args,
       cwd,
     )
-    const result = this.parseBunOutdatedOutput(commandResult || '')
+    const result = toManifestNames(
+      cwd,
+      this.parseBunOutdatedOutput(commandResult || ''),
+    )
 
     if (Object.keys(result).length === 0) {
       logger.allUpToDate()

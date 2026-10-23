@@ -1,4 +1,4 @@
-import semver from 'semver'
+import semver, { type ReleaseType } from 'semver'
 import type {
   PackageInfo,
   SupportedPackageManager,
@@ -23,6 +23,14 @@ interface FilterPackagesOptions {
   /** Whose override fields to honor; without it no package is held for one. */
   packageManager?: SupportedPackageManager
 }
+
+/**
+ * `semver.diff`, or null when either version isn't semver: managers report
+ * versions such as yarn v1's `exotic` for an npm: alias, and `semver.diff`
+ * throws on them.
+ */
+const stepType = (from: string, to: string): ReleaseType | null =>
+  semver.valid(from) && semver.valid(to) ? semver.diff(from, to) : null
 
 /**
  * Holds targets an installed package's peer range excludes. A range declared
@@ -62,7 +70,7 @@ const holdPeerConflicts = (
         ...result,
         target: undefined,
         updated: false,
-        updateType: semver.diff(result.current, result.latest),
+        updateType: stepType(result.current, result.latest),
         reason: message,
       }
     })
@@ -104,7 +112,7 @@ const filterPackages = async (
           current,
           wanted,
           latest,
-          updateType: semver.diff(current, latest),
+          updateType: stepType(current, latest),
           updated: false,
           reason: 'not targeted',
         }
@@ -124,7 +132,7 @@ const filterPackages = async (
           current,
           wanted,
           latest,
-          updateType: semver.diff(current, latest),
+          updateType: stepType(current, latest),
           updated: false,
           reason: `controlled by ${override.field} (${override.range})`,
         }
@@ -136,7 +144,7 @@ const filterPackages = async (
         wanted,
         latest,
         target,
-        updateType: semver.diff(current, target ?? latest),
+        updateType: stepType(current, target ?? latest),
         updated: target !== undefined,
         reason,
       }
