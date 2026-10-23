@@ -25,10 +25,13 @@ commands/
 ## Architectural Patterns
 
 ### Command Flow (check/update)
-1. Open the project inside the `try` with `openProject(cwd)` (`src/project.ts`): loads the config, configures the logger, detects the manager and gets its adapter. A bad config or no manager fails here and goes through `reportFailure` like any other failure
+1. Open the project inside the `try` with `openProject(cwd, { pm: options.pm })` (`src/project.ts`): loads the config, configures the logger, detects the manager (or takes `--pm`) and gets its adapter. A bad config or no manager fails here and goes through `reportFailure` like any other failure
 2. Run the pipeline (`src/pipeline.ts`) with that project: `check(project)`, or `update(project, { targetPackages })`. Dry-run is `check` then `plan(project, outdated, targetPackages)`
 
 ### Command Options
+
+#### `check` and `update`
+- `--pm <npm|yarn|pnpm|bun>` - Use this manager instead of detecting one (`pmOption()` in `src/commands/options.ts`; commander rejects other values)
 
 #### `check`
 - `--json` - Output raw JSON instead of formatted display
@@ -54,6 +57,6 @@ Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodat
 
 ## Integration Points
 - `src/detectPackageManager.ts` for package manager detection
-- `src/project.ts` `openProject(cwd)` for the config, logger setup and the detected manager's adapter
+- `src/project.ts` `openProject(cwd, { pm })` for the config, logger setup and the detected manager's adapter
 - `src/pipeline.ts` `check`, `plan` and `update`
 - `src/utils/config.ts` for loading/saving configuration

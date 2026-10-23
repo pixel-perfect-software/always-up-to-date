@@ -41,9 +41,9 @@ src/
   cli.ts                    # Commander.js program setup, registers commands
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
   commandRunner.ts          # runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
-  project.ts                # openProject(cwd): loads the config once, configures the logger, detects the manager → Project
+  project.ts                # openProject(cwd, { pm? }): loads the config once, configures the logger, detects the manager → Project
   pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter
-  detectPackageManager.ts   # Lock file detection from the adapters' lockfiles
+  detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
   commands/                 # CLI command definitions
     CONTEXT.md
@@ -68,7 +68,7 @@ __tests__/
     check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options
     jsonOutput.test.ts      # Real logger: stdout is exactly one JSON document with --json
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, JSON error object
-  detectPackageManager.test.ts  # Lock file detection tests
+  detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging
   fixtures/
     index.ts                # readFixture(), exitError() helpers
     npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)

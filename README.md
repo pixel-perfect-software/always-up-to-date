@@ -22,8 +22,8 @@ dependency moves to the newest version its package.json range allows, the same s
 installs, while an exact pin like `"18.2.0"` stays exactly where it is. When you want more, a
 small config file lets one package, a scope, or everything move past its range.
 
-It works with npm, pnpm, yarn and bun, in single projects and workspaces, and picks the package
-manager from your lockfile.
+It works with npm, pnpm, yarn and bun, in single projects and workspaces, and uses the package
+manager your package.json declares, or the one your lockfile belongs to.
 
 ```console
 $ autd update --dry-run
@@ -92,6 +92,7 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 | `autd update --dry-run` | Show where each package would move, or why it's held, without changing anything |
 | `autd update -i, --interactive` | Pick the packages to update from a checklist |
 | `autd update --json` | Print the update results as JSON (combines with `--dry-run`, not with `--interactive`) |
+| `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager |
 | `autd init` | Create `.always-up-to-date.json` in the current directory |
 | `autd help` | Show help |
 
@@ -152,7 +153,9 @@ When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"
 
 ## 📦 Package managers and workspaces
 
-| Manager | Detected from | Workspaces from |
+autd uses the first of these that names a manager: the `--pm` option, the `packageManager` field in package.json (`"pnpm@12.14.0"`, as Corepack reads it), `devEngines.packageManager`, then the lockfile. A lockfile from another manager than the declared one is ignored, with a warning when the declared manager has no lockfile of its own. With several lockfiles and nothing declared, autd warns and picks in the order bun, pnpm, yarn, npm.
+
+| Manager | Lockfile | Workspaces from |
 |---------|---------------|-----------------|
 | npm | `package-lock.json` | the `workspaces` field in package.json |
 | pnpm | `pnpm-lock.yaml` | the `packages` list in `pnpm-workspace.yaml`, including catalogs |
@@ -163,7 +166,8 @@ When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"
 
 - **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)` or `peer conflict: …`.
 - **`check` or `update` exits 1.** The message names the step that failed (`detect`, `discover` or `apply`) and says whether package.json was already written. Set `"debug": true` to see each package-manager command and its stderr.
-- **"No package manager detected".** autd looks for a lockfile in the current directory; run your package manager's install first.
+- **"No package manager detected".** package.json declares no manager and there's no lockfile in the current directory. Set `"packageManager"`, pass `--pm`, or run your package manager's install first.
+- **The wrong package manager runs.** A leftover lockfile decided it. Set `"packageManager"` in package.json or pass `--pm`; with `"debug": true`, autd logs which lockfiles it ignored.
 
 ## 🔄 Upgrading from 1.x
 

@@ -48,8 +48,13 @@ managers/
 Apply commands (`update`, `upgrade`, `install`) use the default.
 
 ### Package Detection (`src/detectPackageManager.ts`)
-- Checks each adapter's `lockfile` in registry order: npm -> yarn -> pnpm -> bun
-- Last match wins if multiple lock files exist (#78 changes this)
+`detectPackageManager(cwd, pm?)`, first source that answers:
+1. `pm`: the `--pm` option
+2. package.json `packageManager` (`pnpm@12.14.0+sha512.…`): the name before the first `@`
+3. package.json `devEngines.packageManager`: one `{ name }` or an array of them. Of the supported names, the one with a lockfile present, else the first
+4. The lockfiles: each adapter's `lockfile`, in registry order npm -> yarn -> pnpm -> bun, last match wins. With more than one, a warning names the choice
+
+A `packageManager` naming an unsupported manager falls through to `devEngines.packageManager`; when every declaration names only unsupported managers (`deno@2.5.0`), the `detect` step fails rather than guessing from a lockfile. Lockfiles that disagree with the chosen manager are logged at debug level as ignored, unless the declared manager has no lockfile while another has, which warns. A `--pm` that contradicts a declaration warns (Corepack may refuse it). The choice itself is logged at debug level. With nothing declared and no lockfile, `detect` fails and suggests `--pm`. A declared manager with no lockfile is used: its `outdated` then fails `discover` with the manager's own "run install" message.
 
 ### Workspace Detection
 | Manager | Method | Flag |
@@ -62,7 +67,7 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 `catalogs` lists catalog names (pnpm: `catalog` and the keys of `catalogs:` in pnpm-workspace.yaml; bun: the same fields in package.json). The pipeline logs the workspace once per run, and the catalogs when it is a workspace.
 
 ## Integration Points
-- `src/pipeline.ts`: `check(project)`, `plan(project, outdated, targets?)`, `update(project, { targetPackages?, discovered? })`, where a `Project` is `{ cwd, config, adapter }`. `openProject(cwd)` (`src/project.ts`) builds it with `adapterFor(detectPackageManager(cwd))` after loading the config
+- `src/pipeline.ts`: `check(project)`, `plan(project, outdated, targets?)`, `update(project, { targetPackages?, discovered? })`, where a `Project` is `{ cwd, config, adapter }`. `openProject(cwd, { pm? })` (`src/project.ts`) builds it with `adapterFor(detectPackageManager(cwd, pm))` after loading the config
 - `plan` runs `src/utils/filterPackages.ts` with `project.config` and `adapter.overrides(cwd)`
 - `src/utils/files.ts` `updatePackageJson()` writes version updates before running the manager's update command (npm, pnpm, bun), only for packages moving past their range
 - `src/utils/overrides.ts` (`overridesFromField`, `manifestOverrides`) and `src/utils/saveStyle.ts` (`readTextFile`, `yamlValue`) hold the generic readers adapters build on

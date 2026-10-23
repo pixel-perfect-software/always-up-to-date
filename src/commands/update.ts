@@ -1,7 +1,9 @@
 import { type Command, Option } from 'commander'
 import { check, plan, update as runUpdate } from '@/pipeline'
 import { openProject, type Project } from '@/project'
+import type { SupportedPackageManager } from '@/types'
 import { logger, toUpdatingRow } from '@/utils'
+import { pmOption } from './options'
 import reportFailure from './reportFailure'
 
 const workingDir = process.cwd()
@@ -10,6 +12,7 @@ interface UpdateOptions {
   dryRun?: boolean
   interactive?: boolean
   json?: boolean
+  pm?: SupportedPackageManager
 }
 
 /**
@@ -32,11 +35,12 @@ const update = (program: Command) =>
     .addOption(
       new Option('--json', 'Output results as JSON').conflicts('interactive'),
     )
+    .addOption(pmOption())
     .action(async (packages: string[], options: UpdateOptions) => {
       if (options.json) logger.setJsonOutput(true)
 
       try {
-        const project = openProject(workingDir)
+        const project = openProject(workingDir, { pm: options.pm })
         const targetPackages = packages.length > 0 ? packages : undefined
 
         if (options.dryRun) {

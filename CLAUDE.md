@@ -45,8 +45,8 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
   - `plan(project, outdated, targetPackages?)` - The policy's `UpdateResult[]` (dry-run, interactive)
   - `update(project, { targetPackages?, discovered? })` - Plans, applies, returns `UpdateResult[]`. `discovered` is a `check` result the caller already has, so discovery is not run twice
 - Each manager is an adapter (`src/managers/<pm>/index.ts`, interface in `src/managers/adapter.ts`) holding only what is specific to it: `lockfile`, `readWorkspace`, `discover` (with an exported pure parser), `apply`, `saveStyle`, `overrides`. A new manager is its adapter, its registry entry in `src/managers/index.ts`, and its fixtures
-- `src/project.ts` `openProject(cwd)` builds the `Project` (`{ cwd, config, adapter }`) once per command run: `loadConfig(cwd)`, then `logger.configure(config)`, then detection. The pipeline reads `project.config`; nothing below a command loads the config again
-- `src/detectPackageManager.ts` detects the package manager from the adapters' lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lock); `adapterFor(name)` returns its adapter
+- `src/project.ts` `openProject(cwd, { pm? })` builds the `Project` (`{ cwd, config, adapter }`) once per command run: `loadConfig(cwd)`, then `logger.configure(config)`, then detection. The pipeline reads `project.config`; nothing below a command loads the config again
+- `src/detectPackageManager.ts` picks the manager: `--pm`, then package.json `packageManager`, then `devEngines.packageManager`, then the adapters' lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lock; with several, the last wins and a warning names it). A lockfile that disagrees with the declared manager is logged at debug level; `adapterFor(name)` returns the adapter
 
 **Command Runner Pattern**
 - `src/commandRunner.ts` provides `runCommand()` / `runStep()`; the pipeline hands adapters a `run` bound to the step
@@ -83,6 +83,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - Commands registered in `src/commands/`:
   - `init` - Creates `.always-up-to-date.json`
   - `check` - Lists outdated dependencies. Supports `--json` for structured output.
+  - `check` and `update` take `--pm <npm|yarn|pnpm|bun>` to skip detection
   - With `--json`, stdout is only the JSON document (`logger.setJsonOutput`); human output goes through `logger`, never `console.log`
   - `update [packages...]` - Updates packages respecting config. Supports `--dry-run` (preview), `-i/--interactive` (checklist selection), `--json` (structured output), and optional package name arguments for targeted updates.
   - `help` - Shows help information

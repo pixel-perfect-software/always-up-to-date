@@ -24,6 +24,7 @@ jest.mock('@inquirer/prompts', () => ({
 import { checkbox } from '@inquirer/prompts'
 import updateCommand from '@/commands/update'
 import detectPackageManager from '@/detectPackageManager'
+import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import { check, plan, update } from '@/pipeline'
 
@@ -72,6 +73,22 @@ describe('update command', () => {
       {
         targetPackages: ['react', 'lodash'],
       },
+    )
+  })
+
+  it('uses the manager --pm names, with package names around it', async () => {
+    mockDetectPackageManager.mockReturnValueOnce('bun')
+    mockUpdatePackages.mockResolvedValue([])
+
+    await program.parseAsync(['node', 'test', 'update', 'react', '--pm', 'bun'])
+
+    expect(mockDetectPackageManager).toHaveBeenCalledWith(
+      expect.any(String),
+      'bun',
+    )
+    expect(mockUpdatePackages).toHaveBeenCalledWith(
+      expect.objectContaining({ adapter: bun }),
+      { targetPackages: ['react'] },
     )
   })
 

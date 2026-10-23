@@ -10,6 +10,7 @@ jest.mock('@/utils/registry', () => ({
 }))
 
 import detectPackageManager from '@/detectPackageManager'
+import bun from '@/managers/bun'
 import pnpm from '@/managers/pnpm'
 import { openProject } from '@/project'
 import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
@@ -24,7 +25,15 @@ describe('openProject', () => {
     const project = openProject('/project')
 
     expect(project).toEqual({ cwd: '/project', config, adapter: pnpm })
-    expect(detectPackageManager).toHaveBeenCalledWith('/project')
+    expect(detectPackageManager).toHaveBeenCalledWith('/project', undefined)
+  })
+
+  it('hands --pm to detection', () => {
+    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+    jest.mocked(detectPackageManager).mockReturnValue('bun')
+
+    expect(openProject('/project', { pm: 'bun' }).adapter).toBe(bun)
+    expect(detectPackageManager).toHaveBeenCalledWith('/project', 'bun')
   })
 
   it('loads the config once and configures the logger with it', () => {

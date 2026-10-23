@@ -15,7 +15,9 @@ jest.mock('@/utils/registry', () => ({
 }))
 
 import checkCommand from '@/commands/check'
+import detectPackageManager from '@/detectPackageManager'
 import npm from '@/managers/npm'
+import yarn from '@/managers/yarn'
 import { check } from '@/pipeline'
 
 const mockCheckPackageVersions = jest.mocked(check)
@@ -41,6 +43,33 @@ describe('check command', () => {
     expect(mockCheckPackageVersions).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
     )
+  })
+
+  it('uses the manager --pm names', async () => {
+    jest.mocked(detectPackageManager).mockReturnValueOnce('yarn')
+    mockCheckPackageVersions.mockResolvedValue({})
+
+    await program.parseAsync(['node', 'test', 'check', '--pm', 'yarn'])
+
+    expect(detectPackageManager).toHaveBeenCalledWith(
+      expect.any(String),
+      'yarn',
+    )
+    expect(mockCheckPackageVersions).toHaveBeenCalledWith(
+      expect.objectContaining({ adapter: yarn }),
+    )
+  })
+
+  it('rejects a --pm autd does not support', async () => {
+    // commander prints the error before throwing it; keep the test output clean.
+    program.configureOutput({ writeErr: jest.fn() })
+
+    await expect(
+      program.parseAsync(['node', 'test', 'check', '--pm', 'deno']),
+    ).rejects.toThrow(
+      "option '--pm <manager>' argument 'deno' is invalid. Allowed choices are npm, yarn, pnpm, bun.",
+    )
+    expect(mockCheckPackageVersions).not.toHaveBeenCalled()
   })
 
   it('outputs JSON when --json flag is passed', async () => {

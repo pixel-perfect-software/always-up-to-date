@@ -142,7 +142,9 @@ describe('command failures', () => {
     expect(process.exitCode).toBe(1)
     expect(JSON.parse(output).error).toMatchObject({
       step: 'detect',
-      message: 'No package manager detected in the current directory.',
+      message: expect.stringContaining(
+        'No package manager detected in the current directory',
+      ),
     })
   })
 
