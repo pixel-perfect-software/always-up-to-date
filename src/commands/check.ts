@@ -2,6 +2,7 @@ import type { Command } from 'commander'
 import detectPackageManager from '@/detectPackageManager'
 import { PackageManager } from '@/managers'
 import logger from '@/utils/logger'
+import reportFailure from './reportFailure'
 
 const workingDir = process.cwd()
 
@@ -18,15 +19,15 @@ const checkCommand = (program: Command) =>
     .action(async (options: { json?: boolean }) => {
       if (options.json) logger.setJsonOutput(true)
 
-      const packageManagerName = detectPackageManager(workingDir)
-      const packageManager = new PackageManager(packageManagerName)
+      try {
+        const packageManagerName = detectPackageManager(workingDir)
+        const packageManager = new PackageManager(packageManagerName)
 
-      if (options.json) {
         const result =
           await packageManager.manager.checkPackageVersions(workingDir)
-        console.log(JSON.stringify(result, null, 2))
-      } else {
-        await packageManager.manager.checkPackageVersions(workingDir)
+        if (options.json) console.log(JSON.stringify(result, null, 2))
+      } catch (error) {
+        reportFailure(error, options.json)
       }
     })
 

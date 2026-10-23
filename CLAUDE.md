@@ -46,6 +46,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - Executes package manager commands via `runProcess` (`src/utils/runProcess.ts`): `execFile` with an argument array, no shell, no output cap. Commands are always built as arrays, never strings
 - Success is judged per call by exit code plus parsable stdout (a `SuccessCheck`), never by stderr, which is logged at debug level
 - All manager commands go through this abstraction for consistency
+- Failures propagate as a `StepError` (`src/stepError.ts`, step `detect` / `discover` / `apply`) to the command, which reports once and exits 1; never catch and return an empty result
 
 **Configuration System**
 - Config file: `.always-up-to-date.json` in the project root

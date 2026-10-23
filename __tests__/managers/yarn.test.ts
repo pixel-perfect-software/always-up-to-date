@@ -237,11 +237,11 @@ describe('YarnManager.updatePackages', () => {
         ),
       )
 
-    await manager.updatePackages(cwd, ['dayjs'])
-
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining('Command "update" not found'),
-    )
+    await expect(manager.updatePackages(cwd, ['dayjs'])).rejects.toMatchObject({
+      step: 'apply',
+      manifestWritten: false,
+      message: expect.stringContaining('Command "update" not found'),
+    })
   })
 
   it('does not hand yarn a package the root manifest does not list', async () => {

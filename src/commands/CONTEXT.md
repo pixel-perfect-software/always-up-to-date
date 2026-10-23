@@ -18,6 +18,7 @@ commands/
   init.ts     # Creates .always-up-to-date.json with DEFAULT_CONFIG
   check.ts    # Detects package manager, lists outdated deps (grouped by scope)
   update.ts   # Detects package manager, updates packages per config rules
+  reportFailure.ts  # Reports a failed command once (human or JSON) and sets exit code 1
   help.ts     # Displays usage information
 ```
 
@@ -41,6 +42,13 @@ commands/
 
 ### JSON output
 With `--json`, stdout carries exactly one JSON document. The action calls `logger.setJsonOutput(true)` before anything else: progress output is dropped, and errors, warnings and debug lines go to stderr. All human-facing output must go through `logger`; a bare `console.log` anywhere on the command path breaks `--json`.
+
+### Failures
+`check` and `update` wrap their whole action and hand any error to `reportFailure()` (`reportFailure.ts`), which sets `process.exitCode = 1` and reports once:
+- human mode: `Failed during <step>: <message>`, plus a warning when `package.json` was already rewritten
+- `--json`: `{ "error": { "step", "message", "manifestWritten" } }` on stdout, never `[]`
+
+`step` comes from a `StepError` (`src/stepError.ts`): `detect` (no lockfile), `discover` (`outdated` failed), `apply` (the manager's update/install failed). Managers must let these propagate; catching and returning `[]` turns a failure into "nothing to update" with exit 0.
 
 ### Binary Aliases
 Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodate`, `always-up-to-date`. All point to `dist/index.js`.

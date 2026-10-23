@@ -40,8 +40,9 @@ src/
   index.ts                  # Entry point (shebang, calls cli)
   cli.ts                    # Commander.js program setup, registers commands
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
-  commandRunner.ts          # Base class with runCommand(pm, args, cwd, isSuccess?) using runProcess
+  commandRunner.ts          # Base class: runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
   detectPackageManager.ts   # Lock file detection logic
+  stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
   commands/                 # CLI command definitions
     CONTEXT.md
   managers/                 # Package manager implementations
@@ -60,6 +61,7 @@ __tests__/
   commands/
     check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options
     jsonOutput.test.ts      # Real logger: stdout is exactly one JSON document with --json
+    failures.test.ts        # Failed steps: exit code 1, one message, JSON error object
   detectPackageManager.test.ts  # Lock file detection tests
   fixtures/
     index.ts                # readFixture(), exitError() helpers
@@ -70,6 +72,7 @@ __tests__/
     yarn.test.ts            # outdated exit codes, upgrade/up descriptors, berry detection
     realSubprocess.test.ts  # Fake npm on PATH: >1 MB output, names passed as arguments (POSIX)
     reuseDiscovery.test.ts  # updatePackages with a discovery result runs only the apply command
+    stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
   utils/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants)
     cooldown.test.ts        # Normalize/evaluate cooldown gate
