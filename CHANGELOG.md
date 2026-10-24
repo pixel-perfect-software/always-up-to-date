@@ -3,6 +3,35 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-10-23 — 2.1.0: workspaces updated per manifest, yarn 2+ support, and the package manager taken from package.json or `--pm`
+
+Workspaces now work package by package: each dependency is found, planned, written and checked in the manifest that declares it, the root included. yarn 2+ (berry) runs for the first time, and autd uses the package manager your package.json declares before guessing from lockfiles. Nothing changes for single-package projects: their `--json` output is the same byte for byte. In workspace projects, `--json` gains fields.
+
+### Added
+- `check` and `update` take `--pm <npm|pnpm|yarn|bun>`. Without it, autd uses package.json's `packageManager`, then `devEngines.packageManager`, then the lockfile. A leftover lockfile from another manager is ignored, and a warning names the choice when several lockfiles exist and none is declared ([#78](https://github.com/pixel-perfect-software/always-up-to-date/issues/78)).
+- yarn 2+ (berry) is supported, with PnP and with `nodeLinker: node-modules`. It reports and applies the same updates as yarn v1 on the same dependencies ([#79](https://github.com/pixel-perfect-software/always-up-to-date/issues/79)).
+- In workspace projects, each value in `check --json` gains `workspaces: [{ path, current, wanted }]`, one row per manifest that declares the package. Each `update --json` row gains `workspace`. Human output shows `(root)` or the member path ([#59](https://github.com/pixel-perfect-software/always-up-to-date/issues/59)).
+- Windows is tested: CI runs the suite and real npm, pnpm, yarn and bun updates on windows-latest ([#54](https://github.com/pixel-perfect-software/always-up-to-date/issues/54)).
+
+### Changed
+- `update` reports a package the package manager left in place as `updated: false`, with the reason `not applied by <manager> (installed <version>)`, instead of reporting a move that didn't happen ([#76](https://github.com/pixel-perfect-software/always-up-to-date/issues/76)).
+- In a workspace, a package moves in every manifest or in none. If one manifest's row is held by a cooldown, a peer conflict or an override while its range allows newer, the other rows are held too, with the reason `held with <path> (…)` ([#59](https://github.com/pixel-perfect-software/always-up-to-date/issues/59)).
+- A malformed `.always-up-to-date.json` fails only `check` and `update`, reported like any other failure. With `--json`, that is an `{ "error": … }` object on stdout. `--help`, `--version` and `init` no longer read the config ([#45](https://github.com/pixel-perfect-software/always-up-to-date/issues/45)).
+
+### Fixed
+- Workspace member dependencies are written to their own package.json when they move past their range, instead of being reported as updated while the manifest stayed the same ([#59](https://github.com/pixel-perfect-software/always-up-to-date/issues/59)). Related fixes:
+  - npm workspaces no longer skip the root's own dependencies.
+  - yarn v1 updates member-only packages instead of skipping them, and keeps devDependencies in `devDependencies`.
+- Workspace discovery no longer loses rows: yarn v1 and bun used to overwrite one manifest's row with another's, and pnpm used to pass `ms@2.1.1` as a package name ([#59](https://github.com/pixel-perfect-software/always-up-to-date/issues/59)).
+- `check` no longer crashes on an npm project that has a lockfile but no node_modules (a fresh clone); `current` is read from package-lock.json ([#91](https://github.com/pixel-perfect-software/always-up-to-date/issues/91)).
+- Moving a pnpm catalog entry leaves `overrides` and `peerDependencyRules` alone. It also keeps the entry's quotes and trailing comment, and a commented entry now moves at all ([#80](https://github.com/pixel-perfect-software/always-up-to-date/issues/80)).
+- `update` on CI no longer fails for pnpm workspaces and catalogs. pnpm makes a plain `install` frozen when `CI` is set, so it refused the lockfile autd had just rewritten ([#98](https://github.com/pixel-perfect-software/always-up-to-date/issues/98)).
+
+### Known issues
+- pnpm merges workspace members that share an installed version into one row, so a member can be shown another member's in-range maximum ([#95](https://github.com/pixel-perfect-software/always-up-to-date/issues/95)).
+- On yarn 2+ with PnP, installed peer ranges aren't read, so no update is held for a peer conflict. `yarn up -R` also moves transitive copies of the updated packages within their ranges.
+- npm lists only the root's dependencies in a workspace that has no node_modules yet; run `npm install` first.
+
 ## 2026-10-23 — 2.0.0: updates follow your package.json ranges, exact pins stay put, and the config can widen that per package
 
 **Breaking:** with no config, `autd update` now applies what the package manager itself would: each dependency moves to the highest version its package.json range allows, and an exact pin stays where it is. 1.x went further on patches, moving any dependency with a newer patch release (pins included, rewritten to `^`), and stopped short on minors, holding minor updates even when the range allowed them. To let pins take patch releases again, set `"beyondRange": "patch"`. Existing configs keep working.
