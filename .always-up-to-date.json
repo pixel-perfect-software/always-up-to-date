@@ -1,9 +1,6 @@
 {
   "$schema": "./schema/config.schema.json",
-  "allowMinorUpdates": true,
-  "allowMajorUpdates": true,
   "debug": false,
   "silent": false,
-  "updateAllowlist": [],
-  "updateDenylist": []
+  "beyondRange": "none"
 }
