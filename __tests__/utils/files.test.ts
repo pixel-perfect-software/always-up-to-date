@@ -3,6 +3,8 @@ import path from 'path'
 import type { PackageInfo } from '@/types'
 import {
   checkIfFileExists,
+  readBunCatalogs,
+  readPnpmCatalogs,
   readSpec,
   splitCatalogUpdates,
   updateBunCatalogs,
@@ -601,5 +603,145 @@ describe('splitCatalogUpdates', () => {
         { path: '.', withinRange: [], beyondRange: { dayjs: '1.11.23' } },
       ]),
     ).toEqual({ catalog: { dayjs: '1.11.23' }, byManifest: [] })
+  })
+})
+
+describe('readPnpmCatalogs', () => {
+  it('reads the default catalog and each named one', () => {
+    const yaml = [
+      'packages:',
+      '  - packages/*',
+      'catalog:',
+      '  react: ^18.0.0',
+      '  "@types/node": "^20.0.0" # pinned by CI',
+      'catalogs:',
+      '  tools:',
+      '    eslint: ~9.1.0',
+      "  'ui':",
+      '    react-dom: ^18.0.0',
+      'overrides:',
+      '  lodash: 4.17.21',
+      '',
+    ].join('\n')
+
+    expect(readPnpmCatalogs(yaml)).toEqual({
+      default: { react: '^18.0.0', '@types/node': '^20.0.0' },
+      tools: { eslint: '~9.1.0' },
+      ui: { 'react-dom': '^18.0.0' },
+    })
+  })
+
+  it('maps `catalogs: default:` to the default catalog', () => {
+    expect(
+      readPnpmCatalogs('catalogs:\n  default:\n    react: ^18.0.0\n'),
+    ).toEqual({ default: { react: '^18.0.0' } })
+  })
+
+  it('reads a CRLF file', () => {
+    expect(
+      readPnpmCatalogs('catalog:\r\n  react: ^18.0.0\r\n  ms: 2.1.3\r\n'),
+    ).toEqual({ default: { react: '^18.0.0', ms: '2.1.3' } })
+  })
+
+  it('finds nothing in a settings-only file', () => {
+    expect(readPnpmCatalogs('overrides:\n  lodash: 4.17.21\n')).toEqual({})
+  })
+
+  it('agrees with the writer: writing every entry it reads changes exactly those lines', async () => {
+    const yaml = [
+      '# catalogs',
+      'packages:',
+      '  - packages/*',
+      'catalog:',
+      '  react: ^18.0.0 # default',
+      "  '@types/node': '^20.0.0'",
+      '  # a comment between entries',
+      'catalogs:',
+      '  tools:',
+      '    eslint: ~9.1.0',
+      '    "typescript": "~5.4.0"',
+      "  'ui':",
+      '      react-dom: ^18.0.0',
+      'overrides:',
+      '  lodash: 4.17.21',
+      'onlyBuiltDependencies:',
+      '  - esbuild',
+      '',
+    ].join('\r\n')
+
+    const entries = Object.values(readPnpmCatalogs(yaml)).flatMap((catalog) =>
+      Object.keys(catalog),
+    )
+    expect(entries).toEqual([
+      'react',
+      '@types/node',
+      'eslint',
+      'typescript',
+      'react-dom',
+    ])
+
+    mockedFs.readFileSync.mockReturnValue(yaml)
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+    await updatePNPMWorkspaceYAML(
+      '/test',
+      Object.fromEntries(entries.map((name) => [name, '99.0.0'])),
+    )
+    const written = (mockedFs.writeFileSync as jest.Mock).mock
+      .calls[0][1] as string
+
+    const before = yaml.split('\n')
+    const after = written.split('\n')
+    expect(after).toHaveLength(before.length)
+    const changed = before.flatMap((line, i) => (line === after[i] ? [] : [i]))
+    expect(
+      changed
+        .map((i) => before[i].trim().split(/[:\s]/)[0].replace(/['"]/g, ''))
+        .sort(),
+    ).toEqual([...entries].sort())
+    // Lines the walk does not read are byte-identical, `\r` included.
+    expect(after[0]).toBe(before[0])
+    expect(after.filter((line) => line.includes('lodash'))).toEqual(
+      before.filter((line) => line.includes('lodash')),
+    )
+  })
+})
+
+describe('readBunCatalogs', () => {
+  it('reads catalog as default and each of catalogs', () => {
+    expect(
+      readBunCatalogs({
+        catalog: { react: '^18.0.0' },
+        catalogs: {
+          tools: { eslint: '~9.1.0' },
+          ui: { 'react-dom': '^18.0.0' },
+        },
+      }),
+    ).toEqual({
+      default: { react: '^18.0.0' },
+      tools: { eslint: '~9.1.0' },
+      ui: { 'react-dom': '^18.0.0' },
+    })
+  })
+
+  it('keeps string entries only', () => {
+    expect(
+      readBunCatalogs({
+        catalog: { react: '^18.0.0', odd: 3, nested: { a: 'b' } },
+        catalogs: { broken: 'text', list: ['a'] },
+      }),
+    ).toEqual({ default: { react: '^18.0.0' } })
+  })
+
+  it('does not read workspaces.catalog(s), which the writer does not write', () => {
+    expect(
+      readBunCatalogs({
+        workspaces: { packages: ['packages/*'], catalog: { react: '^18.0.0' } },
+      }),
+    ).toEqual({})
+  })
+
+  it('finds nothing without a manifest or catalogs', () => {
+    expect(readBunCatalogs(undefined)).toEqual({})
+    expect(readBunCatalogs({ name: 'x' })).toEqual({})
   })
 })

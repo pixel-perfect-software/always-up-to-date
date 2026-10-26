@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import semver from 'semver'
 import type { ManifestPlan } from '@/types'
-import { DEPENDENCY_FIELDS } from './manifestNames'
+import { DEPENDENCY_FIELDS } from './dependencySpecs'
 import { DEFAULT_SAVE_STYLE, type SaveStyle } from './saveStyle'
 
 export const checkIfFileExists = (filePath: string): boolean => {
@@ -244,29 +244,31 @@ const YAML_ENTRY =
   /^(\s+)(['"]?)([^'"\s#][^'"\s]*)\2(\s*:\s*)(['"]?)([^'"\s#]+)\5(.*)$/
 
 /**
- * Rewrites catalog versions in pnpm-workspace.yaml: the entries under
- * `catalog:` and under each named catalog in `catalogs:`. Every other block
+ * Walks the catalog entries of pnpm-workspace.yaml, the ones under `catalog:`
+ * (the `default` catalog) and under each named catalog in `catalogs:`, and
+ * returns the text with each entry `visit` answers for rewritten. `visit`
+ * gets the catalog's name, the entry's name and its spec; a spec it returns
+ * replaces the entry's, `undefined` leaves the line alone. Every other block
  * (`overrides`, `peerDependencyRules`, …) and every other line stays as it
- * was, and an entry keeps its quotes and trailing comment.
+ * was, and an entry keeps its quotes and trailing comment. The writer and
+ * `readPnpmCatalogs` share this walk, so they agree on what an entry is.
  */
-export const updatePNPMWorkspaceYAML = async (
-  cwd: string,
-  versions: Record<string, string>,
-  style: SaveStyle = DEFAULT_SAVE_STYLE,
-): Promise<void> => {
-  const pnpmWorkspaceYamlPath = path.join(cwd, 'pnpm-workspace.yaml')
-  const lines = fs.readFileSync(pnpmWorkspaceYamlPath, 'utf8').split('\n')
-
+const mapPnpmCatalogEntries = (
+  text: string,
+  visit: (catalog: string, name: string, spec: string) => string | undefined,
+): string => {
   // The top-level key the current line sits under, and, inside `catalogs:`,
-  // the indent of the named catalog it belongs to.
+  // the indent and name of the named catalog it belongs to.
   let block: string | undefined
   let catalogIndent: number | undefined
+  let catalogName: string | undefined
 
   const rewriteLine = (line: string): string => {
     if (/^\S/.test(line)) {
       if (!line.startsWith('#')) {
         block = /^(['"]?)([^'"\s:]+)\1\s*:/.exec(line)?.[2]
         catalogIndent = undefined
+        catalogName = undefined
       }
       return line
     }
@@ -274,9 +276,10 @@ export const updatePNPMWorkspaceYAML = async (
     if (/^\s*(#|$)/.test(line)) return line
 
     if (block === 'catalogs') {
-      const catalogKey = /^(\s+)(['"]?)[^'"\s:]+\2\s*:\s*(#.*)?$/.exec(line)
+      const catalogKey = /^(\s+)(['"]?)([^'"\s:]+)\2\s*:\s*(#.*)?$/.exec(line)
       if (catalogKey) {
         catalogIndent = catalogKey[1].length
+        catalogName = catalogKey[3]
         return line
       }
     }
@@ -290,20 +293,88 @@ export const updatePNPMWorkspaceYAML = async (
     ) {
       return line
     }
-    if (!Object.hasOwn(versions, name)) return line
 
-    const newSpec = nextVersionSpec(spec, versions[name], style)
+    const newSpec = visit(
+      block === 'catalog' ? 'default' : (catalogName as string),
+      name,
+      spec,
+    )
+    if (newSpec === undefined) return line
     return `${indent}${keyQuote}${name}${keyQuote}${separator}${quote}${newSpec}${quote}${rest}`
   }
 
   // A CRLF file keeps its `\r`: the line is rewritten without it and gets it back.
-  const updatedLines = lines.map((line) =>
-    line.endsWith('\r')
-      ? `${rewriteLine(line.slice(0, -1))}\r`
-      : rewriteLine(line),
-  )
+  return text
+    .split('\n')
+    .map((line) =>
+      line.endsWith('\r')
+        ? `${rewriteLine(line.slice(0, -1))}\r`
+        : rewriteLine(line),
+    )
+    .join('\n')
+}
 
-  fs.writeFileSync(pnpmWorkspaceYamlPath, updatedLines.join('\n'), 'utf8')
+/**
+ * Rewrites catalog versions in pnpm-workspace.yaml: the entries under
+ * `catalog:` and under each named catalog in `catalogs:`.
+ */
+export const updatePNPMWorkspaceYAML = async (
+  cwd: string,
+  versions: Record<string, string>,
+  style: SaveStyle = DEFAULT_SAVE_STYLE,
+): Promise<void> => {
+  const pnpmWorkspaceYamlPath = path.join(cwd, 'pnpm-workspace.yaml')
+  const updated = mapPnpmCatalogEntries(
+    fs.readFileSync(pnpmWorkspaceYamlPath, 'utf8'),
+    (_catalog, name, spec) =>
+      Object.hasOwn(versions, name)
+        ? nextVersionSpec(spec, versions[name], style)
+        : undefined,
+  )
+  fs.writeFileSync(pnpmWorkspaceYamlPath, updated, 'utf8')
+}
+
+/**
+ * The catalogs of pnpm-workspace.yaml by name (`default` for `catalog:` and
+ * for `catalogs: default:`), read by the walk the writer uses.
+ */
+export const readPnpmCatalogs = (
+  yaml: string,
+): Record<string, Record<string, string>> => {
+  const catalogs: Record<string, Record<string, string>> = {}
+  mapPnpmCatalogEntries(yaml, (catalog, name, spec) => {
+    ;(catalogs[catalog] ??= {})[name] = spec
+    return undefined
+  })
+  return catalogs
+}
+
+/**
+ * The catalogs of a bun package.json by name: the top-level `catalog` (as
+ * `default`) and each of `catalogs`, string entries only. These are the
+ * fields `updateBunCatalogs` writes; `workspaces.catalog(s)` is neither read
+ * nor written.
+ */
+export const readBunCatalogs = (
+  manifest: Record<string, unknown> | undefined,
+): Record<string, Record<string, string>> => {
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+  const strings = (entries: Record<string, unknown>): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(entries).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    )
+
+  const catalogs: Record<string, Record<string, string>> = {}
+  if (isRecord(manifest?.catalog)) catalogs.default = strings(manifest.catalog)
+  if (isRecord(manifest?.catalogs)) {
+    for (const [name, entries] of Object.entries(manifest.catalogs)) {
+      if (isRecord(entries)) catalogs[name] = strings(entries)
+    }
+  }
+  return catalogs
 }
 
 export const updateBunCatalogs = async (

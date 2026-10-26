@@ -1,11 +1,24 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import semver from 'semver'
 import type { ManagerAdapter } from '@/managers'
 import type { Project } from '@/project'
-import type { AlwaysUpToDateConfig, OutdatedEntry } from '@/types'
+import type {
+  AlwaysUpToDateConfig,
+  OutdatedEntry,
+  RegistryPackage,
+} from '@/types'
 import { DEFAULT_CONFIG } from '@/utils/config'
 import type { RegistrySession } from '@/utils/registry'
+import {
+  parseDepsDevPackage,
+  parseDistTags,
+  parsePackument,
+} from '@/utils/registryDocuments'
+import { registryBody } from './registry'
+
+export { derive, registryBody as readRegistryBody } from './registry'
 
 /**
  * Real package-manager output captured on the 40-dependency benchmark
@@ -46,6 +59,110 @@ export const fakeRegistry = (
     lookup: unexpected,
     close: () => undefined,
     ...overrides,
+  }
+}
+
+export interface CapturedPackageOptions {
+  /** Which captured document to read; both are the reader's sources. Default deps.dev. */
+  source?: RegistryPackage['source']
+  /**
+   * An ISO instant: versions published after it are dropped, so an
+   * expectation written on that date still holds. deps.dev captures only (a
+   * packument capture has no publish times).
+   */
+  asOf?: string
+}
+
+/** `@types/ms` is captured as `types-ms`. */
+const captureName = (name: string): string =>
+  name.replace(/^@/, '').replace('/', '-')
+
+/**
+ * A `RegistryPackage` built by the reader's own parsers from the captures in
+ * `fixtures/registry/`: `<file>.dist-tags` plus `<file>.deps-dev`, or
+ * `<file>.packument`. A test-only approximation of `lookup`: when `asOf`
+ * drops the captured `latest`, `latest` becomes the highest surviving stable
+ * version (the highest surviving one if none is stable), where the registry
+ * would have said what `latest` was on that date.
+ */
+export const capturedPackage = (
+  name: string,
+  { source = 'deps.dev', asOf }: CapturedPackageOptions = {},
+): RegistryPackage => {
+  const file = captureName(name)
+  let latest: string | undefined
+  let versions: RegistryPackage['versions'] | undefined
+  if (source === 'deps.dev') {
+    latest = parseDistTags(JSON.parse(registryBody(`${file}.dist-tags`)))
+    versions = parseDepsDevPackage(JSON.parse(registryBody(`${file}.deps-dev`)))
+  } else {
+    const parsed = parsePackument(JSON.parse(registryBody(`${file}.packument`)))
+    latest = parsed?.latest
+    versions = parsed?.versions
+  }
+  if (!versions)
+    throw new Error(`the ${source} capture of ${name} is unreadable`)
+
+  if (asOf !== undefined) {
+    const cutoff = Date.parse(asOf)
+    if (versions.some((entry) => entry.publishedAt === undefined)) {
+      throw new Error(
+        `the ${source} capture of ${name} has no publish times for asOf`,
+      )
+    }
+    versions = versions.filter(
+      (entry) => Date.parse(entry.publishedAt as string) <= cutoff,
+    )
+  }
+  if (versions.length === 0)
+    throw new Error(`${name} has no version as of ${asOf}`)
+
+  if (
+    latest === undefined ||
+    !versions.some((entry) => entry.version === latest)
+  ) {
+    const stable = versions.filter((entry) => !semver.prerelease(entry.version))
+    latest = (stable.length > 0 ? stable : versions).at(-1)?.version as string
+  }
+  return { name, latest, versions, source }
+}
+
+/**
+ * A registry session whose `lookup` answers from the captures and rejects
+ * for any other name, so a test that asks for a package it didn't plan for
+ * fails loudly.
+ */
+export const capturedRegistry = (
+  names: string[],
+  options: CapturedPackageOptions = {},
+  overrides: Partial<RegistrySession> = {},
+): RegistrySession =>
+  fakeRegistry({
+    lookup: async (name) => {
+      if (!names.includes(name)) {
+        throw new Error(`no registry capture was planned for ${name}`)
+      }
+      return { ok: true, package: capturedPackage(name, options) }
+    },
+    ...overrides,
+  })
+
+/**
+ * Writes `node_modules/<name>/package.json` under `cwd/dir` ('.' is the
+ * root) for each name: what a manager leaves for discovery to read.
+ */
+export const installPackages = (
+  cwd: string,
+  dir: string,
+  versions: Record<string, string>,
+): void => {
+  for (const [name, version] of Object.entries(versions)) {
+    const entry = path.join(cwd, dir, 'node_modules', name)
+    fs.mkdirSync(entry, { recursive: true })
+    fs.writeFileSync(
+      path.join(entry, 'package.json'),
+      JSON.stringify({ name, version }),
+    )
   }
 }
 

@@ -77,9 +77,10 @@ __tests__/
   detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging
   startup.test.ts           # Loading the CLI never loads the registry client or reader
   fixtures/
-    registry.ts, tls/       # Local registry/proxy servers (replies() for exact url tables, registryBody(), derive()); test-only TLS material (generate.sh)
-    registry/               # Verbatim curl captures (.body) of dist-tags, deps.dev and packuments for ms, @types/ms and mkdirp; README.md lists status, type, size and the checks
-    index.ts                # readFixture(), exitError(), fakeRegistry(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers
+    registry.ts, tls/       # Local registry/proxy servers (replies() for exact url tables, registryBody() which gunzips a .body.gz, derive()); test-only TLS material (generate.sh)
+    registry/               # Verbatim curl captures (.body; .body.gz over 100 KB decoded) of dist-tags, deps.dev and packuments: ms, @types/ms, mkdirp, then yarn, pnpm, dayjs, debug, express, semver, zod, axios, lodash, next, qs, typescript for #106 (packuments only for yarn and pnpm); README.md lists status, type, wire and decoded size and the checks
+    index.ts                # readFixture(), exitError(), fakeRegistry(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers; capturedPackage(name, { source, asOf }) and capturedRegistry(names, options) build RegistryPackage / a session from the captures, installPackages(cwd, dir, versions) writes node_modules, readRegistryBody() and derive() are re-exported from registry.ts
+    captured.test.ts        # The captured-registry helpers: sources, asOf, latest fallback, unplanned names, installPackages
     npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)
   managers/
     adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager
@@ -99,7 +100,7 @@ __tests__/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants, strict depsDev)
     cooldown.test.ts        # Normalize/evaluate cooldown gate
     duration.test.ts        # parseDuration + formatAgeDays
-    files.test.ts           # File operations and version parsing tests
+    files.test.ts           # File operations and version parsing tests; readPnpmCatalogs / readBunCatalogs and their agreement with the pnpm writer
     filterPackages.test.ts  # Package filtering, targeting, cooldown integration
     logger.test.ts          # Logger output, configure(), quiet and JSON output modes
     npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
@@ -118,7 +119,9 @@ __tests__/
     saveStyle.test.ts       # Where each manager keeps save-exact / save-prefix
     manifestNames.test.ts   # Report names mapped back to package.json keys
     workspaceRows.test.ts   # foldWorkspaceEntries ordering and top-level choice
-    installed.test.ts       # Installed root-dependency versions (hoisted, scoped, alias, pnpm symlink); checkApplied
+    installed.test.ts       # Installed root-dependency versions (hoisted, scoped, alias, pnpm symlink); readInstalledPackages linked detection (junction to a member, pnpm store link, link outside the project); checkApplied
+    wanted.test.ts          # wantedVersion on the yarn and pnpm captures, each on deps.dev and on the packument
+    dependencySpecs.test.ts # classifySpec table; readDeclaredDependencies on temp dirs (field order, peers, catalogs, members, unreadable manifest)
 ```
 
 ## Tech Stack

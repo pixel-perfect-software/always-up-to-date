@@ -2,12 +2,9 @@ import fs from 'fs'
 import path from 'path'
 import type { OutdatedEntry, PackageInfo } from '@/types'
 
-export const DEPENDENCY_FIELDS = [
-  'dependencies',
-  'devDependencies',
-  'optionalDependencies',
-  'peerDependencies',
-] as const
+export { DEPENDENCY_FIELDS } from './dependencySpecs'
+
+import { DEPENDENCY_FIELDS } from './dependencySpecs'
 
 /**
  * The names package.json in `dir` uses, or undefined when it can't be read.
