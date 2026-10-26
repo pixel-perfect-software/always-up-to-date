@@ -1,9 +1,7 @@
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
-import { ownerPath, readWorkspaceManifests } from '@/managers/workspaces'
-import { StepError } from '@/stepError'
-import type { OutdatedEntry, PackageInfo } from '@/types'
+import { readWorkspaceManifests } from '@/managers/workspaces'
 import {
   readPnpmCatalogs,
   splitCatalogUpdates,
@@ -12,92 +10,6 @@ import {
 } from '@/utils/files'
 import { overridesFromField } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
-
-/**
- * pnpm's `wanted` is the lockfile's version, not the highest version the
- * range allows. `outdated --compatible` reports that one as `latest`, so
- * `wanted` is taken from there.
- */
-export const parsePnpmOutdated = (
-  report: string,
-  compatibleReport: string,
-): Record<string, PackageInfo> => {
-  const parsed: Record<string, PackageInfo> = JSON.parse(report || '{}')
-  const compatible: Record<string, PackageInfo> = JSON.parse(
-    compatibleReport || '{}',
-  )
-  for (const [name, info] of Object.entries(parsed)) {
-    info.wanted = compatible[name]?.latest ?? info.wanted
-  }
-  return parsed
-}
-
-interface PnpmOutdatedRow {
-  current?: string
-  wanted: string
-  latest: string
-  dependentPackages?: { name: string; location: string }[]
-}
-
-/**
- * One entry per package per workspace package that depends on it. pnpm keys
- * a name by `name@current` when owners are at different versions, so that
- * suffix comes off, and reports each owner's directory as an absolute
- * `location`, made relative to `cwd`.
- */
-const pnpmEntries = (report: string, cwd: string): OutdatedEntry[] => {
-  const parsed: Record<string, PnpmOutdatedRow> = JSON.parse(report || '{}')
-  const entries: OutdatedEntry[] = []
-  for (const [key, row] of Object.entries(parsed)) {
-    const suffix = `@${row.current}`
-    const name =
-      row.current && key.endsWith(suffix) && key !== suffix
-        ? key.slice(0, -suffix.length)
-        : key
-    // Every row of a recursive report names its owners; one without them
-    // can't be attributed, and dropping it would read as "up to date".
-    if (!Array.isArray(row.dependentPackages)) {
-      throw new StepError(
-        'discover',
-        `pnpm outdated -r reported ${name} with no dependentPackages`,
-      )
-    }
-    for (const { location } of row.dependentPackages) {
-      entries.push({
-        name,
-        current: row.current ?? 'missing',
-        wanted: row.wanted,
-        latest: row.latest,
-        workspace: ownerPath('pnpm', name, path.relative(cwd, location)),
-      })
-    }
-  }
-  return entries
-}
-
-/**
- * `pnpm outdated -r --json`: one entry per (package, manifest). `wanted` is
- * taken from the `--compatible` report's `latest` for the same manifest and
- * name, as in single-package projects.
- */
-export const parsePnpmWorkspaceOutdated = (
-  report: string,
-  compatibleReport: string,
-  cwd: string,
-): OutdatedEntry[] => {
-  const compatible = new Map(
-    pnpmEntries(compatibleReport, cwd).map((entry) => [
-      `${entry.workspace}\0${entry.name}`,
-      entry,
-    ]),
-  )
-  return pnpmEntries(report, cwd).map((entry) => ({
-    ...entry,
-    wanted:
-      compatible.get(`${entry.workspace}\0${entry.name}`)?.latest ??
-      entry.wanted,
-  }))
-}
 
 const readWorkspaceYaml = (cwd: string): string =>
   readTextFile(path.join(cwd, 'pnpm-workspace.yaml'))

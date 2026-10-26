@@ -1,7 +1,0 @@
-{
-  "error": {
-    "code": "ECONNREFUSED",
-    "summary": "FetchError: request to http://127.0.0.1:9/@reduxjs%2ftoolkit failed, reason: connect ECONNREFUSED 127.0.0.1:9",
-    "detail": "If you are behind a proxy, please make sure that the 'proxy' config is set properly.  See: 'npm help config'"
-  }
-}

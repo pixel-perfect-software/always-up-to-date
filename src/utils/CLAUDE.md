@@ -34,9 +34,8 @@ utils/
   overrides.ts        # overridesFromField(), manifestOverrides(cwd, fields): packages an override pins, with field and range
   peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, pnpm store)
   saveStyle.ts        # SaveStyle, DEFAULT_SAVE_STYLE, readTextFile(), yamlValue(): what adapters' saveStyle() builds on
-  dependencySpecs.ts  # DEPENDENCY_FIELDS (moved here; manifestNames re-exports it until #106's Phase 4), DISCOVERED_FIELDS (no peers), classifySpec(key, spec, catalogs) (catalog:, workspace:, npm: alias, skipped git/file/link/URL, latest, other dist-tag warns), readDeclaredDependencies(cwd, { manifests, catalogs }): every manifest's registry dependencies, first field wins, unreadable manifest is a `discover` StepError. Not in the barrel; `src/discovery.ts` uses it
+  dependencySpecs.ts  # DEPENDENCY_FIELDS, DISCOVERED_FIELDS (no peers), classifySpec(key, spec, catalogs) (catalog:, workspace:, npm: alias, skipped git/file/link/URL, latest, other dist-tag warns), readDeclaredDependencies(cwd, { manifests, catalogs }): every manifest's registry dependencies, first field wins, unreadable manifest is a `discover` StepError. Not in the barrel; `src/discovery.ts` uses it
   wanted.ts           # wantedVersion(range, pkg, { preferLatest }): exact pin, else `latest` if it satisfies and isn't deprecated, else highest non-deprecated, else highest satisfying (pure; `src/discovery.ts` uses it)
-  manifestNames.ts    # toManifestNames(cwd, outdated), toEntryManifestNames(cwd, entries): re-key a report by package.json names (npm: aliases), per owning manifest in a workspace
   workspaceRows.ts    # foldWorkspaceEntries(entries): one PackageInfo per name with `workspaces`; expandWorkspaces(record): the inverse, one row per manifest; workspaceLabel(path): `(root)` or the path
   installed.ts        # readInstalledPackages(cwd, rows) returns `{ version, linked }` (linked: a symlink or junction to a directory inside the project and outside node_modules, i.e. a workspace member; pnpm and bun store links are not), readInstalledVersions(cwd, rows) is its versions: each moving row's installed version (the pipeline uses an adapter's own `installed()` instead when it has one: yarn berry, PnP), keyed by `rowKey` (the name, plus `<workspace>:` in a workspace project), read from `<member>/node_modules/<name>` first, then the root's, only for names that manifest declares; checkApplied(): rows the manager left in place become `not applied by <pm> (installed …)`
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
@@ -114,7 +113,7 @@ Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Gr
 
 ## Integration Points
 - `src/commandRunner.ts` uses `runProcess` and `logger`
-- `src/pipeline.ts` uses `filterPackages`, `logger`, `groupAndSortPackages`, `computeReleaseAges`, `toManifestNames`; adapters use `files.ts`, `overrides.ts`, `saveStyle.ts`, `npmrcLoader.ts`
+- `src/pipeline.ts` uses `filterPackages`, `logger`, `groupAndSortPackages`, `computeReleaseAges`; adapters use `files.ts`, `overrides.ts`, `saveStyle.ts`, `npmrcLoader.ts`
 - `npmrcLoader.ts` uses `@/managers/workspaces` to find the npm project root (no cycle: `workspaces.ts` imports only the logger and `StepError`)
 - `src/commands/update.ts` uses `filterPackages` for dry-run and interactive mode
 - `src/commands/init.ts` uses `saveJsonConfig` and `INITIAL_CONFIG`

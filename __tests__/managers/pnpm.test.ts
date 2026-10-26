@@ -1,19 +1,10 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import pnpm, {
-  parsePnpmOutdated,
-  parsePnpmWorkspaceOutdated,
-} from '@/managers/pnpm'
+import pnpm from '@/managers/pnpm'
 import { update } from '@/pipeline'
-import { StepError } from '@/stepError'
 import type { PackageInfo } from '@/types'
-import {
-  projectFor,
-  readFixture,
-  WORKSPACE_ENTRIES,
-  writeWorkspaceProject,
-} from '../fixtures'
+import { projectFor, writeWorkspaceProject } from '../fixtures'
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils', () => ({
@@ -197,75 +188,6 @@ describe('update with pnpm in a single-package project', () => {
       ['install', '--no-frozen-lockfile'],
       ['update', 'react'],
     ])
-  })
-})
-
-describe('parsePnpmOutdated', () => {
-  it('takes wanted from the --compatible report', () => {
-    const result = parsePnpmOutdated(
-      readFixture('pnpm/outdated-ranges.stdout'),
-      readFixture('pnpm/outdated-ranges-compatible.stdout'),
-    )
-
-    expect(Object.keys(result)).toHaveLength(40)
-    expect(result.react).toMatchObject({
-      current: '18.2.0',
-      wanted: '18.3.1',
-      latest: '19.3.1',
-    })
-    expect(result.dayjs).toMatchObject({ current: '1.11.9', wanted: '1.11.23' })
-    // An exact pin has no compatible update.
-    expect(result.minimist).toMatchObject({ current: '1.2.7', wanted: '1.2.7' })
-  })
-
-  it("keeps pnpm's own wanted for a package the compatible report omits", () => {
-    const result = parsePnpmOutdated(
-      readFixture('pnpm/outdated-ranges.stdout'),
-      '',
-    )
-
-    expect(result.react.wanted).toBe('18.2.0')
-  })
-})
-
-describe('parsePnpmWorkspaceOutdated', () => {
-  const report = readFixture('pnpm/outdated-workspace.stdout')
-  const compatible = readFixture('pnpm/outdated-workspace-compatible.stdout')
-
-  it('parses one entry per dependent package, wanted from --compatible', () => {
-    const entries = parsePnpmWorkspaceOutdated(report, compatible, '/project')
-
-    expect(entries).toHaveLength(5)
-    expect(entries).toEqual(expect.arrayContaining(WORKSPACE_ENTRIES))
-  })
-
-  it('strips the @current suffix pnpm adds to a name at several versions', () => {
-    expect(JSON.parse(report)).toHaveProperty(['ms@2.1.1'])
-
-    const entries = parsePnpmWorkspaceOutdated(report, compatible, '/project')
-
-    expect(entries.map((e) => e.name)).not.toContain('ms@2.1.1')
-    expect(entries.map((e) => e.name)).not.toContain('ms@2.1.2')
-  })
-
-  it('fails discovery for a location outside the project', () => {
-    expect(() =>
-      parsePnpmWorkspaceOutdated(report, compatible, '/elsewhere'),
-    ).toThrow(StepError)
-  })
-
-  it('fails discovery for a row that names no dependent packages', () => {
-    // Dropping it would read as "up to date".
-    const parsed = JSON.parse(report)
-    delete parsed.debug.dependentPackages
-
-    expect(() =>
-      parsePnpmWorkspaceOutdated(
-        JSON.stringify(parsed),
-        compatible,
-        '/project',
-      ),
-    ).toThrow('pnpm outdated -r reported debug with no dependentPackages')
   })
 })
 

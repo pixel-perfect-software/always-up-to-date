@@ -2,8 +2,6 @@ import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
 import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
-import { StepError } from '@/stepError'
-import type { OutdatedEntry, PackageInfo } from '@/types'
 import {
   readBunCatalogs,
   splitCatalogUpdates,
@@ -13,121 +11,6 @@ import {
 import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile } from '@/utils/saveStyle'
-
-/**
- * `bun outdated` prints a table: `| Package | Current | Update | Latest |`.
- * The Update column is the highest version the range allows.
- */
-export const parseBunOutdated = (
-  output: string,
-): Record<string, PackageInfo> => {
-  const result: Record<string, PackageInfo> = {}
-
-  // Split output into lines and filter out header/separator lines
-  const lines = output
-    .split('\n')
-    .filter(
-      (line) =>
-        line.trim() &&
-        !line.includes('|---') &&
-        !line.includes('Package') &&
-        line.includes('|'),
-    )
-
-  for (const line of lines) {
-    // Split by | and clean up whitespace
-    const columns = line
-      .split('|')
-      .map((col) => col.trim())
-      .filter((col) => col)
-
-    if (columns.length >= 4) {
-      const packageNameRaw = columns[0]
-      const current = columns[1]
-      // bun's "Update" column: the highest version the range allows.
-      const wanted = columns[2]
-      const latest = columns[3]
-
-      // Extract package name (remove dev/prod indicators)
-      const packageName = packageNameRaw
-        .replace(/\s*\(dev\)|\s*\(prod\)/, '')
-        .trim()
-
-      // Only include packages that have updates available (current !== latest)
-      if (current !== latest) {
-        result[packageName] = {
-          name: packageName,
-          current,
-          wanted,
-          latest,
-        }
-      }
-    }
-  }
-
-  return result
-}
-
-/**
- * `bun outdated --filter '*'` in a workspace project: the table gains a
- * `Workspace` column holding a workspace's package name, which `ownerOf`
- * turns into the manifest's directory. Cells are read by position, so an
- * empty one (a root without a `name`) stays a column.
- */
-/**
- * A row for a catalog entry names the catalog and the workspace that uses
- * it (`catalog (autd-bun-catalogs)`, `catalog:tools (@autd/b)`, bun 1.4.0).
- * That workspace owns the row: its spec is the `catalog:` reference, which
- * apply follows to the catalog.
- */
-const catalogUser = (cell: string): string =>
-  /^catalog(?::\S+)?\s+\((.*)\)$/.exec(cell)?.[1] ?? cell
-
-export const parseBunWorkspaceOutdated = (
-  output: string,
-  ownerOf: (workspaceName: string) => string,
-): OutdatedEntry[] => {
-  const rows = output
-    .split('\n')
-    .filter((line) => line.startsWith('|') && !line.startsWith('|-'))
-    .map((line) =>
-      line
-        .replace(/^\|/, '')
-        .replace(/\|\s*$/, '')
-        .split('|')
-        .map((cell) => cell.trim()),
-    )
-  const [header, ...body] = rows
-  if (!header) return []
-
-  const column = (title: string): number => {
-    const index = header.indexOf(title)
-    if (index === -1) {
-      throw new StepError(
-        'discover',
-        `bun outdated --filter printed no ${title} column`,
-      )
-    }
-    return index
-  }
-  const [name, current, wanted, latest, workspace] = [
-    'Package',
-    'Current',
-    'Update',
-    'Latest',
-    'Workspace',
-  ].map(column)
-
-  return body
-    .filter((row) => row[current] !== row[latest])
-    .map((row) => ({
-      name: row[name].replace(/\s*\((?:dev|prod|peer|optional)\)/, '').trim(),
-      current: row[current],
-      wanted: row[wanted],
-      latest: row[latest],
-      workspace: ownerOf(catalogUser(row[workspace])),
-    }))
-}
 
 /** `exact = true` inside bunfig.toml's `[install]` table. */
 const bunfigExact = (content: string): boolean => {

@@ -70,7 +70,7 @@ __tests__/
   project.test.ts           # openProject: config loaded once, logger configured before detection
   discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95
   pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows
-  singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON, pinned before #59: never update it to make a change pass
+  singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON (registry captures as of the capture date plus a written node_modules), identical for all four managers; reviewed once for #106: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   commands/
     check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options
@@ -83,20 +83,20 @@ __tests__/
     registry/               # Verbatim curl captures (.body; .body.gz over 100 KB decoded) of dist-tags, deps.dev and packuments: ms, @types/ms, mkdirp, then yarn, pnpm, dayjs, debug, express, semver, zod, axios, lodash, next, qs, typescript for #106 (packuments only for yarn and pnpm); README.md lists status, type, wire and decoded size and the checks
     index.ts                # readFixture(), exitError(), fakeRegistry(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers; capturedPackage(name, { source, asOf }) and capturedRegistry(names, options) build RegistryPackage / a session from the captures, installPackages(cwd, dir, versions) writes node_modules, readRegistryBody() and derive() are re-exported from registry.ts
     captured.test.ts        # The captured-registry helpers: sources, asOf, latest fallback, unplanned names, installPackages
-    npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)
+    npm/ pnpm/ yarn/        # Real captured manager stdout/stderr: apply commands and errors (pnpm update, yarn v1 update/upgrade, yarn berry info), npm's package-lock.json for #107
   managers/
     adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager
-    npm.test.ts, pnpm.test.ts, bun.test.ts  # outdated exit-code semantics on real output; direct parser tests on fixtures; npm current from package-lock.json with no node_modules
-    yarn.test.ts            # yarn v1: outdated exit codes, upgrade descriptors, v1-over-stray-.yarnrc.yml, parsers
-    yarnBerry.test.ts       # yarn berry on real captures (PnP, node-modules, workspace, patch:/alias/link): parsers, check, in-range and beyond-range apply, installed-version check
+    npm.test.ts, pnpm.test.ts  # npm: readLockedVersions on package-lock.json (for #107); pnpm: readWorkspace (workspace detection, catalog records, CRLF), single-package update paths, member map
+    yarn.test.ts            # yarn v1: upgrade descriptors, v1-over-stray-.yarnrc.yml, stderr warning at debug level, failed apply
+    yarnBerry.test.ts       # yarn berry on real captures (PnP, node-modules, workspace, patch:/alias/link): parsers, discovery, in-range and beyond-range apply, installed-version check
     realSubprocess.test.ts  # Fake npm on PATH (sh wrapper / cmd-shim, all platforms): >1 MB output, names passed as arguments
-    reuseDiscovery.test.ts  # update with a discovery result runs only the apply command
-    withinRange.test.ts     # Real output, default config: proposes exactly npm update's set; zero for pins
+    reuseDiscovery.test.ts  # update with a discovery result applies without discovering again (the throwing fake registry proves no lookup)
+    withinRange.test.ts     # Native discovery on registry captures, default config: proposes exactly npm update's set; zero for pins
     applyRanges.test.ts     # In-range apply writes nothing; beyond-range writes the target spec first
-    aliases.test.ts         # Real alias output from all four managers: manifest key, no crash on exotic
+    aliases.test.ts         # An npm: alias on all four managers: manifest key, looked up by the target, never by the key
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
-    workspaces.test.ts      # Member map (patterns, negations, skips) and workspaceOwner
-    workspaceDiscovery.test.ts  # Workspace check on all four managers returns one record; unnamed roots
+    workspaces.test.ts      # Member map: workspace patterns, negations, skips
+    workspaceDiscovery.test.ts  # Workspace check on all four managers (native) returns one record; unnamed roots
     workspaceApply.test.ts  # Workspace apply per manager: commands, member manifest writes, catalog routing
   utils/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants, strict depsDev)
@@ -119,7 +119,6 @@ __tests__/
     overrides.test.ts       # Which override keys pin a package, per manager's current version
     peers.test.ts           # Installed peer ranges from hoisted node_modules and the pnpm store
     saveStyle.test.ts       # Where each manager keeps save-exact / save-prefix
-    manifestNames.test.ts   # Report names mapped back to package.json keys
     workspaceRows.test.ts   # foldWorkspaceEntries ordering and top-level choice
     installed.test.ts       # Installed root-dependency versions (hoisted, scoped, alias, pnpm symlink); readInstalledPackages linked detection (junction to a member, pnpm store link, link outside the project); checkApplied
     wanted.test.ts          # wantedVersion on the yarn and pnpm captures, each on deps.dev and on the packument

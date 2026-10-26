@@ -2,9 +2,7 @@ import fs from 'fs'
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
-import { ownerPath, packageJsonWorkspace } from '@/managers/workspaces'
-import { StepError } from '@/stepError'
-import type { OutdatedEntry, PackageInfo } from '@/types'
+import { packageJsonWorkspace } from '@/managers/workspaces'
 import { updatePackageJson } from '@/utils/files'
 import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
@@ -28,71 +26,6 @@ export const readLockedVersions = (cwd: string): Record<string, string> => {
     if (typeof entry?.version === 'string') versions[location] = entry.version
   }
   return versions
-}
-
-/**
- * `npm outdated --json`: already keyed by name, with `wanted` filled. npm
- * reads `current` from node_modules, so a package that isn't installed (a
- * fresh clone) comes back without one. It takes the version the lockfile
- * records, which is what the other managers report there, or `missing`, as
- * npm's own table prints it, when the lockfile doesn't have it either.
- */
-export const parseNpmOutdated = (
-  stdout: string,
-  locked: Record<string, string> = {},
-): Record<string, PackageInfo> => {
-  const report: Record<string, PackageInfo> = JSON.parse(stdout || '{}')
-  for (const [key, info] of Object.entries(report)) {
-    if (info.current) continue
-    // An npm: alias is keyed `dj:dayjs@1.11.9` and installed as node_modules/dj.
-    const name = key.split(':')[0]
-    info.current = locked[`node_modules/${name}`] ?? 'missing'
-  }
-  return report
-}
-
-/**
- * `npm outdated --json --long` in a workspace project: a name maps to one
- * row, or an array of rows when several manifests declare it. Each row's
- * `dependedByLocation` is the owning manifest's directory relative to the
- * root, `''` for the root. A package that isn't installed has no `current`;
- * it falls back to the lockfile's record for that manifest, then the root's
- * hoisted copy, then `missing`.
- */
-export const parseNpmWorkspaceOutdated = (
-  stdout: string,
-  locked: Record<string, string> = {},
-): OutdatedEntry[] => {
-  const report: Record<string, unknown> = JSON.parse(stdout || '{}')
-  const entries: OutdatedEntry[] = []
-  for (const [name, value] of Object.entries(report)) {
-    for (const row of [value].flat() as Record<string, unknown>[]) {
-      if (typeof row?.dependedByLocation !== 'string') {
-        throw new StepError(
-          'discover',
-          `npm outdated --long reported no dependedByLocation for ${name}`,
-        )
-      }
-      const workspace = ownerPath('npm', name, row.dependedByLocation)
-      const alias = name.split(':')[0]
-      const current =
-        typeof row.current === 'string' && row.current
-          ? row.current
-          : ((workspace === '.'
-              ? undefined
-              : locked[`${workspace}/node_modules/${alias}`]) ??
-            locked[`node_modules/${alias}`] ??
-            'missing')
-      entries.push({
-        name,
-        current,
-        wanted: String(row.wanted),
-        latest: String(row.latest),
-        workspace,
-      })
-    }
-  }
-  return entries
 }
 
 const npm: ManagerAdapter = {

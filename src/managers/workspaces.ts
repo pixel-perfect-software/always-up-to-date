@@ -260,34 +260,6 @@ export const readWorkspaceManifests = (
 }
 
 /**
- * Resolves the workspace name a manager prints (yarn v1's and bun's
- * `Workspace` column) to the manifest's directory. Both print an empty cell
- * for a root without a `name` (verified on yarn 1.22.22 and bun 1.4.0), so
- * `''` is the root when the root is unnamed. Any other name no manifest
- * declares is a `discover` failure.
- */
-export const workspaceOwner = (
-  manifests: WorkspaceManifest[],
-  manager: string,
-): ((workspaceName: string) => string) => {
-  const byName = new Map<string, string>()
-  for (const { path: dir, name } of manifests) {
-    if (name !== undefined && !byName.has(name)) byName.set(name, dir)
-  }
-  const root = manifests.find((manifest) => manifest.path === '.')
-
-  return (workspaceName) => {
-    const owner = byName.get(workspaceName)
-    if (owner !== undefined) return owner
-    if (workspaceName === '' && root && root.name === undefined) return '.'
-    throw new StepError(
-      'discover',
-      `${manager} reported workspace "${workspaceName}", which no manifest matched by the workspaces patterns declares`,
-    )
-  }
-}
-
-/**
  * npm, yarn and bun: whether package.json declares workspaces, and the
  * manifests its patterns match, the root first.
  */

@@ -51,7 +51,7 @@ With `--json`, stdout carries exactly one JSON document. The action calls `logge
 - human mode: `Failed during <step>: <message>`, plus a warning when `package.json` was already rewritten
 - `--json`: `{ "error": { "step", "message", "manifestWritten" } }` on stdout, never `[]`
 
-`step` comes from a `StepError` (`src/stepError.ts`): `detect` (no lockfile), `discover` (`outdated` failed), `apply` (the manager's update/install failed). Managers must let these propagate; catching and returning `[]` turns a failure into "nothing to update" with exit 0.
+`step` comes from a `StepError` (`src/stepError.ts`): `detect` (no lockfile), `discover` (an unreadable manifest, nothing installed, a failed registry lookup; berry: `yarn info` failed), `apply` (the manager's update/install failed). Managers must let these propagate; catching and returning `[]` turns a failure into "nothing to update" with exit 0.
 
 ### Binary Aliases
 Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodate`, `always-up-to-date`. All point to `dist/index.js`.

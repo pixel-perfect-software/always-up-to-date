@@ -36,7 +36,7 @@ afterEach(() => {
   fs.rmSync(npmConfigDir, { recursive: true, force: true })
 })
 
-// The newest fixture these cases were written against (npm/outdated-workspace.stdout).
+// The newest fixture these cases were written against (the workspace fixtures).
 const AS_OF = '2026-10-23T16:38:12-03:00'
 const registryFor = (...names: string[]) =>
   capturedRegistry(names, { asOf: AS_OF })

@@ -1,13 +1,8 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { workspaceOwner } from '@/managers/workspaces'
-import yarn, {
-  parseYarnOutdated,
-  parseYarnWorkspaceOutdated,
-} from '@/managers/yarn'
-import { check, update } from '@/pipeline'
-import { StepError } from '@/stepError'
+import yarn from '@/managers/yarn'
+import { update } from '@/pipeline'
 import type { AlwaysUpToDateConfig } from '@/types'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 import {
@@ -16,7 +11,6 @@ import {
   installPackages,
   projectFor,
   readFixture,
-  WORKSPACE_ENTRIES,
 } from '../fixtures'
 
 jest.mock('@/utils/logger')
@@ -286,81 +280,5 @@ describe('update with yarn', () => {
       expect.anything(),
     )
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('ms'))
-  })
-})
-
-describe('parseYarnOutdated', () => {
-  it('reads the rows of the table line, Wanted column included', () => {
-    const result = parseYarnOutdated(
-      readFixture('yarn/v1-outdated-ranges.stdout'),
-    )
-
-    expect(Object.keys(result)).toHaveLength(40)
-    expect(result.react).toEqual({
-      name: 'react',
-      current: '18.2.0',
-      wanted: '18.3.1',
-      latest: '19.3.1',
-    })
-  })
-
-  it('reads output without a table, or no output, as nothing outdated', () => {
-    expect(
-      parseYarnOutdated(readFixture('yarn/v1-outdated-none.stdout')),
-    ).toEqual({})
-    expect(parseYarnOutdated('')).toEqual({})
-  })
-})
-
-describe('parseYarnWorkspaceOutdated', () => {
-  const ownerOf = workspaceOwner(
-    [
-      { path: '.', name: 'ws-root' },
-      { path: 'packages/a', name: '@ws/a' },
-      { path: 'packages/b', name: '@ws/b' },
-    ],
-    'yarn',
-  )
-
-  it('parses one entry per table row, owners from the Workspace column', () => {
-    const entries = parseYarnWorkspaceOutdated(
-      readFixture('yarn/v1-outdated-workspace.stdout'),
-      ownerOf,
-    )
-
-    expect(entries).toHaveLength(5)
-    expect(entries).toEqual(expect.arrayContaining(WORKSPACE_ENTRIES))
-  })
-
-  it('maps the empty Workspace cell of an unnamed root to the root', () => {
-    const output = readFixture('yarn/v1-outdated-workspace-unnamed-root.stdout')
-    expect(output).toContain('["dayjs","1.11.9","1.11.9","1.11.23","",')
-
-    const entries = parseYarnWorkspaceOutdated(
-      output,
-      workspaceOwner(
-        [
-          { path: '.' },
-          { path: 'packages/a', name: '@ws/a' },
-          { path: 'packages/b', name: '@ws/b' },
-        ],
-        'yarn',
-      ),
-    )
-
-    expect(entries).toEqual(expect.arrayContaining(WORKSPACE_ENTRIES))
-  })
-
-  it('fails discovery for a workspace no manifest declares', () => {
-    expect(() =>
-      parseYarnWorkspaceOutdated(
-        readFixture('yarn/v1-outdated-workspace.stdout'),
-        workspaceOwner([{ path: '.', name: 'ws-root' }], 'yarn'),
-      ),
-    ).toThrow(StepError)
-  })
-
-  it('fails discovery on output it cannot parse', () => {
-    expect(() => parseYarnWorkspaceOutdated('not json', ownerOf)).toThrow()
   })
 })

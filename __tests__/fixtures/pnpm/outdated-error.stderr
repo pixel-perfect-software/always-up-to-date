@@ -1,6 +1,0 @@
-Error: ERR_PNPM_OUTDATED_REGISTRY_ERROR
-
-  × Failed to fetch metadata for "@reduxjs/toolkit": Failed to fetch metadata
-  │ from http://127.0.0.1:9/@reduxjs%2Ftoolkit: error sending request: client
-  │ error (Connect): tcp connect error: Connection refused (os error 61)
-
