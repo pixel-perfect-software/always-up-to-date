@@ -69,6 +69,7 @@ __tests__/
   cli.test.ts               # Loading the CLI reads no config
   project.test.ts           # openProject: config loaded once, logger configured before detection
   discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95
+  projectRegistry.test.ts   # Real openProject on temp workspaces: a pnpm or bun member reads the workspace root's registry files; a pnpm member with its own yaml is its own root
   pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows
   singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON (registry captures as of the capture date plus a written node_modules), identical for all four managers; reviewed once for #106: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
@@ -94,6 +95,8 @@ __tests__/
     withinRange.test.ts     # Native discovery on registry captures, default config: proposes exactly npm update's set; zero for pins
     applyRanges.test.ts     # In-range apply writes nothing; beyond-range writes the target spec first
     aliases.test.ts         # An npm: alias on all four managers: manifest key, looked up by the target, never by the key
+    pnpmRegistries.test.ts  # pnpm-workspace.yaml registry routes: both shapes, scopes, "@", ${…}, ecosystem, CRLF
+    bunfig.test.ts          # bunfig.toml routes and credentials, $NAME, global/project merge, env overrides, bunfigExact
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
     workspaces.test.ts      # Member map: workspace patterns, negations, skips
     workspaceDiscovery.test.ts  # Workspace check on all four managers (native) returns one record; unnamed roots

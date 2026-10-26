@@ -1,6 +1,8 @@
+import fs from 'fs'
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
+import { applyPnpmRegistrySettings } from '@/managers/pnpm/registries'
 import { readWorkspaceManifests } from '@/managers/workspaces'
 import {
   readPnpmCatalogs,
@@ -9,13 +11,29 @@ import {
   updatePNPMWorkspaceYAML,
 } from '@/utils/files'
 import { overridesFromField } from '@/utils/overrides'
-import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
+import {
+  DEFAULT_SAVE_STYLE,
+  readTextFile,
+  unquote,
+  yamlValue,
+} from '@/utils/saveStyle'
+
+/**
+ * The directory pnpm reads its project settings from: the nearest one,
+ * walking up from `cwd`, that holds a pnpm-workspace.yaml. From a member that
+ * is the workspace root, and its yaml and .npmrc are the only project files
+ * read (verified on pnpm 12.15.0, 2026-10-26: a member's own .npmrc is
+ * ignored, and a member with a yaml of its own is its own root).
+ */
+const pnpmProjectRoot = (cwd: string): string => {
+  for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return dir
+    if (path.dirname(dir) === dir) return path.resolve(cwd)
+  }
+}
 
 const readWorkspaceYaml = (cwd: string): string =>
   readTextFile(path.join(cwd, 'pnpm-workspace.yaml'))
-
-const unquote = (value: string): string =>
-  value.trim().replace(/^(['"])(.*)\1$/, '$2')
 
 /**
  * The `packages` patterns of pnpm-workspace.yaml, as a block list or a flow
@@ -87,6 +105,14 @@ const pnpm: ManagerAdapter = {
       manifests: readWorkspaceManifests(cwd, patterns),
     }
   },
+
+  projectRoot: pnpmProjectRoot,
+
+  registryConfig: (cwd, fromNpmrc) =>
+    applyPnpmRegistrySettings(
+      fromNpmrc,
+      readTextFile(path.join(pnpmProjectRoot(cwd), 'pnpm-workspace.yaml')),
+    ),
 
   apply: async (
     run,

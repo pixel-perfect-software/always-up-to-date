@@ -12,10 +12,22 @@ import detectPackageManager from '@/detectPackageManager'
 import bun from '@/managers/bun'
 import pnpm from '@/managers/pnpm'
 import { openProject } from '@/project'
+import type { RegistryConfig } from '@/types'
 import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
 import { createRegistrySession } from '@/utils/registry'
 import { fakeRegistry } from './fixtures'
+
+const registryDefaults: RegistryConfig = {
+  registry: 'https://registry.npmjs.org/',
+  scopedRegistries: {},
+  credentials: {},
+  strictSSL: true,
+  proxy: {},
+  fetchRetries: 2,
+  fetchTimeout: 300_000,
+  maxSockets: 15,
+}
 
 describe('openProject', () => {
   it('returns the directory, the loaded config and the detected adapter', () => {
@@ -39,6 +51,7 @@ describe('openProject', () => {
     })
     expect(createRegistrySession).toHaveBeenCalledWith('/project', {
       depsDev: true,
+      loadConfig: expect.any(Function),
     })
     expect(detectPackageManager).toHaveBeenCalledWith('/project', undefined)
   })
@@ -53,6 +66,44 @@ describe('openProject', () => {
 
     expect(createRegistrySession).toHaveBeenCalledWith('/project', {
       depsDev: false,
+      loadConfig: expect.any(Function),
+    })
+  })
+
+  describe('registry config', () => {
+    const openWith = (pm: 'pnpm' | 'npm') => {
+      jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+      jest.mocked(detectPackageManager).mockReturnValue(pm)
+      openProject('/project')
+      const options = jest.mocked(createRegistrySession).mock.calls[0][1]
+      if (!options?.loadConfig) throw new Error('no loadConfig seam')
+      return options.loadConfig
+    }
+
+    it('is not built by openProject, only by the session on first use', () => {
+      const hook = jest.spyOn(pnpm, 'registryConfig')
+      const loadConfigForSession = openWith('pnpm')
+      expect(hook).not.toHaveBeenCalled()
+
+      const adjusted = {
+        ...registryDefaults,
+        registry: 'http://adjusted.test/',
+      }
+      hook.mockReturnValue(adjusted)
+      expect(loadConfigForSession('/project')).toBe(adjusted)
+      expect(hook).toHaveBeenCalledTimes(1)
+      expect(hook).toHaveBeenCalledWith(
+        '/project',
+        expect.objectContaining({ registry: expect.any(String) }),
+        expect.objectContaining({ env: process.env }),
+      )
+    })
+
+    it('uses the .npmrc view as is for a manager without the hook', () => {
+      const loadConfigForSession = openWith('npm')
+      expect(loadConfigForSession('/nonexistent-autd-project')).toEqual(
+        expect.objectContaining({ strictSSL: true }),
+      )
     })
   })
 

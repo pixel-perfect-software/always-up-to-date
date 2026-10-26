@@ -1,6 +1,7 @@
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
+import { bunfigExact, bunRegistryConfig } from '@/managers/bun/bunfig'
 import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
 import {
   readBunCatalogs,
@@ -12,20 +13,6 @@ import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile } from '@/utils/saveStyle'
 
-/** `exact = true` inside bunfig.toml's `[install]` table. */
-const bunfigExact = (content: string): boolean => {
-  let inInstall = false
-  for (const line of content.split('\n')) {
-    const table = /^\s*\[([^\]]+)\]/.exec(line)
-    if (table) {
-      inInstall = table[1].trim() === 'install'
-      continue
-    }
-    if (inInstall && /^\s*exact\s*=\s*true\s*(#.*)?$/.test(line)) return true
-  }
-  return false
-}
-
 const bun: ManagerAdapter = {
   name: 'bun',
   lockfile: 'bun.lock',
@@ -34,6 +21,8 @@ const bun: ManagerAdapter = {
     ...packageJsonWorkspace(cwd),
     catalogs: readBunCatalogs(readManifest(cwd)),
   }),
+
+  registryConfig: bunRegistryConfig,
 
   apply: async (
     run,
