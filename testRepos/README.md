@@ -32,5 +32,5 @@ AUTD_INTEGRATION_KEEP=1 pnpm run test:integration      # keep the temp copies (p
 ```
 
 It needs network access and these on `PATH`: npm and pnpm (as set up for development), bun
-1.4.0, and yarn through Corepack (`corepack enable yarn`), which picks 1.22.22 or 4.12.0
-from each repo's `packageManager`.
+at the version in `.tool-versions`, and yarn through Corepack (`corepack enable yarn`), which
+picks 1.22.22 or 4.12.0 from each repo's `packageManager`.

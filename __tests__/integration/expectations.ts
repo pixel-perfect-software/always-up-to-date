@@ -213,7 +213,7 @@ export const rewritesRanges = (manager: Manager): boolean =>
 
 /**
  * Whether the manager raises a catalog entry's floor when it moves the
- * package. bun 1.4.0's `update --filter '*'` installs the in-range version
+ * package. bun 1.4.4's `update --filter '*'` installs the in-range version
  * but leaves `catalog`/`catalogs` ranges as written (`^4.0.0` stays), while
  * it raises the floors in package.json. pnpm 12 raises both.
  */
