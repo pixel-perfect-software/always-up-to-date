@@ -3,6 +3,36 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-10-26 — 2.2.0: cooldown reads `.npmrc` the way npm does, Node 22 support, and faster startup
+
+Cooldown's registry lookups now go through autd's own client, which reads `.npmrc` the way npm 12 does. A scoped package is looked up on its own registry with its own credentials, and custom CAs, `strict-ssl` and proxies apply. The supported Node range is now `^22.23.0 || >=24.17.0`: Node 22 works, and Node 24 needs 24.17 or later. Every command starts about 50 ms sooner, since the registry client loads only when cooldown needs it.
+
+### Added
+- Cooldown lookups honor the rest of npm's registry settings ([#46](https://github.com/pixel-perfect-software/always-up-to-date/issues/46)):
+  - auth per registry: `_authToken`, `_auth`, `username` and `_password`, and client certificates through `certfile` and `keyfile`;
+  - proxies: `https-proxy`, `proxy` and `noproxy`, as well as `HTTPS_PROXY` and `NO_PROXY`;
+  - `fetch-retries`, `fetch-timeout` and `maxsockets`.
+
+### Changed
+- The supported Node range is `^22.23.0 || >=24.17.0`, from `>=24.0.0`. Node 22.23 and later now work, and Node 24.0 to 24.16 fall outside the range ([#46](https://github.com/pixel-perfect-software/always-up-to-date/issues/46)).
+- `.npmrc` is read the way npm 12 reads it ([#46](https://github.com/pixel-perfect-software/always-up-to-date/issues/46)). This also changes where npm and bun projects take `save-exact` and `save-prefix` from:
+  - the global npmrc and lower-case `npm_config_*` variables now count;
+  - in a workspace member, the workspace root's `.npmrc` applies;
+  - an unset `${VAR}` stays as written, where it used to become empty.
+- `autd --version` takes 68 ms instead of 118 ms ([#46](https://github.com/pixel-perfect-software/always-up-to-date/issues/46)).
+- SOCKS proxies are no longer used for cooldown lookups; use an HTTP or HTTPS proxy ([#46](https://github.com/pixel-perfect-software/always-up-to-date/issues/46)).
+
+### Fixed
+- Cooldown now follows `.npmrc` for every package ([#104](https://github.com/pixel-perfect-software/always-up-to-date/issues/104)):
+  - A scoped package's release dates come from its own registry, with that registry's token. Before, a private scoped package was looked up on registry.npmjs.org, and its update went through with no cooldown.
+  - `strict-ssl`, `cafile` and `ca[]` take effect. Before, behind a custom CA, cooldown never found a release date.
+  - Lookups are retried after a 429, a 5xx or a dropped connection. Before, a single failed request let the update through with no cooldown.
+
+### Known issues
+- pnpm merges workspace members that share an installed version into one row, so a member can be shown another member's in-range maximum ([#95](https://github.com/pixel-perfect-software/always-up-to-date/issues/95)).
+- On yarn 2+ with PnP, installed peer ranges aren't read, so no update is held for a peer conflict. `yarn up -R` also moves transitive copies of the updated packages within their ranges.
+- npm lists only the root's dependencies in a workspace that has no node_modules yet; run `npm install` first.
+
 ## 2026-10-23 — 2.1.0: workspaces updated per manifest, yarn 2+ support, and the package manager taken from package.json or `--pm`
 
 Workspaces now work package by package: each dependency is found, planned, written and checked in the manifest that declares it, the root included. yarn 2+ (berry) runs for the first time, and autd uses the package manager your package.json declares before guessing from lockfiles. Nothing changes for single-package projects: their `--json` output is the same byte for byte. In workspace projects, `--json` gains fields.
