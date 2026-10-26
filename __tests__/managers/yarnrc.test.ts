@@ -275,8 +275,10 @@ describe('yarnRegistryConfig', () => {
   })
 
   describe('the filesystem root', () => {
-    const rootFile = path.join(path.parse(process.cwd()).root, '.yarnrc')
     const withRootYarnrc = (content: string) => {
+      // The project's own root: on Windows the temp dir and the checkout can
+      // sit on different drives.
+      const rootFile = path.join(path.parse(proj()).root, '.yarnrc')
       const real = fs.readFileSync
       return jest
         .spyOn(fs, 'readFileSync')
