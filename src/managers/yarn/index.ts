@@ -8,6 +8,7 @@ import {
   discoverBerry,
   installedBerry,
 } from '@/managers/yarn/berry'
+import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import { StepError } from '@/stepError'
 import { logger } from '@/utils'
 import { buildUpdateDescriptors, type DescriptorField } from '@/utils/files'
@@ -43,6 +44,10 @@ const yarn: ManagerAdapter = {
     ...packageJsonWorkspace(cwd),
     catalogs: {},
   }),
+
+  // berry reads .yarnrc.yml, which is not read yet (#107); v1 reads .yarnrc.
+  registryConfig: (cwd, fromNpmrc, sources) =>
+    isYarnBerry(cwd) ? fromNpmrc : yarnRegistryConfig(cwd, fromNpmrc, sources),
 
   ownDiscovery: (cwd) =>
     isYarnBerry(cwd)
