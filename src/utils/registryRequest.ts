@@ -36,6 +36,24 @@ export const credentialPrefixes = (url: URL): string[] => {
   return prefixes
 }
 
+/** `decodeURIComponent`, or the value as written when it is not valid percent-encoding. */
+export const decodeUri = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+/**
+ * The `//host[:port]/path/` key .npmrc files scope a registry's credentials
+ * to: no protocol, no userinfo, always a trailing slash.
+ */
+export const nerfDart = (registry: string): string => {
+  const url = new URL(registry)
+  return `//${url.host}${url.pathname.replace(/\/?$/, '/')}`
+}
+
 const holdsCredential = (c: RegistryCredentials): boolean =>
   Boolean(
     c.authToken ||

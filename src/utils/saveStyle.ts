@@ -17,6 +17,10 @@ export const readTextFile = (file: string): string => {
   }
 }
 
+/** A value without its surrounding quotes (`"` or `'`). */
+export const unquote = (value: string): string =>
+  value.trim().replace(/^(['"])(.*)\1$/, '$2')
+
 /** A top-level `key: value` from a YAML file, quotes removed. */
 export const yamlValue = (content: string, key: string): string | undefined => {
   const match = new RegExp(`^${key}:\\s*(['"]?)(.*?)\\1\\s*(#.*)?$`, 'm').exec(

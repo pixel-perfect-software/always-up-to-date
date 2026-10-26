@@ -3,8 +3,10 @@ import type {
   ManifestPlan,
   OutdatedEntry,
   PackageInfo,
+  RegistryConfig,
   SupportedPackageManager,
 } from '@/types'
+import type { NpmrcSources } from '@/utils/npmrcLoader'
 import type { ControllingOverride } from '@/utils/overrides'
 import type { SaveStyle } from '@/utils/saveStyle'
 
@@ -91,6 +93,23 @@ export interface ManagerAdapter {
     cwd: string,
     rows: { name: string; workspace?: string }[],
   ): Promise<Record<string, string>>
+  /**
+   * The directory whose `.npmrc` this manager reads, when it is not the
+   * nearest npm project root `loadNpmrc` finds from `package.json`
+   * `workspaces` (pnpm: the nearest `pnpm-workspace.yaml`).
+   */
+  projectRoot?(cwd: string): string
+  /**
+   * The run's registry config for this manager: the .npmrc view, adjusted
+   * where the manager reads registries from somewhere else too (pnpm's
+   * pnpm-workspace.yaml, bun's bunfig.toml). Called once, on the session's
+   * first use. Without it the .npmrc view is used as is.
+   */
+  registryConfig?(
+    cwd: string,
+    fromNpmrc: RegistryConfig,
+    sources: NpmrcSources,
+  ): RegistryConfig
   /** How the manager writes a new spec, read from where its current version keeps that setting. */
   saveStyle(cwd: string): SaveStyle
   /** Packages pinned by an override this manager enforces. */

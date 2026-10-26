@@ -67,6 +67,7 @@ __tests__/
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
   project.test.ts           # openProject: config loaded once, logger configured before detection
+  projectRegistry.test.ts   # Real openProject on temp workspaces: a pnpm or bun member reads the workspace root's registry files; a pnpm member with its own yaml is its own root
   pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows
   singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON, pinned before #59: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
@@ -91,6 +92,8 @@ __tests__/
     withinRange.test.ts     # Real output, default config: proposes exactly npm update's set; zero for pins
     applyRanges.test.ts     # In-range apply writes nothing; beyond-range writes the target spec first
     aliases.test.ts         # Real alias output from all four managers: manifest key, no crash on exotic
+    pnpmRegistries.test.ts  # pnpm-workspace.yaml registry routes: both shapes, scopes, "@", ${…}, ecosystem, CRLF
+    bunfig.test.ts          # bunfig.toml routes and credentials, $NAME, global/project merge, env overrides, bunfigExact
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
     workspaces.test.ts      # Member map (patterns, negations, skips) and workspaceOwner
     workspaceDiscovery.test.ts  # Workspace check on all four managers returns one record; unnamed roots
