@@ -21,8 +21,11 @@ utils/
   config.ts           # loadConfig(), saveJsonConfig(), DEFAULT_CONFIG, INITIAL_CONFIG, ConfigError
   cooldown.ts         # normalizeCooldown(), isCooldownEnabled(), cooldownDaysFor(), evaluateCooldown()
   duration.ts         # parseDuration() (number | '1 week' | '24h' → days), formatAgeDays(), MS_PER_DAY
-  npmrcLoader.ts      # loadRegistryConfig() reads .npmrc + ~/.npmrc + NPM_CONFIG_* env, returns RegistryConfig
-  registry.ts         # fetchReleaseTimes() wraps npm-registry-fetch with in-memory per-run cache
+  npmrc.ts            # parseNpmrc(text, env), substituteEnv(): the .npmrc parser (pure)
+  npmrcLoader.ts      # loadNpmrc() layers global, user, project, npm_config_* env as npm 12 does; loadRegistryConfig() returns RegistryConfig
+  registryRequest.ts  # Pure client helpers: registryFor, packumentUrl, credentialsFor, authorizationFor, retry rules
+  registryClient.ts   # node:https transport (agents, gzip, timeout, retries, redirects); loaded lazily by registry.ts only
+  registry.ts         # fetchReleaseTimes() with in-flight per-run cache, fails open; loads registryClient on first use
   updateChecker.ts    # Update policy: within range by default, beyondRange level, per-package rules (pure)
   rows.ts             # toOutdatedRow() / toOutdatedRows() / toUpdatingRow(): display rows (in-range note, beyond-range flag; one outdated row per manifest in a workspace)
   overrides.ts        # overridesFromField(), manifestOverrides(cwd, fields): packages an override pins, with field and range
@@ -63,10 +66,14 @@ utils/
 - `evaluateCooldown` returns `{ gated, ageDays, requiredDays }` — gating is a soft signal, callers decide what to do
 - Cooldown gating judges the chosen `target` version, not `latest`, and only runs for packages with a target, so held packages never trigger network calls
 
-### Registry / .npmrc (`registry.ts` + `npmrcLoader.ts`)
-- `loadRegistryConfig(cwd)` parses `.npmrc` (cwd → ~/.npmrc → `NPM_CONFIG_*` env, highest wins) into `RegistryConfig`. Substitutes `${VAR}` env references. Recognizes registry, scoped registries, auth tokens, always-auth, strict-ssl, ca/cafile.
-- `fetchReleaseTimes(name, registryConfig)` calls `npm-registry-fetch` with `fullMetadata: true` (corgi format strips `time`), maps the result to `Record<version, ISO>`. Network failure → empty map (cached) so the cooldown gate fails open.
-- One in-memory cache per CLI run, holding the in-flight request, so a package several workspace manifests declare is fetched once; `clearRegistryCache()` is exported for tests.
+### Registry / .npmrc (`npmrc.ts`, `npmrcLoader.ts`, `registryRequest.ts`, `registryClient.ts`, `registry.ts`)
+- `parseNpmrc(text, env)` is ini 7's decode (quoting, `;`/`#` cuts, `key[]` arrays, parsing stops at the first `[section]`, `__proto__` skipped) plus npm's `${VAR}` substitution: an unset `${VAR}` stays literal, `${VAR?}` is empty, `\${VAR}` is escaped
+- `loadNpmrc(cwd, sources)` merges four layers, later wins: global (`<prefix>/etc/npmrc`), user (`~/.npmrc`), project, `npm_config_*` env (any case, `_` → `-`). The project file is the `.npmrc` of the npm project root: from a workspace member, the root's. `NpmrcSources` (env, home, execPath, platform) is injectable for tests; an unreadable file is an empty layer
+- `registryConfigFrom(npmrc, cwd, sources)` builds `RegistryConfig` (registry, `scopedRegistries`, `credentials` by `//host[:port]/path/` prefix, `ca`, `strictSSL`, `proxy`, `fetchRetries`, `fetchTimeout`, `maxSockets`). Unscoped `_authToken` and `always-auth` are ignored, as npm 9+ does
+- `fetchReleaseTimes(name, registryConfig)` picks the registry by scope, GETs the full packument (corgi format strips `time`) through `registryClient`, and maps `time` to `Record<version, ISO>`. Any failure → empty map (cached) and a debug line, so the cooldown gate fails open
+- The client sends credentials only to the longest `.npmrc` prefix that matches the request URL, and recomputes them on each redirect. Retries cover 408, 420, 429, 5xx, ECONNRESET, ECONNREFUSED and ETIMEDOUT with a short capped backoff; a `Retry-After` over 1 s stops retrying
+- `registry.ts` imports `registryClient` with `await import()` on the first request, so nothing heavy loads at startup; keep top-level imports there to types and `registryRequest`
+- One in-memory cache per CLI run, holding the in-flight request, so a package several workspace manifests declare is fetched once; `clearRegistryCache()` (also destroys the clients) is exported for tests
 - Limitation: yarn berry's `.yarnrc.yml` and bun's `bunfig.toml` are not read in v1. Common case (npm-spec `.npmrc`) covers all four PMs.
 
 ### Manifest Specs (`files.ts`)
@@ -94,5 +101,6 @@ Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Gr
 ## Integration Points
 - `src/commandRunner.ts` uses `runProcess` and `logger`
 - `src/pipeline.ts` uses `filterPackages`, `logger`, `groupAndSortPackages`, `computeReleaseAges`, `toManifestNames`; adapters use `files.ts`, `overrides.ts`, `saveStyle.ts`, `npmrcLoader.ts`
+- `npmrcLoader.ts` uses `@/managers/workspaces` to find the npm project root (no cycle: `workspaces.ts` imports only the logger and `StepError`)
 - `src/commands/update.ts` uses `filterPackages` for dry-run and interactive mode
 - `src/commands/init.ts` uses `saveJsonConfig` and `INITIAL_CONFIG`

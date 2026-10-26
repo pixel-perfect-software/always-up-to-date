@@ -1,4 +1,5 @@
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import type { ManagerAdapter } from '@/managers'
 import type { Project } from '@/project'
@@ -123,6 +124,35 @@ export const prependPath = (dir: string): (() => void) => {
   return () => {
     if (original === undefined) delete process.env[key]
     else process.env[key] = original
+  }
+}
+
+/**
+ * Keeps the developer's npm configuration out of a test: drops every
+ * `npm_config_*` variable (any case) and points `HOME` and `PREFIX` at `dir`,
+ * so the user and global .npmrc files are `dir`'s own. Returns the restore.
+ */
+export const isolateNpmConfig = (dir: string): (() => void) => {
+  const saved = new Map<string, string | undefined>()
+  const remember = (key: string) => {
+    if (!saved.has(key)) saved.set(key, process.env[key])
+  }
+  for (const key of Object.keys(process.env)) {
+    if (!/^npm_config_/i.test(key)) continue
+    remember(key)
+    delete process.env[key]
+  }
+  remember('HOME')
+  remember('PREFIX')
+  process.env.HOME = dir
+  process.env.PREFIX = dir
+  const homedir = jest.spyOn(os, 'homedir').mockReturnValue(dir)
+  return () => {
+    homedir.mockRestore()
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
   }
 }
 

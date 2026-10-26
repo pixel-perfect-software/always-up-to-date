@@ -6,7 +6,7 @@ We welcome contributions to Always Up To Date! This guide will help you get star
 
 ### Prerequisites
 
-- Node.js 24 or higher
+- Node.js 22.23 or later on 22, or 24.17 or later
 - pnpm >=10.0.0 (npm, yarn, or bun also supported for consumers)
 - Git
 

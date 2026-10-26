@@ -15,4 +15,4 @@ prGenerator/
 ## Integration Points
 - Will consume output from `src/migrator/` for migration-aware PR descriptions
 - For GitHub API integration, install the unified `octokit` package when this feature is built (preferred over the older `@octokit/rest` — slimmer, bundles throttling/retry plugins)
-- Use Node's built-in `fetch` for any non-GitHub HTTP calls — no need for `axios` (project requires Node >=24.0.0, where `fetch` is stable)
+- Use Node's built-in `fetch` for any non-GitHub HTTP calls — no need for `axios` (project requires Node ^22.23.0 || >=24.17.0, where `fetch` is stable)

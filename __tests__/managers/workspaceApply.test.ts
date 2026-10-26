@@ -9,6 +9,7 @@ import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
 import {
   exitError,
+  isolateNpmConfig,
   projectFor,
   readFixture,
   writeWorkspaceProject,
@@ -27,6 +28,18 @@ jest.mock('@/utils', () => ({
 import { runProcess } from '@/utils'
 
 const mockedRunProcess = jest.mocked(runProcess)
+
+// Keep the developer's own npm configuration out of every case.
+let npmConfigDir: string
+let restoreNpmConfig: () => void
+beforeEach(() => {
+  npmConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-config-'))
+  restoreNpmConfig = isolateNpmConfig(npmConfigDir)
+})
+afterEach(() => {
+  restoreNpmConfig()
+  fs.rmSync(npmConfigDir, { recursive: true, force: true })
+})
 
 describe.each([
   {

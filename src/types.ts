@@ -98,12 +98,44 @@ export interface AlwaysUpToDateConfig {
 /** What `.always-up-to-date.json` may contain: any subset of the config. */
 export type ConfigFile = Partial<AlwaysUpToDateConfig> & { $schema?: string }
 
+/** What one `//host[:port]/path/:` prefix of .npmrc holds. */
+export interface RegistryCredentials {
+  /** `_authToken`, sent as Bearer. */
+  authToken?: string
+  /** `_auth` (base64 user:pass), sent as Basic unchanged. */
+  auth?: string
+  username?: string
+  /** `_password`, base64 as .npmrc stores it. */
+  password?: string
+  /** Absolute, resolved against cwd. */
+  certfile?: string
+  /** Absolute, resolved against cwd. */
+  keyfile?: string
+}
+
+/**
+ * The Agent's `proxyEnv`, already resolved from .npmrc and the environment.
+ * A type alias: an interface isn't assignable to http.ProxyEnv's index signature.
+ */
+export type ProxySettings = {
+  HTTPS_PROXY?: string
+  HTTP_PROXY?: string
+  NO_PROXY?: string
+}
+
 export interface RegistryConfig {
+  /** Default https://registry.npmjs.org/ */
   registry: string
+  /** '@scope' → registry URL */
   scopedRegistries: Record<string, string>
-  authTokens: Record<string, string>
-  alwaysAuth?: boolean
-  strictSSL?: boolean
-  ca?: string | string[]
-  cafile?: string
+  /** '//host[:port]/path/' (as written) → its credentials */
+  credentials: Record<string, RegistryCredentials>
+  /** cafile (if readable), else ca / ca[]; undefined means Node's default store */
+  ca?: string[]
+  strictSSL: boolean
+  proxy: ProxySettings
+  fetchRetries: number
+  /** Milliseconds */
+  fetchTimeout: number
+  maxSockets: number
 }

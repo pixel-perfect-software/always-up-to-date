@@ -76,8 +76,9 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - `PackageInfo.wanted` is the highest version the manifest range allows; every manager parser fills it
 - `src/utils/cooldown.ts` decides if a release is too fresh given its update type
 - `src/utils/duration.ts` parses human-readable duration strings into days
-- `src/utils/registry.ts` fetches version timestamps via `npm-registry-fetch` (cached per run, fails open on network errors)
-- `src/utils/npmrcLoader.ts` reads `.npmrc` (project + `~/.npmrc`) and `NPM_CONFIG_*` env vars into a `RegistryConfig`. Yarn berry's `.yarnrc.yml` and Bun's `bunfig.toml` are not read in v1.
+- `src/utils/registry.ts` fetches version timestamps (`fetchReleaseTimes`; in-flight cache per run, fails open on any error with a debug line). It loads the client with `await import('./registryClient')` on the first request, so `--version` and `help` never load it (`__tests__/startup.test.ts` guards this)
+- `src/utils/npmrc.ts` is the `.npmrc` parser (ini 7's decode plus npm's `${VAR}` substitution; an unset `${VAR}` stays literal). `src/utils/npmrcLoader.ts` layers it as npm 12 does: global, user, project (a workspace member uses the root's `.npmrc`), then `npm_config_*` env, later wins. `registryConfigFrom()` turns the result into a `RegistryConfig`: registry and `@scope:registry`, credentials per `//host/path/:` prefix (`_authToken`, `_auth`, `username` + `_password`, `certfile` + `keyfile`), `ca` / `cafile`, `strict-ssl`, proxy (`https-proxy`, `proxy`, `noproxy`, environment fallback), `fetch-retries`, `fetch-timeout`, `maxsockets`
+- `src/utils/registryRequest.ts` is the pure part of the client (registry per scope, packument URL, longest-prefix credential lookup, Authorization header, retry rules); `src/utils/registryClient.ts` is the `node:https` transport (keep-alive agent per registry, gzip, timeout, retries with `Retry-After`, redirects that recompute credentials). SOCKS proxies are not supported. Yarn berry's `.yarnrc.yml` and Bun's `bunfig.toml` are not read in v1.
 
 **CLI Structure**
 - Entry point: `src/index.ts` → `src/cli.ts`
@@ -121,7 +122,7 @@ TypeScript paths are configured with `@/*` mapping to `src/*`:
 
 ## Engine Requirements
 
-- Node.js: >=24.0.0
+- Node.js: `^22.23.0 || >=24.17.0`. The registry client needs `Agent` `proxyEnv` (Node 22.21, 24.5), and CVE-2026-48615 is fixed in 22.23.0 and 24.17.0. `.tool-versions` pins 24.22.1
 - pnpm: >=10.0.0
 
 ## Documentation System
@@ -145,4 +146,4 @@ Documentation registry: `.claude/context/ai-context/docs-overview.md`
 - Manager tests feed real captured package-manager output from `__tests__/fixtures/<pm>/` (helpers `readFixture`, `exitError` in `__tests__/fixtures/index.ts`). Capture new fixtures from a real run, with local paths scrubbed; never hand-write manager output
 - Single test: `pnpm test -- __tests__/path/to/test.test.ts`
 - `testRepos/<manager>-<layout>/` are the integration matrix's fixtures (see `testRepos/README.md`): small manifests on frozen release lines, no lockfiles. The harness (`__tests__/integration/`) installs each range at its minimum, restores the ranges, rewrites the lockfile to agree (`lockfiles.ts`), then asserts autd's `check --json`, `update --dry-run --json` and `update --json` against values derived in `expectations.ts`. Manager quirks the matrix observes are per-manager overrides there, each with a comment
-- CI runs the unit suite on ubuntu and windows (Biome and the type check only on ubuntu). `.gitattributes` keeps every file LF so Windows checkouts match. Tests that spawn a fake manager use `writeNodeShim` and `prependPath` from `__tests__/fixtures` (a `sh` wrapper on POSIX, a cmd-shim `.cmd` on Windows); symlinks in tests use type `'junction'`, which Windows allows without privileges
+- CI runs the unit suite on ubuntu and windows, on the `.tool-versions` Node and on 22.23.x, then smoke-tests the built CLI (`--version`, `help`); Biome and the type check run only on ubuntu with the `.tool-versions` Node. Registry client tests run against local HTTP(S) servers and a CONNECT proxy (`__tests__/fixtures/registry.ts`) with committed test-only TLS material in `__tests__/fixtures/tls/` (`generate.sh` regenerates it) `.gitattributes` keeps every file LF so Windows checkouts match. Tests that spawn a fake manager use `writeNodeShim` and `prependPath` from `__tests__/fixtures` (a `sh` wrapper on POSIX, a cmd-shim `.cmd` on Windows); symlinks in tests use type `'junction'`, which Windows allows without privileges
