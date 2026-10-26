@@ -5,11 +5,10 @@ import pnpm, {
   parsePnpmOutdated,
   parsePnpmWorkspaceOutdated,
 } from '@/managers/pnpm'
-import { check, update } from '@/pipeline'
+import { update } from '@/pipeline'
 import { StepError } from '@/stepError'
 import type { PackageInfo } from '@/types'
 import {
-  exitError,
   projectFor,
   readFixture,
   WORKSPACE_ENTRIES,
@@ -25,68 +24,6 @@ jest.mock('@/utils', () => ({
 import { runProcess } from '@/utils'
 
 const mockedRunProcess = jest.mocked(runProcess)
-
-describe('check with pnpm', () => {
-  // pnpm runs `outdated` twice: the report, and `--compatible` for the
-  // highest in-range versions.
-  const mockReports = (report: string, compatible: string) =>
-    mockedRunProcess.mockImplementation(async (_file, args) => {
-      throw exitError(
-        1,
-        readFixture(args.includes('--compatible') ? compatible : report),
-        '',
-      )
-    })
-
-  it('lists outdated packages when pnpm exits 1 with a JSON report', async () => {
-    mockReports('pnpm/outdated.stdout', 'pnpm/outdated-compatible.stdout')
-
-    const result = await check(projectFor(pnpm, '/project'))
-
-    expect(Object.keys(result)).toHaveLength(40)
-    expect(result.dayjs).toMatchObject({
-      current: '1.11.9',
-      wanted: '1.11.9',
-      latest: '1.11.23',
-    })
-  })
-
-  it("takes wanted from the --compatible run, not from pnpm's lockfile wanted", async () => {
-    mockReports(
-      'pnpm/outdated-ranges.stdout',
-      'pnpm/outdated-ranges-compatible.stdout',
-    )
-
-    const result = await check(projectFor(pnpm, '/project'))
-
-    // react ^18.2.0: pnpm's own `wanted` is the lockfile's 18.2.0.
-    expect(
-      JSON.parse(readFixture('pnpm/outdated-ranges.stdout')).react.wanted,
-    ).toBe('18.2.0')
-    expect(result.react).toMatchObject({
-      current: '18.2.0',
-      wanted: '18.3.1',
-      latest: '19.3.1',
-    })
-    // An exact pin has no compatible update, so wanted stays put.
-    expect(result.minimist).toMatchObject({ current: '1.2.7', wanted: '1.2.7' })
-    expect(mockedRunProcess).toHaveBeenCalledWith(
-      'pnpm',
-      ['outdated', '--json', '--compatible'],
-      { cwd: '/project' },
-    )
-  })
-
-  it('fails when pnpm exits 1 with an error and no report', async () => {
-    mockedRunProcess.mockRejectedValue(
-      exitError(1, '', readFixture('pnpm/outdated-error.stderr')),
-    )
-
-    await expect(check(projectFor(pnpm, '/project'))).rejects.toThrow(
-      /ERR_PNPM_OUTDATED_REGISTRY_ERROR/,
-    )
-  })
-})
 
 describe('pnpm.readWorkspace', () => {
   let cwd: string
@@ -130,17 +67,21 @@ describe('pnpm.readWorkspace', () => {
   })
 
   it.each([
-    ['no catalog', 'packages:\n  - a\n', []],
-    ['the default catalog', 'catalog:\n  dayjs: 1.11.9\n', ['catalog']],
+    ['no catalog', 'packages:\n  - a\n', {}],
+    [
+      'the default catalog',
+      'catalog:\n  dayjs: 1.11.9\n',
+      { default: { dayjs: '1.11.9' } },
+    ],
     [
       'named catalogs',
       'catalogs:\n  react18:\n    react: ^18.2.0\n  "legacy":\n    ms: 2.1.1\n',
-      ['react18', 'legacy'],
+      { react18: { react: '^18.2.0' }, legacy: { ms: '2.1.1' } },
     ],
     [
       'both',
       'catalog:\n  ms: 2.1.1\ncatalogs:\n    next:\n        react: ^19.0.0\n',
-      ['catalog', 'next'],
+      { default: { ms: '2.1.1' }, next: { react: '^19.0.0' } },
     ],
   ])('lists catalogs for a file with %s', (_, yaml, catalogs) => {
     writeWorkspaceYaml(yaml)
@@ -173,7 +114,10 @@ describe('pnpm.readWorkspace', () => {
     const workspace = pnpm.readWorkspace(cwd)
 
     expect(workspace.isWorkspace).toBe(true)
-    expect(workspace.catalogs).toEqual(['catalog', 'tools'])
+    expect(workspace.catalogs).toEqual({
+      default: { ms: '~2.1.1' },
+      tools: { debug: '~4.3.1' },
+    })
     expect(workspace.manifests.map((manifest) => manifest.path)).toContain(
       'packages/a',
     )
@@ -183,24 +127,6 @@ describe('pnpm.readWorkspace', () => {
         range: '2.1.2',
       },
     })
-  })
-
-  it('discovers without -r when the file only holds settings', async () => {
-    writeWorkspaceYaml('onlyBuiltDependencies: []\n')
-    mockedRunProcess.mockResolvedValue({ stdout: '{}', stderr: '' })
-
-    await check(projectFor(pnpm, cwd))
-
-    expect(mockedRunProcess).toHaveBeenCalledWith(
-      'pnpm',
-      ['outdated', '--json'],
-      { cwd },
-    )
-    expect(mockedRunProcess).not.toHaveBeenCalledWith(
-      'pnpm',
-      expect.arrayContaining(['-r']),
-      expect.anything(),
-    )
   })
 })
 

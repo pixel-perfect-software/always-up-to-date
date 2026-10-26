@@ -42,6 +42,7 @@ src/
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
   commandRunner.ts          # runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
   project.ts                # openProject(cwd, { pm? }): loads the config once, configures the logger, detects the manager → Project (with a lazy registry session)
+  discovery.ts              # discoverFromRegistry(): native discovery for npm, pnpm, yarn v1, bun (manifests, node_modules, registry reader)
   pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter
   detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
@@ -67,6 +68,7 @@ __tests__/
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
   project.test.ts           # openProject: config loaded once, logger configured before detection
+  discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95
   pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows
   singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON, pinned before #59: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages

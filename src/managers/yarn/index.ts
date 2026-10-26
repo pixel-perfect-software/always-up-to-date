@@ -1,13 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 
-import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
-import {
-  packageJsonWorkspace,
-  readManifest,
-  workspaceOwner,
-} from '@/managers/workspaces'
+import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
 import {
   applyBerry,
   discoverBerry,
@@ -20,22 +15,6 @@ import { buildUpdateDescriptors, type DescriptorField } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
-
-/**
- * `yarn outdated` (v1) exits 1 whenever something is outdated, printing a
- * `{"type":"table"}` line. On real errors it also exits 1, with no table.
- */
-const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
-  if (exitCode === 0) return true
-  if (exitCode !== 1) return false
-  return stdout.split('\n').some((line) => {
-    try {
-      return JSON.parse(line)?.type === 'table'
-    } catch {
-      return false
-    }
-  })
-}
 
 /**
  * Yarn 2+ ("berry") is identified by the `packageManager` field when it is
@@ -158,29 +137,13 @@ const yarn: ManagerAdapter = {
 
   readWorkspace: (cwd) => ({
     ...packageJsonWorkspace(cwd),
-    catalogs: [],
+    catalogs: {},
   }),
 
-  discover: async (run, cwd, { isWorkspace, manifests }) => {
-    // berry has no `outdated`: it reads `yarn info` and the registry instead.
-    if (isYarnBerry(cwd)) return discoverBerry(run, isWorkspace)
-
-    const output = await run(
-      isWorkspace
-        ? ['outdated', '--json', '--recursive']
-        : ['outdated', '--json'],
-      { isSuccess: isOutdatedReport },
-    )
-    return isWorkspace
-      ? {
-          kind: 'workspace',
-          entries: parseYarnWorkspaceOutdated(
-            output,
-            workspaceOwner(manifests, 'yarn'),
-          ),
-        }
-      : { kind: 'single', outdated: parseYarnOutdated(output) }
-  },
+  ownDiscovery: (cwd) =>
+    isYarnBerry(cwd)
+      ? (run, { isWorkspace }) => discoverBerry(run, isWorkspace)
+      : undefined,
 
   apply: async (
     run,

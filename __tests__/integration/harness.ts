@@ -480,6 +480,30 @@ export const runCli = async (cwd: string, args: string[]): Promise<unknown> => {
   }
 }
 
+/**
+ * `runCli` with no package manager on PATH: the key (found
+ * case-insensitively, as `prependPath` does) points at an empty directory for
+ * the call. The CLI starts from `process.execPath`, so only a manager
+ * subprocess would fail.
+ */
+export const runCliWithoutManagers = async (
+  cwd: string,
+  args: string[],
+): Promise<unknown> => {
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-empty-path-'))
+  const key =
+    Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
+  const original = process.env[key]
+  process.env[key] = empty
+  try {
+    return await runCli(cwd, args)
+  } finally {
+    if (original === undefined) delete process.env[key]
+    else process.env[key] = original
+    fs.rmSync(empty, { recursive: true, force: true })
+  }
+}
+
 /** The dependency maps of every manifest under `cwd`, keyed by directory ('.' = root). */
 export const readDependencies = (
   cwd: string,

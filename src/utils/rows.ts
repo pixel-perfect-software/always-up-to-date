@@ -1,12 +1,27 @@
+import semver from 'semver'
 import type { PackageInfo, UpdateResult } from '@/types'
 import type { OutdatedRow, SkippedRow } from './logger'
 
+/**
+ * Names the in-range version when it differs from `latest` and is ahead of
+ * what is installed (or nothing is: `missing`). `wanted` can sit below
+ * `current`, for a deprecated version that is installed.
+ */
 const inRangeNote = (
   current: string,
   wanted: string,
   latest: string,
-): string | undefined =>
-  wanted !== current && wanted !== latest ? `in range: ${wanted}` : undefined
+): string | undefined => {
+  if (wanted === latest) return undefined
+  if (
+    semver.valid(current) !== null &&
+    semver.valid(wanted) !== null &&
+    !semver.gt(wanted, current)
+  ) {
+    return undefined
+  }
+  return `in range: ${wanted}`
+}
 
 /** A row for the outdated table: current → latest, noting the in-range version when it differs. */
 export const toOutdatedRow = (

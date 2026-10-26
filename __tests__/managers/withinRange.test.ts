@@ -1,19 +1,15 @@
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
 import { check } from '@/pipeline'
-import { exitError, projectFor, readFixture } from '../fixtures'
+import { filterPackages } from '@/utils'
+import { capturedRegistry, installPackages, projectFor } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils', () => ({
-  ...jest.requireActual('@/utils'),
-  runProcess: jest.fn(),
-}))
-
-import { filterPackages, runProcess } from '@/utils'
-
-const mockedRunProcess = jest.mocked(runProcess)
 
 /**
  * What `npm update` installed on the mixed-range benchmark project (12 of 40
@@ -34,35 +30,23 @@ const NPM_UPDATE_APPLIES = {
   zod: '3.25.76',
 }
 
-// Real `outdated` output for each manager, keyed by benchmark project.
-const outdatedOutput = {
-  npm: { ranges: 'npm/outdated-ranges.stdout', pinned: 'npm/outdated.stdout' },
-  pnpm: {
-    ranges: 'pnpm/outdated-ranges.stdout',
-    pinned: 'pnpm/outdated.stdout',
-  },
-  yarn: {
-    ranges: 'yarn/v1-outdated-ranges.stdout',
-    pinned: 'yarn/v1-outdated.stdout',
-  },
-  bun: { ranges: 'bun/outdated-ranges.stdout', pinned: 'bun/outdated.stdout' },
-}
+// The benchmark projects' manifests (bench/pinned: every dependency an exact
+// pin; bench/ranges: 12 of them on ^ or ~). Installs sit at the pinned
+// versions, which are the ranges' minimums.
+const benchDependencies = (project: 'ranges' | 'pinned') =>
+  JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, '..', '..', 'bench', project, 'package.json'),
+      'utf8',
+    ),
+  ).dependencies as Record<string, string>
 
-const mockOutdated = (
-  pm: keyof typeof outdatedOutput,
-  project: 'ranges' | 'pinned',
-) => {
-  mockedRunProcess.mockImplementation(async (_file, args) => {
-    // pnpm's in-range versions come from a second, `--compatible` run.
-    const fixture = args.includes('--compatible')
-      ? `pnpm/outdated${project === 'ranges' ? '-ranges' : ''}-compatible.stdout`
-      : outdatedOutput[pm][project]
-    const stdout = readFixture(fixture)
-    if (pm === 'bun') return { stdout, stderr: '' }
-    // npm, pnpm and yarn exit 1 when anything is outdated.
-    throw exitError(1, stdout, '')
-  })
-}
+const RANGED = Object.keys(NPM_UPDATE_APPLIES)
+// ms is an exact pin in both projects: a pin is held whatever is newer.
+const NAMES = [...RANGED, 'ms']
+
+// When the fixtures behind NPM_UPDATE_APPLIES were observed.
+const AS_OF = '2026-10-23T10:04:28-03:00'
 
 describe.each([
   ['npm', npm],
@@ -70,13 +54,42 @@ describe.each([
   ['yarn', yarn],
   ['bun', bun],
 ] as const)('%s, default config', (pm, adapter) => {
+  let cwd: string
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-within-range-${pm}-`))
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
   const proposals = async (layout: 'ranges' | 'pinned') => {
-    mockOutdated(pm, layout)
-    const project = projectFor(adapter, '/project')
+    const declared = benchDependencies(layout)
+    const pinned = benchDependencies('pinned')
+    fs.writeFileSync(
+      path.join(cwd, 'package.json'),
+      JSON.stringify({
+        dependencies: Object.fromEntries(
+          NAMES.map((name) => [name, declared[name]]),
+        ),
+      }),
+    )
+    installPackages(
+      cwd,
+      '.',
+      Object.fromEntries(NAMES.map((name) => [name, pinned[name]])),
+    )
+    const project = projectFor(
+      adapter,
+      cwd,
+      {},
+      capturedRegistry(NAMES, { asOf: AS_OF }),
+    )
     const outdated = await check(project)
     const results = await filterPackages(outdated, {
       config: project.config,
-      cwd: '/project',
+      cwd,
       registry: project.registry,
     })
     return Object.fromEntries(

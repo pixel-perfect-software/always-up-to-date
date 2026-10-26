@@ -5,6 +5,7 @@ import type {
   PackageInfo,
   SupportedPackageManager,
 } from '@/types'
+import type { Catalogs } from '@/utils/dependencySpecs'
 import type { ControllingOverride } from '@/utils/overrides'
 import type { SaveStyle } from '@/utils/saveStyle'
 
@@ -20,8 +21,11 @@ export interface WorkspaceManifest {
 export interface Workspace {
   /** Discovery and apply cover every member. */
   isWorkspace: boolean
-  /** Catalogs that hold versions instead of package.json, by name. */
-  catalogs: string[]
+  /**
+   * Catalogs that hold versions instead of package.json: name → spec by
+   * catalog name (`default` for `catalog:`), as the writers read them.
+   */
+  catalogs: Catalogs
   /**
    * The root (`{ path: '.' }`) first, then each member directory the
    * workspace patterns match, sorted by path. Only the root outside a workspace.
@@ -29,7 +33,7 @@ export interface Workspace {
   manifests: WorkspaceManifest[]
 }
 
-/** What `discover` found, in the shape the project calls for. */
+/** What discovery found, in the shape the project calls for. */
 export type Discovery =
   | { kind: 'single'; outdated: Record<string, PackageInfo> }
   | { kind: 'workspace'; entries: OutdatedEntry[] }
@@ -66,14 +70,13 @@ export interface ManagerAdapter {
   lockfile: string
   readWorkspace(cwd: string): Workspace
   /**
-   * Outdated packages as the manager reports them, under its own names: a
-   * record in a single-package project, one entry per manifest in a workspace.
+   * Yarn berry only, until #107: a project autd can't read natively yet is
+   * discovered through the manager, keyed by manifest key. Undefined means
+   * autd discovers natively (`discoverFromRegistry`).
    */
-  discover(
-    run: RunManager,
+  ownDiscovery?(
     cwd: string,
-    workspace: Workspace,
-  ): Promise<Discovery>
+  ): ((run: RunManager, workspace: Workspace) => Promise<Discovery>) | undefined
   /** Writes the specs the manager does not write itself, then runs its update commands. */
   apply(
     run: RunManager,

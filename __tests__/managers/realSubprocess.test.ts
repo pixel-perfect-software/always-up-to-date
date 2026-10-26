@@ -2,27 +2,31 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import npm from '@/managers/npm'
-import { check, update } from '@/pipeline'
+import { update } from '@/pipeline'
+import type { PackageInfo } from '@/types'
 import { prependPath, projectFor, writeNodeShim } from '../fixtures'
 
 jest.mock('@/utils/logger')
 
 /**
  * These tests spawn a real process: a fake `npm` placed first on PATH that
- * records its arguments and prints a canned `outdated --json` report, exiting
- * 1 like the real one. Nothing in the exec path is mocked. On Windows the
- * call goes through cmd.exe and a cmd-shim `npm.cmd` re-reading `%*`, as with
- * the real npm.
+ * records its arguments and, for `update`, prints more than 1 MB. Nothing in
+ * the exec path is mocked. On Windows the call goes through cmd.exe and a
+ * cmd-shim `npm.cmd` re-reading `%*`, as with the real npm.
  */
 describe('npm with a real subprocess', () => {
   let root: string
   let cwd: string
   let argvLog: string
-  let reportFile: string
   let restorePath: () => void
 
-  const writeReport = (report: Record<string, unknown>) =>
-    fs.writeFileSync(reportFile, JSON.stringify(report, null, 2))
+  const discovered = (names: string[]): Record<string, PackageInfo> =>
+    Object.fromEntries(
+      names.map((name) => [
+        name,
+        { name, current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+      ]),
+    )
 
   const loggedCalls = (): string[][] =>
     fs
@@ -38,19 +42,17 @@ describe('npm with a real subprocess', () => {
     fs.mkdirSync(cwd)
     fs.mkdirSync(bin)
     argvLog = path.join(root, 'argv.log')
-    reportFile = path.join(root, 'report.json')
     fs.writeFileSync(argvLog, '')
 
-    // process.exitCode, not process.exit: the 1.5 MB report must flush first.
+    // Written to stdout whole, then a natural exit: the 1.5 MB must flush first.
     fs.writeFileSync(
       path.join(bin, 'fake-npm.js'),
       [
         "const fs = require('fs')",
         'const args = process.argv.slice(2)',
         `fs.appendFileSync(${JSON.stringify(argvLog)}, JSON.stringify(args) + '\\n')`,
-        "if (args[0] === 'outdated') {",
-        `  process.stdout.write(fs.readFileSync(${JSON.stringify(reportFile)}))`,
-        '  process.exitCode = 1',
+        "if (args[0] === 'update') {",
+        "  process.stdout.write('x'.repeat(1.5 * 1024 * 1024))",
         '}',
       ].join('\n'),
     )
@@ -63,23 +65,20 @@ describe('npm with a real subprocess', () => {
     fs.rmSync(root, { recursive: true, force: true })
   })
 
-  it('reads more than 1 MB of outdated output', async () => {
-    const report: Record<string, unknown> = {}
-    for (let i = 0; i < 10000; i++) {
-      report[`package-${i}`] = {
-        current: '1.0.0',
-        wanted: '1.0.0',
-        latest: '1.0.1',
-        dependent: 'project',
-        location: `/project/node_modules/package-${i}`,
-      }
-    }
-    writeReport(report)
-    expect(fs.statSync(reportFile).size).toBeGreaterThan(1.5 * 1024 * 1024)
+  it('gets past more than 1 MB of update output', async () => {
+    fs.writeFileSync(
+      path.join(cwd, 'package.json'),
+      JSON.stringify({ dependencies: { 'package-0': '^1.0.0' } }),
+    )
 
-    const result = await check(projectFor(npm, cwd))
+    const results = await update(projectFor(npm, cwd), {
+      discovered: discovered(['package-0']),
+    })
 
-    expect(Object.keys(result)).toHaveLength(10000)
+    expect(results).toEqual([
+      expect.objectContaining({ name: 'package-0', updated: true }),
+    ])
+    expect(loggedCalls()).toEqual([['update', 'package-0']])
   })
 
   it('passes package names as arguments, never as commands', async () => {
@@ -91,21 +90,10 @@ describe('npm with a real subprocess', () => {
         dependencies: Object.fromEntries(names.map((n) => [n, '^1.0.0'])),
       }),
     )
-    writeReport(
-      Object.fromEntries(
-        names.map((n) => [
-          n,
-          { current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
-        ]),
-      ),
-    )
 
-    await update(projectFor(npm, cwd))
+    await update(projectFor(npm, cwd), { discovered: discovered(names) })
 
-    expect(loggedCalls()).toEqual([
-      ['outdated', '--json'],
-      ['update', ...names],
-    ])
+    expect(loggedCalls()).toEqual([['update', ...names]])
     expect(fs.existsSync(path.join(cwd, 'pwned'))).toBe(false)
   })
 })

@@ -1,4 +1,5 @@
 import CommandRunner from '@/commandRunner'
+import { discoverFromRegistry } from '@/discovery'
 import type { ManagerAdapter, RunManager, Workspace } from '@/managers'
 import messages from '@/messages/en.json'
 import type { Project } from '@/project'
@@ -15,7 +16,6 @@ import {
   toUpdatingRow,
 } from '@/utils'
 import { checkApplied, readInstalledVersions } from '@/utils/installed'
-import { toEntryManifestNames, toManifestNames } from '@/utils/manifestNames'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 
 const runner = new CommandRunner()
@@ -29,15 +29,18 @@ const runFor =
 const readWorkspace = (adapter: ManagerAdapter, cwd: string): Workspace => {
   const workspace = adapter.readWorkspace(cwd)
   if (workspace.isWorkspace) logger.workspace(adapter.name)
-  if (workspace.isWorkspace && workspace.catalogs.length > 0) {
-    logger.info(`Detected catalogs: ${workspace.catalogs.join(', ')}`)
+  const catalogs = Object.keys(workspace.catalogs)
+  if (workspace.isWorkspace && catalogs.length > 0) {
+    logger.info(`Detected catalogs: ${catalogs.join(', ')}`)
   }
   return workspace
 }
 
 /**
  * detect → discover → report: the outdated packages keyed by their
- * package.json names, printed in groups.
+ * package.json names, printed in groups. Discovery reads the manifests,
+ * node_modules and the registry, with no manager subprocess; yarn berry
+ * alone discovers through the manager.
  */
 const discover = async ({
   adapter,
@@ -56,15 +59,19 @@ const discover = async ({
       `Manifests: ${workspace.manifests.map((manifest) => manifest.path).join(', ')}`,
     )
   }
-  const discovery = await adapter.discover(
-    runFor(adapter, cwd, 'discover'),
-    cwd,
-    workspace,
-  )
+  const own = adapter.ownDiscovery?.(cwd)
+  const discovery = own
+    ? await own(runFor(adapter, cwd, 'discover'), workspace)
+    : await discoverFromRegistry({
+        cwd,
+        manager: adapter.name,
+        workspace,
+        registry,
+      })
   const outdated =
     discovery.kind === 'single'
-      ? toManifestNames(cwd, discovery.outdated)
-      : foldWorkspaceEntries(toEntryManifestNames(cwd, discovery.entries))
+      ? discovery.outdated
+      : foldWorkspaceEntries(discovery.entries)
 
   if (Object.keys(outdated).length === 0) {
     logger.allUpToDate()

@@ -8,7 +8,13 @@ import yarn from '@/managers/yarn'
 import { update } from '@/pipeline'
 import { StepError } from '@/stepError'
 import type { PackageInfo } from '@/types'
-import { exitError, projectFor, readFixture } from '../fixtures'
+import {
+  exitError,
+  fakeRegistry,
+  installPackages,
+  projectFor,
+  readFixture,
+} from '../fixtures'
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils', () => ({
@@ -102,16 +108,23 @@ describe.each([
   })
 
   it('rejects with a discover StepError when discovery fails', async () => {
-    mockedRunProcess.mockRejectedValue(
-      exitError(2, '', `${pm}: registry unreachable`),
-    )
+    installPackages(cwd, '.', { dayjs: '1.11.9' })
+    const registry = fakeRegistry({
+      lookup: async (name) => ({
+        ok: false,
+        name,
+        kind: 'request',
+        reason: 'registry unreachable',
+      }),
+    })
 
-    const error = await update(projectFor(adapter, cwd), {
+    const error = await update(projectFor(adapter, cwd, {}, registry), {
       targetPackages: ['dayjs'],
     }).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(StepError)
     expect(error).toMatchObject({ step: 'discover', manifestWritten: false })
-    expect((error as Error).message).toContain('registry unreachable')
+    expect((error as Error).message).toContain('dayjs: registry unreachable')
+    expect(mockedRunProcess).not.toHaveBeenCalled()
   })
 })

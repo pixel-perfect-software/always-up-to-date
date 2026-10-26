@@ -1,32 +1,17 @@
 import path from 'path'
 
-import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
 import { ownerPath, readWorkspaceManifests } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
 import {
+  readPnpmCatalogs,
   splitCatalogUpdates,
   updatePackageJson,
   updatePNPMWorkspaceYAML,
 } from '@/utils/files'
 import { overridesFromField } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
-
-/**
- * `pnpm outdated` exits 1 whenever something is outdated. On real errors it
- * also exits 1, with the error on stderr and no report on stdout.
- */
-const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
-  if (exitCode === 0) return true
-  if (exitCode !== 1) return false
-  try {
-    const report = JSON.parse(stdout)
-    return typeof report === 'object' && report !== null
-  } catch {
-    return false
-  }
-}
 
 /**
  * pnpm's `wanted` is the lockfile's version, not the highest version the
@@ -153,29 +138,6 @@ const workspacePackagePatterns = (yaml: string): string[] => {
   return patterns
 }
 
-/**
- * Catalogs in pnpm-workspace.yaml: `catalog` for the default one, and each
- * key of `catalogs:`. A single-package project can have them too.
- */
-const catalogNames = (yaml: string): string[] => {
-  const names: string[] = []
-  let inCatalogs = false
-  let keyIndent: number | undefined
-  for (const line of yaml.split(/\r?\n/)) {
-    if (/^\S/.test(line)) {
-      inCatalogs = /^catalogs:/.test(line)
-      keyIndent = undefined
-      if (/^catalog:/.test(line)) names.push('catalog')
-      continue
-    }
-    const key = inCatalogs ? /^( +)(['"]?)([^'"#\s:]+)\2\s*:/.exec(line) : null
-    if (!key) continue
-    keyIndent ??= key[1].length
-    if (key[1].length === keyIndent) names.push(key[3])
-  }
-  return names
-}
-
 /** The `overrides:` block of pnpm-workspace.yaml, read line by line. */
 const readWorkspaceOverrides = (yaml: string): Record<string, string> => {
   const overrides: Record<string, string> = {}
@@ -209,30 +171,9 @@ const pnpm: ManagerAdapter = {
     const patterns = workspacePackagePatterns(yaml)
     return {
       isWorkspace: patterns.length > 0,
-      catalogs: catalogNames(yaml),
+      catalogs: readPnpmCatalogs(yaml),
       manifests: readWorkspaceManifests(cwd, patterns),
     }
-  },
-
-  discover: async (run, cwd, { isWorkspace }) => {
-    const args = isWorkspace
-      ? ['outdated', '--json', '-r']
-      : ['outdated', '--json']
-
-    // Both reports are needed for `wanted`, so they run in parallel.
-    const [report, compatibleReport] = await Promise.all([
-      run(args, { isSuccess: isOutdatedReport }),
-      run([...args, '--compatible'], { isSuccess: isOutdatedReport }),
-    ])
-    return isWorkspace
-      ? {
-          kind: 'workspace',
-          entries: parsePnpmWorkspaceOutdated(report, compatibleReport, cwd),
-        }
-      : {
-          kind: 'single',
-          outdated: parsePnpmOutdated(report, compatibleReport),
-        }
   },
 
   apply: async (
@@ -247,7 +188,7 @@ const pnpm: ManagerAdapter = {
 
     if (!isWorkspace) {
       const manifestWritten = Object.keys(beyondRange).length > 0
-      if (catalogs.length === 0) {
+      if (Object.keys(catalogs).length === 0) {
         if (manifestWritten) await updatePackageJson(cwd, beyondRange, style)
         await run(['update', ...names], { manifestWritten })
         return

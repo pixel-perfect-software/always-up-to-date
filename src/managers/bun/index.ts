@@ -1,14 +1,11 @@
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
-import {
-  packageJsonWorkspace,
-  readManifest,
-  workspaceOwner,
-} from '@/managers/workspaces'
+import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
 import {
+  readBunCatalogs,
   splitCatalogUpdates,
   updateBunCatalogs,
   updatePackageJson,
@@ -146,45 +143,14 @@ const bunfigExact = (content: string): boolean => {
   return false
 }
 
-/**
- * Catalogs in package.json: `catalog` (the default one) and the keys of
- * `catalogs` (named ones).
- */
-const catalogNames = (cwd: string): string[] => {
-  const manifest = readManifest(cwd)
-  const names: string[] = []
-  if (manifest?.catalog && typeof manifest.catalog === 'object') {
-    names.push('catalog')
-  }
-  if (manifest?.catalogs && typeof manifest.catalogs === 'object') {
-    names.push(...Object.keys(manifest.catalogs))
-  }
-  return names
-}
-
 const bun: ManagerAdapter = {
   name: 'bun',
   lockfile: 'bun.lock',
 
   readWorkspace: (cwd) => ({
     ...packageJsonWorkspace(cwd),
-    catalogs: catalogNames(cwd),
+    catalogs: readBunCatalogs(readManifest(cwd)),
   }),
-
-  discover: async (run, _cwd, { isWorkspace, manifests }) => {
-    const output = await run(
-      isWorkspace ? ['outdated', '--filter', '*'] : ['outdated'],
-    )
-    return isWorkspace
-      ? {
-          kind: 'workspace',
-          entries: parseBunWorkspaceOutdated(
-            output,
-            workspaceOwner(manifests, 'bun'),
-          ),
-        }
-      : { kind: 'single', outdated: parseBunOutdated(output) }
-  },
 
   apply: async (
     run,
@@ -215,7 +181,7 @@ const bun: ManagerAdapter = {
       await updatePackageJson(path.join(cwd, m.path), m.versions, style)
     }
 
-    if (catalogs.length === 0) {
+    if (Object.keys(catalogs).length === 0) {
       await run(['update', ...names, '--filter', '*'], { manifestWritten })
       return
     }

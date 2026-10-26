@@ -42,7 +42,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 ### Core Components
 
 **Pipeline and manager adapters**
-- `src/pipeline.ts` runs detect → discover → plan → apply → report once for every manager:
+- `src/pipeline.ts` runs detect → discover → plan → apply → report once for every manager. Discovery is `discoverFromRegistry` (`src/discovery.ts`) for npm, pnpm, yarn v1 and bun: no manager subprocess, it reads the manifests, `node_modules` and the registry reader; yarn berry alone discovers through its adapter's `ownDiscovery` until #107:
   - `check(project)` - Returns `Record<string, PackageInfo>` of outdated packages, keyed by package.json name, and prints them
   - `plan(project, outdated, targetPackages?)` - The policy's `UpdateResult[]` (dry-run, interactive)
   - `update(project, { targetPackages?, discovered? })` - Plans, applies, returns `UpdateResult[]`. `discovered` is a `check` result the caller already has, so discovery is not run twice. After apply, each moving dependency is checked against what the manager installed (`src/utils/installed.ts` reads `node_modules`; an adapter with `installed()`, yarn berry under PnP, answers from the manager instead): one the manager left below its target is reported `updated: false`, `not applied by <pm> (installed <version>)`

@@ -1,7 +1,6 @@
 import fs from 'fs'
 import path from 'path'
 
-import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
 import { ownerPath, packageJsonWorkspace } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
@@ -10,24 +9,6 @@ import { updatePackageJson } from '@/utils/files'
 import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
-
-/**
- * `npm outdated` exits 1 whenever something is outdated. It also exits 1 on
- * real errors, printing `{ "error": { code, summary } }` instead of a report.
- */
-const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
-  if (exitCode === 0) return true
-  if (exitCode !== 1) return false
-  try {
-    const report = JSON.parse(stdout)
-    const isNpmError =
-      typeof report?.error?.code === 'string' &&
-      typeof report?.error?.summary === 'string'
-    return typeof report === 'object' && report !== null && !isNpmError
-  } catch {
-    return false
-  }
-}
 
 /**
  * Versions package-lock.json records, keyed by install path
@@ -120,24 +101,8 @@ const npm: ManagerAdapter = {
 
   readWorkspace: (cwd) => ({
     ...packageJsonWorkspace(cwd),
-    catalogs: [],
+    catalogs: {},
   }),
-
-  discover: async (run, cwd, { isWorkspace }) => {
-    // Without --workspaces the report covers the root's dependencies too;
-    // --long adds the owning manifest to each row.
-    const stdout = await run(
-      isWorkspace ? ['outdated', '--json', '--long'] : ['outdated', '--json'],
-      { isSuccess: isOutdatedReport },
-    )
-    const locked = readLockedVersions(cwd)
-    return isWorkspace
-      ? {
-          kind: 'workspace',
-          entries: parseNpmWorkspaceOutdated(stdout, locked),
-        }
-      : { kind: 'single', outdated: parseNpmOutdated(stdout, locked) }
-  },
 
   apply: async (run, cwd, { names, manifests }) => {
     // npm installs the highest version each range allows. Only packages

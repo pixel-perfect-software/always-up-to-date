@@ -49,12 +49,13 @@ describe.each([
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('applies without running outdated again', async () => {
+  it('applies without discovering again', async () => {
     const results = await update(projectFor(adapter, cwd), {
       targetPackages: ['dayjs'],
       discovered: outdatedPackages,
     })
 
+    // The default fake registry throws on any lookup, so none ran.
     expect(mockedRunProcess).toHaveBeenCalledTimes(1)
     expect(mockedRunProcess).toHaveBeenCalledWith(pm, [...applyArgs], { cwd })
     expect(logger.outdatedHeader).not.toHaveBeenCalled()
