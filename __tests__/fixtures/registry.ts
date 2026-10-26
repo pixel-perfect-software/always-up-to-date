@@ -1,0 +1,194 @@
+import fs from 'fs'
+import http from 'http'
+import https from 'https'
+import net from 'net'
+import path from 'path'
+import type { TLSSocket } from 'tls'
+
+/** Reads one of the committed test-only PEMs in `fixtures/tls/`. */
+export const readTls = (
+  name: 'ca.pem' | 'server.pem' | 'server.key' | 'client.pem' | 'client.key',
+): string => fs.readFileSync(path.join(__dirname, 'tls', name), 'utf8')
+
+export interface RecordedRequest {
+  url: string
+  headers: http.IncomingHttpHeaders
+  /** The client certificate's CN, when the server asked for one. */
+  clientCN?: string
+}
+
+export interface TestRegistry {
+  url: string
+  port: number
+  requests: RecordedRequest[]
+  /** TCP (or TLS) connections accepted so far. */
+  connections: number
+  /** The most requests in flight at once. */
+  peak: number
+  close(): Promise<void>
+}
+
+type Handler = (req: http.IncomingMessage, res: http.ServerResponse) => void
+
+const listen = (server: net.Server): Promise<number> =>
+  new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      resolve((server.address() as net.AddressInfo).port)
+    })
+  })
+
+const closeServer = (
+  server: http.Server,
+  open: Set<net.Socket>,
+): Promise<void> =>
+  new Promise((resolve) => {
+    server.closeAllConnections()
+    for (const socket of open) socket.destroy()
+    server.close(() => resolve())
+  })
+
+/**
+ * A registry on 127.0.0.1 with a random port. `tls: 'server'` serves HTTPS
+ * with a certificate the test CA signed; `'mtls'` also demands a client
+ * certificate from that CA.
+ */
+export const startRegistry = async (
+  handler: Handler,
+  options: { tls?: 'server' | 'mtls' } = {},
+): Promise<TestRegistry> => {
+  const requests: RecordedRequest[] = []
+  const open = new Set<net.Socket>()
+  let inFlight = 0
+
+  const onRequest: Handler = (req, res) => {
+    const peer = (req.socket as TLSSocket).getPeerCertificate?.()
+    const cn = peer?.subject?.CN
+    requests.push({
+      url: req.url ?? '',
+      headers: req.headers,
+      clientCN: Array.isArray(cn) ? cn[0] : cn,
+    })
+    registry.peak = Math.max(registry.peak, ++inFlight)
+    res.on('close', () => {
+      inFlight--
+    })
+    handler(req, res)
+  }
+
+  const server = options.tls
+    ? https.createServer(
+        {
+          cert: readTls('server.pem'),
+          key: readTls('server.key'),
+          ...(options.tls === 'mtls'
+            ? {
+                ca: readTls('ca.pem'),
+                requestCert: true,
+                rejectUnauthorized: true,
+              }
+            : {}),
+        },
+        onRequest,
+      )
+    : http.createServer(onRequest)
+
+  server.on(options.tls ? 'secureConnection' : 'connection', (socket) => {
+    registry.connections++
+    open.add(socket)
+    socket.on('close', () => open.delete(socket))
+  })
+
+  const port = await listen(server)
+  const registry: TestRegistry = {
+    url: `${options.tls ? 'https' : 'http'}://127.0.0.1:${port}/`,
+    port,
+    requests,
+    connections: 0,
+    peak: 0,
+    close: () => closeServer(server, open),
+  }
+  return registry
+}
+
+export interface ProxyRecord {
+  method: 'GET' | 'CONNECT'
+  /** The absolute URI of a GET, or `host:port` of a CONNECT. */
+  target: string
+  proxyAuthorization?: string
+}
+
+export interface TestProxy {
+  url: string
+  port: number
+  seen: ProxyRecord[]
+  close(): Promise<void>
+}
+
+/**
+ * A forward proxy: answers plain `GET http://...` itself (recording the
+ * absolute URI) and tunnels `CONNECT` to its target.
+ */
+export const startProxy = async (
+  options: { forward?: (target: URL) => { host: string; port: number } } = {},
+): Promise<TestProxy> => {
+  const seen: ProxyRecord[] = []
+  const open = new Set<net.Socket>()
+
+  const server = http.createServer((req, res) => {
+    seen.push({
+      method: 'GET',
+      target: req.url ?? '',
+      proxyAuthorization: req.headers['proxy-authorization']?.toString(),
+    })
+    const target = new URL(req.url ?? '')
+    const to = options.forward?.(target) ?? {
+      host: target.hostname,
+      port: Number(target.port),
+    }
+    const upstream = http.request(
+      {
+        host: to.host,
+        port: to.port,
+        path: target.pathname,
+        headers: req.headers,
+      },
+      (response) => {
+        res.writeHead(response.statusCode ?? 502, response.headers)
+        response.pipe(res)
+      },
+    )
+    upstream.on('error', () => res.destroy())
+    upstream.end()
+  })
+
+  server.on('connection', (socket) => {
+    open.add(socket)
+    socket.on('close', () => open.delete(socket))
+  })
+
+  server.on('connect', (req, socket, head) => {
+    seen.push({
+      method: 'CONNECT',
+      target: req.url ?? '',
+      proxyAuthorization: req.headers['proxy-authorization']?.toString(),
+    })
+    const [host, port] = (req.url ?? '').split(':')
+    const upstream = net.connect(Number(port), host, () => {
+      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+      upstream.write(head)
+      upstream.pipe(socket)
+      socket.pipe(upstream)
+    })
+    upstream.on('error', () => socket.destroy())
+    socket.on('error', () => upstream.destroy())
+    socket.on('close', () => upstream.destroy())
+  })
+
+  const port = await listen(server)
+  return {
+    url: `http://127.0.0.1:${port}`,
+    port,
+    seen,
+    close: () => closeServer(server, open),
+  }
+}

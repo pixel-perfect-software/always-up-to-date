@@ -1,41 +1,35 @@
-import npmFetch from 'npm-registry-fetch'
 import type { RegistryConfig } from '@/types'
 import logger from './logger'
+import type { RegistryClient } from './registryClient'
+import { packumentUrl, registryFor } from './registryRequest'
 
 // The in-flight request is cached, not its result: a workspace asks for the
 // same package once per manifest, at the same time.
 const releaseTimeCache = new Map<string, Promise<Record<string, string>>>()
+const clients = new Map<RegistryConfig, RegistryClient>()
 
 export const clearRegistryCache = () => {
   releaseTimeCache.clear()
+  for (const client of clients.values()) client.destroy()
+  clients.clear()
 }
 
-const buildFetchOpts = (config: RegistryConfig): Record<string, unknown> => {
-  const opts: Record<string, unknown> = {
-    registry: config.registry,
-    fullMetadata: true,
-  }
-
-  for (const [scope, registry] of Object.entries(config.scopedRegistries)) {
-    const key = scope.startsWith('@') ? scope : `@${scope}`
-    opts[`${key}:registry`] = registry
-  }
-
-  for (const [host, token] of Object.entries(config.authTokens)) {
-    opts[`//${host}/:_authToken`] = token
-  }
-
-  if (config.alwaysAuth !== undefined) opts['always-auth'] = config.alwaysAuth
-  if (config.strictSSL !== undefined) opts['strict-ssl'] = config.strictSSL
-  if (config.ca !== undefined) opts.ca = config.ca
-  if (config.cafile !== undefined) opts.cafile = config.cafile
-
-  return opts
+// The client (and with it node:http, node:https and zlib) loads on the first
+// request, so `--version`, `help` and `init` never pay for it.
+const clientFor = async (config: RegistryConfig): Promise<RegistryClient> => {
+  const existing = clients.get(config)
+  if (existing) return existing
+  const { createRegistryClient } = await import('./registryClient')
+  // Another caller may have created it while the module loaded.
+  const raced = clients.get(config)
+  if (raced) return raced
+  const client = createRegistryClient(config)
+  clients.set(config, client)
+  return client
 }
 
-interface Packument {
-  time?: Record<string, string>
-}
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
  * Fetch the publish-time map for every version of a package from the registry
@@ -48,12 +42,19 @@ const requestReleaseTimes = async (
   config: RegistryConfig,
 ): Promise<Record<string, string>> => {
   try {
-    const opts = buildFetchOpts(config)
-    const packument = (await npmFetch.json(
-      packageName,
-      opts,
-    )) as unknown as Packument
-    return packument.time ?? {}
+    const registry = registryFor(packageName, config)
+    const client = await clientFor(config)
+    const packument = await client.getJson(
+      packumentUrl(packageName, registry),
+      registry,
+    )
+    const time = isRecord(packument) ? packument.time : undefined
+    if (!isRecord(time)) return {}
+    const times: Record<string, string> = {}
+    for (const [version, published] of Object.entries(time)) {
+      if (typeof published === 'string') times[version] = published
+    }
+    return times
   } catch (error) {
     logger.debug(
       `Failed to fetch registry metadata for ${packageName}: ${

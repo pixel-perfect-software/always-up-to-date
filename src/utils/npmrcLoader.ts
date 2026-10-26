@@ -7,7 +7,12 @@ import {
   toPosix,
   workspacePatterns,
 } from '@/managers/workspaces'
-import type { RegistryConfig } from '@/types'
+import type {
+  ProxySettings,
+  RegistryConfig,
+  RegistryCredentials,
+} from '@/types'
+import logger from './logger'
 import { type Npmrc, parseNpmrc, substituteEnv } from './npmrc'
 
 /** What the loader reads from the machine, injectable for tests. */
@@ -33,17 +38,6 @@ const boolValue = (value: unknown): boolean | undefined => {
   if (value === 'true') return true
   if (value === 'false') return false
   return undefined
-}
-
-const stripTrailingSlash = (url: string): string =>
-  url.endsWith('/') ? url.slice(0, -1) : url
-
-const hostFromAuthKey = (key: string): string | undefined => {
-  // Auth keys look like "//registry.npmjs.org/:_authToken" or
-  // "//registry.npmjs.org/some/path/:_authToken". Strip the
-  // leading "//" and trailing ":_authToken" to get the host+path.
-  const match = key.match(/^\/\/(.+):_authToken$/)
-  return match ? match[1] : undefined
 }
 
 /** `npm_config_*` variables as npm reads them: any case, empty values skipped. */
@@ -189,44 +183,151 @@ export const loadNpmrc = (
 export const npmrcBoolean = (value: unknown): boolean | undefined =>
   boolValue(value)
 
-/**
- * Loads .npmrc-style config the way npm/pnpm/yarn-classic/bun do for the
- * registry/auth fields we care about (see `loadNpmrc` for precedence). Yarn
- * berry's .yarnrc.yml and Bun's bunfig.toml are not yet read.
- */
-export const loadRegistryConfig = (
+const CREDENTIAL_FIELDS: Record<string, keyof RegistryCredentials> = {
+  _authToken: 'authToken',
+  _auth: 'auth',
+  username: 'username',
+  _password: 'password',
+  certfile: 'certfile',
+  keyfile: 'keyfile',
+}
+
+const CERT_END = '-----END CERTIFICATE-----'
+
+/** Every `//host/path/:field` key, grouped by its prefix. */
+const credentialsFrom = (
+  npmrc: Npmrc,
   cwd: string,
-  sources: NpmrcSources = processSources(),
-): RegistryConfig => {
-  const merged = loadNpmrc(cwd, sources)
+): Record<string, RegistryCredentials> => {
+  const credentials: Record<string, RegistryCredentials> = {}
+  for (const [key, value] of Object.entries(npmrc)) {
+    if (!key.startsWith('//') || typeof value !== 'string') continue
+    const colon = key.lastIndexOf(':')
+    const field = CREDENTIAL_FIELDS[key.slice(colon + 1)]
+    if (!field) continue
+    const prefix = key.slice(0, colon)
+    const entry = credentials[prefix] ?? {}
+    entry[field] =
+      field === 'certfile' || field === 'keyfile'
+        ? path.resolve(cwd, value)
+        : value
+    credentials[prefix] = entry
+  }
+  return credentials
+}
 
-  const registry = stringValue(merged.registry) ?? 'https://registry.npmjs.org/'
+const stringList = (value: unknown): string[] | undefined => {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) {
+    const strings = value.filter((v): v is string => typeof v === 'string')
+    return strings.length > 0 ? strings : undefined
+  }
+  return undefined
+}
 
-  const scopedRegistries: Record<string, string> = {}
-  const authTokens: Record<string, string> = {}
-
-  for (const [key, value] of Object.entries(merged)) {
-    if (typeof value !== 'string') continue
-
-    if (/^@[^:]+:registry$/.test(key)) {
-      const scope = key.slice(0, key.indexOf(':'))
-      scopedRegistries[scope] = value
-      continue
+/** `cafile` (when readable) wins over `ca` / `ca[]`; undefined is Node's own store. */
+const caFrom = (
+  npmrc: Npmrc,
+  cwd: string,
+  sources: NpmrcSources,
+): string[] | undefined => {
+  const cafile = stringValue(npmrc.cafile)
+  if (cafile !== undefined) {
+    const file = resolveNpmPath(cafile, sources.home, cwd, sources.platform)
+    try {
+      const certs = fs
+        .readFileSync(file, 'utf8')
+        .replace(/\r\n/g, '\n')
+        .split(CERT_END)
+        .filter((part) => part.trim())
+        .map((part) => part.trimStart() + CERT_END)
+      if (certs.length > 0) return certs
+    } catch (error) {
+      logger.debug(
+        `Could not read cafile ${file}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
     }
+  }
+  return stringList(npmrc.ca)
+}
 
-    if (key.startsWith('//') && key.endsWith(':_authToken')) {
-      const host = hostFromAuthKey(key)
-      if (host) authTokens[stripTrailingSlash(host)] = value
+const proxyFrom = (npmrc: Npmrc, env: NodeJS.ProcessEnv): ProxySettings => {
+  const configured =
+    stringValue(npmrc['https-proxy']) ?? stringValue(npmrc.proxy)
+  const proxy: ProxySettings = {}
+  const https = configured ?? env.https_proxy ?? env.HTTPS_PROXY
+  const http = configured ?? env.http_proxy ?? env.HTTP_PROXY
+  if (https) proxy.HTTPS_PROXY = https
+  if (http) proxy.HTTP_PROXY = http
+
+  const noproxy = npmrc.noproxy
+  const raw = Array.isArray(noproxy)
+    ? noproxy.filter((v) => typeof v === 'string').join(',')
+    : (stringValue(noproxy) ?? env.no_proxy ?? env.NO_PROXY ?? '')
+  const entries = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+  // npm matches a bare host as a suffix too; Node's NO_PROXY needs `.host` for that.
+  const widened = entries.flatMap((entry) =>
+    entry.startsWith('.') || entry.startsWith('*')
+      ? [entry]
+      : [entry, `.${entry}`],
+  )
+  if (widened.length > 0) proxy.NO_PROXY = widened.join(',')
+  return proxy
+}
+
+const integerAtLeast = (
+  value: unknown,
+  min: number,
+  fallback: number,
+): number => {
+  const n = typeof value === 'string' ? Number(value) : Number.NaN
+  return Number.isInteger(n) && n >= min ? n : fallback
+}
+
+const timeoutFrom = (value: unknown): number => {
+  if (typeof value !== 'string' || value.trim() === '') return 300_000
+  const n = Number(value)
+  if (!Number.isInteger(n) || n < 0) return 300_000
+  return n === 0 ? 30_000 : n
+}
+
+/** The registry-facing view of merged .npmrc settings, with npm's defaults. */
+export const registryConfigFrom = (
+  npmrc: Npmrc,
+  cwd: string,
+  sources: NpmrcSources,
+): RegistryConfig => {
+  const scopedRegistries: Record<string, string> = {}
+  for (const [key, value] of Object.entries(npmrc)) {
+    if (typeof value === 'string' && /^@[^:]+:registry$/.test(key)) {
+      scopedRegistries[key.slice(0, key.indexOf(':'))] = value
     }
   }
 
   return {
-    registry,
+    registry: stringValue(npmrc.registry) ?? 'https://registry.npmjs.org/',
     scopedRegistries,
-    authTokens,
-    alwaysAuth: boolValue(merged['always-auth']),
-    strictSSL: boolValue(merged['strict-ssl']),
-    ca: stringValue(merged.ca),
-    cafile: stringValue(merged.cafile),
+    credentials: credentialsFrom(npmrc, cwd),
+    ca: caFrom(npmrc, cwd, sources),
+    strictSSL: boolValue(npmrc['strict-ssl']) ?? true,
+    proxy: proxyFrom(npmrc, sources.env),
+    fetchRetries: integerAtLeast(npmrc['fetch-retries'], 0, 2),
+    fetchTimeout: timeoutFrom(npmrc['fetch-timeout']),
+    maxSockets: integerAtLeast(npmrc.maxsockets, 1, 15),
   }
 }
+
+/**
+ * Loads .npmrc-style config the way npm does for the registry fields we care
+ * about (see `loadNpmrc` for precedence). Yarn berry's .yarnrc.yml and Bun's
+ * bunfig.toml are not read.
+ */
+export const loadRegistryConfig = (
+  cwd: string,
+  sources: NpmrcSources = processSources(),
+): RegistryConfig => registryConfigFrom(loadNpmrc(cwd, sources), cwd, sources)

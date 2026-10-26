@@ -63,7 +63,6 @@
     "@inquirer/prompts": "catalog:",
     "colorette": "catalog:",
     "commander": "catalog:",
-    "npm-registry-fetch": "catalog:",
     "semver": "catalog:"
   },
   "devDependencies": {
@@ -72,7 +71,6 @@
     "@swc/jest": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
-    "@types/npm-registry-fetch": "catalog:",
     "@types/semver": "catalog:",
     "globals": "catalog:",
     "jest": "catalog:",

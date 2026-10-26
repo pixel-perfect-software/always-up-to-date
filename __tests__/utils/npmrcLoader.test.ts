@@ -321,17 +321,27 @@ describe('npmrc loader', () => {
   })
 
   describe('loadRegistryConfig', () => {
-    it('falls back to the public registry when no .npmrc files exist', () => {
-      const config = loadRegistryConfig(at('proj'), sourcesFor())
+    const load = (npmrc: string, env: NodeJS.ProcessEnv = {}) => {
+      write(at('proj', '.npmrc'), npmrc)
+      return loadRegistryConfig(at('proj'), sourcesFor(env))
+    }
 
-      expect(config.registry).toBe('https://registry.npmjs.org/')
-      expect(config.scopedRegistries).toEqual({})
-      expect(config.authTokens).toEqual({})
+    it('uses npm defaults when no .npmrc files exist', () => {
+      expect(loadRegistryConfig(at('proj'), sourcesFor())).toEqual({
+        registry: 'https://registry.npmjs.org/',
+        scopedRegistries: {},
+        credentials: {},
+        ca: undefined,
+        strictSSL: true,
+        proxy: {},
+        fetchRetries: 2,
+        fetchTimeout: 300_000,
+        maxSockets: 15,
+      })
     })
 
-    it('reads registry, scoped registry, and auth from the project .npmrc', () => {
-      write(
-        at('proj', '.npmrc'),
+    it('reads registry, scoped registry, and credentials from the project .npmrc', () => {
+      const config = load(
         [
           'registry=https://registry.example.com/',
           '@my-org:registry=https://npm.my-org.dev/',
@@ -339,82 +349,198 @@ describe('npmrc loader', () => {
         ].join('\n'),
       )
 
-      const config = loadRegistryConfig(at('proj'), sourcesFor())
-
       expect(config.registry).toBe('https://registry.example.com/')
       expect(config.scopedRegistries).toEqual({
         '@my-org': 'https://npm.my-org.dev/',
       })
-      expect(config.authTokens).toEqual({ 'registry.example.com': 'abc123' })
+      expect(config.credentials).toEqual({
+        '//registry.example.com/': { authToken: 'abc123' },
+      })
     })
 
     it('substitutes ${VAR} env references inside values', () => {
-      write(
-        at('proj', '.npmrc'),
-        '//registry.example.com/:_authToken=${MY_TOKEN}',
-      )
+      const config = load('//registry.example.com/:_authToken=${MY_TOKEN}', {
+        MY_TOKEN: 'super-secret',
+      })
 
-      const config = loadRegistryConfig(
-        at('proj'),
-        sourcesFor({ MY_TOKEN: 'super-secret' }),
+      expect(config.credentials['//registry.example.com/']?.authToken).toBe(
+        'super-secret',
       )
-
-      expect(config.authTokens['registry.example.com']).toBe('super-secret')
     })
 
     it('lets npm_config_* env vars override file config', () => {
-      write(at('proj', '.npmrc'), 'registry=https://from-file.example/')
-
-      const config = loadRegistryConfig(
-        at('proj'),
-        sourcesFor({ npm_config_registry: 'https://from-env.example/' }),
-      )
+      const config = load('registry=https://from-file.example/', {
+        npm_config_registry: 'https://from-env.example/',
+      })
 
       expect(config.registry).toBe('https://from-env.example/')
     })
 
-    it('parses always-auth and strict-ssl as booleans', () => {
-      write(at('proj', '.npmrc'), 'always-auth=true\nstrict-ssl=false')
-
-      const config = loadRegistryConfig(at('proj'), sourcesFor())
-
-      expect(config.alwaysAuth).toBe(true)
-      expect(config.strictSSL).toBe(false)
-    })
-
-    it('reads ca and cafile', () => {
-      write(at('proj', '.npmrc'), 'ca=PEM\ncafile=/etc/ca.pem')
-
-      const config = loadRegistryConfig(at('proj'), sourcesFor())
-
-      expect(config.ca).toBe('PEM')
-      expect(config.cafile).toBe('/etc/ca.pem')
-    })
-
-    it('handles auth tokens for nested registry paths', () => {
-      write(
-        at('proj', '.npmrc'),
-        '//npm.pkg.github.com/scope/:_authToken=ghp_xxx',
+    it('groups every credential field by its prefix, keeping a port in the prefix', () => {
+      const config = load(
+        [
+          '//host.test:8443/npm/:_auth=dXNlcjpwYXNz',
+          '//host.test:8443/npm/:username=user',
+          '//host.test:8443/npm/:_password=cGFzcw==',
+          '//host.test/:certfile=certs/c.pem',
+          '//host.test/:keyfile=certs/k.pem',
+        ].join('\n'),
       )
 
-      const config = loadRegistryConfig(at('proj'), sourcesFor())
-
-      expect(config.authTokens).toEqual({
-        'npm.pkg.github.com/scope': 'ghp_xxx',
+      expect(config.credentials).toEqual({
+        '//host.test:8443/npm/': {
+          auth: 'dXNlcjpwYXNz',
+          username: 'user',
+          password: 'cGFzcw==',
+        },
+        '//host.test/': {
+          certfile: path.resolve(at('proj'), 'certs/c.pem'),
+          keyfile: path.resolve(at('proj'), 'certs/k.pem'),
+        },
       })
     })
 
-    it('ignores keys it does not recognize', () => {
-      write(
-        at('proj', '.npmrc'),
-        'registry=https://r.example/\nauto-install-peers=true\nsave-exact=true',
+    it('ignores unscoped credentials, non-string values and other keys', () => {
+      const config = load(
+        [
+          '_authToken=unscoped',
+          'always-auth=true',
+          '//host.test/:_authToken',
+          '//host.test/:email=a@b.test',
+          'auto-install-peers=true',
+        ].join('\n'),
       )
 
-      const config = loadRegistryConfig(at('proj'), sourcesFor())
-
-      expect(config.registry).toBe('https://r.example/')
+      expect(config.credentials).toEqual({})
       expect(config.scopedRegistries).toEqual({})
-      expect(config.authTokens).toEqual({})
+    })
+
+    it('reads strict-ssl as a boolean', () => {
+      expect(load('strict-ssl=false').strictSSL).toBe(false)
+      expect(load('strict-ssl=true').strictSSL).toBe(true)
+    })
+
+    describe('ca', () => {
+      it('reads ca as a one-element list', () => {
+        expect(load('ca=PEM').ca).toEqual(['PEM'])
+      })
+
+      it('reads ca[] and drops non-strings', () => {
+        expect(load('ca[]=ONE\nca[]=TWO\nca[]').ca).toEqual(['ONE', 'TWO'])
+      })
+
+      it('splits a cafile bundle into certificates, and it beats ca', () => {
+        const end = '-----END CERTIFICATE-----'
+        write(
+          at('proj', 'bundle.pem'),
+          `-----BEGIN CERTIFICATE-----\r\nA\r\n${end}\r\n\r\n-----BEGIN CERTIFICATE-----\r\nB\r\n${end}\r\n`,
+        )
+
+        expect(
+          load(`cafile=${JSON.stringify('bundle.pem')}\nca=IGNORED`).ca,
+        ).toEqual([
+          `-----BEGIN CERTIFICATE-----\nA\n${end}`,
+          `-----BEGIN CERTIFICATE-----\nB\n${end}`,
+        ])
+      })
+
+      it('falls back to ca when the cafile is missing', () => {
+        expect(load('cafile=missing.pem\nca=PEM').ca).toEqual(['PEM'])
+      })
+
+      it('resolves ~/ in cafile against the home directory', () => {
+        write(at('home', 'ca.pem'), 'X-----END CERTIFICATE-----\n')
+
+        expect(load('cafile="~/ca.pem"').ca).toEqual([
+          'X-----END CERTIFICATE-----',
+        ])
+      })
+    })
+
+    describe('proxy', () => {
+      it('is empty without settings', () => {
+        expect(load('').proxy).toEqual({})
+      })
+
+      it('uses https-proxy for both protocols, ahead of proxy and the environment', () => {
+        expect(
+          load('https-proxy=http://a.test:1\nproxy=http://b.test:2', {
+            HTTPS_PROXY: 'http://env.test:3',
+          }).proxy,
+        ).toEqual({
+          HTTPS_PROXY: 'http://a.test:1',
+          HTTP_PROXY: 'http://a.test:1',
+        })
+        expect(load('proxy=http://b.test:2').proxy).toEqual({
+          HTTPS_PROXY: 'http://b.test:2',
+          HTTP_PROXY: 'http://b.test:2',
+        })
+      })
+
+      it('falls back to the environment, lower case first', () => {
+        expect(
+          load('', {
+            https_proxy: 'http://lower.test',
+            HTTPS_PROXY: 'http://upper.test',
+            HTTP_PROXY: 'http://http-upper.test',
+          }).proxy,
+        ).toEqual({
+          HTTPS_PROXY: 'http://lower.test',
+          HTTP_PROXY: 'http://http-upper.test',
+        })
+      })
+
+      it('widens each bare noproxy host to match its subdomains', () => {
+        expect(
+          load('noproxy=example.test, .corp.test,*.lan').proxy.NO_PROXY,
+        ).toBe('example.test,.example.test,.corp.test,*.lan')
+      })
+
+      it('joins noproxy[] entries', () => {
+        expect(load('noproxy[]=a.test\nnoproxy[]=b.test').proxy.NO_PROXY).toBe(
+          'a.test,.a.test,b.test,.b.test',
+        )
+      })
+
+      it('reads NO_PROXY from the environment when .npmrc has none, lower case first', () => {
+        expect(load('', { NO_PROXY: 'a.test' }).proxy.NO_PROXY).toBe(
+          'a.test,.a.test',
+        )
+        expect(
+          load('', { no_proxy: 'low.test', NO_PROXY: 'up.test' }).proxy
+            .NO_PROXY,
+        ).toBe('low.test,.low.test')
+      })
+
+      it('lets .npmrc noproxy override the environment', () => {
+        expect(
+          load('noproxy=mine.test', { NO_PROXY: 'env.test' }).proxy.NO_PROXY,
+        ).toBe('mine.test,.mine.test')
+      })
+    })
+
+    describe('numbers', () => {
+      it('reads fetch-retries and maxsockets', () => {
+        const config = load('fetch-retries=0\nmaxsockets=3')
+
+        expect(config.fetchRetries).toBe(0)
+        expect(config.maxSockets).toBe(3)
+      })
+
+      it('falls back to the defaults for invalid values', () => {
+        const config = load(
+          'fetch-retries=-1\nmaxsockets=0\nfetch-timeout=soon',
+        )
+
+        expect(config.fetchRetries).toBe(2)
+        expect(config.maxSockets).toBe(15)
+        expect(config.fetchTimeout).toBe(300_000)
+      })
+
+      it('reads fetch-timeout, where 0 means 30 seconds', () => {
+        expect(load('fetch-timeout=1500').fetchTimeout).toBe(1500)
+        expect(load('fetch-timeout=0').fetchTimeout).toBe(30_000)
+      })
     })
   })
 })

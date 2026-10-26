@@ -11,14 +11,12 @@ catalog:
   "@inquirer/prompts": ^8.7.3
   colorette: ^2.0.20
   commander: ^15.0.0
-  npm-registry-fetch: ^20.0.1
   semver: ^7.8.5
   "@biomejs/biome": ^2.5.15
   "@swc/core": '^1.16.18'
   "@swc/jest": "^0.2.39"
   "@types/jest": ^30.0.0
   "@types/node": ^26.6.5
-  "@types/npm-registry-fetch": ^8.0.9
   "@types/semver": ^7.8.0
   globals: ^17.13.0
   jest: ^30.5.2
@@ -30,5 +28,3 @@ catalog:
 overrides:
   brace-expansion@>=2.0.0 <2.1.7: ^2.1.7
   brace-expansion@>=4.0.0 <5.0.12: ^5.0.12
-  http-cache-semantics@<=4.2.0: ^4.3.0
-  ip-address@<=10.7.0: ^10.7.1
