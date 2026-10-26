@@ -73,7 +73,9 @@ __tests__/
     jsonOutput.test.ts      # Real logger: stdout is exactly one JSON document with --json
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, JSON error object
   detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging
+  startup.test.ts           # Loading the CLI never loads the registry client
   fixtures/
+    registry.ts, tls/       # Local registry/proxy servers; test-only TLS material (generate.sh)
     index.ts                # readFixture(), exitError(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers
     npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)
   managers/
@@ -97,7 +99,11 @@ __tests__/
     files.test.ts           # File operations and version parsing tests
     filterPackages.test.ts  # Package filtering, targeting, cooldown integration
     logger.test.ts          # Logger output, configure(), quiet and JSON output modes
-    npmrcLoader.test.ts     # .npmrc / NPM_CONFIG_* parsing
+    npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
+    npmrcLoader.test.ts     # Layering (global, user, project, npm_config_*), workspace root, RegistryConfig, on temp dirs
+    registryRequest.test.ts # Pure client helpers: scoped registry, prefix walk, Authorization forms, retry rules
+    registryClient.test.ts  # node:https client against local HTTP(S) servers and a CONNECT proxy: auth, TLS, mTLS, proxies, retries, timeout, maxsockets, redirects
+    registry.test.ts        # fetchReleaseTimes: in-flight dedupe, fails open, scoped registry (#104)
     packageGrouper.test.ts  # Package grouping tests
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping
@@ -114,8 +120,8 @@ __tests__/
 - **Language:** TypeScript (ES2020 target, CommonJS output)
 - **CLI Framework:** Commander.js
 - **Package Manager:** pnpm (>=10.0.0)
-- **Node:** >=24.0.0
+- **Node:** ^22.23.0 || >=24.17.0 (`.tool-versions` pins 24.22.1)
 - **Testing:** Jest + @swc/jest
 - **Linting/Formatting:** Biome
 - **Path Aliases:** `@/*` -> `src/*` (resolved by tsc-alias at build)
-- **Key Dependencies:** semver, colorette, @inquirer/prompts, npm-registry-fetch (registry metadata for cooldown), ini (.npmrc parsing)
+- **Key Dependencies:** semver, colorette, @inquirer/prompts (registry metadata for cooldown comes from our own `node:https` client and `.npmrc` parser, no dependency)
