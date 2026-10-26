@@ -6,6 +6,7 @@ import {
   isRetryableError,
   isRetryableStatus,
   packumentUrl,
+  RETRY_AFTER_MAX_MS,
   RETRY_MAX_MS,
   registryFor,
   retryDelay,
@@ -175,8 +176,23 @@ describe('retries', () => {
     expect(retryDelay(0, 'Wed, 31 Dec 2025 23:00:00 GMT', now)).toBe(0)
   })
 
+  it('waits up to 10 seconds for Retry-After, past the backoff cap', () => {
+    expect(RETRY_AFTER_MAX_MS).toBe(10_000)
+    expect(retryDelay(0, '10', 0)).toBe(10_000)
+    expect(retryDelay(0, '5', 0)).toBe(5000)
+    expect(retryDelay(5, undefined, 0)).toBe(RETRY_MAX_MS)
+  })
+
   it('stops when Retry-After is over the cap', () => {
+    expect(retryDelay(0, '11', 0)).toBeUndefined()
     expect(retryDelay(0, '120', 0)).toBeUndefined()
+    expect(
+      retryDelay(
+        0,
+        'Thu, 01 Jan 2026 00:00:20 GMT',
+        Date.parse('2026-01-01T00:00:00Z'),
+      ),
+    ).toBeUndefined()
   })
 
   it('falls back to backoff for an unreadable Retry-After', () => {

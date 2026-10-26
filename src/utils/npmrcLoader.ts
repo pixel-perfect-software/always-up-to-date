@@ -2,8 +2,8 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import {
+  matchesWorkspacePatterns,
   readManifest,
-  readWorkspaceManifests,
   toPosix,
   workspacePatterns,
 } from '@/managers/workspaces'
@@ -32,6 +32,10 @@ export const processSources = (): NpmrcSources => ({
 
 const stringValue = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined
+
+/** A string with something in it: npm treats an empty setting as unset (`||`). */
+const nonEmpty = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined
 
 const boolValue = (value: unknown): boolean | undefined => {
   if (typeof value === 'boolean') return value
@@ -113,8 +117,13 @@ const findNpmProjectRoot = (cwd: string): string => {
       const patterns = workspacePatterns(readManifest(dir))
       if (patterns.length > 0) {
         const member = toPosix(path.relative(dir, localPrefix))
-        const members = readWorkspaceManifests(dir, patterns)
-        if (members.some((manifest) => manifest.path === member)) return dir
+        if (
+          member !== '' &&
+          matchesWorkspacePatterns(patterns, member) &&
+          isFile(path.join(localPrefix, 'package.json'))
+        ) {
+          return dir
+        }
       }
     }
     const parent = path.dirname(dir)
@@ -128,7 +137,7 @@ const findNpmProjectRoot = (cwd: string): string => {
 /**
  * The merged .npmrc settings, as npm resolves them. Precedence (high → low):
  * `npm_config_*` environment variables → the project's .npmrc → the user's
- * (`~/.npmrc`) → the global one (`<prefix>/etc/npmrc`).
+ * (`~/.npmrc`) → the global one (`<prefix>/etc/npmrc`) → npm's builtin one.
  */
 export const loadNpmrc = (
   cwd: string,
@@ -155,16 +164,36 @@ export const loadNpmrc = (
 
   const user = readNpmrc(userconfigOf(project), env)
 
-  const prefix =
-    env.PREFIX ??
-    (platform === 'win32'
+  // npm's builtin npmrc sits in its own install, found from the running node.
+  // DESTDIR (npm prefixes the default prefix with it on posix) is not supported.
+  const execPrefix =
+    platform === 'win32'
       ? path.dirname(execPath)
-      : path.dirname(path.dirname(execPath)))
+      : path.dirname(path.dirname(execPath))
+  const builtin = readNpmrc(
+    platform === 'win32'
+      ? path.join(execPrefix, 'node_modules', 'npm', 'npmrc')
+      : path.join(execPrefix, 'lib', 'node_modules', 'npm', 'npmrc'),
+    env,
+  )
+
+  const layers = [envLayer, project, user, builtin]
+  const pick = (key: string): string | undefined => {
+    for (const layer of layers) {
+      const value = stringValue(layer[key])
+      if (value !== undefined) return value
+    }
+    return undefined
+  }
+
+  const prefix = resolveNpmPath(
+    pick('prefix') ?? nonEmpty(env.PREFIX) ?? execPrefix,
+    home,
+    cwd,
+    platform,
+  )
   const globalconfig = resolveNpmPath(
-    stringValue(envLayer.globalconfig) ??
-      stringValue(project.globalconfig) ??
-      stringValue(user.globalconfig) ??
-      path.join(prefix, 'etc', 'npmrc'),
+    pick('globalconfig') ?? path.resolve(prefix, 'etc/npmrc'),
     home,
     cwd,
     platform,
@@ -172,6 +201,7 @@ export const loadNpmrc = (
 
   return Object.assign(
     Object.create(null),
+    builtin,
     readNpmrc(globalconfig, env),
     user,
     project,
@@ -183,14 +213,18 @@ export const loadNpmrc = (
 export const npmrcBoolean = (value: unknown): boolean | undefined =>
   boolValue(value)
 
-const CREDENTIAL_FIELDS: Record<string, keyof RegistryCredentials> = {
-  _authToken: 'authToken',
-  _auth: 'auth',
-  username: 'username',
-  _password: 'password',
-  certfile: 'certfile',
-  keyfile: 'keyfile',
-}
+const CREDENTIAL_FIELDS: Record<string, keyof RegistryCredentials> =
+  Object.assign(Object.create(null), {
+    _authToken: 'authToken',
+    _auth: 'auth',
+    username: 'username',
+    _password: 'password',
+    certfile: 'certfile',
+    keyfile: 'keyfile',
+  })
+
+/** A `${VAR}` the parser left in place because VAR is unset. */
+const UNEXPANDED = /\$\{[^}]*\}/
 
 const CERT_END = '-----END CERTIFICATE-----'
 
@@ -205,24 +239,24 @@ const credentialsFrom = (
     const colon = key.lastIndexOf(':')
     const field = CREDENTIAL_FIELDS[key.slice(colon + 1)]
     if (!field) continue
+    const isPath = field === 'certfile' || field === 'keyfile'
+    // A literal ${NPM_TOKEN} is never a valid secret; sending it only turns an
+    // anonymous read into a 401.
+    if (!isPath && UNEXPANDED.test(value)) continue
     const prefix = key.slice(0, colon)
     const entry = credentials[prefix] ?? {}
-    entry[field] =
-      field === 'certfile' || field === 'keyfile'
-        ? path.resolve(cwd, value)
-        : value
+    entry[field] = isPath ? path.resolve(cwd, value) : value
     credentials[prefix] = entry
   }
   return credentials
 }
 
 const stringList = (value: unknown): string[] | undefined => {
-  if (typeof value === 'string') return [value]
-  if (Array.isArray(value)) {
-    const strings = value.filter((v): v is string => typeof v === 'string')
-    return strings.length > 0 ? strings : undefined
-  }
-  return undefined
+  // An empty entry would make the Agent drop Node's default trust store.
+  const strings = (Array.isArray(value) ? value : [value]).filter(
+    (v): v is string => typeof v === 'string' && v.trim() !== '',
+  )
+  return strings.length > 0 ? strings : undefined
 }
 
 /** `cafile` (when readable) wins over `ca` / `ca[]`; undefined is Node's own store. */
@@ -231,7 +265,7 @@ const caFrom = (
   cwd: string,
   sources: NpmrcSources,
 ): string[] | undefined => {
-  const cafile = stringValue(npmrc.cafile)
+  const cafile = nonEmpty(npmrc.cafile)
   if (cafile !== undefined) {
     const file = resolveNpmPath(cafile, sources.home, cwd, sources.platform)
     try {
@@ -254,18 +288,30 @@ const caFrom = (
 }
 
 const proxyFrom = (npmrc: Npmrc, env: NodeJS.ProcessEnv): ProxySettings => {
-  const configured =
-    stringValue(npmrc['https-proxy']) ?? stringValue(npmrc.proxy)
+  const configured = nonEmpty(npmrc['https-proxy']) ?? nonEmpty(npmrc.proxy)
   const proxy: ProxySettings = {}
-  const https = configured ?? env.https_proxy ?? env.HTTPS_PROXY
-  const http = configured ?? env.http_proxy ?? env.HTTP_PROXY
+  const httpsEnv = nonEmpty(env.https_proxy) ?? nonEmpty(env.HTTPS_PROXY)
+  const https = configured ?? httpsEnv
+  // For an http registry npm's agent takes https_proxy || http_proxy || proxy
+  // from the environment (@npmcli/agent proxy.js).
+  const http =
+    configured ??
+    httpsEnv ??
+    nonEmpty(env.http_proxy) ??
+    nonEmpty(env.HTTP_PROXY) ??
+    nonEmpty(env.proxy) ??
+    nonEmpty(env.PROXY)
   if (https) proxy.HTTPS_PROXY = https
   if (http) proxy.HTTP_PROXY = http
 
   const noproxy = npmrc.noproxy
-  const raw = Array.isArray(noproxy)
-    ? noproxy.filter((v) => typeof v === 'string').join(',')
-    : (stringValue(noproxy) ?? env.no_proxy ?? env.NO_PROXY ?? '')
+  const raw =
+    (Array.isArray(noproxy)
+      ? noproxy.filter((v) => typeof v === 'string').join(',')
+      : nonEmpty(noproxy)) ||
+    nonEmpty(env.no_proxy) ||
+    nonEmpty(env.NO_PROXY) ||
+    ''
   const entries = raw
     .split(',')
     .map((entry) => entry.trim())
@@ -289,11 +335,25 @@ const integerAtLeast = (
   return Number.isInteger(n) && n >= min ? n : fallback
 }
 
+const MAX_TIMER_MS = 2 ** 31 - 1
+
 const timeoutFrom = (value: unknown): number => {
   if (typeof value !== 'string' || value.trim() === '') return 300_000
   const n = Number(value)
   if (!Number.isInteger(n) || n < 0) return 300_000
-  return n === 0 ? 30_000 : n
+  // AbortSignal.timeout treats anything above 2^31-1 ms as 1 ms.
+  return n === 0 ? 30_000 : Math.min(n, MAX_TIMER_MS)
+}
+
+const DEFAULT_REGISTRY = 'https://registry.npmjs.org/'
+
+const isRegistryUrl = (value: string): boolean => {
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'https:' || protocol === 'http:'
+  } catch {
+    return false
+  }
 }
 
 /** The registry-facing view of merged .npmrc settings, with npm's defaults. */
@@ -304,13 +364,24 @@ export const registryConfigFrom = (
 ): RegistryConfig => {
   const scopedRegistries: Record<string, string> = {}
   for (const [key, value] of Object.entries(npmrc)) {
-    if (typeof value === 'string' && /^@[^:]+:registry$/.test(key)) {
-      scopedRegistries[key.slice(0, key.indexOf(':'))] = value
-    }
+    if (typeof value !== 'string' || !/^@[^:]+:registry$/.test(key)) continue
+    const scope = key.slice(0, key.indexOf(':'))
+    if (isRegistryUrl(value)) scopedRegistries[scope] = value
+    else logger.debug(`Ignoring ${key}: not an http(s) URL`)
+  }
+
+  const configured = npmrc.registry
+  let registry = DEFAULT_REGISTRY
+  if (typeof configured === 'string') {
+    if (isRegistryUrl(configured)) registry = configured
+    else
+      logger.debug(
+        `Ignoring registry: not an http(s) URL; using ${DEFAULT_REGISTRY}`,
+      )
   }
 
   return {
-    registry: stringValue(npmrc.registry) ?? 'https://registry.npmjs.org/',
+    registry,
     scopedRegistries,
     credentials: credentialsFrom(npmrc, cwd),
     ca: caFrom(npmrc, cwd, sources),

@@ -7,6 +7,7 @@ import { setTimeout as sleepFor } from 'timers/promises'
 import zlib from 'zlib'
 import type { RegistryConfig, RegistryCredentials } from '@/types'
 import packageJson from '../../package.json'
+import logger from './logger'
 import {
   authorizationFor,
   credentialsFor,
@@ -57,6 +58,19 @@ type Outcome =
   | { kind: 'redirect'; location: string }
   | { kind: 'status'; status: number; message: string; retryAfter?: string }
 
+const decode = (value: string): string => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+const basicFromUserinfo = (url: URL): string | undefined =>
+  url.username || url.password
+    ? `Basic ${Buffer.from(`${decode(url.username)}:${decode(url.password)}`).toString('base64')}`
+    : undefined
+
 /** The URL without userinfo or query: safe to put in an error or a log line. */
 const redact = (url: URL): string => `${url.origin}${url.pathname}`
 
@@ -90,6 +104,26 @@ const readBody = async (res: http.IncomingMessage): Promise<Buffer> => {
     },
   )
   return Buffer.concat(chunks)
+}
+
+/** The client certificate and key, or nothing (with a debug line) when either cannot be read. */
+const clientCertificate = (
+  url: URL,
+  certfile: string | undefined,
+  keyfile: string | undefined,
+): { cert?: string; key?: string } => {
+  if (!certfile || !keyfile) return {}
+  try {
+    return {
+      cert: fs.readFileSync(certfile, 'utf8'),
+      key: fs.readFileSync(keyfile, 'utf8'),
+    }
+  } catch (error) {
+    logger.debug(
+      `Skipping the client certificate for ${url.host}: ${codeOf(error) ?? 'unreadable'}`,
+    )
+    return {}
+  }
 }
 
 export const createRegistryClient = (
@@ -127,12 +161,7 @@ export const createRegistryClient = (
             ...base,
             rejectUnauthorized: config.strictSSL,
             ...(config.ca ? { ca: config.ca } : {}),
-            ...(certfile && keyfile
-              ? {
-                  cert: fs.readFileSync(certfile, 'utf8'),
-                  key: fs.readFileSync(keyfile, 'utf8'),
-                }
-              : {}),
+            ...clientCertificate(url, certfile, keyfile),
           })
         : new http.Agent(base)
     agents.set(key, agent)
@@ -145,10 +174,13 @@ export const createRegistryClient = (
     callerSignals: AbortSignal[],
   ): Promise<Outcome> => {
     const url = new URL(target)
+    // npm sends userinfo in the URL as Basic auth, unless .npmrc scopes
+    // credentials to the prefix. It is never sent in the URL, logged or thrown.
+    const userinfo = basicFromUserinfo(url)
     url.username = ''
     url.password = ''
     const credentials = credentialsFor(url, registry, config.credentials)
-    const authorization = authorizationFor(credentials)
+    const authorization = authorizationFor(credentials) ?? userinfo
     const timeout = AbortSignal.timeout(config.fetchTimeout)
     const signal = AbortSignal.any([timeout, ...callerSignals])
 
@@ -236,7 +268,14 @@ export const createRegistryClient = (
       if (outcome.kind === 'json') return outcome.value
 
       if (outcome.kind === 'redirect') {
-        const next = new URL(outcome.location, target)
+        let next: URL
+        try {
+          next = new URL(outcome.location, target)
+        } catch {
+          throw new RegistryRequestError(
+            `GET ${redact(target)}: redirect to an invalid location`,
+          )
+        }
         if (++redirects > MAX_REDIRECTS) {
           throw new RegistryRequestError(
             `GET ${redact(target)}: too many redirects`,

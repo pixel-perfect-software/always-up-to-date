@@ -285,7 +285,25 @@ describe('registry client', () => {
       expect(authOf(server)).toEqual([undefined])
     })
 
-    it('never puts URL userinfo on the wire or in an error', async () => {
+    it('sends registry URL userinfo as Basic auth, never in the URL', async () => {
+      const server = await registry()
+      const base = `http://us%40er:p%3Ass@127.0.0.1:${server.port}/`
+      await clientFor(configFrom('')).getJson(`${base}pkg`, base)
+      expect(authOf(server)).toEqual([
+        `Basic ${Buffer.from('us@er:p:ss').toString('base64')}`,
+      ])
+      expect(server.requests[0].url).toBe('/pkg')
+    })
+
+    it('prefers credentials scoped to the prefix over URL userinfo', async () => {
+      const server = await registry()
+      const base = `http://user:pw@127.0.0.1:${server.port}/`
+      const config = configFrom(`//127.0.0.1:${server.port}/:_authToken=TOK`)
+      await clientFor(config).getJson(`${base}pkg`, base)
+      expect(authOf(server)).toEqual(['Bearer TOK'])
+    })
+
+    it('never puts URL userinfo or the query in an error', async () => {
       const server = await registry((_req, res) => {
         res.statusCode = 404
         res.end()
@@ -296,7 +314,21 @@ describe('registry client', () => {
         .catch((e: unknown) => e)
       expect(error).toBeInstanceOf(RegistryRequestError)
       expect(String((error as Error).message)).not.toMatch(/secret|token=q/)
-      expect(authOf(server)).toEqual([undefined])
+    })
+
+    it('still sends the token when the certfile or keyfile is missing', async () => {
+      const server = await registry(json({ ok: 'noclient' }), { tls: 'server' })
+      const prefix = `//127.0.0.1:${server.port}/`
+      const config = configFrom(
+        [
+          `ca=${ca}`,
+          `${prefix}:_authToken=TOK`,
+          `${prefix}:certfile=missing-cert.pem`,
+          `${prefix}:keyfile=missing-key.pem`,
+        ].join('\n'),
+      )
+      expect(await get(config, server)).toEqual({ ok: 'noclient' })
+      expect(authOf(server)).toEqual(['Bearer TOK'])
     })
   })
 
@@ -346,6 +378,20 @@ describe('registry client', () => {
         /refused redirect/,
       )
       expect(target.requests).toHaveLength(0)
+    })
+
+    it('turns a malformed Location into a redacted error, without retrying', async () => {
+      const server = await registry((_req, res) => {
+        res.statusCode = 302
+        res.setHeader('location', 'http://[secret-host')
+        res.end()
+      })
+      const error = await get(configFrom(''), server).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(RegistryRequestError)
+      expect((error as Error).message).toMatch(/invalid location/)
+      expect((error as Error).message).not.toMatch(/secret-host/)
+      expect(server.requests).toHaveLength(1)
+      expect(delays).toEqual([])
     })
 
     it('gives up after five redirects', async () => {
@@ -535,10 +581,25 @@ describe('registry client', () => {
       expect(delays).toEqual([1000])
     })
 
+    it('waits for a Retry-After of up to ten seconds', async () => {
+      let call = 0
+      const server = await registry((req, res) => {
+        if (call++ === 0) {
+          res.statusCode = 503
+          res.setHeader('retry-after', '10')
+          res.end()
+          return
+        }
+        json({ ok: true })(req, res)
+      })
+      await get(configFrom(''), server)
+      expect(delays).toEqual([10_000])
+    })
+
     it('stops at a Retry-After over the cap', async () => {
       const server = await registry((_req, res) => {
         res.statusCode = 429
-        res.setHeader('retry-after', '120')
+        res.setHeader('retry-after', '11')
         res.end()
       })
       await expect(get(configFrom(''), server)).rejects.toMatchObject({

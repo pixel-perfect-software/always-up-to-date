@@ -187,6 +187,41 @@ describe('npmrc loader', () => {
           expect(loadNpmrc(member(), sourcesFor()).k).toBe('root')
         })
 
+        it('matches a packages/** pattern against a nested member', () => {
+          write(
+            at('ws', 'package.json'),
+            JSON.stringify({ workspaces: ['packages/**'] }),
+          )
+          write(at('ws', 'packages', 'team', 'b', 'package.json'), '{}')
+          write(at('ws', 'packages', 'team', 'b', '.npmrc'), 'k=nested')
+
+          expect(
+            loadNpmrc(at('ws', 'packages', 'team', 'b'), sourcesFor()).k,
+          ).toBe('root')
+        })
+
+        it('does not treat a matching directory without a package.json as a member', () => {
+          write(
+            at('ws', 'package.json'),
+            JSON.stringify({ workspaces: ['packages/*'] }),
+          )
+          write(at('ws', 'packages', 'bare', 'node_modules', 'x', 'y'), '')
+          write(at('ws', 'packages', 'bare', '.npmrc'), 'k=bare')
+
+          expect(loadNpmrc(at('ws', 'packages', 'bare'), sourcesFor()).k).toBe(
+            'bare',
+          )
+        })
+
+        it('honors a negated pattern', () => {
+          write(
+            at('ws', 'package.json'),
+            JSON.stringify({ workspaces: ['packages/*', '!packages/a'] }),
+          )
+
+          expect(loadNpmrc(member(), sourcesFor()).k).toBe('member')
+        })
+
         it('uses the member .npmrc when the parent has no workspaces field', () => {
           write(at('ws', 'package.json'), '{}')
 
@@ -285,6 +320,106 @@ describe('npmrc loader', () => {
         )
 
         expect(loadNpmrc(at('proj'), sources).k).toBe('win')
+      })
+
+      it('ignores an empty PREFIX', () => {
+        write(globalFile(), 'k=exec')
+
+        expect(loadNpmrc(at('proj'), sourcesFor({ PREFIX: '' })).k).toBe('exec')
+      })
+
+      it('puts the default globalconfig under a prefix set in the user .npmrc', () => {
+        write(at('custom', 'etc', 'npmrc'), 'k=from-prefix')
+        write(globalFile(), 'k=exec')
+        write(userFile(), `prefix=${JSON.stringify(at('custom'))}`)
+
+        expect(loadNpmrc(at('proj'), sourcesFor()).k).toBe('from-prefix')
+      })
+
+      it('lets npm_config_prefix beat the project, user and PREFIX', () => {
+        write(at('env', 'etc', 'npmrc'), 'k=env')
+        write(at('custom', 'etc', 'npmrc'), 'k=user')
+        write(userFile(), `prefix=${JSON.stringify(at('custom'))}`)
+
+        const sources = sourcesFor({
+          npm_config_prefix: at('env'),
+          PREFIX: at('other'),
+        })
+
+        expect(loadNpmrc(at('proj'), sources).k).toBe('env')
+      })
+
+      it('reads a prefix set in the project .npmrc, as npm does', () => {
+        write(at('custom', 'etc', 'npmrc'), 'k=project')
+        write(at('proj', '.npmrc'), `prefix=${JSON.stringify(at('custom'))}`)
+
+        expect(loadNpmrc(at('proj'), sourcesFor()).k).toBe('project')
+      })
+
+      describe("npm's builtin npmrc", () => {
+        it('is the lowest layer on posix, under <prefix>/lib/node_modules/npm', () => {
+          write(
+            path.join(tmp, 'usr', 'lib', 'node_modules', 'npm', 'npmrc'),
+            'k=builtin\nonly-builtin=yes',
+          )
+          write(path.join(tmp, 'usr', 'etc', 'npmrc'), 'k=global')
+
+          const config = loadNpmrc(
+            at('proj'),
+            sourcesFor(
+              {},
+              {
+                platform: 'linux',
+                execPath: path.join(tmp, 'usr', 'bin', 'node'),
+              },
+            ),
+          )
+
+          expect(config.k).toBe('global')
+          expect(config['only-builtin']).toBe('yes')
+        })
+
+        it('sits beside node.exe on win32', () => {
+          write(
+            path.join(tmp, 'node', 'node_modules', 'npm', 'npmrc'),
+            'only-builtin=win',
+          )
+
+          const config = loadNpmrc(
+            at('proj'),
+            sourcesFor(
+              {},
+              {
+                platform: 'win32',
+                execPath: path.join(tmp, 'node', 'node.exe'),
+              },
+            ),
+          )
+
+          expect(config['only-builtin']).toBe('win')
+        })
+
+        it('can point globalconfig elsewhere, as Debian does', () => {
+          write(
+            path.join(tmp, 'usr', 'lib', 'node_modules', 'npm', 'npmrc'),
+            `globalconfig=${JSON.stringify(at('etc', 'npmrc'))}`,
+          )
+          write(at('etc', 'npmrc'), 'k=debian')
+          write(path.join(tmp, 'usr', 'etc', 'npmrc'), 'k=default')
+
+          const config = loadNpmrc(
+            at('proj'),
+            sourcesFor(
+              {},
+              {
+                platform: 'linux',
+                execPath: path.join(tmp, 'usr', 'bin', 'node'),
+              },
+            ),
+          )
+
+          expect(config.k).toBe('debian')
+        })
       })
 
       it('reads npm_config_globalconfig', () => {
@@ -415,6 +550,54 @@ describe('npmrc loader', () => {
       expect(config.scopedRegistries).toEqual({})
     })
 
+    it('falls back to the public registry for an empty or unparsable registry', () => {
+      expect(load('registry=').registry).toBe('https://registry.npmjs.org/')
+      expect(load('registry=${REG?}', {}).registry).toBe(
+        'https://registry.npmjs.org/',
+      )
+      expect(load('registry=${REG}').registry).toBe(
+        'https://registry.npmjs.org/',
+      )
+      expect(load('registry=not a url').registry).toBe(
+        'https://registry.npmjs.org/',
+      )
+    })
+
+    it('ignores an empty or invalid scoped registry', () => {
+      expect(
+        load('@a:registry=\n@b:registry=${NOPE}\n@c:registry=https://c.test/')
+          .scopedRegistries,
+      ).toEqual({ '@c': 'https://c.test/' })
+    })
+
+    it('treats a credential with an unexpanded ${VAR} as absent', () => {
+      const config = load(
+        [
+          '//a.test/:_authToken=${NPM_TOKEN}',
+          '//b.test/:_auth=${A}',
+          '//c.test/:username=${U}',
+          '//c.test/:_password=${P}',
+          '//d.test/:_authToken=real',
+        ].join('\n'),
+      )
+
+      expect(config.credentials).toEqual({
+        '//d.test/': { authToken: 'real' },
+      })
+    })
+
+    it('does not read inherited object members as credential fields', () => {
+      const config = load(
+        '//a.test/:constructor=x\n//a.test/:toString=y\n//a.test/:__proto__=z',
+      )
+
+      expect(config.credentials).toEqual({})
+    })
+
+    it('clamps a huge fetch-timeout to the largest timer value', () => {
+      expect(load('fetch-timeout=99999999999').fetchTimeout).toBe(2 ** 31 - 1)
+    })
+
     it('reads strict-ssl as a boolean', () => {
       expect(load('strict-ssl=false').strictSSL).toBe(false)
       expect(load('strict-ssl=true').strictSSL).toBe(true)
@@ -427,6 +610,20 @@ describe('npmrc loader', () => {
 
       it('reads ca[] and drops non-strings', () => {
         expect(load('ca[]=ONE\nca[]=TWO\nca[]').ca).toEqual(['ONE', 'TWO'])
+      })
+
+      it('treats an empty ca as unset, so Node keeps its default trust store', () => {
+        expect(load('ca=').ca).toBeUndefined()
+        expect(load('ca=""').ca).toBeUndefined()
+        expect(load('ca[]=').ca).toBeUndefined()
+      })
+
+      it('drops an empty ca[] element and keeps the rest', () => {
+        expect(load('ca[]=\nca[]=PEM').ca).toEqual(['PEM'])
+      })
+
+      it('treats an empty cafile as unset', () => {
+        expect(load('cafile=\nca=PEM').ca).toEqual(['PEM'])
       })
 
       it('splits a cafile bundle into certificates, and it beats ca', () => {
@@ -486,8 +683,62 @@ describe('npmrc loader', () => {
           }).proxy,
         ).toEqual({
           HTTPS_PROXY: 'http://lower.test',
-          HTTP_PROXY: 'http://http-upper.test',
+          HTTP_PROXY: 'http://lower.test',
         })
+      })
+
+      it("gives an http registry npm's order: https_proxy, http_proxy, proxy", () => {
+        expect(
+          load('', {
+            HTTP_PROXY: 'http://hu.test',
+            http_proxy: 'http://hl.test',
+          }).proxy,
+        ).toEqual({ HTTP_PROXY: 'http://hl.test' })
+        expect(load('', { HTTP_PROXY: 'http://hu.test' }).proxy).toEqual({
+          HTTP_PROXY: 'http://hu.test',
+        })
+        expect(load('', { proxy: 'http://p.test' }).proxy).toEqual({
+          HTTP_PROXY: 'http://p.test',
+        })
+        expect(
+          load('', {
+            HTTPS_PROXY: 'http://hs.test',
+            http_proxy: 'http://h.test',
+          }).proxy,
+        ).toEqual({
+          HTTPS_PROXY: 'http://hs.test',
+          HTTP_PROXY: 'http://hs.test',
+        })
+      })
+
+      it('treats an empty https-proxy as unset, falling to proxy and the environment', () => {
+        expect(load('https-proxy=\nproxy=http://b.test:2').proxy).toEqual({
+          HTTPS_PROXY: 'http://b.test:2',
+          HTTP_PROXY: 'http://b.test:2',
+        })
+        expect(
+          load('https-proxy=\nproxy=', { HTTPS_PROXY: 'http://env.test' })
+            .proxy,
+        ).toEqual({
+          HTTPS_PROXY: 'http://env.test',
+          HTTP_PROXY: 'http://env.test',
+        })
+        expect(
+          load('', { https_proxy: '', HTTPS_PROXY: 'http://env.test' }).proxy
+            .HTTPS_PROXY,
+        ).toBe('http://env.test')
+      })
+
+      it('treats an empty noproxy as unset, falling to NO_PROXY', () => {
+        expect(load('noproxy=', { NO_PROXY: 'env.test' }).proxy.NO_PROXY).toBe(
+          'env.test,.env.test',
+        )
+        expect(
+          load('noproxy[]=', { NO_PROXY: 'env.test' }).proxy.NO_PROXY,
+        ).toBe('env.test,.env.test')
+        expect(
+          load('', { no_proxy: '', NO_PROXY: 'env.test' }).proxy.NO_PROXY,
+        ).toBe('env.test,.env.test')
       })
 
       it('widens each bare noproxy host to match its subdomains', () => {

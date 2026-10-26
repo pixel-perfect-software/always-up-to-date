@@ -2,6 +2,10 @@ import type { RegistryConfig, RegistryCredentials } from '@/types'
 
 export const RETRY_BASE_MS = 100
 export const RETRY_MAX_MS = 1000
+// A throttled registry is abnormal, so a server's own `Retry-After` is waited
+// for up to this long. Past it we stop retrying: a skipped lookup lets the
+// update through without its cooldown check, which beats stalling the run.
+export const RETRY_AFTER_MAX_MS = 10_000
 
 const RETRYABLE_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT'])
 
@@ -95,7 +99,8 @@ export const isRetryableError = (error: unknown): boolean =>
 
 /**
  * Milliseconds to wait before retry `attempt` (0-based), or undefined to stop:
- * a `Retry-After` longer than the cap is not waited for and not cut short.
+ * a `Retry-After` over `RETRY_AFTER_MAX_MS` is not waited for and not cut
+ * short. Without the header, backoff doubles from 100 ms up to `RETRY_MAX_MS`.
  */
 export const retryDelay = (
   attempt: number,
@@ -110,7 +115,7 @@ export const retryDelay = (
       const date = Date.parse(header)
       if (!Number.isNaN(date)) ms = Math.max(0, date - now)
     }
-    if (ms !== undefined) return ms <= RETRY_MAX_MS ? ms : undefined
+    if (ms !== undefined) return ms <= RETRY_AFTER_MAX_MS ? ms : undefined
   }
   return Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS)
 }
