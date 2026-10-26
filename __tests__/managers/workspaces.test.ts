@@ -3,10 +3,8 @@ import os from 'os'
 import path from 'path'
 import {
   readWorkspaceManifests,
-  workspaceOwner,
   workspacePatterns,
 } from '@/managers/workspaces'
-import { StepError } from '@/stepError'
 
 jest.mock('@/utils/logger')
 
@@ -176,38 +174,5 @@ describe('readWorkspaceManifests', () => {
     fs.writeFileSync(path.join(cwd, 'package.json'), '{}')
 
     expect(readWorkspaceManifests(cwd, [])).toEqual([{ path: '.' }])
-  })
-})
-
-describe('workspaceOwner', () => {
-  const manifests = [
-    { path: '.', name: 'ws-root' },
-    { path: 'packages/a', name: '@ws/a' },
-  ]
-
-  it('resolves a workspace name to its directory', () => {
-    const ownerOf = workspaceOwner(manifests, 'yarn')
-
-    expect(ownerOf('ws-root')).toBe('.')
-    expect(ownerOf('@ws/a')).toBe('packages/a')
-  })
-
-  it('throws a discover StepError for a name no manifest declares', () => {
-    const ownerOf = workspaceOwner(manifests, 'yarn')
-
-    expect(() => ownerOf('@ws/zzz')).toThrow(StepError)
-    expect(() => ownerOf('@ws/zzz')).toThrow(
-      'yarn reported workspace "@ws/zzz", which no manifest matched by the workspaces patterns declares',
-    )
-    try {
-      ownerOf('@ws/zzz')
-    } catch (error) {
-      expect((error as StepError).step).toBe('discover')
-    }
-  })
-
-  it('reads the empty name as the root only when the root has no name', () => {
-    expect(workspaceOwner([{ path: '.' }], 'bun')('')).toBe('.')
-    expect(() => workspaceOwner(manifests, 'bun')('')).toThrow(StepError)
   })
 })

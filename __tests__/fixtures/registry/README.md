@@ -23,3 +23,49 @@ Wire size is the compressed size on the wire. The capture machine runs an Aikido
 | `mkdirp.packument.body` | `registry.npmjs.org/mkdirp`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 20272 B |
 | `types-ms.packument-full.body` | `registry.npmjs.org/@types%2fms`, `Accept: application/json` | 200 | `application/json` | 6313 B |
 | `not-found.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/autd-no-such-package-20261026` | 404 | `text/plain; charset=utf-8` | 42 B |
+
+## Discovery captures (2026-10-26)
+
+Captured for #106's `wanted` rule, spec and catalog tests; the same checks ran first (curl `--compressed`, no credentials, the Aikido proxy in the path):
+
+- deps.dev and the abbreviated packument list the same versions and the same deprecated versions for 12 of the 14 packages, and both include `latest`. The packuments of every package but `yarn` and `pnpm` were fetched into a scratchpad and are not committed.
+- `react` and `react-dom` failed that check, and the packument was at fault. deps.dev lists `0.0.0-experimental-fd51cb10-20261026` (2991 and 2946 versions), published that day, and the proxied packument omits it (2990 and 2945). The registry's own dist-tags endpoint names that version as `experimental`, so deps.dev's list is the faithful one: the proxy strips fresh versions from packuments, as noted above. Their dist-tags and deps.dev bodies are committed; the packuments are not. Both deps.dev bodies include the dist-tags `latest` (19.3.1).
+- `yarn`: `latest` is `1.22.22` and `berry` is `2.4.3`; 2.4.3 is listed and not deprecated.
+- `pnpm`: 5.18.0 to 5.18.10 are not deprecated and 5.18.11 is.
+- `dayjs`: 1.10.8 is the highest 1.10.x and is not deprecated.
+- `pnpm.packument.body.gz` is 641517 B gzipped, under the 1 MB limit, so both sources are kept for `pnpm`.
+
+A body over 100 KB decoded is committed as `<name>.body.gz` (`gzip -9 -n`); gunzipped it is the captured bytes. `*.gz` is `binary` in `.gitattributes`. Wire size is what curl downloaded; decoded size is the size of the body a test reads.
+
+| File | Request | Status | Content type | Wire size | Decoded size | gz |
+|---|---|---|---|---|---|---|
+| `yarn.dist-tags.body` | `registry.npmjs.org/-/package/yarn/dist-tags` | 200 | `application/json` | 79 B | 68 B | no |
+| `yarn.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/yarn` | 200 | `application/json; charset=utf-8` | 1854 B | 28036 B | no |
+| `pnpm.dist-tags.body` | `registry.npmjs.org/-/package/pnpm/dist-tags` | 200 | `application/json` | 192 B | 452 B | no |
+| `pnpm.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/pnpm` | 200 | `application/json; charset=utf-8` | 16877 B | 236694 B | yes |
+| `dayjs.dist-tags.body` | `registry.npmjs.org/-/package/dayjs/dist-tags` | 200 | `application/json` | 44 B | 44 B | no |
+| `dayjs.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/dayjs` | 200 | `application/json; charset=utf-8` | 1966 B | 22623 B | no |
+| `debug.dist-tags.body` | `registry.npmjs.org/-/package/debug/dist-tags` | 200 | `application/json` | 33 B | 33 B | no |
+| `debug.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/debug` | 200 | `application/json; charset=utf-8` | 1446 B | 15492 B | no |
+| `express.dist-tags.body` | `registry.npmjs.org/-/package/express/dist-tags` | 200 | `application/json` | 38 B | 38 B | no |
+| `express.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/express` | 200 | `application/json; charset=utf-8` | 3606 B | 56708 B | no |
+| `semver.dist-tags.body` | `registry.npmjs.org/-/package/semver/dist-tags` | 200 | `application/json` | 71 B | 54 B | no |
+| `semver.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/semver` | 200 | `application/json; charset=utf-8` | 1616 B | 19593 B | no |
+| `zod.dist-tags.body` | `registry.npmjs.org/-/package/zod/dist-tags` | 200 | `application/json` | 131 B | 145 B | no |
+| `zod.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/zod` | 200 | `application/json; charset=utf-8` | 11766 B | 177671 B | yes |
+| `axios.dist-tags.body` | `registry.npmjs.org/-/package/axios/dist-tags` | 200 | `application/json` | 89 B | 79 B | no |
+| `axios.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/axios` | 200 | `application/json; charset=utf-8` | 2357 B | 29190 B | no |
+| `lodash.dist-tags.body` | `registry.npmjs.org/-/package/lodash/dist-tags` | 200 | `application/json` | 19 B | 19 B | no |
+| `lodash.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/lodash` | 200 | `application/json; charset=utf-8` | 1598 B | 19369 B | no |
+| `next.dist-tags.body` | `registry.npmjs.org/-/package/next/dist-tags` | 200 | `application/json` | 193 B | 353 B | no |
+| `next.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/next` | 200 | `application/json; charset=utf-8` | 43531 B | 708283 B | yes |
+| `qs.dist-tags.body` | `registry.npmjs.org/-/package/qs/dist-tags` | 200 | `application/json` | 144 B | 357 B | no |
+| `qs.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/qs` | 200 | `application/json; charset=utf-8` | 2225 B | 26929 B | no |
+| `typescript.dist-tags.body` | `registry.npmjs.org/-/package/typescript/dist-tags` | 200 | `application/json` | 150 B | 179 B | no |
+| `typescript.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/typescript` | 200 | `application/json; charset=utf-8` | 37603 B | 697559 B | yes |
+| `react.dist-tags.body` | `registry.npmjs.org/-/package/react/dist-tags` | 200 | `application/json` | not recorded (chunked) | 238 B | no |
+| `react.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/react` | 200 | `application/json; charset=utf-8` | 50011 B | 563799 B | yes |
+| `react-dom.dist-tags.body` | `registry.npmjs.org/-/package/react-dom/dist-tags` | 200 | `application/json` | not recorded (chunked) | 238 B | no |
+| `react-dom.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/react-dom` | 200 | `application/json; charset=utf-8` | 49807 B | 569528 B | yes |
+| `yarn.packument.body.gz` | `registry.npmjs.org/yarn`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 49698 B | 205172 B | yes |
+| `pnpm.packument.body.gz` | `registry.npmjs.org/pnpm`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 646327 B | 1910352 B | yes |

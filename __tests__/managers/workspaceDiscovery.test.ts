@@ -8,24 +8,29 @@ import yarn from '@/managers/yarn'
 import { check } from '@/pipeline'
 import { logger } from '@/utils'
 import {
-  exitError,
+  capturedRegistry,
+  installPackages,
   projectFor,
-  readFixture,
   writeWorkspaceProject,
 } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils', () => ({
-  ...jest.requireActual('@/utils'),
-  runProcess: jest.fn(),
-}))
 
-import { runProcess } from '@/utils'
-
-const mockedRunProcess = jest.mocked(runProcess)
 const mockedPrintRows = jest.mocked(logger.printOutdatedRows)
 
-// The record `check` returns for the evidence workspace, whichever manager reported it.
+// When the workspace fixtures were captured, so no version drifts with the registry.
+const AS_OF = '2026-10-23T16:38:12-03:00'
+
+/** What the install left in the evidence workspace: dayjs, ms and debug hoisted, ms 2.1.2 in packages/a. */
+const installEvidenceWorkspace = (cwd: string): void => {
+  installPackages(cwd, '.', { dayjs: '1.11.9', ms: '2.1.1', debug: '4.3.1' })
+  installPackages(cwd, 'packages/a', { ms: '2.1.2' })
+}
+
+const evidenceRegistry = () =>
+  capturedRegistry(['dayjs', 'ms', 'debug'], { asOf: AS_OF })
+
+// The record `check` returns for the evidence workspace, whichever manager is in use.
 const EXPECTED = {
   dayjs: {
     name: 'dayjs',
@@ -56,56 +61,22 @@ const EXPECTED = {
   },
 }
 
-describe.each([
-  {
-    pm: 'npm',
-    adapter: npm,
-    report: 'npm/outdated-workspace.stdout',
-    compatible: undefined,
-    exitsOne: true,
-    pnpm: false,
-  },
-  {
-    pm: 'pnpm',
-    adapter: pnpm,
-    report: 'pnpm/outdated-workspace.stdout',
-    compatible: 'pnpm/outdated-workspace-compatible.stdout',
-    exitsOne: true,
-    pnpm: true,
-  },
-  {
-    pm: 'yarn',
-    adapter: yarn,
-    report: 'yarn/v1-outdated-workspace.stdout',
-    compatible: undefined,
-    exitsOne: true,
-    pnpm: false,
-  },
-  {
-    pm: 'bun',
-    adapter: bun,
-    report: 'bun/outdated-workspace.stdout',
-    compatible: undefined,
-    exitsOne: false,
-    pnpm: false,
-  },
-] as const)(
+const ADAPTERS = [
+  { pm: 'npm', adapter: npm, pnpm: false },
+  { pm: 'pnpm', adapter: pnpm, pnpm: true },
+  { pm: 'yarn', adapter: yarn, pnpm: false },
+  { pm: 'bun', adapter: bun, pnpm: false },
+] as const
+
+describe.each(ADAPTERS)(
   'workspace discovery with $pm',
-  ({ pm, adapter, report, compatible, exitsOne, pnpm: usesPnpm }) => {
+  ({ pm, adapter, pnpm: usesPnpm }) => {
     let cwd: string
 
     beforeEach(() => {
       cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-ws-discovery-${pm}-`))
       writeWorkspaceProject(cwd, { pnpm: usesPnpm })
-      mockedRunProcess.mockImplementation(async (_file, args) => {
-        // The temp dir goes into JSON strings: escaped, since a Windows
-        // path holds backslashes.
-        const stdout = readFixture(
-          compatible && args.includes('--compatible') ? compatible : report,
-        ).replaceAll('/project', JSON.stringify(cwd).slice(1, -1))
-        if (!exitsOne) return { stdout, stderr: '' }
-        throw exitError(1, stdout, '')
-      })
+      installEvidenceWorkspace(cwd)
     })
 
     afterEach(() => {
@@ -113,13 +84,15 @@ describe.each([
     })
 
     it('returns each package once, with its manifests', async () => {
-      const outdated = await check(projectFor(adapter, cwd))
+      const outdated = await check(
+        projectFor(adapter, cwd, {}, evidenceRegistry()),
+      )
 
       expect(outdated).toEqual(EXPECTED)
     })
 
     it('prints one row per manifest, each carrying its workspace', async () => {
-      await check(projectFor(adapter, cwd))
+      await check(projectFor(adapter, cwd, {}, evidenceRegistry()))
 
       const rows = mockedPrintRows.mock.calls.flatMap(([printed]) => printed)
       expect(
@@ -132,67 +105,33 @@ describe.each([
         ['ms', 'packages/a', '2.1.2'],
       ])
     })
-
-    if (pm === 'npm') {
-      it('asks for the owning manifest and drops --workspaces', async () => {
-        await check(projectFor(adapter, cwd))
-
-        expect(mockedRunProcess.mock.calls[0][1]).toEqual([
-          'outdated',
-          '--json',
-          '--long',
-        ])
-      })
-    }
-
-    if (pm === 'bun') {
-      it('filters on every workspace', async () => {
-        await check(projectFor(adapter, cwd))
-
-        expect(mockedRunProcess.mock.calls[0][1]).toEqual([
-          'outdated',
-          '--filter',
-          '*',
-        ])
-      })
-    }
   },
 )
 
-describe.each([
-  {
-    pm: 'yarn',
-    adapter: yarn,
-    report: 'yarn/v1-outdated-workspace-unnamed-root.stdout',
-  },
-  {
-    pm: 'bun',
-    adapter: bun,
-    report: 'bun/outdated-workspace-unnamed-root.stdout',
-  },
-] as const)('$pm with a root that has no name', ({ pm, adapter, report }) => {
-  let cwd: string
+describe.each(ADAPTERS)(
+  '$pm with a root that has no name',
+  ({ pm, adapter, pnpm: usesPnpm }) => {
+    let cwd: string
 
-  beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-ws-unnamed-${pm}-`))
-    writeWorkspaceProject(cwd, { rootName: null })
-    mockedRunProcess.mockImplementation(async () => {
-      const stdout = readFixture(report)
-      if (pm === 'bun') return { stdout, stderr: '' }
-      throw exitError(1, stdout, '')
+    beforeEach(() => {
+      cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-ws-unnamed-${pm}-`))
+      writeWorkspaceProject(cwd, { rootName: null, pnpm: usesPnpm })
+      installEvidenceWorkspace(cwd)
     })
-  })
 
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
-  })
+    afterEach(() => {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    })
 
-  it("attributes the unnamed root's rows to the root", async () => {
-    const outdated = await check(projectFor(adapter, cwd))
+    it("attributes the unnamed root's rows to the root", async () => {
+      const outdated = await check(
+        projectFor(adapter, cwd, {}, evidenceRegistry()),
+      )
 
-    expect(outdated.dayjs.workspaces?.map((w) => w.path)).toEqual([
-      '.',
-      'packages/b',
-    ])
-  })
-})
+      expect(outdated.dayjs.workspaces?.map((w) => w.path)).toEqual([
+        '.',
+        'packages/b',
+      ])
+    })
+  },
+)

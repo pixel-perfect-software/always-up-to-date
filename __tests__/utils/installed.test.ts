@@ -2,7 +2,11 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import type { UpdateResult } from '@/types'
-import { checkApplied, readInstalledVersions } from '@/utils/installed'
+import {
+  checkApplied,
+  readInstalledPackages,
+  readInstalledVersions,
+} from '@/utils/installed'
 
 describe('readInstalledVersions', () => {
   let cwd: string
@@ -247,5 +251,163 @@ describe('checkApplied in a workspace project', () => {
       reason: 'not applied by npm (installed 2.1.1)',
     })
     expect(member.updated).toBe(true)
+  })
+})
+
+describe('readInstalledPackages', () => {
+  let cwd: string
+
+  const writeJson = (file: string, value: unknown) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify(value))
+  }
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-installed-packages-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('marks a member linked from the root node_modules', () => {
+    writeJson(path.join(cwd, 'package.json'), {
+      name: 'root',
+      workspaces: ['packages/*'],
+      dependencies: { '@ws/a': '*', ms: '2.1.3' },
+    })
+    writeJson(path.join(cwd, 'packages/a/package.json'), {
+      name: '@ws/a',
+      version: '1.0.0',
+    })
+    writeJson(path.join(cwd, 'node_modules/ms/package.json'), {
+      name: 'ms',
+      version: '2.1.3',
+    })
+    fs.mkdirSync(path.join(cwd, 'node_modules/@ws'), { recursive: true })
+    fs.symlinkSync(
+      path.join(cwd, 'packages/a'),
+      path.join(cwd, 'node_modules/@ws/a'),
+      'junction',
+    )
+
+    expect(
+      readInstalledPackages(cwd, [{ name: '@ws/a' }, { name: 'ms' }]),
+    ).toEqual({
+      '@ws/a': { version: '1.0.0', linked: true },
+      ms: { version: '2.1.3', linked: false },
+    })
+  })
+
+  it('does not mark a pnpm-style store symlink', () => {
+    writeJson(path.join(cwd, 'package.json'), {
+      dependencies: { ms: '~2.1.1' },
+    })
+    writeJson(
+      path.join(
+        cwd,
+        'node_modules/.pnpm/ms@2.1.3/node_modules/ms/package.json',
+      ),
+      { name: 'ms', version: '2.1.3' },
+    )
+    fs.symlinkSync(
+      path.join(cwd, 'node_modules/.pnpm/ms@2.1.3/node_modules/ms'),
+      path.join(cwd, 'node_modules/ms'),
+      'junction',
+    )
+
+    expect(readInstalledPackages(cwd, [{ name: 'ms' }])).toEqual({
+      ms: { version: '2.1.3', linked: false },
+    })
+  })
+
+  it('does not mark a link that leaves the project', () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-outside-'))
+    try {
+      writeJson(path.join(cwd, 'package.json'), {
+        dependencies: { lib: 'file:../lib' },
+      })
+      writeJson(path.join(outside, 'package.json'), {
+        name: 'lib',
+        version: '3.0.0',
+      })
+      fs.mkdirSync(path.join(cwd, 'node_modules'))
+      fs.symlinkSync(outside, path.join(cwd, 'node_modules/lib'), 'junction')
+
+      expect(readInstalledPackages(cwd, [{ name: 'lib' }])).toEqual({
+        lib: { version: '3.0.0', linked: false },
+      })
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  it('does not mark a plain directory', () => {
+    writeJson(path.join(cwd, 'package.json'), {
+      dependencies: { ms: '2.1.3' },
+    })
+    writeJson(path.join(cwd, 'node_modules/ms/package.json'), {
+      name: 'ms',
+      version: '2.1.3',
+    })
+
+    expect(readInstalledPackages(cwd, [{ name: 'ms' }]).ms.linked).toBe(false)
+  })
+})
+
+describe('readInstalledPackages link detection cost', () => {
+  let cwd: string
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-installed-cost-'))
+    fs.writeFileSync(
+      path.join(cwd, 'package.json'),
+      JSON.stringify({ dependencies: { a: '1.0.0', b: '1.0.0', c: '1.0.0' } }),
+    )
+    for (const name of ['a', 'b', 'c']) {
+      fs.mkdirSync(path.join(cwd, 'node_modules', name), { recursive: true })
+      fs.writeFileSync(
+        path.join(cwd, 'node_modules', name, 'package.json'),
+        JSON.stringify({ name, version: '1.0.0' }),
+      )
+    }
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  const rows = [{ name: 'a' }, { name: 'b' }, { name: 'c' }]
+
+  it('resolves the project root once per call, not once per row', () => {
+    const realpath = jest.spyOn(fs, 'realpathSync')
+
+    readInstalledPackages(cwd, rows)
+
+    const ofCwd = realpath.mock.calls.filter(([p]) => String(p) === cwd)
+    expect(ofCwd).toHaveLength(1)
+  })
+
+  it('does no link test for the post-apply versions', () => {
+    const lstat = jest.spyOn(fs, 'lstatSync')
+    const realpath = jest.spyOn(fs, 'realpathSync')
+
+    expect(readInstalledVersions(cwd, rows)).toEqual({
+      a: '1.0.0',
+      b: '1.0.0',
+      c: '1.0.0',
+    })
+
+    expect(lstat).not.toHaveBeenCalled()
+    expect(realpath).not.toHaveBeenCalled()
+  })
+
+  it('reports linked: false for every row with links: false', () => {
+    expect(
+      Object.values(readInstalledPackages(cwd, rows, { links: false })).map(
+        (found) => found.linked,
+      ),
+    ).toEqual([false, false, false])
   })
 })

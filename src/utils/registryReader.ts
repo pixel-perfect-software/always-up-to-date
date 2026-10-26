@@ -42,9 +42,20 @@ export interface RegistryReader {
 // not stall a run for the registry's whole fetch-timeout.
 const DEPS_DEV_TIMEOUT_MS = 5000
 
-type Fetched =
-  | { ok: true; body: unknown }
-  | { ok: false; status?: number; message: string; skipped?: true }
+// A 429 or a timeout turns deps.dev off at once (overload, or a blackholed
+// network). Any other 5xx or transport failure falls back for that package
+// alone; this many of them in a run turn it off too.
+const DEPS_DEV_FAILURE_LIMIT = 3
+
+type Failed = {
+  ok: false
+  status?: number
+  code?: string
+  message: string
+  skipped?: true
+}
+
+type Fetched = { ok: true; body: unknown } | Failed
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -57,11 +68,19 @@ const statusOf = (error: unknown): number | undefined =>
     ? error.status
     : undefined
 
+const codeOf = (error: unknown): string | undefined =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  typeof error.code === 'string'
+    ? error.code
+    : undefined
+
 /**
  * Latest, versions, deprecation and publish times per package. A public npm
  * name takes dist-tags plus deps.dev (two small documents) and falls back to
  * the abbreviated packument; any other name takes one packument request.
- * One lookup per name per reader; at most `maxSockets` requests in flight.
+ * One lookup per name per reader; at most `maxSockets` requests in flight per host.
  */
 export const createRegistryReader = ({
   registryConfig,
@@ -69,17 +88,35 @@ export const createRegistryReader = ({
   depsDev,
   endpoints = DEFAULT_ENDPOINTS,
 }: RegistryReaderOptions): RegistryReader => {
-  const limit = createLimiter(registryConfig.maxSockets)
+  // One limiter per host, each the client's per-host agent cap, so a queued
+  // request never waits in an agent queue and burns its timeout.
+  const limiters = new Map<string, ReturnType<typeof createLimiter>>()
+  const limiterFor = (url: string) => {
+    const host = new URL(url).host
+    let limit = limiters.get(host)
+    if (!limit) {
+      limit = createLimiter(registryConfig.maxSockets)
+      limiters.set(host, limit)
+    }
+    return limit
+  }
   const cache = new Map<string, Promise<PackageLookup>>()
   let depsDevUsable = depsDev
+  let depsDevFailures = 0
 
   const get = (
     url: string,
     base: string,
     accept: string,
-    extra: { timeout?: number; retries?: number; skipIf?: () => boolean } = {},
+    extra: {
+      timeout?: number
+      retries?: number
+      skipIf?: () => boolean
+      /** Runs in the slot, so the next queued task sees what it decided. */
+      onFailure?: (failure: Failed) => void
+    } = {},
   ): Promise<Fetched> =>
-    limit(async (): Promise<Fetched> => {
+    limiterFor(url)(async (): Promise<Fetched> => {
       // Checked once the slot is ours: the world may have changed while queued.
       if (extra.skipIf?.())
         return { ok: false, message: 'skipped', skipped: true }
@@ -91,7 +128,14 @@ export const createRegistryReader = ({
         })
         return { ok: true, body }
       } catch (error) {
-        return { ok: false, status: statusOf(error), message: messageOf(error) }
+        const failure: Failed = {
+          ok: false,
+          status: statusOf(error),
+          code: codeOf(error),
+          message: messageOf(error),
+        }
+        extra.onFailure?.(failure)
+        return failure
       }
     })
 
@@ -111,6 +155,34 @@ export const createRegistryReader = ({
     package: { name, latest, versions, source },
   })
 
+  // Decided in the request's slot: the queued request behind it must see a
+  // tripped breaker, not race the caller's continuation.
+  const judgeDepsDev = (name: string, failure: Failed): void => {
+    const { status } = failure
+    if (status === 404) {
+      logger.debug(`${name} is not on deps.dev`)
+    } else if (status === 429 || failure.code === 'ETIMEDOUT') {
+      depsDevUsable = false
+      logger.debug(
+        `deps.dev unavailable (${failure.message}); reading packuments for the rest of the run`,
+      )
+    } else if (status === undefined || status >= 500) {
+      depsDevFailures++
+      if (depsDevFailures >= DEPS_DEV_FAILURE_LIMIT) {
+        depsDevUsable = false
+        logger.debug(
+          `deps.dev unavailable (${failure.message}; ${depsDevFailures} failures); reading packuments for the rest of the run`,
+        )
+      } else {
+        logger.debug(
+          `deps.dev failed for ${name} (${failure.message}); reading its packument`,
+        )
+      }
+    } else {
+      logger.debug(`deps.dev answered ${status} for ${name}`)
+    }
+  }
+
   const depsDevVersions = async (
     name: string,
   ): Promise<RegistryVersion[] | undefined> => {
@@ -121,31 +193,17 @@ export const createRegistryReader = ({
       'application/json',
       {
         timeout: Math.min(registryConfig.fetchTimeout, DEPS_DEV_TIMEOUT_MS),
-        // deps.dev has a fallback, and any 429, 5xx or transport failure trips
-        // the breaker anyway, so a retry only delays the fallback.
+        // The fallback is the retry; retries would multiply the timeout.
         retries: 0,
         skipIf: () => !depsDevUsable,
+        onFailure: (failure) => judgeDepsDev(name, failure),
       },
     )
-    if (!fetched.ok && fetched.skipped) return undefined
-    if (fetched.ok) {
-      const versions = parseDepsDevPackage(fetched.body)
-      if (!versions)
-        logger.debug(`deps.dev sent an unreadable document for ${name}`)
-      return versions
-    }
-    const { status } = fetched
-    if (status === 404) {
-      logger.debug(`${name} is not on deps.dev`)
-    } else if (status === undefined || status === 429 || status >= 500) {
-      depsDevUsable = false
-      logger.debug(
-        `deps.dev unavailable (${fetched.message}); reading packuments for the rest of the run`,
-      )
-    } else {
-      logger.debug(`deps.dev answered ${status} for ${name}`)
-    }
-    return undefined
+    if (!fetched.ok) return undefined
+    const versions = parseDepsDevPackage(fetched.body)
+    if (!versions)
+      logger.debug(`deps.dev sent an unreadable document for ${name}`)
+    return versions
   }
 
   const packumentLookup = async (

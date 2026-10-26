@@ -28,19 +28,22 @@ utils/
   registry.ts         # createRegistrySession(cwd, { depsDev }): one lazy .npmrc view and one client per run; releaseTimes() with in-flight per-run cache, fails open; lookup() via the lazy reader
   registryReader.ts   # createRegistryReader(): latest, versions, deprecation, publish times per package (dist-tags + deps.dev, packument fallback); loaded by registry.ts only
   registryDocuments.ts # Pure parsers: parseDistTags, parseDepsDevPackage, parsePackument; loaded by the reader only
-  limiter.ts          # createLimiter(max): FIFO cap on in-flight tasks; loaded by the reader only
+  limiter.ts          # createLimiter(max): FIFO cap on in-flight tasks; the reader makes one per host; loaded by the reader only
   updateChecker.ts    # Update policy: within range by default, beyondRange level, per-package rules (pure)
-  rows.ts             # toOutdatedRow() / toOutdatedRows() / toUpdatingRow(): display rows (in-range note, beyond-range flag; one outdated row per manifest in a workspace)
+  rows.ts             # toOutdatedRow() / toOutdatedRows() / toUpdatingRow(): display rows (in-range note, shown only when `wanted` differs from `latest` and `current` and is ahead of `current` or `current` is `missing`; beyond-range flag; one outdated row per manifest in a workspace)
   overrides.ts        # overridesFromField(), manifestOverrides(cwd, fields): packages an override pins, with field and range
   peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, pnpm store)
   saveStyle.ts        # SaveStyle, DEFAULT_SAVE_STYLE, readTextFile(), yamlValue(): what adapters' saveStyle() builds on
-  manifestNames.ts    # toManifestNames(cwd, outdated), toEntryManifestNames(cwd, entries): re-key a report by package.json names (npm: aliases), per owning manifest in a workspace
+  dependencySpecs.ts  # DEPENDENCY_FIELDS, DISCOVERED_FIELDS (no peers), classifySpec(key, spec, catalogs) (catalog:, workspace:, npm: alias, a bare `npm:<name>` is `latest` of that name as npm reads it, skipped git/file/link/URL, latest, other dist-tag warns), readDeclaredDependencies(cwd, { manifests, catalogs }): every manifest's registry dependencies, first field wins, unreadable manifest is a `discover` StepError. Not in the barrel; `src/discovery.ts` uses it
+  wanted.ts           # wantedVersion(range, pkg, { preferLatest }): exact pin, else `latest` if it satisfies and isn't deprecated, else highest non-deprecated, else highest satisfying (pure; `src/discovery.ts` uses it)
+  aliasSpec.ts        # parseAlias(spec) (`npm:<target>@<range>`) and parseBareAlias(spec) (`npm:<target>`): the one alias definition for dependencySpecs, files.ts (`nextVersionSpec`) and berry. Imports nothing
+  isRecord.ts         # isRecord(value): the one plain-object guard (files.ts, registry.ts, registryDocuments.ts, berry.ts). Imports nothing, so startup stays lean
   workspaceRows.ts    # foldWorkspaceEntries(entries): one PackageInfo per name with `workspaces`; expandWorkspaces(record): the inverse, one row per manifest; workspaceLabel(path): `(root)` or the path
-  installed.ts        # readInstalledVersions(cwd, rows): each moving row's installed version (the pipeline uses an adapter's own `installed()` instead when it has one: yarn berry, PnP), keyed by `rowKey` (the name, plus `<workspace>:` in a workspace project), read from `<member>/node_modules/<name>` first, then the root's, only for names that manifest declares; checkApplied(): rows the manager left in place become `not applied by <pm> (installed …)`
+  installed.ts        # readInstalledPackages(cwd, rows, { links }) returns `{ version, linked }` (resolves the project's real path once per call; `links: false` skips the link test and `linked` is always false, which is what `readInstalledVersions` and the post-apply check use; linked: a symlink or junction to a directory inside the project and outside node_modules, i.e. a workspace member; pnpm and bun store links are not), readInstalledVersions(cwd, rows) is its versions: each moving row's installed version (the pipeline uses an adapter's own `installed()` instead when it has one: yarn berry, PnP), keyed by `rowKey` (the name, plus `<workspace>:` in a workspace project), read from `<member>/node_modules/<name>` first, then the root's, only for names that manifest declares; checkApplied(): rows the manager left in place become `not applied by <pm> (installed …)`
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   packageGrouper.ts   # Groups packages by @scope for display
   logger.ts           # Colored logging (colorette); configure(config) takes `debug`, `silent` and the deprecated allow/deny lists (defaults before it: debug off, not quiet, no lists), setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
-  files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML(), updateBunCatalogs(), readSpec(), splitCatalogUpdates(), buildUpdateDescriptors()
+  files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML() (on the shared catalog walk), readPnpmCatalogs(yaml), readBunCatalogs(manifest) (reads `workspaces.catalog(s)` too), updateBunCatalogs(), readSpec(), splitCatalogUpdates(), buildUpdateDescriptors()
 ```
 
 ## Architectural Patterns
@@ -81,8 +84,8 @@ utils/
 - `session.lookup(name)` (`registryReader.ts`, loaded with `await import()` on the first call) returns a `PackageLookup` and never rejects for a network, HTTP or parse failure:
   - An invalid name (`isValidPackageName`) is `invalid` with no request. A public npm name (registry root is `https://registry.npmjs.org/` or `https://registry.yarnpkg.com/`) fetches `/-/package/<name>/dist-tags` and deps.dev together. When deps.dev lists `latest` the result is `source: 'deps.dev'`; otherwise (deps.dev 404, 429, 5xx, unreachable, unreadable, or `latest` missing) the abbreviated packument is read. A dist-tags 404 is `not-found`; any other dist-tags failure takes the packument path
   - Any other registry, a scope's registry, or `depsDev: false` takes one GET with `ABBREVIATED_ACCEPT`, retried once with `application/json` on a 404 (as pacote does). The packument's own `latest` is used when it lacks the dist-tags' one, else the highest stable version
-  - deps.dev gets only its own URL as the client's registry base, so no `.npmrc` credentials go to it. A 429, a 5xx or a transport failure turns deps.dev off for the rest of the run (one debug line); a 404 does not. deps.dev requests time out at `min(fetch-timeout, 5 s)` with no retries, and a request still queued when the breaker trips is skipped once it reaches the front
-  - All requests go through a limiter of `maxsockets`, so a queued request never burns its timeout and only that many packument bodies are buffered at once
+  - deps.dev gets only its own URL as the client's registry base, so no `.npmrc` credentials go to it. A 429 or a timeout turns deps.dev off for the rest of the run (one debug line). Any other 5xx or transport failure falls back to the packument for that package only, and the third such failure in a run turns deps.dev off; a 404 does not count. The decision is made inside the failed request's limiter slot, before the next queued request starts. deps.dev requests time out at `min(fetch-timeout, 5 s)` with no retries, and a request still queued when the breaker trips is skipped once it reaches the front
+  - Requests go through one limiter per host (`new URL(url).host`), each of `maxsockets`, the client's per-host agent cap: a queued request never waits in an agent queue and burns its timeout, and only that many packument bodies per host are buffered at once. With two hosts (dist-tags and deps.dev), up to `2 × maxsockets` requests are in flight; measured 2026-10-26 on the 40-package benchmark, lookups took 0.57–0.70 s against 0.75 s with one run-wide limiter
   - A body the client cannot parse as JSON is a `request` failure; a JSON body that is not a packument is `invalid`. `not-found` and `invalid` reasons name the registry's host; a `request` reason is the client's message, which carries the URL without userinfo, query or credentials
   - Keep `registryReader`, `registryDocuments` and `limiter` out of the barrel as values (`export type` is fine): the barrel loads at startup
 - The cache is per session and holds the in-flight request, so a package several workspace manifests declare is fetched once; a new session asks again
@@ -98,7 +101,8 @@ utils/
 - Each adapter's `saveStyle(cwd)` reads that style where its manager's current version keeps it: npm `.npmrc` `save-exact` / `save-prefix`; pnpm `pnpm-workspace.yaml` `saveExact` / `savePrefix` (not `.npmrc`); yarn berry `.yarnrc.yml` `defaultSemverRangePrefix` (`''` = exact); bun `bunfig.toml` `[install] exact` or `.npmrc` `save-exact` (no prefix setting). Default `^`. Managers read it only when they write a beyond-range spec
 - `catalog:` and `workspace:` references are never rewritten
 - JSON manifests are written back in their own format (`formatLike`): the detected indentation (tabs or N spaces), CRLF or LF, and a final newline only if the file had one, so a bump changes one line
-- `updatePNPMWorkspaceYAML` rewrites only entries under `catalog:` and under each named catalog in `catalogs:`; every other block (`overrides`, `peerDependencyRules`, settings) stays byte-for-byte. An entry keeps its quotes (`"` or `'`) and its trailing comment
+- `updatePNPMWorkspaceYAML(cwd, versions, style, catalog?)` rewrites only entries under `catalog:` and under each named catalog in `catalogs:`; every other block (`overrides`, `peerDependencyRules`, settings) stays byte-for-byte. With `catalog` (`default` for `catalog:`) only that catalog moves, so `catalog:react18` never rewrites `react19`'s entry; the adapters call it once per catalog from `splitCatalogUpdates()`, which returns `catalogs` (catalog → name → version). An entry's value is read whole (`>=18.0.0 <19`, `"^17 || ^18"`, up to a trailing ` #` comment) and replaced whole; it keeps its quotes and its comment
+- Bun reads `workspaces.catalog` / `workspaces.catalogs` as well as the top-level fields; when the `workspaces` one is set it replaces the top-level one as a whole, per field (verified on bun 1.4.4). `readBunCatalogs` and `updateBunCatalogs(cwd, versions, style, catalog?)` follow that
 - `buildUpdateDescriptors()` applies the same rule to produce `name@spec` for managers that write the manifest themselves (yarn), reading `dependencies`, then `devDependencies`, then `optionalDependencies`
 
 ### Package Grouping (`packageGrouper.ts`)
@@ -117,7 +121,7 @@ Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Gr
 
 ## Integration Points
 - `src/commandRunner.ts` uses `runProcess` and `logger`
-- `src/pipeline.ts` uses `filterPackages`, `logger`, `groupAndSortPackages`, `computeReleaseAges`, `toManifestNames`; adapters use `files.ts`, `overrides.ts`, `saveStyle.ts`, `npmrcLoader.ts`
+- `src/pipeline.ts` uses `filterPackages`, `logger`, `groupAndSortPackages`, `computeReleaseAges`; adapters use `files.ts`, `overrides.ts`, `saveStyle.ts`, `npmrcLoader.ts`
 - `npmrcLoader.ts` uses `@/managers/workspaces` to find the npm project root (no cycle: `workspaces.ts` imports only the logger and `StepError`)
 - `src/commands/update.ts` uses `filterPackages` for dry-run and interactive mode
 - `src/commands/init.ts` uses `saveJsonConfig` and `INITIAL_CONFIG`

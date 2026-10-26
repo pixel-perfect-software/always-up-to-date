@@ -1,8 +1,6 @@
 import semver from 'semver'
 import type { RegistryVersion } from '@/types'
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+import { isRecord } from './isRecord'
 
 const isCanonical = (version: unknown): version is string =>
   typeof version === 'string' && semver.valid(version) === version

@@ -225,36 +225,28 @@ exports[`bun single-package JSON default config update 1`] = `
 exports[`npm single-package JSON beyondRange major check 1`] = `
 "{
   "dj": {
+    "name": "dj",
     "current": "1.11.9",
     "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "dependent": "project",
-    "location": "/project/node_modules/dj",
-    "name": "dj"
+    "latest": "1.11.23"
   },
   "express": {
+    "name": "express",
     "current": "4.22.3",
     "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "dependent": "project",
-    "location": "/project/node_modules/express",
-    "name": "express"
+    "latest": "5.3.0"
   },
   "semver": {
+    "name": "semver",
     "current": "7.6.3",
     "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "dependent": "project",
-    "location": "/project/node_modules/semver",
-    "name": "semver"
+    "latest": "7.8.5"
   },
   "zod": {
+    "name": "zod",
     "current": "3.25.76",
     "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "dependent": "project",
-    "location": "/project/node_modules/zod",
-    "name": "zod"
+    "latest": "4.6.7"
   }
 }"
 `;
@@ -344,36 +336,28 @@ exports[`npm single-package JSON beyondRange major update 1`] = `
 exports[`npm single-package JSON default config check 1`] = `
 "{
   "dj": {
+    "name": "dj",
     "current": "1.11.9",
     "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "dependent": "project",
-    "location": "/project/node_modules/dj",
-    "name": "dj"
+    "latest": "1.11.23"
   },
   "express": {
+    "name": "express",
     "current": "4.22.3",
     "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "dependent": "project",
-    "location": "/project/node_modules/express",
-    "name": "express"
+    "latest": "5.3.0"
   },
   "semver": {
+    "name": "semver",
     "current": "7.6.3",
     "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "dependent": "project",
-    "location": "/project/node_modules/semver",
-    "name": "semver"
+    "latest": "7.8.5"
   },
   "zod": {
+    "name": "zod",
     "current": "3.25.76",
     "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "dependent": "project",
-    "location": "/project/node_modules/zod",
-    "name": "zod"
+    "latest": "4.6.7"
   }
 }"
 `;
@@ -463,36 +447,28 @@ exports[`npm single-package JSON default config update 1`] = `
 exports[`pnpm single-package JSON beyondRange major check 1`] = `
 "{
   "dj": {
+    "name": "dj",
     "current": "1.11.9",
-    "latest": "1.11.23",
     "wanted": "1.11.9",
-    "isDeprecated": false,
-    "dependencyType": "dependencies",
-    "name": "dj"
-  },
-  "semver": {
-    "current": "7.6.3",
-    "latest": "7.8.5",
-    "wanted": "7.6.3",
-    "isDeprecated": false,
-    "dependencyType": "dependencies",
-    "name": "semver"
+    "latest": "1.11.23"
   },
   "express": {
+    "name": "express",
     "current": "4.22.3",
-    "latest": "5.3.0",
     "wanted": "4.22.3",
-    "isDeprecated": false,
-    "dependencyType": "dependencies",
-    "name": "express"
+    "latest": "5.3.0"
+  },
+  "semver": {
+    "name": "semver",
+    "current": "7.6.3",
+    "wanted": "7.6.3",
+    "latest": "7.8.5"
   },
   "zod": {
+    "name": "zod",
     "current": "3.25.76",
-    "latest": "4.6.7",
     "wanted": "3.25.76",
-    "isDeprecated": false,
-    "dependencyType": "dependencies",
-    "name": "zod"
+    "latest": "4.6.7"
   }
 }"
 `;
@@ -509,21 +485,21 @@ exports[`pnpm single-package JSON beyondRange major plan 1`] = `
     "updated": true
   },
   {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
     "name": "express",
     "current": "4.22.3",
     "wanted": "4.22.3",
     "latest": "5.3.0",
     "target": "5.3.0",
     "updateType": "major",
+    "updated": true
+  },
+  {
+    "name": "semver",
+    "current": "7.6.3",
+    "wanted": "7.6.3",
+    "latest": "7.8.5",
+    "target": "7.8.5",
+    "updateType": "minor",
     "updated": true
   },
   {
@@ -550,21 +526,21 @@ exports[`pnpm single-package JSON beyondRange major update 1`] = `
     "updated": true
   },
   {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
     "name": "express",
     "current": "4.22.3",
     "wanted": "4.22.3",
     "latest": "5.3.0",
     "target": "5.3.0",
     "updateType": "major",
+    "updated": true
+  },
+  {
+    "name": "semver",
+    "current": "7.6.3",
+    "wanted": "7.6.3",
+    "latest": "7.8.5",
+    "target": "7.8.5",
+    "updateType": "minor",
     "updated": true
   },
   {
@@ -582,36 +558,28 @@ exports[`pnpm single-package JSON beyondRange major update 1`] = `
 exports[`pnpm single-package JSON default config check 1`] = `
 "{
   "dj": {
+    "name": "dj",
     "current": "1.11.9",
-    "latest": "1.11.23",
     "wanted": "1.11.9",
-    "isDeprecated": false,
-    "dependencyType": "dependencies",
-    "name": "dj"
-  },
-  "semver": {
-    "current": "7.6.3",
-    "latest": "7.8.5",
-    "wanted": "7.6.3",
-    "isDeprecated": false,
-    "dependencyType": "dependencies",
-    "name": "semver"
+    "latest": "1.11.23"
   },
   "express": {
+    "name": "express",
     "current": "4.22.3",
-    "latest": "5.3.0",
     "wanted": "4.22.3",
-    "isDeprecated": false,
-    "dependencyType": "dependencies",
-    "name": "express"
+    "latest": "5.3.0"
+  },
+  "semver": {
+    "name": "semver",
+    "current": "7.6.3",
+    "wanted": "7.6.3",
+    "latest": "7.8.5"
   },
   "zod": {
+    "name": "zod",
     "current": "3.25.76",
-    "latest": "4.6.7",
     "wanted": "3.25.76",
-    "isDeprecated": false,
-    "dependencyType": "dependencies",
-    "name": "zod"
+    "latest": "4.6.7"
   }
 }"
 `;
@@ -628,15 +596,6 @@ exports[`pnpm single-package JSON default config plan 1`] = `
     "reason": "patch beyond the range"
   },
   {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
     "name": "express",
     "current": "4.22.3",
     "wanted": "4.22.3",
@@ -644,6 +603,15 @@ exports[`pnpm single-package JSON default config plan 1`] = `
     "updateType": "major",
     "updated": false,
     "reason": "major beyond the range"
+  },
+  {
+    "name": "semver",
+    "current": "7.6.3",
+    "wanted": "7.6.3",
+    "latest": "7.8.5",
+    "updateType": "minor",
+    "updated": false,
+    "reason": "minor beyond the range"
   },
   {
     "name": "zod",
@@ -669,15 +637,6 @@ exports[`pnpm single-package JSON default config update 1`] = `
     "reason": "patch beyond the range"
   },
   {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
     "name": "express",
     "current": "4.22.3",
     "wanted": "4.22.3",
@@ -685,6 +644,15 @@ exports[`pnpm single-package JSON default config update 1`] = `
     "updateType": "major",
     "updated": false,
     "reason": "major beyond the range"
+  },
+  {
+    "name": "semver",
+    "current": "7.6.3",
+    "wanted": "7.6.3",
+    "latest": "7.8.5",
+    "updateType": "minor",
+    "updated": false,
+    "reason": "minor beyond the range"
   },
   {
     "name": "zod",
@@ -703,8 +671,8 @@ exports[`yarn single-package JSON beyondRange major check 1`] = `
   "dj": {
     "name": "dj",
     "current": "1.11.9",
-    "wanted": "exotic",
-    "latest": "exotic"
+    "wanted": "1.11.9",
+    "latest": "1.11.23"
   },
   "express": {
     "name": "express",
@@ -732,11 +700,11 @@ exports[`yarn single-package JSON beyondRange major plan 1`] = `
   {
     "name": "dj",
     "current": "1.11.9",
-    "wanted": "exotic",
-    "latest": "exotic",
-    "updateType": null,
-    "updated": false,
-    "reason": "invalid version (current 1.11.9, latest exotic)"
+    "wanted": "1.11.9",
+    "latest": "1.11.23",
+    "target": "1.11.23",
+    "updateType": "patch",
+    "updated": true
   },
   {
     "name": "express",
@@ -773,11 +741,11 @@ exports[`yarn single-package JSON beyondRange major update 1`] = `
   {
     "name": "dj",
     "current": "1.11.9",
-    "wanted": "exotic",
-    "latest": "exotic",
-    "updateType": null,
-    "updated": false,
-    "reason": "invalid version (current 1.11.9, latest exotic)"
+    "wanted": "1.11.9",
+    "latest": "1.11.23",
+    "target": "1.11.23",
+    "updateType": "patch",
+    "updated": true
   },
   {
     "name": "express",
@@ -814,8 +782,8 @@ exports[`yarn single-package JSON default config check 1`] = `
   "dj": {
     "name": "dj",
     "current": "1.11.9",
-    "wanted": "exotic",
-    "latest": "exotic"
+    "wanted": "1.11.9",
+    "latest": "1.11.23"
   },
   "express": {
     "name": "express",
@@ -843,11 +811,11 @@ exports[`yarn single-package JSON default config plan 1`] = `
   {
     "name": "dj",
     "current": "1.11.9",
-    "wanted": "exotic",
-    "latest": "exotic",
-    "updateType": null,
+    "wanted": "1.11.9",
+    "latest": "1.11.23",
+    "updateType": "patch",
     "updated": false,
-    "reason": "invalid version (current 1.11.9, latest exotic)"
+    "reason": "patch beyond the range"
   },
   {
     "name": "express",
@@ -884,11 +852,11 @@ exports[`yarn single-package JSON default config update 1`] = `
   {
     "name": "dj",
     "current": "1.11.9",
-    "wanted": "exotic",
-    "latest": "exotic",
-    "updateType": null,
+    "wanted": "1.11.9",
+    "latest": "1.11.23",
+    "updateType": "patch",
     "updated": false,
-    "reason": "invalid version (current 1.11.9, latest exotic)"
+    "reason": "patch beyond the range"
   },
   {
     "name": "express",

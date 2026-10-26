@@ -4,15 +4,23 @@ import https from 'https'
 import net from 'net'
 import path from 'path'
 import type { TLSSocket } from 'tls'
+import zlib from 'zlib'
 
 /** Reads one of the committed test-only PEMs in `fixtures/tls/`. */
 export const readTls = (
   name: 'ca.pem' | 'server.pem' | 'server.key' | 'client.pem' | 'client.key',
 ): string => fs.readFileSync(path.join(__dirname, 'tls', name), 'utf8')
 
-/** A captured response body, verbatim, from `fixtures/registry/<name>.body`. */
-export const registryBody = (name: string): string =>
-  fs.readFileSync(path.join(__dirname, 'registry', `${name}.body`), 'utf8')
+/**
+ * A captured response body, verbatim, from `fixtures/registry/<name>.body`, or
+ * gunzipped from `<name>.body.gz` (bodies over 100 KB decoded are committed so).
+ */
+export const registryBody = (name: string): string => {
+  const file = path.join(__dirname, 'registry', `${name}.body`)
+  return fs.existsSync(file)
+    ? fs.readFileSync(file, 'utf8')
+    : zlib.gunzipSync(fs.readFileSync(`${file}.gz`)).toString('utf8')
+}
 
 /**
  * A captured JSON body, parsed, edited and stringified again: how a test gets

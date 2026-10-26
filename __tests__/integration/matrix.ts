@@ -21,6 +21,7 @@ import {
   readCatalogs,
   readDependencies,
   runCli,
+  runCliWithoutManagers,
   selectedManagers,
 } from './harness'
 
@@ -105,9 +106,12 @@ export const runMatrix = (manager: Manager): void => {
           if (cwd) cleanup(cwd)
         })
 
+        // Berry still discovers through `yarn info` (#107); the rest read the
+        // manifests, node_modules and the registry, so they need no manager.
         it('check --json reports the installed minimums against the wanted maxima', async () => {
+          const check = manager === 'berry' ? runCli : runCliWithoutManagers
           expect(
-            projectCheck(await runCli(cwd, ['check', '--json']), layout),
+            projectCheck(await check(cwd, ['check', '--json']), layout),
           ).toEqual(expectedCheck(layout))
         })
 

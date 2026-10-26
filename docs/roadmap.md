@@ -55,7 +55,7 @@ re-signing: 47 ms, 62 MB. Node SEA: 65 ms, 117 MB.
 
 Measured 2026-10-26 on autd 2.1.0 (31bdb10), Node 24.22.1, macOS, on the 40-dependency
 benchmark, now `bench/pinned/` and run by `pnpm run bench` (rebuilt from
-`__tests__/fixtures/npm/outdated.stdout`: every dependency pinned to its old exact version).
+an earlier npm `outdated` capture: every dependency pinned to its old exact version).
 Bun has since moved to 1.4.4: warm 0.17 s, cold 22.5 s ± 7.5 over 2 runs. Registry traffic on this machine passes through an endpoint TLS proxy
 (Aikido), so absolute network times are indicative. "Cold" empties the manager's own cache.
 

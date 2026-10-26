@@ -26,7 +26,7 @@ export interface PackageInfo {
 
 /** Discovery's unit in a workspace project: one package as one manifest declares it. */
 export interface OutdatedEntry {
-  /** As the manager reports it; the pipeline re-keys it by the owner's dependency key. */
+  /** The owning manifest's dependency key (an alias's own name). */
   name: string
   current: string
   /** Highest version the owning manifest's range allows. */

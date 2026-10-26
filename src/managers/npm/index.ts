@@ -1,33 +1,12 @@
 import fs from 'fs'
 import path from 'path'
 
-import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
-import { ownerPath, packageJsonWorkspace } from '@/managers/workspaces'
-import { StepError } from '@/stepError'
-import type { OutdatedEntry, PackageInfo } from '@/types'
+import { packageJsonWorkspace } from '@/managers/workspaces'
 import { updatePackageJson } from '@/utils/files'
 import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
-
-/**
- * `npm outdated` exits 1 whenever something is outdated. It also exits 1 on
- * real errors, printing `{ "error": { code, summary } }` instead of a report.
- */
-const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
-  if (exitCode === 0) return true
-  if (exitCode !== 1) return false
-  try {
-    const report = JSON.parse(stdout)
-    const isNpmError =
-      typeof report?.error?.code === 'string' &&
-      typeof report?.error?.summary === 'string'
-    return typeof report === 'object' && report !== null && !isNpmError
-  } catch {
-    return false
-  }
-}
 
 /**
  * Versions package-lock.json records, keyed by install path
@@ -49,95 +28,14 @@ export const readLockedVersions = (cwd: string): Record<string, string> => {
   return versions
 }
 
-/**
- * `npm outdated --json`: already keyed by name, with `wanted` filled. npm
- * reads `current` from node_modules, so a package that isn't installed (a
- * fresh clone) comes back without one. It takes the version the lockfile
- * records, which is what the other managers report there, or `missing`, as
- * npm's own table prints it, when the lockfile doesn't have it either.
- */
-export const parseNpmOutdated = (
-  stdout: string,
-  locked: Record<string, string> = {},
-): Record<string, PackageInfo> => {
-  const report: Record<string, PackageInfo> = JSON.parse(stdout || '{}')
-  for (const [key, info] of Object.entries(report)) {
-    if (info.current) continue
-    // An npm: alias is keyed `dj:dayjs@1.11.9` and installed as node_modules/dj.
-    const name = key.split(':')[0]
-    info.current = locked[`node_modules/${name}`] ?? 'missing'
-  }
-  return report
-}
-
-/**
- * `npm outdated --json --long` in a workspace project: a name maps to one
- * row, or an array of rows when several manifests declare it. Each row's
- * `dependedByLocation` is the owning manifest's directory relative to the
- * root, `''` for the root. A package that isn't installed has no `current`;
- * it falls back to the lockfile's record for that manifest, then the root's
- * hoisted copy, then `missing`.
- */
-export const parseNpmWorkspaceOutdated = (
-  stdout: string,
-  locked: Record<string, string> = {},
-): OutdatedEntry[] => {
-  const report: Record<string, unknown> = JSON.parse(stdout || '{}')
-  const entries: OutdatedEntry[] = []
-  for (const [name, value] of Object.entries(report)) {
-    for (const row of [value].flat() as Record<string, unknown>[]) {
-      if (typeof row?.dependedByLocation !== 'string') {
-        throw new StepError(
-          'discover',
-          `npm outdated --long reported no dependedByLocation for ${name}`,
-        )
-      }
-      const workspace = ownerPath('npm', name, row.dependedByLocation)
-      const alias = name.split(':')[0]
-      const current =
-        typeof row.current === 'string' && row.current
-          ? row.current
-          : ((workspace === '.'
-              ? undefined
-              : locked[`${workspace}/node_modules/${alias}`]) ??
-            locked[`node_modules/${alias}`] ??
-            'missing')
-      entries.push({
-        name,
-        current,
-        wanted: String(row.wanted),
-        latest: String(row.latest),
-        workspace,
-      })
-    }
-  }
-  return entries
-}
-
 const npm: ManagerAdapter = {
   name: 'npm',
   lockfile: 'package-lock.json',
 
   readWorkspace: (cwd) => ({
     ...packageJsonWorkspace(cwd),
-    catalogs: [],
+    catalogs: {},
   }),
-
-  discover: async (run, cwd, { isWorkspace }) => {
-    // Without --workspaces the report covers the root's dependencies too;
-    // --long adds the owning manifest to each row.
-    const stdout = await run(
-      isWorkspace ? ['outdated', '--json', '--long'] : ['outdated', '--json'],
-      { isSuccess: isOutdatedReport },
-    )
-    const locked = readLockedVersions(cwd)
-    return isWorkspace
-      ? {
-          kind: 'workspace',
-          entries: parseNpmWorkspaceOutdated(stdout, locked),
-        }
-      : { kind: 'single', outdated: parseNpmOutdated(stdout, locked) }
-  },
 
   apply: async (run, cwd, { names, manifests }) => {
     // npm installs the highest version each range allows. Only packages

@@ -3,6 +3,8 @@ import path from 'path'
 import type { PackageInfo } from '@/types'
 import {
   checkIfFileExists,
+  readBunCatalogs,
+  readPnpmCatalogs,
   readSpec,
   splitCatalogUpdates,
   updateBunCatalogs,
@@ -583,7 +585,7 @@ describe('splitCatalogUpdates', () => {
     ])
 
     expect(result).toEqual({
-      catalog: { dayjs: '1.11.23' },
+      catalogs: { default: { dayjs: '1.11.23' } },
       byManifest: [
         { path: '.', versions: { dayjs: '1.11.23' } },
         { path: 'packages/a', versions: { ms: '2.1.3' } },
@@ -600,6 +602,318 @@ describe('splitCatalogUpdates', () => {
       splitCatalogUpdates('/test', [
         { path: '.', withinRange: [], beyondRange: { dayjs: '1.11.23' } },
       ]),
-    ).toEqual({ catalog: { dayjs: '1.11.23' }, byManifest: [] })
+    ).toEqual({
+      catalogs: { default: { dayjs: '1.11.23' } },
+      byManifest: [],
+    })
+  })
+})
+
+describe('readPnpmCatalogs', () => {
+  it('reads the default catalog and each named one', () => {
+    const yaml = [
+      'packages:',
+      '  - packages/*',
+      'catalog:',
+      '  react: ^18.0.0',
+      '  "@types/node": "^20.0.0" # pinned by CI',
+      'catalogs:',
+      '  tools:',
+      '    eslint: ~9.1.0',
+      "  'ui':",
+      '    react-dom: ^18.0.0',
+      'overrides:',
+      '  lodash: 4.17.21',
+      '',
+    ].join('\n')
+
+    expect(readPnpmCatalogs(yaml)).toEqual({
+      default: { react: '^18.0.0', '@types/node': '^20.0.0' },
+      tools: { eslint: '~9.1.0' },
+      ui: { 'react-dom': '^18.0.0' },
+    })
+  })
+
+  it('maps `catalogs: default:` to the default catalog', () => {
+    expect(
+      readPnpmCatalogs('catalogs:\n  default:\n    react: ^18.0.0\n'),
+    ).toEqual({ default: { react: '^18.0.0' } })
+  })
+
+  it('reads a CRLF file', () => {
+    expect(
+      readPnpmCatalogs('catalog:\r\n  react: ^18.0.0\r\n  ms: 2.1.3\r\n'),
+    ).toEqual({ default: { react: '^18.0.0', ms: '2.1.3' } })
+  })
+
+  it('finds nothing in a settings-only file', () => {
+    expect(readPnpmCatalogs('overrides:\n  lodash: 4.17.21\n')).toEqual({})
+  })
+
+  it('agrees with the writer: writing every entry it reads changes exactly those lines', async () => {
+    const yaml = [
+      '# catalogs',
+      'packages:',
+      '  - packages/*',
+      'catalog:',
+      '  react: ^18.0.0 # default',
+      "  '@types/node': '^20.0.0'",
+      '  # a comment between entries',
+      'catalogs:',
+      '  tools:',
+      '    eslint: ~9.1.0',
+      '    "typescript": "~5.4.0"',
+      "  'ui':",
+      '      react-dom: ^18.0.0',
+      'overrides:',
+      '  lodash: 4.17.21',
+      'onlyBuiltDependencies:',
+      '  - esbuild',
+      '',
+    ].join('\r\n')
+
+    const entries = Object.values(readPnpmCatalogs(yaml)).flatMap((catalog) =>
+      Object.keys(catalog),
+    )
+    expect(entries).toEqual([
+      'react',
+      '@types/node',
+      'eslint',
+      'typescript',
+      'react-dom',
+    ])
+
+    mockedFs.readFileSync.mockReturnValue(yaml)
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+    await updatePNPMWorkspaceYAML(
+      '/test',
+      Object.fromEntries(entries.map((name) => [name, '99.0.0'])),
+    )
+    const written = (mockedFs.writeFileSync as jest.Mock).mock
+      .calls[0][1] as string
+
+    const before = yaml.split('\n')
+    const after = written.split('\n')
+    expect(after).toHaveLength(before.length)
+    const changed = before.flatMap((line, i) => (line === after[i] ? [] : [i]))
+    expect(
+      changed
+        .map((i) => before[i].trim().split(/[:\s]/)[0].replace(/['"]/g, ''))
+        .sort(),
+    ).toEqual([...entries].sort())
+    // Lines the walk does not read are byte-identical, `\r` included.
+    expect(after[0]).toBe(before[0])
+    expect(after.filter((line) => line.includes('lodash'))).toEqual(
+      before.filter((line) => line.includes('lodash')),
+    )
+  })
+})
+
+describe('readBunCatalogs', () => {
+  it('reads catalog as default and each of catalogs', () => {
+    expect(
+      readBunCatalogs({
+        catalog: { react: '^18.0.0' },
+        catalogs: {
+          tools: { eslint: '~9.1.0' },
+          ui: { 'react-dom': '^18.0.0' },
+        },
+      }),
+    ).toEqual({
+      default: { react: '^18.0.0' },
+      tools: { eslint: '~9.1.0' },
+      ui: { 'react-dom': '^18.0.0' },
+    })
+  })
+
+  it('keeps string entries only', () => {
+    expect(
+      readBunCatalogs({
+        catalog: { react: '^18.0.0', odd: 3, nested: { a: 'b' } },
+        catalogs: { broken: 'text', list: ['a'] },
+      }),
+    ).toEqual({ default: { react: '^18.0.0' } })
+  })
+
+  // Verified on bun 1.4.4: bun reads workspaces.catalog(s), and when it is
+  // set it replaces the top-level field as a whole, per field.
+  it('reads workspaces.catalog and workspaces.catalogs', () => {
+    expect(
+      readBunCatalogs({
+        workspaces: {
+          packages: ['packages/*'],
+          catalog: { react: '^18.0.0' },
+          catalogs: { ui: { 'react-dom': '^18.0.0' } },
+        },
+      }),
+    ).toEqual({
+      default: { react: '^18.0.0' },
+      ui: { 'react-dom': '^18.0.0' },
+    })
+  })
+
+  it('lets workspaces.catalog replace the top-level catalog as a whole', () => {
+    expect(
+      readBunCatalogs({
+        workspaces: { catalog: { ms: '2.1.1' } },
+        catalog: { ms: '2.0.0', debug: '4.3.1' },
+        catalogs: { ui: { react: '^18.0.0' } },
+      }),
+    ).toEqual({ default: { ms: '2.1.1' }, ui: { react: '^18.0.0' } })
+  })
+
+  it('finds nothing without a manifest or catalogs', () => {
+    expect(readBunCatalogs(undefined)).toEqual({})
+    expect(readBunCatalogs({ name: 'x' })).toEqual({})
+  })
+})
+
+describe('catalog entries with a multi-comparator spec', () => {
+  const write = async (
+    yaml: string,
+    versions: Record<string, string>,
+    catalog?: string,
+  ) => {
+    mockedFs.readFileSync.mockReturnValue(yaml)
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+    await updatePNPMWorkspaceYAML('/test', versions, undefined, catalog)
+    return (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+  }
+
+  it.each([
+    ['an unquoted range with a space', 'react: >=18.0.0 <19', '>=18.0.0 <19'],
+    ['an unquoted ||', 'react: ^17 || ^18', '^17 || ^18'],
+    ['a quoted ||', 'react: "^18.0.0 || ^19.0.0"', '^18.0.0 || ^19.0.0'],
+    ['a single-quoted range', "react: '>=18 <19'", '>=18 <19'],
+    [
+      'a comment after an unquoted range',
+      'react: >=18.0.0 <19 # keep',
+      '>=18.0.0 <19',
+    ],
+    [
+      'a comment after a quoted range',
+      'react: "^17 || ^18" # keep',
+      '^17 || ^18',
+    ],
+  ])('reads the whole value of %s', (_, entry, spec) => {
+    expect(readPnpmCatalogs(`catalog:\n  ${entry}\n`)).toEqual({
+      default: { react: spec },
+    })
+  })
+
+  it.each([
+    ['an unquoted range', 'react: >=18.0.0 <19', 'react: ^19.0.0'],
+    ['an unquoted ||', 'react: ^17 || ^18', 'react: ^19.0.0'],
+    ['a quoted ||', 'react: "^18.0.0 || ^19.0.0"', 'react: "^19.0.0"'],
+    ['a single-quoted range', "react: '>=18 <19'", "react: '^19.0.0'"],
+    [
+      'a trailing comment',
+      'react: >=18.0.0 <19 # keep',
+      'react: ^19.0.0 # keep',
+    ],
+    [
+      'a quoted value with a comment',
+      'react: "^17 || ^18" # keep',
+      'react: "^19.0.0" # keep',
+    ],
+  ])('the writer replaces the whole value of %s', async (_, before, after) => {
+    // The old pattern stopped at the first space: `>=18.0.0 <19` became
+    // `^19.0.0 <19` (a bug on main as well).
+    const written = await write(`catalog:\n  ${before}\n  ms: 2.1.3\n`, {
+      react: '19.0.0',
+    })
+    expect(written).toBe(`catalog:\n  ${after}\n  ms: 2.1.3\n`)
+  })
+
+  it('leaves the key of a named catalog and a value-less line alone', async () => {
+    const yaml = 'catalogs:\n  tools:\n    eslint: ~9.1.0\n'
+    expect(await write(yaml, { tools: '1.0.0' })).toBe(yaml)
+  })
+})
+
+describe('catalog writers keyed by catalog', () => {
+  const yaml = [
+    'catalogs:',
+    '  react18:',
+    '    react: ^18.0.0',
+    '  react19:',
+    '    react: ^19.0.0',
+    '',
+  ].join('\n')
+
+  it('moves only the named catalog in pnpm-workspace.yaml', async () => {
+    mockedFs.readFileSync.mockReturnValue(yaml)
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+
+    await updatePNPMWorkspaceYAML(
+      '/test',
+      { react: '18.3.1' },
+      undefined,
+      'react18',
+    )
+
+    expect((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]).toBe(
+      yaml.replace('^18.0.0', '^18.3.1'),
+    )
+  })
+
+  it('moves only the named catalog in a bun package.json', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        catalogs: {
+          react18: { react: '^18.0.0' },
+          react19: { react: '^19.0.0' },
+        },
+      }),
+    )
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+
+    await updateBunCatalogs('/test', { react: '18.3.1' }, undefined, 'react18')
+
+    expect(
+      JSON.parse((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]),
+    ).toEqual({
+      catalogs: {
+        react18: { react: '^18.3.1' },
+        react19: { react: '^19.0.0' },
+      },
+    })
+  })
+
+  it('writes the workspaces.catalog bun reads, not the shadowed top-level one', async () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        workspaces: { catalog: { ms: '2.1.1' } },
+        catalog: { ms: '2.0.0' },
+      }),
+    )
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+
+    await updateBunCatalogs('/test', { ms: '2.1.3' }, undefined, 'default')
+
+    expect(
+      JSON.parse((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]),
+    ).toEqual({
+      workspaces: { catalog: { ms: '2.1.3' } },
+      catalog: { ms: '2.0.0' },
+    })
+  })
+
+  it('splitCatalogUpdates names the catalog a spec references', () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        dependencies: { react: 'catalog:react18', ms: 'catalog:default' },
+      }),
+    )
+
+    expect(
+      splitCatalogUpdates('/test', [
+        {
+          path: '.',
+          withinRange: [],
+          beyondRange: { react: '18.3.1', ms: '2.1.3' },
+        },
+      ]).catalogs,
+    ).toEqual({ react18: { react: '18.3.1' }, default: { ms: '2.1.3' } })
   })
 })

@@ -257,41 +257,110 @@ describe('registry reader', () => {
         '/mkdirp': packument('mkdirp.packument'),
       })
 
-    it.each([
-      ['a 429', { status: 429, body: '' }],
-      ['a 503', { status: 503, body: '' }],
-    ] as Array<[string, Reply]>)(
-      'stops asking deps.dev after %s',
-      async (_label, reply) => {
-        const { registry, depsDev, reader } = await setup({
-          registry: twoNames(),
-          depsDev: replies({ [`${DEPS_DEV_PREFIX}ms`]: reply }),
-        })
+    const sameNames = (names: string[]): Handler =>
+      replies(
+        Object.fromEntries(
+          names.flatMap((n) => [
+            [`/-/package/${n}/dist-tags`, ok('ms.dist-tags')],
+            [`/${n}`, packument('ms.packument')],
+          ]),
+        ),
+      )
 
-        await reader.lookup('ms')
-        expect(depsDev.requests).toHaveLength(1)
+    /** deps.dev fails `ms` with `fail` and serves `mkdirp`. */
+    const asksAgainAfter = async (fail: Handler) => {
+      const mkdirp = replies({
+        [`${DEPS_DEV_PREFIX}mkdirp`]: ok('mkdirp.deps-dev'),
+      })
+      const { registry, depsDev, reader } = await setup({
+        registry: twoNames(),
+        depsDev: (req, res) =>
+          (req.url === `${DEPS_DEV_PREFIX}ms` ? fail : mkdirp)(req, res),
+      })
 
-        const second = packageOf(await reader.lookup('mkdirp'))
+      const first = packageOf(await reader.lookup('ms'))
+      const second = packageOf(await reader.lookup('mkdirp'))
 
-        expect(depsDev.requests).toHaveLength(1)
-        expect(second.source).toBe('packument')
-        expect(registry.requests.map((r) => r.url).slice(-1)).toEqual([
-          '/mkdirp',
-        ])
-        expect(registry.requests.map((r) => r.url)).not.toContain(
-          '/-/package/mkdirp/dist-tags',
-        )
-      },
-    )
+      expect(first.source).toBe('packument')
+      expect(second.source).toBe('deps.dev')
+      expect(depsDev.requests.map((r) => r.url)).toEqual([
+        `${DEPS_DEV_PREFIX}ms`,
+        `${DEPS_DEV_PREFIX}mkdirp`,
+      ])
+      expect(registry.requests.map((r) => r.url)).not.toContain('/mkdirp')
+    }
 
-    it('stops asking deps.dev after a transport failure', async () => {
-      const { depsDev, reader } = await setup({ registry: twoNames() })
-      await depsDev.close()
+    it('falls back for one package after a 503 and asks deps.dev again', async () => {
+      await asksAgainAfter((_req, res) => {
+        res.statusCode = 503
+        res.end('')
+      })
+    })
+
+    it('falls back for one package after a connection reset and asks deps.dev again', async () => {
+      await asksAgainAfter((req) => req.socket.destroy())
+    })
+
+    it('stops asking deps.dev after a 429', async () => {
+      const { registry, depsDev, reader } = await setup({
+        registry: twoNames(),
+        depsDev: replies({
+          [`${DEPS_DEV_PREFIX}ms`]: { status: 429, body: '' },
+        }),
+      })
 
       await reader.lookup('ms')
-      await reader.lookup('mkdirp')
+      expect(depsDev.requests).toHaveLength(1)
 
-      expect(depsDev.requests).toHaveLength(0)
+      const second = packageOf(await reader.lookup('mkdirp'))
+
+      expect(depsDev.requests).toHaveLength(1)
+      expect(second.source).toBe('packument')
+      expect(registry.requests.map((r) => r.url).slice(-1)).toEqual(['/mkdirp'])
+      expect(registry.requests.map((r) => r.url)).not.toContain(
+        '/-/package/mkdirp/dist-tags',
+      )
+    })
+
+    it('stops asking deps.dev after a timeout', async () => {
+      const { depsDev, reader } = await setup(
+        {
+          registry: twoNames(),
+          depsDev: (req, res) => {
+            if (req.url !== `${DEPS_DEV_PREFIX}ms`) {
+              res.end(registryBody('mkdirp.deps-dev'))
+            }
+          },
+        },
+        { config: { fetchTimeout: 100 } },
+      )
+
+      await reader.lookup('ms')
+      const second = packageOf(await reader.lookup('mkdirp'))
+
+      expect(depsDev.requests).toHaveLength(1)
+      expect(second.source).toBe('packument')
+    })
+
+    it('stops asking deps.dev after three 5xx failures', async () => {
+      const names = ['a', 'b', 'c', 'd']
+      const { registry, depsDev, reader } = await setup({
+        registry: sameNames(names),
+        depsDev: (_req, res) => {
+          res.statusCode = 503
+          res.end('')
+        },
+      })
+
+      for (const n of names) {
+        expect(packageOf(await reader.lookup(n)).source).toBe('packument')
+      }
+
+      expect(depsDev.requests).toHaveLength(3)
+      expect(registry.requests.map((r) => r.url)).toContain('/d')
+      expect(registry.requests.map((r) => r.url)).not.toContain(
+        '/-/package/d/dist-tags',
+      )
     })
 
     it('sends nothing to deps.dev from lookups already queued when it trips', async () => {
@@ -696,7 +765,7 @@ describe('registry reader', () => {
     expect(depsDev.requests).toHaveLength(1)
   })
 
-  it('keeps no more than maxSockets requests in flight across both services', async () => {
+  it('keeps no more than maxSockets requests in flight to one host', async () => {
     const combined = await start((req, res) => {
       setTimeout(() => {
         res.setHeader('content-type', 'application/json')
@@ -729,5 +798,34 @@ describe('registry reader', () => {
     expect(results.every((r) => r.ok)).toBe(true)
     expect(combined.requests).toHaveLength(16)
     expect(combined.peak).toBeLessThanOrEqual(2)
+  })
+
+  it('limits each host to maxSockets, so two hosts can overlap', async () => {
+    let inFlight = 0
+    let overall = 0
+    const slow =
+      (body: string): Handler =>
+      (_req, res) => {
+        overall = Math.max(overall, ++inFlight)
+        setTimeout(() => {
+          inFlight--
+          res.setHeader('content-type', 'application/json')
+          res.end(registryBody(body))
+        }, 20)
+      }
+    const { registry, depsDev, reader } = await setup(
+      { registry: slow('ms.dist-tags'), depsDev: slow('ms.deps-dev') },
+      { config: { maxSockets: 2 } },
+    )
+
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => reader.lookup(`pkg-${i}`)),
+    )
+
+    expect(results.every((r) => r.ok)).toBe(true)
+    expect(registry.peak).toBe(2)
+    expect(depsDev.peak).toBe(2)
+    expect(overall).toBeGreaterThan(2)
+    expect(overall).toBeLessThanOrEqual(4)
   })
 })

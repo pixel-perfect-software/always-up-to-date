@@ -4,13 +4,13 @@
 One adapter per package manager (npm, yarn, pnpm, bun): everything specific to that manager. The pipeline in `src/pipeline.ts` runs detect → discover → plan → apply → report the same way for every adapter.
 
 ## Current Status: Stable
-All four package managers are implemented with workspace support. Yarn is one adapter for v1 and berry (2+), told apart by `isYarnBerry(cwd)`; berry has no `outdated`, so it discovers from `yarn info` and the registry.
+All four package managers are implemented with workspace support. Yarn is one adapter for v1 and berry (2+), told apart by `isYarnBerry(cwd)`; berry has no `outdated`, so it still discovers from `yarn info` and the registry (`ownDiscovery`, until #107). npm, pnpm, yarn v1 and bun are discovered natively by `src/discovery.ts`, so no adapter runs or parses `outdated`.
 
 ## Component-Specific Development Guidelines
 - An adapter is a plain object implementing `ManagerAdapter` (`adapter.ts`):
   - `name`, `lockfile`: what detection looks for
-  - `readWorkspace(cwd)` → `{ isWorkspace, catalogs, manifests }`, read once per run and passed back to `discover` and `apply`. `manifests` is the root (`{ path: '.', name? }`) first, then each member directory the workspace patterns match, sorted by path
-  - `discover(run, cwd, workspace)` → a `Discovery`: `{ kind: 'single', outdated: Record<string, PackageInfo> }` in a single-package project, `{ kind: 'workspace', entries: OutdatedEntry[] }` (one entry per package per owning manifest) in a workspace. The output parsers are exported pure functions (`parseNpmOutdated`, `parsePnpmOutdated`, `parseYarnOutdated`, `parseBunOutdated`, and for workspaces `parseNpmWorkspaceOutdated`, `parsePnpmWorkspaceOutdated`, `parseYarnWorkspaceOutdated`, `parseBunWorkspaceOutdated`) with direct tests on captured fixtures. Every row has a `current`: pnpm, yarn v1 and bun read it from their lockfile, while `npm outdated` reads node_modules and omits it for a package that isn't installed, so `parseNpmOutdated` takes it from `package-lock.json` (`readLockedVersions`), else `missing`
+  - `readWorkspace(cwd)` → `{ isWorkspace, catalogs, manifests }`, read once per run and passed back to discovery and `apply`. `catalogs` holds the catalog contents, `Record<catalog, Record<name, spec>>` (`default` for `catalog:`), read by `readPnpmCatalogs` / `readBunCatalogs`. `manifests` is the root (`{ path: '.', name? }`) first, then each member directory the workspace patterns match, sorted by path
+  - `ownDiscovery?(cwd)`: yarn berry only, until #107: returns `(run, workspace) => Discovery` when the project can't be read natively, else undefined. Every other project is discovered by `discoverFromRegistry` (`src/discovery.ts`; see "Native discovery" below). A `Discovery` is `{ kind: 'single', outdated: Record<string, PackageInfo> }` in a single-package project, `{ kind: 'workspace', entries: OutdatedEntry[] }` (one entry per package per owning manifest) in a workspace, keyed by the manifest key
   - `apply(run, cwd, plan, workspace)`: writes the specs the manager does not write itself, then runs its update commands. `plan` is `{ names, withinRange, beyondRange, manifests }`; the first three are unions across manifests, `manifests` is the same split per manifest (`ManifestPlan[]`, root first), which a workspace apply reads
   - `installed?(run, cwd, rows)`: optional. The versions installed after apply, keyed by `rowKey`, for a manager whose installs can't be read from node_modules. The pipeline uses it instead of `readInstalledVersions` when present; yarn implements it (berry: `yarn info -A --json`, since PnP has no node_modules; v1: the node_modules reader)
   - `projectRoot?(cwd)`: optional. Where the manager's project `.npmrc` lives when `package.json` `workspaces` doesn't say (pnpm: the nearest `pnpm-workspace.yaml`). From a workspace member, pnpm and bun read the workspace root's settings files, not the member's
@@ -25,13 +25,13 @@ All four package managers are implemented with workspace support. Yarn is one ad
 managers/
   adapter.ts           # ManagerAdapter, Workspace, WorkspaceManifest, Discovery, RunManager, ApplyPlan
   index.ts             # adapters registry (detection order), adapterFor(name)
-  workspaces.ts        # readManifest(), packageJsonWorkspace() (npm/yarn/bun), workspacePatterns(), readWorkspaceManifests() (the member map), workspaceOwner(), ownerPath()
-  npm/index.ts         # npm adapter, parseNpmOutdated, readLockedVersions
-  yarn/index.ts        # yarn adapter (v1 `outdated`/`upgrade`), parseYarnOutdated, isYarnBerry
+  workspaces.ts        # readManifest(), packageJsonWorkspace() (npm/yarn/bun), workspacePatterns(), readWorkspaceManifests() (the member map), ownerPath() (berry)
+  npm/index.ts         # npm adapter, readLockedVersions (kept for #107)
+  yarn/index.ts        # yarn adapter (v1 `upgrade`, berry's ownDiscovery), isYarnBerry
   yarn/berry.ts        # berry: parseBerryInfo, parseBerryRegistry, discoverBerry, applyBerry, installedBerry
-  pnpm/index.ts        # pnpm adapter, parsePnpmOutdated
+  pnpm/index.ts        # pnpm adapter
   pnpm/registries.ts   # pnpmRegistrySettings(yaml), applyPnpmRegistrySettings(): registry routes from pnpm-workspace.yaml
-  bun/index.ts         # bun adapter, parseBunOutdated
+  bun/index.ts         # bun adapter
   bun/bunfig.ts        # bunfigExact(), parseBunfigRegistries(), bunRegistryConfig(): registry routes and credentials from bunfig.toml
 ```
 
@@ -42,16 +42,7 @@ managers/
 - Success is decided by a `SuccessCheck` over `{ exitCode, stdout }`; the default is exit 0. stderr is never a failure signal (yarn v1 on Node 24 always prints a DEP0169 warning); it is logged with `logger.debug`
 - A failure throws `Command execution failed: <stderr, else stdout>`; a process with no numeric exit code (spawn failure, killed) throws the "unknown error" message. `runCommand` does not log failures; the command layer reports them once
 - The pipeline hands each adapter `run(args, { isSuccess?, manifestWritten? })`, which is `runStep` bound to the step (`discover` or `apply`) and the manager: a failure rethrows as a `StepError`. Pass `manifestWritten: true` when autd rewrote a manifest before the apply command (npm, pnpm, bun); yarn writes its own manifest, so it passes `false`. Nothing catches: failures reach `src/commands/reportFailure.ts`
-- Each manager's `outdated` passes its own `isOutdatedReport` check, because npm, pnpm and yarn v1 exit 1 both when packages are outdated and on real errors:
-
-| Manager | `outdated` succeeds when |
-|---------|--------------------------|
-| npm | exit 0, or exit 1 with a JSON report that is not npm's `{ "error": { code, summary } }` |
-| pnpm | exit 0, or exit 1 with a JSON object on stdout (errors leave stdout empty) |
-| yarn v1 | exit 0, or exit 1 with a `{"type":"table"}` line (errors have none) |
-| bun | exit 0 only (bun exits 0 when packages are outdated) |
-
-Apply commands (`update`, `upgrade`, `install`) use the default.
+Every command uses the default success check (exit 0); there is no `outdated` to treat specially.
 
 ### Package Detection (`src/detectPackageManager.ts`)
 `detectPackageManager(cwd, pm?)`, first source that answers:
@@ -60,34 +51,37 @@ Apply commands (`update`, `upgrade`, `install`) use the default.
 3. package.json `devEngines.packageManager`: one `{ name }` or an array of them. Of the supported names, the one with a lockfile present, else the first
 4. The lockfiles: each adapter's `lockfile`, in registry order npm -> yarn -> pnpm -> bun, last match wins. With more than one, a warning names the choice
 
-A `packageManager` naming an unsupported manager falls through to `devEngines.packageManager`; when every declaration names only unsupported managers (`deno@2.5.0`), the `detect` step fails rather than guessing from a lockfile. Lockfiles that disagree with the chosen manager are logged at debug level as ignored, unless the declared manager has no lockfile while another has, which warns. A `--pm` that contradicts a declaration warns (Corepack may refuse it). The choice itself is logged at debug level. With nothing declared and no lockfile, `detect` fails and suggests `--pm`. A declared manager with no lockfile is used: its `outdated` then fails `discover` with the manager's own "run install" message.
+A `packageManager` naming an unsupported manager falls through to `devEngines.packageManager`; when every declaration names only unsupported managers (`deno@2.5.0`), the `detect` step fails rather than guessing from a lockfile. Lockfiles that disagree with the chosen manager are logged at debug level as ignored, unless the declared manager has no lockfile while another has, which warns. A `--pm` that contradicts a declaration warns (Corepack may refuse it). The choice itself is logged at debug level. With nothing declared and no lockfile, `detect` fails and suggests `--pm`. A declared manager with no lockfile is used.
 
 ### Workspace Detection
-| Manager | Method | `outdated` command | Owning manifest comes from |
-|---------|--------|--------------------|----------------------------|
-| npm | `package.json` `workspaces` field (array or `{packages: [...]}`) | `outdated --json --long` (no `--workspaces`: that would drop the root's own dependencies) | `dependedByLocation` (`''` is the root); a name maps to one row or an array of rows |
-| yarn v1 | `package.json` `workspaces` field | `outdated --json --recursive` | the `Workspace` column (a package name), resolved through `manifests` |
-| yarn berry | `package.json` `workspaces` field | `info -A --json` (no `outdated`; see Yarn berry) | each workspace entry's value, `<name>@workspace:<path>` (path `.` for the root) |
-| pnpm | `pnpm-workspace.yaml` with a non-empty `packages:` list (a file holding only settings or catalogs is not a workspace) | `outdated --json -r`, plus `--compatible` | each `dependentPackages[].location`, made relative to `cwd`; a `name@current` key loses its suffix |
-| bun | `package.json` `workspaces` field + optional `catalog`/`catalogs` | `outdated --filter *` (two arguments) | the `Workspace` column (a package name), resolved through `manifests`; a catalog row reads `catalog (<ws>)` or `catalog:<name> (<ws>)` and belongs to that workspace |
+| Manager | Method |
+|---------|--------|
+| npm | `package.json` `workspaces` field (array or `{packages: [...]}`) |
+| yarn (v1 and berry) | `package.json` `workspaces` field |
+| pnpm | `pnpm-workspace.yaml` with a non-empty `packages:` list (a file holding only settings or catalogs is not a workspace) |
+| bun | `package.json` `workspaces` field, plus optional `catalog` / `catalogs` (top level or under `workspaces`) |
 
-Yarn v1 and bun print a root without a `name` as an empty `Workspace` cell (verified on yarn 1.22.22 and bun 1.4.0): `workspaceOwner()` reads `''` as the root only when the root manifest has no name, and fails `discover` for any other name no manifest declares.
+Discovery needs no manager flags: it reads each manifest in `Workspace.manifests`. The flags (`-r`, `--filter *`) belong to apply. Berry's discovery reads `yarn info -A --json`, one entry per workspace valued `<name>@workspace:<path>`.
 
-The member map (`readWorkspaceManifests`) expands the patterns with `readdirSync`, not `fs.globSync`: literal directories, `{a,b}` braces, `*`, `?` and `[…]` / `[!…]` classes within a segment, `**` as a whole segment, and `!` negations applied after the positive patterns. It skips `node_modules`, dot-directories (unless the pattern segment starts with `.`) and symlinks, counts only directories with a package.json, and matches nothing for extglobs such as `@(a|b)` (logged at debug level). An owner a manager reports outside the root (`..`, absolute) fails `discover` (`ownerPath`), since apply writes the owner's package.json. Only yarn and bun need it for discovery; npm and pnpm take owners from paths.
+The member map (`readWorkspaceManifests`) expands the patterns with `readdirSync`, not `fs.globSync`: literal directories, `{a,b}` braces, `*`, `?` and `[…]` / `[!…]` classes within a segment, `**` as a whole segment, and `!` negations applied after the positive patterns. It skips `node_modules`, dot-directories (unless the pattern segment starts with `.`) and symlinks, counts only directories with a package.json, and matches nothing for extglobs such as `@(a|b)` (logged at debug level). Berry's owner paths go through `ownerPath`, which fails `discover` for one outside the root (`..`, absolute), since apply writes the owner's package.json.
 
-`catalogs` lists catalog names (pnpm: `catalog` and the keys of `catalogs:` in pnpm-workspace.yaml; bun: the same fields in package.json). The pipeline logs the workspace once per run, and the catalogs when it is a workspace.
+`catalogs` holds the catalog contents, `Record<catalog, Record<name, spec>>` with `default` for `catalog:` (pnpm: `readPnpmCatalogs` over pnpm-workspace.yaml, the walk its writer uses; bun: `readBunCatalogs` over `catalog` and `catalogs` of package.json, from `workspaces` when set there, else the top level, as bun reads them; npm and yarn: `{}`). The pipeline logs the workspace once per run, and the catalog names when it is a workspace.
 
 ## Integration Points
 - `src/pipeline.ts`: `check(project)`, `plan(project, outdated, targets?)`, `update(project, { targetPackages?, discovered? })`, where a `Project` is `{ cwd, config, adapter }`. `openProject(cwd, { pm? })` (`src/project.ts`) builds it with `adapterFor(detectPackageManager(cwd, pm))` after loading the config
 - `plan` runs `src/utils/filterPackages.ts` with `project.config` and `adapter.overrides(cwd)`
-- `src/utils/files.ts` `updatePackageJson(dir, …)` writes version updates before running the manager's update command (npm, pnpm, bun), only for packages moving past their range, once per owning manifest (`ManifestPlan.beyondRange`). `splitCatalogUpdates()` routes a workspace's beyond-range rows: an owning spec of `catalog:` (read with `readSpec()`) writes the catalog, every other row its own manifest
+- `src/utils/files.ts` `updatePackageJson(dir, …)` writes version updates before running the manager's update command (npm, pnpm, bun), only for packages moving past their range, once per owning manifest (`ManifestPlan.beyondRange`). `splitCatalogUpdates()` routes a workspace's beyond-range rows: an owning spec of `catalog:` / `catalog:<name>` (read with `readSpec()`) writes that catalog's entry (`catalogs`: catalog → name → version, written one catalog at a time), every other row its own manifest. A single-package pnpm project with catalogs routes the same way
 - `src/utils/overrides.ts` (`overridesFromField`, `manifestOverrides`) and `src/utils/saveStyle.ts` (`readTextFile`, `yamlValue`) hold the generic readers adapters build on
 
-### Discovery: names
-Every parser's report goes through `toManifestNames()` (single-package) or `toEntryManifestNames()` (workspace, each entry re-keyed by its owning manifest), so results are keyed by the package.json name. In a workspace the entries are then folded by `foldWorkspaceEntries()` into one `PackageInfo` per name carrying `workspaces`. An `npm:` alias (`"dj": "npm:dayjs@1.11.9"`) otherwise comes back as `dj:dayjs@1.11.9` (npm) or the target name `dayjs` (pnpm, bun); yarn v1 reports `dj` but with `exotic` as wanted and latest, which the policy holds as an invalid version. The managers' own `update dj` accepts the alias key.
-
-### Discovery: `wanted`
-Every parser fills `PackageInfo.wanted`, the highest version the manifest range allows: npm's `wanted`, yarn v1's `Wanted` column, bun's `Update` column. pnpm's own `wanted` is the lockfile's version, so pnpm also runs `outdated --compatible` (in parallel) and takes `wanted` from its `latest`.
+### Native discovery (`src/discovery.ts`, npm, pnpm, yarn v1, bun)
+No subprocess: `check`, and `update`'s discovery, read the manifests, `node_modules` and `RegistrySession.lookup`. The same rules for every manager:
+- **Declared:** `dependencies`, `devDependencies`, `optionalDependencies` of the root and each member (`readDeclaredDependencies`). A name only in `peerDependencies` is not discovered (npm and bun's `outdated` listed it; pnpm's and yarn v1's did not). A manifest that can't be read is a `discover` `StepError`
+- **Specs:** `classifySpec` resolves `catalog:` through `Workspace.catalogs`; skips `workspace:`, git, file, link, URL and github specs (debug line); looks an `npm:name@range` alias up by its target and keys the row by the manifest key, and a bare `npm:name` as the `latest` of that name (npm reads it so); follows `latest`; warns and skips any other dist-tag and an unknown catalog entry
+- **Installed:** `readInstalledPackages` reads `node_modules`. A symlink or junction to a directory inside the project (a link) is skipped without a lookup, and so is any dependency named like a workspace member, whatever is installed (pnpm's injected workspace packages are real copies; an `npm:` alias to a registry package of that name is still looked up). A dependency not installed is a `current: 'missing'` row; a missing optional one is skipped. With a registry dependency declared and no `node_modules` in the root or in any manifest that declares one (pnpm with `sharedWorkspaceLockfile: false` installs per member), discovery fails telling the user to run `<pm> install`; `requireNodeModules: false` (for a lockfile reader, #107) turns the check off
+- **`wanted`** (`wantedVersion`), per manifest: an exact pin is its own; else `latest` if it satisfies the range and isn't deprecated; else the highest non-deprecated satisfying version; else the highest satisfying one. It can sit below `current` (a deprecated version installed); `rows.ts` then shows no in-range note. Nothing satisfying: `wanted` is `current` (and no note)
+- **Listed** when `current` is `missing`, or `latest` or `wanted` is ahead of `current`. Sorted by name (workspace: then root first, then path)
+- **Failures:** every lookup settles, then any `ok: false` becomes one `StepError('discover')` naming each package with its reason (the first 10, then "and N more"). Nothing is left out silently
+- A workspace is folded by `foldWorkspaceEntries()` into one `PackageInfo` per name carrying `workspaces`
 
 ### Apply: within range vs beyond range
 - In-range updates (`target == wanted`) go to the manager by name with no manifest write: `npm update`, `pnpm update`, `bun update`, yarn `upgrade name@<current spec>`. Each manager installs `wanted`; npm and yarn leave package.json alone, pnpm and bun raise the range floor (their own convention)

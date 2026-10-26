@@ -8,10 +8,11 @@ import yarn from '@/managers/yarn'
 import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
 import {
+  capturedRegistry,
   exitError,
+  installPackages,
   isolateNpmConfig,
   projectFor,
-  readFixture,
   writeWorkspaceProject,
 } from '../fixtures'
 
@@ -37,13 +38,13 @@ afterEach(() => {
   fs.rmSync(npmConfigDir, { recursive: true, force: true })
 })
 
+// When the workspace fixtures were captured, so no version drifts with the registry.
+const AS_OF = '2026-10-23T16:38:12-03:00'
+
 describe.each([
   {
     pm: 'npm',
     adapter: npm,
-    report: 'npm/outdated-workspace.stdout',
-    compatible: undefined,
-    exitsOne: true,
     pnpm: false,
     inRange: [['update', 'dayjs', 'debug', 'ms']],
     beyond: [['update', 'dayjs', 'debug', 'ms']],
@@ -52,23 +53,17 @@ describe.each([
   {
     pm: 'pnpm',
     adapter: pnpm,
-    report: 'pnpm/outdated-workspace.stdout',
-    compatible: 'pnpm/outdated-workspace-compatible.stdout',
-    exitsOne: true,
     pnpm: true,
-    inRange: [['update', '-r', 'dayjs', 'ms', 'debug']],
+    inRange: [['update', '-r', 'dayjs', 'debug', 'ms']],
     beyond: [
       ['install', '--no-frozen-lockfile'],
-      ['update', '-r', 'dayjs', 'ms', 'debug'],
+      ['update', '-r', 'dayjs', 'debug', 'ms'],
     ],
     writesManifests: true,
   },
   {
     pm: 'yarn',
     adapter: yarn,
-    report: 'yarn/v1-outdated-workspace.stdout',
-    compatible: undefined,
-    exitsOne: true,
     pnpm: false,
     inRange: [
       ['upgrade', 'ms@~2.1.1'],
@@ -86,56 +81,41 @@ describe.each([
   {
     pm: 'bun',
     adapter: bun,
-    report: 'bun/outdated-workspace.stdout',
-    compatible: undefined,
-    exitsOne: false,
     pnpm: false,
-    inRange: [['update', 'dayjs', 'ms', 'debug', '--filter', '*']],
-    beyond: [['update', 'dayjs', 'ms', 'debug', '--filter', '*']],
+    inRange: [['update', 'dayjs', 'debug', 'ms', '--filter', '*']],
+    beyond: [['update', 'dayjs', 'debug', 'ms', '--filter', '*']],
     writesManifests: true,
   },
 ] as const)(
   'workspace apply with $pm',
-  ({
-    pm,
-    adapter,
-    report,
-    compatible,
-    exitsOne,
-    pnpm: usesPnpm,
-    inRange,
-    beyond,
-    writesManifests,
-  }) => {
+  ({ pm, adapter, pnpm: usesPnpm, inRange, beyond, writesManifests }) => {
     let cwd: string
 
     const readJson = (file: string) =>
       JSON.parse(fs.readFileSync(path.join(cwd, file), 'utf8'))
-    const commands = () =>
-      mockedRunProcess.mock.calls
-        .map(([, args]) => args)
-        .filter((args) => args[0] !== 'outdated')
+    const commands = () => mockedRunProcess.mock.calls.map(([, args]) => args)
 
-    // Discovery answers from the captured report; every other command succeeds.
-    const answerDiscovery = (applyError?: Error) =>
-      mockedRunProcess.mockImplementation(async (_file, args) => {
-        if (args[0] !== 'outdated') {
-          if (applyError) throw applyError
-          return { stdout: '', stderr: '' }
-        }
-        // The temp dir goes into JSON strings: escaped, since a Windows
-        // path holds backslashes.
-        const stdout = readFixture(
-          compatible && args.includes('--compatible') ? compatible : report,
-        ).replaceAll('/project', JSON.stringify(cwd).slice(1, -1))
-        if (!exitsOne) return { stdout, stderr: '' }
-        throw exitError(1, stdout, '')
+    // Every command succeeds, or fails with applyError.
+    const answerCommands = (applyError?: Error) =>
+      mockedRunProcess.mockImplementation(async () => {
+        if (applyError) throw applyError
+        return { stdout: '', stderr: '' }
       })
+
+    // The evidence workspace as its install left it.
+    const registry = () =>
+      capturedRegistry(['dayjs', 'ms', 'debug'], { asOf: AS_OF })
 
     beforeEach(() => {
       cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-ws-apply-${pm}-`))
       writeWorkspaceProject(cwd, { pnpm: usesPnpm })
-      answerDiscovery()
+      installPackages(cwd, '.', {
+        dayjs: '1.11.9',
+        ms: '2.1.1',
+        debug: '4.3.1',
+      })
+      installPackages(cwd, 'packages/a', { ms: '2.1.2' })
+      answerCommands()
     })
 
     afterEach(() => {
@@ -143,7 +123,7 @@ describe.each([
     })
 
     it('updates every manifest in range with the manager, writing nothing itself', async () => {
-      await update(projectFor(adapter, cwd))
+      await update(projectFor(adapter, cwd, {}, registry()))
 
       expect(commands()).toEqual(inRange)
       expect(readJson('package.json').dependencies).toEqual({
@@ -160,7 +140,9 @@ describe.each([
     })
 
     it('moves a pin past its range in the manifest that owns it', async () => {
-      await update(projectFor(adapter, cwd, { beyondRange: 'patch' }))
+      await update(
+        projectFor(adapter, cwd, { beyondRange: 'patch' }, registry()),
+      )
 
       expect(commands()).toEqual(beyond)
       const expectedRoot = writesManifests ? '1.11.23' : '1.11.9'
@@ -179,10 +161,10 @@ describe.each([
     })
 
     it('flags the written manifests when a command fails after the writes', async () => {
-      answerDiscovery(exitError(1, '', 'boom'))
+      answerCommands(exitError(1, '', 'boom'))
 
       const error = await update(
-        projectFor(adapter, cwd, { beyondRange: 'patch' }),
+        projectFor(adapter, cwd, { beyondRange: 'patch' }, registry()),
       ).catch((e: unknown) => e)
 
       expect(error).toMatchObject({

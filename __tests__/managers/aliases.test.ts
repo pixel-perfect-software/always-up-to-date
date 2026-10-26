@@ -6,18 +6,9 @@ import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
 import { check, plan } from '@/pipeline'
-import { exitError, projectFor, readFixture } from '../fixtures'
+import { capturedRegistry, installPackages, projectFor } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils', () => ({
-  ...jest.requireActual('@/utils'),
-  runProcess: jest.fn(),
-}))
-
-import { runProcess } from '@/utils'
-
-const mockedRunProcess = jest.mocked(runProcess)
-
 // The scratch project the fixtures come from: `dj` is an npm: alias.
 const manifest = {
   dependencies: {
@@ -29,46 +20,36 @@ const manifest = {
   },
 }
 
+// What the scratch project had installed when the alias fixtures were captured.
+const INSTALLED = {
+  dj: '1.11.9',
+  express: '4.22.3',
+  semver: '7.6.3',
+  zod: '3.25.76',
+  ms: '2.1.3',
+}
+const AS_OF = '2026-10-23T10:42:18-03:00'
+
 describe.each([
-  {
-    pm: 'npm',
-    adapter: npm,
-    report: 'npm/outdated-alias.stdout',
-    exitsOne: true,
-  },
-  {
-    pm: 'pnpm',
-    adapter: pnpm,
-    report: 'pnpm/outdated-alias.stdout',
-    exitsOne: true,
-  },
-  {
-    pm: 'yarn',
-    adapter: yarn,
-    report: 'yarn/v1-outdated-alias.stdout',
-    exitsOne: true,
-  },
-  {
-    pm: 'bun',
-    adapter: bun,
-    report: 'bun/outdated-alias.stdout',
-    exitsOne: false,
-  },
-] as const)('$pm with an npm: alias', ({ pm, adapter, report, exitsOne }) => {
+  { pm: 'npm', adapter: npm },
+  { pm: 'pnpm', adapter: pnpm },
+  { pm: 'yarn', adapter: yarn },
+  { pm: 'bun', adapter: bun },
+] as const)('$pm with an npm: alias', ({ pm, adapter }) => {
   let cwd: string
+  let registry: ReturnType<typeof capturedRegistry>
+  let lookup: jest.Mock
 
   beforeEach(() => {
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-alias-${pm}-`))
     fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify(manifest))
-    mockedRunProcess.mockImplementation(async (_file, args) => {
-      const stdout = readFixture(
-        args.includes('--compatible')
-          ? 'pnpm/outdated-alias-compatible.stdout'
-          : report,
-      )
-      if (!exitsOne) return { stdout, stderr: '' }
-      throw exitError(1, stdout, '')
-    })
+    installPackages(cwd, '.', INSTALLED)
+    const captured = capturedRegistry(
+      ['zod', 'express', 'semver', 'dayjs', 'ms'],
+      { asOf: AS_OF },
+    )
+    lookup = jest.fn(captured.lookup)
+    registry = { ...captured, lookup }
   })
 
   afterEach(() => {
@@ -77,7 +58,7 @@ describe.each([
 
   it('reports the alias under its manifest key', async () => {
     const outdated = await check(
-      projectFor(adapter, cwd, { beyondRange: 'major' }),
+      projectFor(adapter, cwd, { beyondRange: 'major' }, registry),
     )
 
     expect(Object.keys(outdated)).toContain('dj')
@@ -86,26 +67,24 @@ describe.each([
     expect(outdated.dj.name).toBe('dj')
   })
 
-  it('plans the alias without throwing, whatever versions the manager reports', async () => {
-    const outdated = await check(
-      projectFor(adapter, cwd, { beyondRange: 'major' }),
-    )
+  it('looks the alias up by its target, never by its key', async () => {
+    await check(projectFor(adapter, cwd, { beyondRange: 'major' }, registry))
 
-    const results = await plan(
-      projectFor(adapter, cwd, { beyondRange: 'major' }),
-      outdated,
-    )
+    const asked = lookup.mock.calls.map(([name]) => name)
+    expect(asked).toContain('dayjs')
+    expect(asked).not.toContain('dj')
+  })
 
-    const dj = results.find((r) => r.name === 'dj')
-    // yarn v1 reports the alias's latest as "exotic": nothing to move to.
-    if (pm === 'yarn') {
-      expect(dj).toMatchObject({
-        updated: false,
-        reason: 'invalid version (current 1.11.9, latest exotic)',
-      })
-    } else {
-      expect(dj).toMatchObject({ updated: true, target: '1.11.23' })
-    }
+  it('plans the alias like any other package', async () => {
+    const project = projectFor(adapter, cwd, { beyondRange: 'major' }, registry)
+    const outdated = await check(project)
+
+    const results = await plan(project, outdated)
+
+    expect(results.find((r) => r.name === 'dj')).toMatchObject({
+      updated: true,
+      target: '1.11.23',
+    })
     expect(results.find((r) => r.name === 'zod')?.updated).toBe(true)
   })
 })

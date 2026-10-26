@@ -4,10 +4,10 @@ import path from 'path'
 import npm from '@/managers/npm'
 import { check, update } from '@/pipeline'
 import {
-  exitError,
+  capturedRegistry,
+  installPackages,
   isolateNpmConfig,
   projectFor,
-  readFixture,
   writeWorkspaceProject,
 } from './fixtures'
 
@@ -36,6 +36,11 @@ afterEach(() => {
   fs.rmSync(npmConfigDir, { recursive: true, force: true })
 })
 
+// The newest fixture these cases were written against (the workspace fixtures).
+const AS_OF = '2026-10-23T16:38:12-03:00'
+const registryFor = (...names: string[]) =>
+  capturedRegistry(names, { asOf: AS_OF })
+
 describe('pipeline', () => {
   let cwd: string
 
@@ -45,9 +50,8 @@ describe('pipeline', () => {
       path.join(cwd, 'package.json'),
       JSON.stringify({ dependencies: { dayjs: '1.11.9' } }),
     )
-    jest
-      .mocked(runProcess)
-      .mockRejectedValue(exitError(1, readFixture('npm/outdated.stdout'), ''))
+    installPackages(cwd, '.', { dayjs: '1.11.9' })
+    jest.mocked(runProcess).mockResolvedValue({ stdout: '', stderr: '' })
   })
 
   afterEach(() => {
@@ -55,40 +59,39 @@ describe('pipeline', () => {
   })
 
   it('reads the config from the project and never loads it', async () => {
-    await check(projectFor(npm, cwd))
-    await update(projectFor(npm, cwd), { targetPackages: ['dayjs'] })
+    const registry = registryFor('dayjs')
+    await check(projectFor(npm, cwd, {}, registry))
+    await update(projectFor(npm, cwd, {}, registry), {
+      targetPackages: ['dayjs'],
+    })
 
     expect(loadConfig).not.toHaveBeenCalled()
   })
 
   it('plans with the config the project carries', async () => {
-    jest.mocked(runProcess).mockImplementation(async (_file, args) => {
-      if (args[0] === 'outdated') {
-        throw exitError(1, readFixture('npm/outdated.stdout'), '')
-      }
+    const registry = registryFor('dayjs')
+    // The manager moves dayjs to its target, so the post-apply check agrees.
+    jest.mocked(runProcess).mockImplementation(async () => {
+      installPackages(cwd, '.', { dayjs: '1.11.23' })
       return { stdout: '', stderr: '' }
     })
 
     // dayjs is an exact pin: held by default, moved once beyondRange allows it.
-    const held = await update(projectFor(npm, cwd), {
+    const held = await update(projectFor(npm, cwd, {}, registry), {
       targetPackages: ['dayjs'],
     })
-    const moved = await update(projectFor(npm, cwd, { beyondRange: 'patch' }), {
-      targetPackages: ['dayjs'],
-    })
+    const moved = await update(
+      projectFor(npm, cwd, { beyondRange: 'patch' }, registry),
+      { targetPackages: ['dayjs'] },
+    )
 
     expect(held.find((r) => r.name === 'dayjs')?.updated).toBe(false)
     expect(moved.find((r) => r.name === 'dayjs')?.updated).toBe(true)
   })
 
   describe('a package the manager leaves in place', () => {
-    const install = (name: string, version: string) => {
-      fs.mkdirSync(path.join(cwd, 'node_modules', name), { recursive: true })
-      fs.writeFileSync(
-        path.join(cwd, 'node_modules', name, 'package.json'),
-        JSON.stringify({ name, version }),
-      )
-    }
+    const install = (name: string, version: string) =>
+      installPackages(cwd, '.', { [name]: version })
 
     // npm 11.19.1: express's send@0.17.1 pins ms@2.1.1 exactly, so
     // `npm update debug ms` moves debug and keeps the hoisted ms.
@@ -102,15 +105,14 @@ describe('pipeline', () => {
       install('ms', '2.1.1')
       install('debug', '4.3.1')
       install('express', '4.17.1')
-      jest.mocked(runProcess).mockImplementation(async (_file, args) => {
-        if (args[0] === 'outdated') {
-          throw exitError(1, readFixture('npm/outdated-hoisted-pin.stdout'), '')
-        }
+      jest.mocked(runProcess).mockImplementation(async () => {
         install('debug', '4.3.7')
         return { stdout: '', stderr: '' }
       })
 
-      const results = await update(projectFor(npm, cwd))
+      const results = await update(
+        projectFor(npm, cwd, {}, registryFor('ms', 'express', 'debug')),
+      )
 
       const updateCall = jest
         .mocked(runProcess)
@@ -130,14 +132,9 @@ describe('pipeline', () => {
   })
 
   describe('a workspace project', () => {
-    const install = (dir: string, name: string, version: string) => {
-      const target = path.join(cwd, dir, 'node_modules', name)
-      fs.mkdirSync(target, { recursive: true })
-      fs.writeFileSync(
-        path.join(target, 'package.json'),
-        JSON.stringify({ name, version }),
-      )
-    }
+    const install = (dir: string, name: string, version: string) =>
+      installPackages(cwd, dir, { [name]: version })
+    const workspaceRegistry = () => registryFor('dayjs', 'ms', 'debug')
 
     it('plans and verifies each manifest, reading a member before the root', async () => {
       writeWorkspaceProject(cwd)
@@ -145,16 +142,15 @@ describe('pipeline', () => {
       install('.', 'ms', '2.1.1')
       install('.', 'debug', '4.3.1')
       install('packages/a', 'ms', '2.1.2')
-      jest.mocked(runProcess).mockImplementation(async (_file, args) => {
-        if (args[0] === 'outdated') {
-          throw exitError(1, readFixture('npm/outdated-workspace.stdout'), '')
-        }
+      jest.mocked(runProcess).mockImplementation(async () => {
         install('.', 'debug', '4.3.7')
         install('.', 'ms', '2.1.3')
         return { stdout: '', stderr: '' }
       })
 
-      const results = await update(projectFor(npm, cwd))
+      const results = await update(
+        projectFor(npm, cwd, {}, workspaceRegistry()),
+      )
 
       const summary = results.map(({ name, workspace, updated, reason }) => ({
         name,
@@ -203,10 +199,7 @@ describe('pipeline', () => {
       install('.', 'ms', '2.1.1')
       install('.', 'debug', '4.3.1')
       install('packages/a', 'ms', '2.1.2')
-      jest.mocked(runProcess).mockImplementation(async (_file, args) => {
-        if (args[0] === 'outdated') {
-          throw exitError(1, readFixture('npm/outdated-workspace.stdout'), '')
-        }
+      jest.mocked(runProcess).mockImplementation(async () => {
         install('.', 'dayjs', '1.11.23')
         install('.', 'debug', '4.3.7')
         install('.', 'ms', '2.1.3')
@@ -215,7 +208,7 @@ describe('pipeline', () => {
       })
 
       const results = await update(
-        projectFor(npm, cwd, { beyondRange: 'patch' }),
+        projectFor(npm, cwd, { beyondRange: 'patch' }, workspaceRegistry()),
       )
 
       const read = (file: string) =>

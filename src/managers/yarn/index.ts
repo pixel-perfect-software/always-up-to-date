@@ -1,41 +1,19 @@
 import fs from 'fs'
 import path from 'path'
 
-import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
-import {
-  packageJsonWorkspace,
-  readManifest,
-  workspaceOwner,
-} from '@/managers/workspaces'
+import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
 import {
   applyBerry,
   discoverBerry,
   installedBerry,
 } from '@/managers/yarn/berry'
 import { StepError } from '@/stepError'
-import type { OutdatedEntry, PackageInfo } from '@/types'
 import { logger } from '@/utils'
 import { buildUpdateDescriptors, type DescriptorField } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
-
-/**
- * `yarn outdated` (v1) exits 1 whenever something is outdated, printing a
- * `{"type":"table"}` line. On real errors it also exits 1, with no table.
- */
-const isOutdatedReport: SuccessCheck = ({ exitCode, stdout }) => {
-  if (exitCode === 0) return true
-  if (exitCode !== 1) return false
-  return stdout.split('\n').some((line) => {
-    try {
-      return JSON.parse(line)?.type === 'table'
-    } catch {
-      return false
-    }
-  })
-}
 
 /**
  * Yarn 2+ ("berry") is identified by the `packageManager` field when it is
@@ -48,101 +26,6 @@ export const isYarnBerry = (cwd: string): boolean => {
   if (declared) return Number(declared[1]) >= 2
 
   return fs.existsSync(path.join(cwd, '.yarnrc.yml'))
-}
-
-/**
- * `yarn outdated --json` (v1): NDJSON lines, one of them a table whose rows
- * are `[name, current, wanted, latest, …]`.
- */
-export const parseYarnOutdated = (
-  output: string,
-): Record<string, PackageInfo> => {
-  if (!output || output.trim() === '') {
-    return {}
-  }
-
-  try {
-    const lines = output
-      .trim()
-      .split('\n')
-      .filter((line) => line.trim())
-    const parsedLines = lines.map((line) => JSON.parse(line))
-
-    // Find the table data from yarn outdated output
-    const tableData = parsedLines.find((item) => item.type === 'table')
-
-    if (!tableData || !tableData.data || !tableData.data.body) {
-      return {}
-    }
-
-    // Transform table data into a more usable format
-    const outdatedPackages: Record<string, PackageInfo> = {}
-
-    tableData.data.body.forEach((row: string[]) => {
-      if (row.length >= 4) {
-        const [packageName, current, wanted, latest] = row
-        outdatedPackages[packageName] = {
-          name: packageName,
-          current,
-          wanted,
-          latest,
-        }
-      }
-    })
-
-    return outdatedPackages
-  } catch (error) {
-    logger.error(`Failed to parse yarn outdated output: ${error}`)
-    return {}
-  }
-}
-
-/**
- * `yarn outdated --json --recursive` (v1) in a workspace project: the table's
- * header names the columns, and each body row is one package in one workspace.
- * The `Workspace` column holds a workspace's package name, `ownerOf` turns it
- * into the manifest's directory. Unlike the single-package parser, output it
- * cannot read fails discovery.
- */
-export const parseYarnWorkspaceOutdated = (
-  output: string,
-  ownerOf: (workspaceName: string) => string,
-): OutdatedEntry[] => {
-  if (!output.trim()) return []
-
-  const lines = output.split('\n').filter((line) => line.trim())
-  const table = lines
-    .map((line) => JSON.parse(line))
-    .find((item) => item?.type === 'table')
-  const head: unknown = table?.data?.head
-  const body: unknown = table?.data?.body
-  if (!Array.isArray(head) || !Array.isArray(body)) return []
-
-  const column = (title: string): number => {
-    const index = head.indexOf(title)
-    if (index === -1) {
-      throw new StepError(
-        'discover',
-        `yarn outdated --recursive printed no ${title} column`,
-      )
-    }
-    return index
-  }
-  const [name, current, wanted, latest, workspace] = [
-    'Package',
-    'Current',
-    'Wanted',
-    'Latest',
-    'Workspace',
-  ].map(column)
-
-  return (body as string[][]).map((row) => ({
-    name: row[name],
-    current: row[current],
-    wanted: row[wanted],
-    latest: row[latest],
-    workspace: ownerOf(row[workspace]),
-  }))
 }
 
 /** The `yarn workspace <name> upgrade` flag that keeps each field's packages in it. */
@@ -158,29 +41,13 @@ const yarn: ManagerAdapter = {
 
   readWorkspace: (cwd) => ({
     ...packageJsonWorkspace(cwd),
-    catalogs: [],
+    catalogs: {},
   }),
 
-  discover: async (run, cwd, { isWorkspace, manifests }) => {
-    // berry has no `outdated`: it reads `yarn info` and the registry instead.
-    if (isYarnBerry(cwd)) return discoverBerry(run, isWorkspace)
-
-    const output = await run(
-      isWorkspace
-        ? ['outdated', '--json', '--recursive']
-        : ['outdated', '--json'],
-      { isSuccess: isOutdatedReport },
-    )
-    return isWorkspace
-      ? {
-          kind: 'workspace',
-          entries: parseYarnWorkspaceOutdated(
-            output,
-            workspaceOwner(manifests, 'yarn'),
-          ),
-        }
-      : { kind: 'single', outdated: parseYarnOutdated(output) }
-  },
+  ownDiscovery: (cwd) =>
+    isYarnBerry(cwd)
+      ? (run, { isWorkspace }) => discoverBerry(run, isWorkspace)
+      : undefined,
 
   apply: async (
     run,
