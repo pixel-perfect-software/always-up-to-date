@@ -32,25 +32,35 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..')
 const TEST_REPOS = path.join(REPO_ROOT, 'testRepos')
 export const CLI = path.join(REPO_ROOT, 'dist', 'index.js')
 
-const YARN_VERSIONS = { yarn: '1.22.22', berry: '4.12.0' } as const
+export const YARN_VERSIONS = { yarn: '1.22.22', berry: '4.12.0' } as const
+
+/**
+ * A comma-separated selection of `allowed` names; unset or blank selects them
+ * all. An unknown or empty name (`npm,`) fails fast, naming `variable`.
+ */
+export const parseSelection = <T extends string>(
+  value: string | undefined,
+  allowed: readonly T[],
+  variable: string,
+): T[] => {
+  if (value === undefined || value.trim() === '') return [...allowed]
+
+  const names = value.split(',').map((name) => name.trim())
+  const unknown = names.filter(
+    (name) => !(allowed as readonly string[]).includes(name),
+  )
+  if (unknown.length > 0) {
+    throw new Error(
+      `${variable}: unknown manager ${unknown.map((name) => name || '(empty)').join(', ')}; use ${allowed.join(', ')}`,
+    )
+  }
+  return names as T[]
+}
 
 /** `AUTD_INTEGRATION_PM`: a comma-separated selection; unset runs every manager. */
 export const selectedManagers = (
   value: string | undefined = process.env.AUTD_INTEGRATION_PM,
-): Manager[] => {
-  if (value === undefined || value.trim() === '') return [...MANAGERS]
-
-  const names = value.split(',').map((name) => name.trim())
-  const unknown = names.filter(
-    (name) => !(MANAGERS as readonly string[]).includes(name),
-  )
-  if (unknown.length > 0) {
-    throw new Error(
-      `AUTD_INTEGRATION_PM: unknown manager ${unknown.join(', ')}; use ${MANAGERS.join(', ')}`,
-    )
-  }
-  return names as Manager[]
-}
+): Manager[] => parseSelection(value, MANAGERS, 'AUTD_INTEGRATION_PM')
 
 /**
  * Makes the process environment the same wherever the suite starts: `pnpm run`
@@ -117,17 +127,30 @@ const SKIPPED_BY_COPY = new Set([
  * runners hand out 8.3 `RUNNER~1` names while pnpm reports long ones; macOS
  * `/var` is `/private/var`).
  */
-export const copyRepo = (repo: string): string => {
+export const copyRepo = (repo: string): string =>
+  copyProject(path.join(TEST_REPOS, repo), repo)
+
+/** A copy of any project directory in the temp directory, as copyRepo makes one. */
+export const copyProject = (source: string, label: string): string => {
   const dir = fs.realpathSync.native(
-    fs.mkdtempSync(path.join(os.tmpdir(), `autd-it-${repo}-`)),
+    fs.mkdtempSync(path.join(os.tmpdir(), `autd-it-${label}-`)),
   )
-  fs.cpSync(path.join(TEST_REPOS, repo), dir, {
+  fs.cpSync(source, dir, {
     recursive: true,
-    filter: (source) => {
-      const name = path.basename(source)
+    filter: (entry) => {
+      const name = path.basename(entry)
       return !SKIPPED_BY_COPY.has(name) && !name.startsWith('.pnp.')
     },
   })
+  // asdf and mise pick a tool's version by directory: outside this repository
+  // the copy would run the user's global bun or pnpm, not .tool-versions'.
+  const toolVersions = path.join(REPO_ROOT, '.tool-versions')
+  if (
+    !fs.existsSync(path.join(source, '.tool-versions')) &&
+    fs.existsSync(toolVersions)
+  ) {
+    fs.copyFileSync(toolVersions, path.join(dir, '.tool-versions'))
+  }
   return dir
 }
 
@@ -337,7 +360,12 @@ export const prepareRepo = async (
   }
 }
 
-const installAtMinimum = async (
+/**
+ * Installs the copy in `cwd` at the minimum of every range, restores the ranges
+ * and makes the lockfile agree, as prepareRepo does. `repo` only names the
+ * copy in error messages.
+ */
+export const installAtMinimum = async (
   manager: Manager,
   repo: string,
   cwd: string,
@@ -407,9 +435,12 @@ const installAtMinimum = async (
   return ranged
 }
 
-/** Removes a prepared copy, unless `AUTD_INTEGRATION_KEEP=1`, which prints its path instead. */
-export const cleanup = (cwd: string): void => {
-  if (process.env.AUTD_INTEGRATION_KEEP === '1') {
+/** Removes a prepared copy, unless `keepVariable` (`AUTD_INTEGRATION_KEEP` by default) is `1`, which prints its path instead. */
+export const cleanup = (
+  cwd: string,
+  keepVariable = 'AUTD_INTEGRATION_KEEP',
+): void => {
+  if (process.env[keepVariable] === '1') {
     process.stderr.write(`kept ${cwd}\n`)
     return
   }

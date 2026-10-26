@@ -16,6 +16,7 @@
     "prepack": "pnpm run build",
     "test": "jest --silent",
     "test:integration": "pnpm run build && jest --config jest.integration.config.ts",
+    "bench": "pnpm run build && node -r ./bench/register.cjs bench/run.ts",
     "test:coverage": "jest --coverage --silent",
     "test:badges": "pnpm test:coverage && jest-coverage-badges --output ./badges",
     "clean": "rm -rf dist",

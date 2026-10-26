@@ -58,9 +58,11 @@ src/
 schema/
   config.schema.json        # JSON schema for .always-up-to-date.json (referenced via $schema)
 testRepos/                  # Integration fixtures, <manager>-<layout> (README.md); lockfiles are generated in temp copies, never committed
+bench/                      # pnpm run bench: pinned/ and ranges/ (the 40-dependency benchmark manifests), run.ts (copy, install, hyperfine, table), targets.ts (selection, cold caches), report.ts (hyperfine JSON parsing, table), register.cjs (swc loader for run.ts)
 jest.integration.config.ts  # Jest config for the integration matrix (not part of pnpm test)
 __tests__/
   integration/              # pnpm run test:integration: harness.ts (copy, pin to minimum, install, run the CLI), lockfiles.ts (yarn v1/berry/bun rewriters), expectations.ts (derived values, per-manager overrides), matrix.ts, <manager>.test.ts
+  bench/                    # report.test.ts (hyperfine 2 JSON parsing, formatting, table), targets.test.ts (selection, cold caches)
   setup.ts                  # Global test setup (console suppression)
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
