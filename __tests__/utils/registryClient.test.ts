@@ -369,6 +369,25 @@ describe('registry client', () => {
       expect(authOf(target)).toEqual([undefined])
     })
 
+    it('keeps the requested Accept across a redirect', async () => {
+      const server = await registry((req, res) => {
+        if (req.url === '/pkg') {
+          res.statusCode = 302
+          res.setHeader('location', '/final/pkg')
+          res.end()
+          return
+        }
+        json({ done: true })(req, res)
+      })
+      await clientFor(configFrom('')).getJson(`${server.url}pkg`, server.url, {
+        accept: 'text/x-test',
+      })
+      expect(server.requests.map((r) => r.headers.accept)).toEqual([
+        'text/x-test',
+        'text/x-test',
+      ])
+    })
+
     it('refuses a redirect from https to http', async () => {
       const target = await registry()
       const server = await registry(
@@ -622,6 +641,19 @@ describe('registry client', () => {
       expect(server.requests).toHaveLength(1)
     })
 
+    it('lets a request override fetch-retries with its own retries', async () => {
+      const server = await registry(sequence(503, 200))
+      await expect(
+        clientFor(configFrom('fetch-retries=2')).getJson(
+          `${server.url}pkg`,
+          server.url,
+          { retries: 0 },
+        ),
+      ).rejects.toMatchObject({ status: 503 })
+      expect(server.requests).toHaveLength(1)
+      expect(delays).toEqual([])
+    })
+
     it('makes one request with fetch-retries=0', async () => {
       const server = await registry(sequence(503, 200))
       await expect(
@@ -662,6 +694,22 @@ describe('registry client', () => {
       ).rejects.toMatchObject({ code: 'ETIMEDOUT' })
       expect(server.requests).toHaveLength(2)
       expect(delays).toEqual([100])
+    })
+
+    it('lets a per-request timeout override fetch-timeout', async () => {
+      const server = await registry(never)
+      const started = Date.now()
+      await expect(
+        clientFor(configFrom('fetch-timeout=60000\nfetch-retries=0')).getJson(
+          `${server.url}pkg`,
+          server.url,
+          { timeout: 100 },
+        ),
+      ).rejects.toMatchObject({
+        code: 'ETIMEDOUT',
+        message: expect.stringContaining('timed out after 100ms'),
+      })
+      expect(Date.now() - started).toBeLessThan(5000)
     })
 
     it('times out a body that stalls after the headers', async () => {
@@ -714,6 +762,16 @@ describe('registry client', () => {
       )
     })
 
+    it('sends the Accept it is given', async () => {
+      const server = await registry()
+      await clientFor(configFrom('')).getJson(`${server.url}pkg`, server.url, {
+        accept: 'application/vnd.npm.install-v1+json',
+      })
+      expect(server.requests[0].headers.accept).toBe(
+        'application/vnd.npm.install-v1+json',
+      )
+    })
+
     it('rejects an unsupported content-encoding without retrying', async () => {
       const server = await registry((_req, res) => {
         res.setHeader('content-encoding', 'br')
@@ -750,6 +808,58 @@ describe('registry client', () => {
     it('talks to an http registry', async () => {
       const server = await registry(json({ plain: true }))
       expect(await get(configFrom(''), server)).toEqual({ plain: true })
+    })
+  })
+
+  describe('stats', () => {
+    it('counts the gzip bytes received and the bytes after gunzip', async () => {
+      const raw = JSON.stringify({ pad: 'x'.repeat(5000) })
+      const zipped = zlib.gzipSync(raw)
+      const server = await registry((_req, res) => {
+        res.setHeader('content-encoding', 'gzip')
+        res.end(zipped)
+      })
+      const client = clientFor(configFrom(''))
+      await client.getJson(`${server.url}pkg`, server.url)
+      expect(client.stats()).toEqual({
+        [`127.0.0.1:${server.port}`]: {
+          responses: 1,
+          bodyBytes: zipped.length,
+          decodedBytes: Buffer.byteLength(raw),
+        },
+      })
+    })
+
+    it('returns copies: an earlier snapshot does not change', async () => {
+      const server = await registry(json({ ok: true }))
+      const client = clientFor(configFrom(''))
+      await client.getJson(`${server.url}a`, server.url)
+      const before = client.stats()
+      const key = `127.0.0.1:${server.port}`
+      expect(before[key]?.responses).toBe(1)
+
+      await client.getJson(`${server.url}b`, server.url)
+
+      expect(before[key]?.responses).toBe(1)
+      expect(client.stats()[key]?.responses).toBe(2)
+    })
+
+    it('counts a 404 as a response and nothing else', async () => {
+      const server = await registry((_req, res) => {
+        res.statusCode = 404
+        res.end('not here')
+      })
+      const client = clientFor(configFrom(''))
+      await expect(
+        client.getJson(`${server.url}pkg`, server.url),
+      ).rejects.toMatchObject({ status: 404 })
+      expect(client.stats()).toEqual({
+        [`127.0.0.1:${server.port}`]: {
+          responses: 1,
+          bodyBytes: 0,
+          decodedBytes: 0,
+        },
+      })
     })
   })
 

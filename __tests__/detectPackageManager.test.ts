@@ -1,8 +1,4 @@
 jest.mock('@/utils/logger')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 
 import fs from 'fs'
 import os from 'os'

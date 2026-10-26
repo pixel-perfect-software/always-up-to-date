@@ -9,10 +9,6 @@ jest.mock('@/pipeline', () => ({ check: jest.fn() }))
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils/config')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 
 import checkCommand from '@/commands/check'
 import detectPackageManager from '@/detectPackageManager'

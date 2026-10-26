@@ -5,8 +5,7 @@ jest.mock('@/detectPackageManager', () => ({
 jest.mock('@/utils/config')
 jest.mock('@/utils/logger')
 jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
+  createRegistrySession: jest.fn(),
 }))
 
 import detectPackageManager from '@/detectPackageManager'
@@ -15,17 +14,46 @@ import pnpm from '@/managers/pnpm'
 import { openProject } from '@/project'
 import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
+import { createRegistrySession } from '@/utils/registry'
+import { fakeRegistry } from './fixtures'
 
 describe('openProject', () => {
   it('returns the directory, the loaded config and the detected adapter', () => {
-    const config = { ...DEFAULT_CONFIG, beyondRange: 'minor' as const }
+    const config = {
+      ...DEFAULT_CONFIG,
+      beyondRange: 'minor' as const,
+      depsDev: true,
+    }
     jest.mocked(loadConfig).mockReturnValue(config)
     jest.mocked(detectPackageManager).mockReturnValue('pnpm')
+    const session = fakeRegistry()
+    jest.mocked(createRegistrySession).mockReturnValue(session)
 
     const project = openProject('/project')
 
-    expect(project).toEqual({ cwd: '/project', config, adapter: pnpm })
+    expect(project).toEqual({
+      cwd: '/project',
+      config,
+      adapter: pnpm,
+      registry: session,
+    })
+    expect(createRegistrySession).toHaveBeenCalledWith('/project', {
+      depsDev: true,
+    })
     expect(detectPackageManager).toHaveBeenCalledWith('/project', undefined)
+  })
+
+  it("hands the config's depsDev switch to the registry session", () => {
+    jest
+      .mocked(loadConfig)
+      .mockReturnValue({ ...DEFAULT_CONFIG, depsDev: false })
+    jest.mocked(detectPackageManager).mockReturnValue('npm')
+
+    openProject('/project')
+
+    expect(createRegistrySession).toHaveBeenCalledWith('/project', {
+      depsDev: false,
+    })
   })
 
   it('hands --pm to detection', () => {

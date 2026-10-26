@@ -119,3 +119,67 @@ export const retryDelay = (
   }
   return Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS)
 }
+
+/** Sent for packuments: npm's install-time document, which omits most fields. */
+export const ABBREVIATED_ACCEPT =
+  'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*'
+
+export interface RegistryEndpoints {
+  /** Origins whose package names the reader may send to deps.dev. */
+  publicRegistries: readonly string[]
+  /** The deps.dev package URL prefix. */
+  depsDev: string
+}
+
+export const DEFAULT_ENDPOINTS: RegistryEndpoints = {
+  publicRegistries: [
+    'https://registry.npmjs.org',
+    'https://registry.yarnpkg.com',
+  ],
+  depsDev: 'https://api.deps.dev/v3/systems/npm/packages/',
+}
+
+/** Whether a registry URL is the root of one of the public registries. */
+export const isPublicNpmRegistry = (
+  registry: string,
+  origins: readonly string[],
+): boolean => {
+  try {
+    const url = new URL(registry.trim())
+    return origins.includes(url.origin) && url.pathname === '/'
+  } catch {
+    return false
+  }
+}
+
+/** `<registry>/-/package/<name>/dist-tags`, with the scope's slash escaped. */
+export const distTagsUrl = (name: string, registry: string): string =>
+  `${registry.trim().replace(/\/?$/, '')}/-/package/${name.replace('/', '%2f')}/dist-tags`
+
+/** deps.dev's URL for a package: the whole name escaped, `@types/ms` → `%40types%2Fms`. */
+export const depsDevUrl = (name: string, base: string): string =>
+  base + encodeURIComponent(name)
+
+const MAX_NAME_LENGTH = 214
+
+/**
+ * Whether a name is safe to put in a URL path: unscoped, or `@scope/pkg`,
+ * each part non-empty, not `.` or `..`, and unchanged by escaping. Legacy
+ * uppercase names pass.
+ */
+export const isValidPackageName = (name: string): boolean => {
+  if (name.length === 0 || name.length > MAX_NAME_LENGTH) return false
+  let parts = [name]
+  if (name.startsWith('@')) {
+    const slash = name.indexOf('/')
+    if (slash === -1) return false
+    parts = [name.slice(1, slash), name.slice(slash + 1)]
+  }
+  return parts.every(
+    (part) =>
+      part.length > 0 &&
+      part !== '.' &&
+      part !== '..' &&
+      encodeURIComponent(part) === part,
+  )
+}

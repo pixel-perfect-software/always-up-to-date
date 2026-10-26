@@ -11,10 +11,6 @@ import type { PackageInfo } from '@/types'
 import { exitError, projectFor, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 jest.mock('@/utils', () => ({
   ...jest.requireActual('@/utils'),
   runProcess: jest.fn(),

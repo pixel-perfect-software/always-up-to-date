@@ -1,8 +1,3 @@
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
-
 import { adapterFor, adapters } from '@/managers'
 
 describe('adapter registry', () => {

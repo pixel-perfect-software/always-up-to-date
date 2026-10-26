@@ -1,10 +1,16 @@
 import type { RegistryConfig, RegistryCredentials } from '@/types'
 import {
+  ABBREVIATED_ACCEPT,
   authorizationFor,
   credentialPrefixes,
   credentialsFor,
+  DEFAULT_ENDPOINTS,
+  depsDevUrl,
+  distTagsUrl,
+  isPublicNpmRegistry,
   isRetryableError,
   isRetryableStatus,
+  isValidPackageName,
   packumentUrl,
   RETRY_AFTER_MAX_MS,
   RETRY_MAX_MS,
@@ -215,5 +221,88 @@ describe('retries', () => {
     expect(isRetryableError({ code: 'ENOTFOUND' })).toBe(false)
     expect(isRetryableError(new Error('x'))).toBe(false)
     expect(isRetryableError(undefined)).toBe(false)
+  })
+})
+
+describe('public registries', () => {
+  const origins = DEFAULT_ENDPOINTS.publicRegistries
+
+  it.each([
+    'https://registry.npmjs.org',
+    'https://registry.npmjs.org/',
+    ' https://registry.npmjs.org/ ',
+    'https://registry.yarnpkg.com/',
+  ])('%j is public', (registry) => {
+    expect(isPublicNpmRegistry(registry, origins)).toBe(true)
+  })
+
+  it.each([
+    'http://registry.npmjs.org/',
+    'https://registry.npmjs.org/mirror/',
+    'https://registry.npmjs.org:8443/',
+    'https://npm.corp.example/',
+    'not a url',
+  ])('%j is not', (registry) => {
+    expect(isPublicNpmRegistry(registry, origins)).toBe(false)
+  })
+
+  it('names the endpoints deps.dev and the two public hosts', () => {
+    expect(DEFAULT_ENDPOINTS.depsDev).toBe(
+      'https://api.deps.dev/v3/systems/npm/packages/',
+    )
+    expect(ABBREVIATED_ACCEPT).toMatch(
+      /^application\/vnd\.npm\.install-v1\+json/,
+    )
+  })
+})
+
+describe('distTagsUrl and depsDevUrl', () => {
+  it('escapes the scope slash for dist-tags and trims the registry', () => {
+    expect(distTagsUrl('ms', 'https://registry.npmjs.org/')).toBe(
+      'https://registry.npmjs.org/-/package/ms/dist-tags',
+    )
+    expect(distTagsUrl('@types/ms', 'https://registry.npmjs.org')).toBe(
+      'https://registry.npmjs.org/-/package/@types%2fms/dist-tags',
+    )
+  })
+
+  it('escapes the whole name for deps.dev', () => {
+    const base = DEFAULT_ENDPOINTS.depsDev
+    expect(depsDevUrl('ms', base)).toBe(`${base}ms`)
+    expect(depsDevUrl('@types/ms', base)).toBe(`${base}%40types%2Fms`)
+  })
+})
+
+describe('isValidPackageName', () => {
+  it.each(['ms', 'left-pad', '@types/ms', 'JSONStream', 'a.b_c~d', '@a/b'])(
+    'accepts %j',
+    (name) => {
+      expect(isValidPackageName(name)).toBe(true)
+    },
+  )
+
+  it.each([
+    '',
+    '.',
+    '..',
+    '@scope/..',
+    '@../pkg',
+    '@scope',
+    '@scope/',
+    '@/pkg',
+    'a/b',
+    'a/b/c',
+    '@s/a/b',
+    '%2e%2e',
+    'a b',
+    'a?b',
+    'a#b',
+    'x'.repeat(215),
+  ])('rejects %j', (name) => {
+    expect(isValidPackageName(name)).toBe(false)
+  })
+
+  it('accepts a name of exactly 214 characters', () => {
+    expect(isValidPackageName('x'.repeat(214))).toBe(true)
   })
 })

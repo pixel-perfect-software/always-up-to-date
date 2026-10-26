@@ -27,6 +27,7 @@ commands/
 ### Command Flow (check/update)
 1. Open the project inside the `try` with `openProject(cwd, { pm: options.pm })` (`src/project.ts`): loads the config, configures the logger, detects the manager (or takes `--pm`) and gets its adapter. A bad config or no manager fails here and goes through `reportFailure` like any other failure
 2. Run the pipeline (`src/pipeline.ts`) with that project: `check(project)`, or `update(project, { targetPackages })`. Dry-run is `check` then `plan(project, outdated, targetPackages)`
+3. Close the run's registry session in `finally` (`project?.registry.close()`; `project` is declared before the `try`), so a failed run releases its connections too
 
 ### Command Options
 

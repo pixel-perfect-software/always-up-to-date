@@ -11,7 +11,7 @@ Core utilities fully implemented. Central barrel export via `index.ts`.
 - `runProcess(file, args, { cwd })` is the only way to start a subprocess: `execFile` with no shell and `maxBuffer: Infinity`. On Windows, where npm/pnpm/yarn are `.cmd` shims Node only starts through cmd.exe, it runs `buildWindowsCommand()` through the shell, double-quoting arguments that contain cmd.exe operators (the windows-latest CI jobs cover it: the `.cmd` shim test in runProcess.test.ts, realSubprocess.test.ts through `npm.cmd`, and the integration matrix against real npm, pnpm, yarn and bun on Windows)
 - `runProcess` passes `env: process.env` explicitly; under Jest the sandbox env otherwise never reaches the child, so PATH-shim tests depend on it
 - Config uses nullish coalescing with `DEFAULT_CONFIG` for safe merging
-- Network/IO utilities (registry, npmrcLoader) must fail open — never block updates on a transient error
+- Cooldown's network path (`releaseTimes`, npmrcLoader) fails open: a transient error never blocks an update. The reader (`lookup`) does not: it reports each failure per package as `{ ok: false, kind, reason }` and the consumer decides. Don't "fix" it to return an empty or partial result, which would turn an outage into "no versions"
 
 ## Major Subsystem Organization
 ```
@@ -23,9 +23,12 @@ utils/
   duration.ts         # parseDuration() (number | '1 week' | '24h' → days), formatAgeDays(), MS_PER_DAY
   npmrc.ts            # parseNpmrc(text, env), substituteEnv(): the .npmrc parser (pure)
   npmrcLoader.ts      # loadNpmrc() layers global, user, project, npm_config_* env as npm 12 does; loadRegistryConfig() returns RegistryConfig
-  registryRequest.ts  # Pure client helpers: registryFor, packumentUrl, credentialsFor, authorizationFor, retry rules
-  registryClient.ts   # node:https transport (agents, gzip, timeout, retries, redirects); loaded lazily by registry.ts only
-  registry.ts         # fetchReleaseTimes() with in-flight per-run cache, fails open; loads registryClient on first use
+  registryRequest.ts  # Pure client helpers: registryFor, packumentUrl, distTagsUrl, depsDevUrl, isPublicNpmRegistry, isValidPackageName, credentialsFor, authorizationFor, retry rules
+  registryClient.ts   # node:https transport (agents, gzip, per-request accept and timeout, retries, redirects, per-host stats()); loaded lazily by registry.ts only
+  registry.ts         # createRegistrySession(cwd, { depsDev }): one lazy .npmrc view and one client per run; releaseTimes() with in-flight per-run cache, fails open; lookup() via the lazy reader
+  registryReader.ts   # createRegistryReader(): latest, versions, deprecation, publish times per package (dist-tags + deps.dev, packument fallback); loaded by registry.ts only
+  registryDocuments.ts # Pure parsers: parseDistTags, parseDepsDevPackage, parsePackument; loaded by the reader only
+  limiter.ts          # createLimiter(max): FIFO cap on in-flight tasks; loaded by the reader only
   updateChecker.ts    # Update policy: within range by default, beyondRange level, per-package rules (pure)
   rows.ts             # toOutdatedRow() / toOutdatedRows() / toUpdatingRow(): display rows (in-range note, beyond-range flag; one outdated row per manifest in a workspace)
   overrides.ts        # overridesFromField(), manifestOverrides(cwd, fields): packages an override pins, with field and range
@@ -70,10 +73,19 @@ utils/
 - `parseNpmrc(text, env)` is ini 7's decode (quoting, `;`/`#` cuts, `key[]` arrays, parsing stops at the first `[section]`, `__proto__` skipped) plus npm's `${VAR}` substitution: an unset `${VAR}` stays literal, `${VAR?}` is empty, `\${VAR}` is escaped
 - `loadNpmrc(cwd, sources)` merges four layers, later wins: global (`<prefix>/etc/npmrc`), user (`~/.npmrc`), project, `npm_config_*` env (any case, `_` → `-`). The project file is the `.npmrc` of the npm project root: from a workspace member, the root's. `NpmrcSources` (env, home, execPath, platform) is injectable for tests; an unreadable file is an empty layer
 - `registryConfigFrom(npmrc, cwd, sources)` builds `RegistryConfig` (registry, `scopedRegistries`, `credentials` by `//host[:port]/path/` prefix, `ca`, `strictSSL`, `proxy`, `fetchRetries`, `fetchTimeout`, `maxSockets`). Unscoped `_authToken` and `always-auth` are ignored, as npm 9+ does
-- `fetchReleaseTimes(name, registryConfig)` picks the registry by scope, GETs the full packument (corgi format strips `time`) through `registryClient`, and maps `time` to `Record<version, ISO>`. Any failure → empty map (cached) and a debug line, so the cooldown gate fails open
+- `session.releaseTimes(name)` (from `createRegistrySession(cwd)`) picks the registry by scope, GETs the full packument (corgi format strips `time`) through `registryClient`, and maps `time` to `Record<version, ISO>`. Any failure → empty map (cached) and a debug line, so the cooldown gate fails open
 - The client sends credentials only to the longest `.npmrc` prefix that matches the request URL, and recomputes them on each redirect. Retries cover 408, 420, 429, 5xx, ECONNRESET, ECONNREFUSED and ETIMEDOUT with a short capped backoff; a `Retry-After` over 1 s stops retrying
-- `registry.ts` imports `registryClient` with `await import()` on the first request, so nothing heavy loads at startup; keep top-level imports there to types and `registryRequest`
-- One in-memory cache per CLI run, holding the in-flight request, so a package several workspace manifests declare is fetched once; `clearRegistryCache()` (also destroys the clients) is exported for tests
+- `registry.ts` imports `registryClient` with `await import()` on the first request, so nothing heavy loads at startup; keep top-level imports there to types, `registryRequest`, `npmrcLoader` and `logger`
+- `openProject` makes one `RegistrySession` per run (`Project.registry`): `registryConfig()` reads the `.npmrc` layers and `cafile` on its first call, `client()` creates the one client, so every registry request in the run shares both. A session reads and loads nothing until asked; `close()` destroys the agents (safe twice, or before any request) and commands call it in a `finally`. `loadConfig`, `clientOptions` and `endpoints` are test seams; `depsDev` is the config switch
+- `getJson(url, registry, { signal, accept, timeout, retries })`: `accept` defaults to `application/json`, `timeout` to `fetch-timeout` (ms), `retries` to `fetch-retries`; all hold across redirects and retries. The reader sends deps.dev requests with `retries: 0`. `stats()` returns copies and counts per `url.host`: `responses` (every status), `bodyBytes` (2xx bodies as received) and `decodedBytes` (after gunzip)
+- `session.lookup(name)` (`registryReader.ts`, loaded with `await import()` on the first call) returns a `PackageLookup` and never rejects for a network, HTTP or parse failure:
+  - An invalid name (`isValidPackageName`) is `invalid` with no request. A public npm name (registry root is `https://registry.npmjs.org/` or `https://registry.yarnpkg.com/`) fetches `/-/package/<name>/dist-tags` and deps.dev together. When deps.dev lists `latest` the result is `source: 'deps.dev'`; otherwise (deps.dev 404, 429, 5xx, unreachable, unreadable, or `latest` missing) the abbreviated packument is read. A dist-tags 404 is `not-found`; any other dist-tags failure takes the packument path
+  - Any other registry, a scope's registry, or `depsDev: false` takes one GET with `ABBREVIATED_ACCEPT`, retried once with `application/json` on a 404 (as pacote does). The packument's own `latest` is used when it lacks the dist-tags' one, else the highest stable version
+  - deps.dev gets only its own URL as the client's registry base, so no `.npmrc` credentials go to it. A 429, a 5xx or a transport failure turns deps.dev off for the rest of the run (one debug line); a 404 does not. deps.dev requests time out at `min(fetch-timeout, 5 s)` with no retries, and a request still queued when the breaker trips is skipped once it reaches the front
+  - All requests go through a limiter of `maxsockets`, so a queued request never burns its timeout and only that many packument bodies are buffered at once
+  - A body the client cannot parse as JSON is a `request` failure; a JSON body that is not a packument is `invalid`. `not-found` and `invalid` reasons name the registry's host; a `request` reason is the client's message, which carries the URL without userinfo, query or credentials
+  - Keep `registryReader`, `registryDocuments` and `limiter` out of the barrel as values (`export type` is fine): the barrel loads at startup
+- The cache is per session and holds the in-flight request, so a package several workspace manifests declare is fetched once; a new session asks again
 - Limitation: yarn berry's `.yarnrc.yml` and bun's `bunfig.toml` are not read in v1. Common case (npm-spec `.npmrc`) covers all four PMs.
 
 ### Manifest Specs (`files.ts`)
@@ -88,7 +100,7 @@ utils/
 Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Groups sorted alphabetically.
 
 ### Package Filtering (`filterPackages.ts`)
-- Async. Signature: `filterPackages(outdated, { config, targetPackages?, cwd?, now?, overrides? })`; `config` is the project's loaded config, never loaded inside
+- Async. Signature: `filterPackages(outdated, { config, registry, targetPackages?, cwd?, now?, overrides? })`; `registry` is `Pick<RegistrySession, 'releaseTimes'>`, the project's session; `config` is the project's loaded config, never loaded inside
 - Runs `updateChecker` on every outdated package with the policy for `cwd`
 - When cooldown is enabled (`cooldown > 0` for any update type), fetches release times from the registry for packages with a target and applies the gate
 - Returns `UpdateResult[]` with name, current, wanted, latest, `target` (when updated), updateType (`current → target`, else `current → latest`), updated, reason, and optional `releaseAge`

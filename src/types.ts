@@ -93,6 +93,8 @@ export interface AlwaysUpToDateConfig {
   /** @deprecated Use a `"hold"` rule. */
   updateDenylist: string[]
   cooldown: CooldownConfig
+  /** Read public npm packages' versions through deps.dev. Default true. */
+  depsDev: boolean
 }
 
 /** What `.always-up-to-date.json` may contain: any subset of the config. */
@@ -139,3 +141,27 @@ export interface RegistryConfig {
   fetchTimeout: number
   maxSockets: number
 }
+
+export interface RegistryVersion {
+  version: string
+  deprecated: boolean
+  /** The deprecation message, when the source gives a non-empty one. */
+  deprecatedReason?: string
+  /** ISO 8601, when the source has it (deps.dev always; packuments only with `time`). */
+  publishedAt?: string
+}
+
+export interface RegistryPackage {
+  name: string
+  /** Always one of `versions`. */
+  latest: string
+  /** Every version whose string is canonical semver, ascending (semver.compare). */
+  versions: RegistryVersion[]
+  source: 'deps.dev' | 'packument'
+}
+
+export type LookupFailureKind = 'not-found' | 'request' | 'invalid'
+
+export type PackageLookup =
+  | { ok: true; package: RegistryPackage }
+  | { ok: false; name: string; kind: LookupFailureKind; reason: string }

@@ -116,6 +116,7 @@ You only need a config file to go further than your package.json ranges. Run `au
 | `beyondRange` | `"none"` | How far past its range a dependency may move, to its latest version: `"none"`, `"patch"`, `"minor"` or `"major"`. Applies to exact pins too, so `"patch"` moves `"1.11.9"` to `"1.11.23"`. |
 | `rules` | `{}` | Per-package overrides (see below). |
 | `cooldown` | `0` | Skip versions published more recently than this: days (`7`), a duration (`"1 week"`, `"24h"`), or per update type (`{ "major": "30 days" }`). |
+| `depsDev` | `true` | Look up versions of packages on the public npm registry (registry.npmjs.org, registry.yarnpkg.com) through [deps.dev](https://deps.dev), which is much smaller than the registry's own documents. Each such package name is sent to api.deps.dev, **including private packages published to registry.npmjs.org**; set `false` to read everything from the registry. Names from any other registry, including a scope's own, are never sent. |
 | `debug` | `false` | Print each package-manager command and its stderr. |
 | `silent` | `false` | Suppress all output. |
 

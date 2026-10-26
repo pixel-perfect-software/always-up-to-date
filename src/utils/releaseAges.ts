@@ -1,8 +1,7 @@
 import type { CooldownConfig, PackageInfo } from '@/types'
 import { isCooldownEnabled } from './cooldown'
 import { MS_PER_DAY } from './duration'
-import { loadRegistryConfig } from './npmrcLoader'
-import { fetchReleaseTimes } from './registry'
+import type { RegistrySession } from './registry'
 
 /**
  * For each outdated package, compute how many days ago its `latest` version
@@ -11,18 +10,17 @@ import { fetchReleaseTimes } from './registry'
  */
 export const computeReleaseAges = async (
   outdated: Record<string, PackageInfo>,
-  cwd: string,
+  registry: Pick<RegistrySession, 'releaseTimes'>,
   cooldown: CooldownConfig,
   now: number = Date.now(),
 ): Promise<Record<string, number>> => {
   if (!isCooldownEnabled(cooldown)) return {}
 
-  const registryConfig = loadRegistryConfig(cwd)
   const ages: Record<string, number> = {}
 
   await Promise.all(
     Object.entries(outdated).map(async ([name, info]) => {
-      const times = await fetchReleaseTimes(name, registryConfig)
+      const times = await registry.releaseTimes(name)
       const releaseTime = times[info.latest]
       if (!releaseTime) return
       const ms = Date.parse(releaseTime)

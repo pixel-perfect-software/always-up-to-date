@@ -41,7 +41,7 @@ src/
   cli.ts                    # Commander.js program setup, registers commands
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
   commandRunner.ts          # runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
-  project.ts                # openProject(cwd, { pm? }): loads the config once, configures the logger, detects the manager → Project
+  project.ts                # openProject(cwd, { pm? }): loads the config once, configures the logger, detects the manager → Project (with a lazy registry session)
   pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter
   detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
@@ -75,10 +75,11 @@ __tests__/
     jsonOutput.test.ts      # Real logger: stdout is exactly one JSON document with --json
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, JSON error object
   detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging
-  startup.test.ts           # Loading the CLI never loads the registry client
+  startup.test.ts           # Loading the CLI never loads the registry client or reader
   fixtures/
-    registry.ts, tls/       # Local registry/proxy servers; test-only TLS material (generate.sh)
-    index.ts                # readFixture(), exitError(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers
+    registry.ts, tls/       # Local registry/proxy servers (replies() for exact url tables, registryBody(), derive()); test-only TLS material (generate.sh)
+    registry/               # Verbatim curl captures (.body) of dist-tags, deps.dev and packuments for ms, @types/ms and mkdirp; README.md lists status, type, size and the checks
+    index.ts                # readFixture(), exitError(), fakeRegistry(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers
     npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)
   managers/
     adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager
@@ -95,7 +96,7 @@ __tests__/
     workspaceDiscovery.test.ts  # Workspace check on all four managers returns one record; unnamed roots
     workspaceApply.test.ts  # Workspace apply per manager: commands, member manifest writes, catalog routing
   utils/
-    config.test.ts          # Config loading/saving tests (incl. cooldown variants)
+    config.test.ts          # Config loading/saving tests (incl. cooldown variants, strict depsDev)
     cooldown.test.ts        # Normalize/evaluate cooldown gate
     duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests
@@ -103,9 +104,12 @@ __tests__/
     logger.test.ts          # Logger output, configure(), quiet and JSON output modes
     npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
     npmrcLoader.test.ts     # Layering (global, user, project, npm_config_*), workspace root, RegistryConfig, on temp dirs
-    registryRequest.test.ts # Pure client helpers: scoped registry, prefix walk, Authorization forms, retry rules
-    registryClient.test.ts  # node:https client against local HTTP(S) servers and a CONNECT proxy: auth, TLS, mTLS, proxies, retries, timeout, maxsockets, redirects
-    registry.test.ts        # fetchReleaseTimes: in-flight dedupe, fails open, scoped registry (#104)
+    registryRequest.test.ts # Pure client helpers: scoped registry, prefix walk, Authorization forms, retry rules, public-registry check, dist-tags and deps.dev URLs, package-name rule
+    registryClient.test.ts  # node:https client against local HTTP(S) servers and a CONNECT proxy: auth, TLS, mTLS, proxies, retries, timeout, maxsockets, redirects, per-request accept/timeout/retries, stats()
+    registry.test.ts        # createRegistrySession: lazy config and client, one per run, in-flight dedupe, fails open, scoped registry (#104), close(), lookup() sharing the client and honoring depsDev
+    registryReader.test.ts  # createRegistryReader on captured bodies and local servers: deps.dev path, packument fallbacks, breaker, depsDev: false, other registries, credentials, 404s, failures, dedupe, bounded concurrency
+    registryDocuments.test.ts # dist-tags, deps.dev and packument parsers on the fixtures; the sources agree; malformed input
+    limiter.test.ts         # createLimiter: peak, FIFO, rejection frees the slot
     packageGrouper.test.ts  # Package grouping tests
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping
