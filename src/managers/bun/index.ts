@@ -54,11 +54,11 @@ const bun: ManagerAdapter = {
 
     // A row whose owning spec is `catalog:` moves the catalog entry (in the
     // root package.json); every other row moves in the manifest that owns it.
-    const { catalog, byManifest } = splitCatalogUpdates(cwd, manifests)
+    const { catalogs: moved, byManifest } = splitCatalogUpdates(cwd, manifests)
     const manifestWritten =
-      Object.keys(catalog).length > 0 || byManifest.length > 0
-    if (Object.keys(catalog).length > 0) {
-      await updateBunCatalogs(cwd, catalog, style)
+      Object.keys(moved).length > 0 || byManifest.length > 0
+    for (const [catalog, versions] of Object.entries(moved)) {
+      await updateBunCatalogs(cwd, versions, style, catalog)
     }
     for (const m of byManifest) {
       await updatePackageJson(path.join(cwd, m.path), m.versions, style)

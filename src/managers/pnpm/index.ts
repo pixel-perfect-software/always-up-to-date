@@ -107,12 +107,18 @@ const pnpm: ManagerAdapter = {
       }
 
       if (manifestWritten) {
-        // Versions live in pnpm-workspace.yaml catalogs or directly in a
-        // package.json. Run both rewrites: each is a no-op for entries it
-        // doesn't own, and updatePackageJson skips `catalog:` /
-        // `workspace:` refs so it can't clobber catalog references.
-        await updatePNPMWorkspaceYAML(cwd, beyondRange, style)
-        await updatePackageJson(cwd, beyondRange, style)
+        // Versions live in pnpm-workspace.yaml catalogs or directly in the
+        // package.json: a `catalog:` spec moves its own catalog's entry, every
+        // other row the manifest.
+        const { catalogs: moved, byManifest } = splitCatalogUpdates(cwd, [
+          { path: '.', withinRange: [], beyondRange },
+        ])
+        for (const [catalog, versions] of Object.entries(moved)) {
+          await updatePNPMWorkspaceYAML(cwd, versions, style, catalog)
+        }
+        for (const m of byManifest) {
+          await updatePackageJson(cwd, m.versions, style)
+        }
 
         // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
         // and relinks node_modules + lockfile reliably. `pnpm update`
@@ -127,11 +133,11 @@ const pnpm: ManagerAdapter = {
 
     // A row whose owning spec is `catalog:` moves the catalog entry in
     // pnpm-workspace.yaml; every other row moves in the manifest that owns it.
-    const { catalog, byManifest } = splitCatalogUpdates(cwd, manifests)
+    const { catalogs: moved, byManifest } = splitCatalogUpdates(cwd, manifests)
     const manifestWritten =
-      Object.keys(catalog).length > 0 || byManifest.length > 0
-    if (Object.keys(catalog).length > 0) {
-      await updatePNPMWorkspaceYAML(cwd, catalog, style)
+      Object.keys(moved).length > 0 || byManifest.length > 0
+    for (const [catalog, versions] of Object.entries(moved)) {
+      await updatePNPMWorkspaceYAML(cwd, versions, style, catalog)
     }
     for (const m of byManifest) {
       await updatePackageJson(path.join(cwd, m.path), m.versions, style)

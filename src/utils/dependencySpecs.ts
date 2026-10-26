@@ -3,6 +3,7 @@ import path from 'path'
 import semver from 'semver'
 import type { WorkspaceManifest } from '@/managers/adapter'
 import { StepError } from '@/stepError'
+import { parseAlias, parseBareAlias } from './aliasSpec'
 import logger from './logger'
 
 export const DEPENDENCY_FIELDS = [
@@ -44,19 +45,18 @@ const skip = (reason: string, warn = false): ClassifiedSpec => ({
   warn,
 })
 
-// The same pattern as `nextVersionSpec` in files.ts, so the readers and the
-// writers agree on what an alias is.
-const ALIAS = /^npm:((?:@[^/@]+\/)?[^@]+)@(.+)$/
-
 const classifyResolved = (key: string, spec: string): ClassifiedSpec => {
   if (spec.startsWith('workspace:')) return skip(`workspace spec "${spec}"`)
 
   let name = key
   let range = spec.trim()
-  const alias = ALIAS.exec(range)
+  // npm reads `npm:<name>` as `npm:<name>@latest`.
+  const bare = parseBareAlias(range)
+  if (bare) return { kind: 'registry', name: bare, spec: { tag: 'latest' } }
+  const alias = parseAlias(range)
   if (alias) {
-    name = alias[1]
-    range = alias[2].trim()
+    name = alias.name
+    range = alias.range.trim()
   }
 
   if (/[:/#]/.test(range)) {
@@ -81,7 +81,7 @@ const classifyResolved = (key: string, spec: string): ClassifiedSpec => {
  * 2. `workspace:` is skipped,
  * 3. an `npm:<target>@<range>` alias is looked up by its target,
  * 4. anything still holding `:`, `/` or `#` (git, file, link, URL, github
- *    shorthand, a bare `npm:x`) is skipped,
+ *    shorthand) is skipped; a bare `npm:<name>` is `latest` of that name,
  * 5. `latest` is the dist-tag,
  * 6. a spec that is not a valid range (another dist-tag) is skipped with a
  *    warning,

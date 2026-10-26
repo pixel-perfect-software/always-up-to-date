@@ -354,3 +354,60 @@ describe('readInstalledPackages', () => {
     expect(readInstalledPackages(cwd, [{ name: 'ms' }]).ms.linked).toBe(false)
   })
 })
+
+describe('readInstalledPackages link detection cost', () => {
+  let cwd: string
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-installed-cost-'))
+    fs.writeFileSync(
+      path.join(cwd, 'package.json'),
+      JSON.stringify({ dependencies: { a: '1.0.0', b: '1.0.0', c: '1.0.0' } }),
+    )
+    for (const name of ['a', 'b', 'c']) {
+      fs.mkdirSync(path.join(cwd, 'node_modules', name), { recursive: true })
+      fs.writeFileSync(
+        path.join(cwd, 'node_modules', name, 'package.json'),
+        JSON.stringify({ name, version: '1.0.0' }),
+      )
+    }
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  const rows = [{ name: 'a' }, { name: 'b' }, { name: 'c' }]
+
+  it('resolves the project root once per call, not once per row', () => {
+    const realpath = jest.spyOn(fs, 'realpathSync')
+
+    readInstalledPackages(cwd, rows)
+
+    const ofCwd = realpath.mock.calls.filter(([p]) => String(p) === cwd)
+    expect(ofCwd).toHaveLength(1)
+  })
+
+  it('does no link test for the post-apply versions', () => {
+    const lstat = jest.spyOn(fs, 'lstatSync')
+    const realpath = jest.spyOn(fs, 'realpathSync')
+
+    expect(readInstalledVersions(cwd, rows)).toEqual({
+      a: '1.0.0',
+      b: '1.0.0',
+      c: '1.0.0',
+    })
+
+    expect(lstat).not.toHaveBeenCalled()
+    expect(realpath).not.toHaveBeenCalled()
+  })
+
+  it('reports linked: false for every row with links: false', () => {
+    expect(
+      Object.values(readInstalledPackages(cwd, rows, { links: false })).map(
+        (found) => found.linked,
+      ),
+    ).toEqual([false, false, false])
+  })
+})

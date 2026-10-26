@@ -78,7 +78,6 @@ describe('classifySpec', () => {
   })
 
   it.each([
-    ['npm:x with no range', 'npm:ms'],
     ['workspace:^', 'workspace:^'],
     ['workspace:*', 'workspace:*'],
     ['a git url', 'git+https://github.com/a/b.git#v1'],
@@ -283,5 +282,21 @@ describe('readDeclaredDependencies', () => {
     expect(() =>
       readDeclaredDependencies(cwd, { manifests: root, catalogs: {} }),
     ).toThrow(StepError)
+  })
+})
+
+describe('classifySpec with a bare npm: alias', () => {
+  // npm 11.19.1: `"l": "npm:ms"` installs ms@latest as node_modules/l.
+  it('is the latest tag of the aliased name', () => {
+    expect(classifySpec('l', 'npm:ms', {})).toEqual({
+      kind: 'registry',
+      name: 'ms',
+      spec: { tag: 'latest' },
+    })
+    expect(classifySpec('l', 'npm:@scope/pkg', {})).toEqual({
+      kind: 'registry',
+      name: '@scope/pkg',
+      spec: { tag: 'latest' },
+    })
   })
 })

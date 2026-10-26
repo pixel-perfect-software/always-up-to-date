@@ -5,8 +5,10 @@ import type { Discovery, RunManager } from '@/managers/adapter'
 import { ownerPath } from '@/managers/workspaces'
 import { type PipelineStep, StepError } from '@/stepError'
 import type { ManifestPlan, OutdatedEntry, PackageInfo } from '@/types'
+import { parseAlias } from '@/utils/aliasSpec'
 import { updatePackageJson } from '@/utils/files'
 import { rowKey } from '@/utils/installed'
+import { isRecord } from '@/utils/isRecord'
 import type { SaveStyle } from '@/utils/saveStyle'
 import { byPath } from '@/utils/workspaceRows'
 
@@ -44,9 +46,6 @@ export interface RegistryPackage {
 /** Names per `yarn npm info` call. */
 const REGISTRY_BATCH = 50
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 /** Splits `<name>@<reference>`; a scope's leading `@` is part of the name. */
 const splitIdent = (
   ident: string,
@@ -77,9 +76,10 @@ const npmSpec = (
   }
 
   if (!real.startsWith('npm:')) return undefined
-  const spec = real.slice('npm:'.length)
-  const alias = /^((?:@[^/@]+\/)?[^@]+)@(.+)$/.exec(spec)
-  return alias ? { name: alias[1], spec: alias[2] } : { name, spec }
+  const alias = parseAlias(real)
+  return alias
+    ? { name: alias.name, spec: alias.range }
+    : { name, spec: real.slice('npm:'.length) }
 }
 
 const parseLines = (

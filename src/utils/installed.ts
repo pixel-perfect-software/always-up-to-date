@@ -32,10 +32,11 @@ export interface InstalledPackage {
   linked: boolean
 }
 
-const isLink = (cwd: string, entry: string): boolean => {
+/** `root` is the project's real path, resolved once per call. */
+const isLink = (root: string, entry: string): boolean => {
   try {
     if (!fs.lstatSync(entry).isSymbolicLink()) return false
-    const relative = path.relative(fs.realpathSync(cwd), fs.realpathSync(entry))
+    const relative = path.relative(root, fs.realpathSync(entry))
     return (
       relative !== '' &&
       relative !== '..' &&
@@ -48,6 +49,14 @@ const isLink = (cwd: string, entry: string): boolean => {
   }
 }
 
+const safeRealpath = (dir: string): string | undefined => {
+  try {
+    return fs.realpathSync(dir)
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * The version installed for each row whose manifest declares it, read from
  * `node_modules/<name>/package.json` (a symlink into the store on pnpm).
@@ -56,11 +65,16 @@ const isLink = (cwd: string, entry: string): boolean => {
  * single-package project that is the root's only. Names a manifest does not
  * declare, and packages with no node_modules entry (yarn berry's PnP), are
  * left out: there is nothing here to check them against.
+ *
+ * `links: false` skips the link test (`linked` is then always false): only
+ * discovery needs it, and it costs an lstat and a realpath per row.
  */
 export const readInstalledPackages = (
   cwd: string,
   rows: { name: string; workspace?: string }[],
+  { links = true }: { links?: boolean } = {},
 ): Record<string, InstalledPackage> => {
+  let root: string | undefined
   const declaredBy = new Map<string, Set<string>>()
   const declaredIn = (dir: string): Set<string> => {
     let declared = declaredBy.get(dir)
@@ -85,7 +99,11 @@ export const readInstalledPackages = (
       const entry = path.join(base, 'node_modules', row.name)
       const version = readJson(path.join(entry, 'package.json'))?.version
       if (typeof version === 'string') {
-        installed[rowKey(row)] = { version, linked: isLink(cwd, entry) }
+        if (links) root ??= safeRealpath(cwd)
+        installed[rowKey(row)] = {
+          version,
+          linked: links && root !== undefined && isLink(root, entry),
+        }
         break
       }
     }
@@ -99,10 +117,9 @@ export const readInstalledVersions = (
   rows: { name: string; workspace?: string }[],
 ): Record<string, string> =>
   Object.fromEntries(
-    Object.entries(readInstalledPackages(cwd, rows)).map(([key, found]) => [
-      key,
-      found.version,
-    ]),
+    Object.entries(readInstalledPackages(cwd, rows, { links: false })).map(
+      ([key, found]) => [key, found.version],
+    ),
   )
 
 /**

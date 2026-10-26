@@ -2,7 +2,9 @@ import fs from 'fs'
 import path from 'path'
 import semver from 'semver'
 import type { ManifestPlan } from '@/types'
+import { parseAlias } from './aliasSpec'
 import { DEPENDENCY_FIELDS } from './dependencySpecs'
+import { isRecord } from './isRecord'
 import { DEFAULT_SAVE_STYLE, type SaveStyle } from './saveStyle'
 
 export const checkIfFileExists = (filePath: string): boolean => {
@@ -75,9 +77,9 @@ const nextVersionSpec = (
   newVersion: string,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
 ): string => {
-  const alias = /^npm:((?:@[^/@]+\/)?[^@]+)@(.+)$/.exec(currentSpec)
+  const alias = parseAlias(currentSpec)
   if (alias) {
-    return `npm:${alias[1]}@${nextVersionSpec(alias[2], newVersion, style)}`
+    return `npm:${alias.name}@${nextVersionSpec(alias.range, newVersion, style)}`
   }
   if (/[:/#]/.test(currentSpec)) return currentSpec
 
@@ -236,12 +238,28 @@ export const buildUpdateDescriptors = (
   return { descriptors, byField, notInManifest }
 }
 
+/** A `name: value` line: indent, the name with its quotes, the separator, then the value text. */
+const YAML_KEY = /^(\s+)(['"]?)([^'"\s#][^'"\s]*)\2(\s*:\s*)(.*)$/
+
 /**
- * A `name: version` entry: indent, the name with its quotes, the separator,
- * the version with its quotes, and whatever follows (a comment).
+ * Splits the value text of an entry into its spec and what follows it. The
+ * spec is the whole value: a quoted string in full (`"^18 || ^19"`), or an
+ * unquoted value up to a trailing ` #` comment (`>=18.0.0 <19`). `rest` is
+ * the comment (and the space before it) and is written back untouched.
+ * Undefined for an entry without a value (the key of a named catalog).
  */
-const YAML_ENTRY =
-  /^(\s+)(['"]?)([^'"\s#][^'"\s]*)\2(\s*:\s*)(['"]?)([^'"\s#]+)\5(.*)$/
+const splitYamlValue = (
+  value: string,
+): { quote: string; spec: string; rest: string } | undefined => {
+  const quoted = /^(['"])(.*?)\1(\s*(?:#.*)?)$/.exec(value)
+  if (quoted && quoted[2] !== '') {
+    return { quote: quoted[1], spec: quoted[2], rest: quoted[3] }
+  }
+  const comment = value.search(/\s#/)
+  const spec = (comment === -1 ? value : value.slice(0, comment)).trimEnd()
+  if (spec === '' || spec.startsWith('#')) return undefined
+  return { quote: '', spec, rest: value.slice(spec.length) }
+}
 
 /**
  * Walks the catalog entries of pnpm-workspace.yaml, the ones under `catalog:`
@@ -284,9 +302,11 @@ const mapPnpmCatalogEntries = (
       }
     }
 
-    const entry = YAML_ENTRY.exec(line)
-    if (!entry) return line
-    const [, indent, keyQuote, name, separator, quote, spec, rest] = entry
+    const entry = YAML_KEY.exec(line)
+    const value = entry ? splitYamlValue(entry[5]) : undefined
+    if (!entry || !value) return line
+    const [, indent, keyQuote, name, separator] = entry
+    const { quote, spec, rest } = value
     if (
       block === 'catalogs' &&
       !(indent.length > (catalogIndent ?? Infinity))
@@ -316,17 +336,22 @@ const mapPnpmCatalogEntries = (
 
 /**
  * Rewrites catalog versions in pnpm-workspace.yaml: the entries under
- * `catalog:` and under each named catalog in `catalogs:`.
+ * `catalog:` and under each named catalog in `catalogs:`. With `catalog`
+ * (`default` for `catalog:`) only that catalog's entries move, so a package
+ * that two named catalogs pin differently changes in the one asked for;
+ * without it, every catalog's entry of that name does.
  */
 export const updatePNPMWorkspaceYAML = async (
   cwd: string,
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
+  catalog?: string,
 ): Promise<void> => {
   const pnpmWorkspaceYamlPath = path.join(cwd, 'pnpm-workspace.yaml')
   const updated = mapPnpmCatalogEntries(
     fs.readFileSync(pnpmWorkspaceYamlPath, 'utf8'),
-    (_catalog, name, spec) =>
+    (entryCatalog, name, spec) =>
+      (catalog === undefined || entryCatalog === catalog) &&
       Object.hasOwn(versions, name)
         ? nextVersionSpec(spec, versions[name], style)
         : undefined,
@@ -350,16 +375,38 @@ export const readPnpmCatalogs = (
 }
 
 /**
- * The catalogs of a bun package.json by name: the top-level `catalog` (as
- * `default`) and each of `catalogs`, string entries only. These are the
- * fields `updateBunCatalogs` writes; `workspaces.catalog(s)` is neither read
- * nor written.
+ * Where a bun package.json keeps its catalogs. Bun reads them from
+ * `workspaces.catalog` / `workspaces.catalogs` as well as the top level, and
+ * the `workspaces` one replaces the top-level one as a whole, the default
+ * catalog and the named ones independently (verified on bun 1.4.4: with both
+ * set, `workspaces.catalog` won and a package only in the top-level
+ * `catalog` was "not in the catalog").
+ */
+const bunCatalogSources = (
+  manifest: Record<string, unknown> | undefined,
+): {
+  defaultCatalog: Record<string, unknown> | undefined
+  named: Record<string, unknown> | undefined
+} => {
+  const workspaces = isRecord(manifest?.workspaces)
+    ? manifest.workspaces
+    : undefined
+  const pick = (field: 'catalog' | 'catalogs') => {
+    const fromWorkspaces = workspaces?.[field]
+    if (isRecord(fromWorkspaces)) return fromWorkspaces
+    const topLevel = manifest?.[field]
+    return isRecord(topLevel) ? topLevel : undefined
+  }
+  return { defaultCatalog: pick('catalog'), named: pick('catalogs') }
+}
+
+/**
+ * The catalogs of a bun package.json by name (`default` for `catalog`), string
+ * entries only, from the fields bun reads and `updateBunCatalogs` writes.
  */
 export const readBunCatalogs = (
   manifest: Record<string, unknown> | undefined,
 ): Record<string, Record<string, string>> => {
-  const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null && !Array.isArray(value)
   const strings = (entries: Record<string, unknown>): Record<string, string> =>
     Object.fromEntries(
       Object.entries(entries).filter(
@@ -367,69 +414,55 @@ export const readBunCatalogs = (
       ),
     )
 
+  const { defaultCatalog, named } = bunCatalogSources(manifest)
   const catalogs: Record<string, Record<string, string>> = {}
-  if (isRecord(manifest?.catalog)) catalogs.default = strings(manifest.catalog)
-  if (isRecord(manifest?.catalogs)) {
-    for (const [name, entries] of Object.entries(manifest.catalogs)) {
+  if (defaultCatalog) catalogs.default = strings(defaultCatalog)
+  if (named) {
+    for (const [name, entries] of Object.entries(named)) {
       if (isRecord(entries)) catalogs[name] = strings(entries)
     }
   }
   return catalogs
 }
 
+/**
+ * Moves catalog entries in a bun package.json, in the fields bun reads them
+ * from. With `catalog` (`default` for the singular `catalog`) only that
+ * catalog's entries move; without it, every catalog's entry of that name.
+ */
 export const updateBunCatalogs = async (
   cwd: string,
   versions: Record<string, string>,
   style: SaveStyle = DEFAULT_SAVE_STYLE,
+  catalog?: string,
 ): Promise<void> => {
   const packageJsonPath = path.join(cwd, 'package.json')
   const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf8')
   const packageJson = JSON.parse(packageJsonContent)
+  const { defaultCatalog, named } = bunCatalogSources(packageJson)
 
   let catalogsUpdated = false
-
-  // Handle the default "catalog" field (singular)
-  if (packageJson.catalog && typeof packageJson.catalog === 'object') {
+  const move = (entries: Record<string, unknown>): void => {
     for (const packageName of Object.keys(versions)) {
-      if (packageJson.catalog[packageName]) {
-        const currentVersion = packageJson.catalog[packageName]
-        const targetVersion = versions[packageName]
-
-        const newVersion = nextVersionSpec(currentVersion, targetVersion, style)
-
-        // Update the catalog entry
-        packageJson.catalog[packageName] = newVersion
+      const current = entries[packageName]
+      if (typeof current === 'string' && current !== '') {
+        entries[packageName] = nextVersionSpec(
+          current,
+          versions[packageName],
+          style,
+        )
         catalogsUpdated = true
       }
     }
   }
 
-  // Handle named catalogs (plural)
-  if (packageJson.catalogs && typeof packageJson.catalogs === 'object') {
-    // Iterate through each catalog (e.g., "repo", "types", "ui")
-    for (const catalogName of Object.keys(packageJson.catalogs)) {
-      const catalog = packageJson.catalogs[catalogName]
-
-      if (!catalog || typeof catalog !== 'object') {
-        continue
-      }
-
-      // Update packages in this catalog
-      for (const packageName of Object.keys(versions)) {
-        if (catalog[packageName]) {
-          const currentVersion = catalog[packageName]
-          const targetVersion = versions[packageName]
-
-          const newVersion = nextVersionSpec(
-            currentVersion,
-            targetVersion,
-            style,
-          )
-
-          // Update the catalog entry
-          packageJson.catalogs[catalogName][packageName] = newVersion
-          catalogsUpdated = true
-        }
+  if (defaultCatalog && (catalog === undefined || catalog === 'default')) {
+    move(defaultCatalog)
+  }
+  if (named) {
+    for (const [name, entries] of Object.entries(named)) {
+      if (isRecord(entries) && (catalog === undefined || catalog === name)) {
+        move(entries)
       }
     }
   }
@@ -476,21 +509,25 @@ export const splitCatalogUpdates = (
   cwd: string,
   manifests: ManifestPlan[],
 ): {
-  catalog: Record<string, string>
+  /** catalog name (`default` for `catalog:`) → package → new version */
+  catalogs: Record<string, Record<string, string>>
   byManifest: { path: string; versions: Record<string, string> }[]
 } => {
-  const catalog: Record<string, string> = {}
+  const catalogs: Record<string, Record<string, string>> = {}
   const byManifest: { path: string; versions: Record<string, string> }[] = []
   for (const manifest of manifests) {
     const versions: Record<string, string> = {}
     for (const [name, version] of Object.entries(manifest.beyondRange)) {
       const spec = readSpec(path.join(cwd, manifest.path), name)
-      if (spec?.startsWith('catalog:')) catalog[name] = version
-      else versions[name] = version
+      if (spec?.startsWith('catalog:')) {
+        const reference = spec.slice('catalog:'.length).trim()
+        ;(catalogs[reference === '' ? 'default' : reference] ??= {})[name] =
+          version
+      } else versions[name] = version
     }
     if (Object.keys(versions).length > 0) {
       byManifest.push({ path: manifest.path, versions })
     }
   }
-  return { catalog, byManifest }
+  return { catalogs, byManifest }
 }

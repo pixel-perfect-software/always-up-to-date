@@ -12,7 +12,7 @@ const inRangeNote = (
   wanted: string,
   latest: string,
 ): string | undefined => {
-  if (wanted === latest) return undefined
+  if (wanted === latest || wanted === current) return undefined
   if (
     semver.valid(current) !== null &&
     semver.valid(wanted) !== null &&

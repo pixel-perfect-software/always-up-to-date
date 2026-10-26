@@ -1,4 +1,5 @@
 import type { PackageLookup, RegistryConfig } from '@/types'
+import { isRecord } from './isRecord'
 import logger from './logger'
 import { loadRegistryConfig } from './npmrcLoader'
 import type { RegistryClient, RegistryClientOptions } from './registryClient'
@@ -44,9 +45,6 @@ export interface RegistrySessionOptions {
   /** Test seam: the public registries and deps.dev's URL. */
   endpoints?: RegistryEndpoints
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
  * Nothing is read or loaded until it is asked for: the `.npmrc` layers on the

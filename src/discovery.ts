@@ -30,6 +30,12 @@ export interface RegistryDiscoveryInput {
   workspace: Workspace
   registry: Pick<RegistrySession, 'lookup'>
   /**
+   * Fail with the install command when no node_modules exists. Default true;
+   * a reader that doesn't need node_modules (a lockfile reader, #107) turns
+   * it off.
+   */
+  requireNodeModules?: boolean
+  /**
    * Installed copies by `rowKey`; default `readInstalledPackages`
    * (node_modules). A lockfile reader goes here (#107).
    */
@@ -78,14 +84,21 @@ export const discoverFromRegistry = async ({
   manager,
   workspace,
   registry,
+  requireNodeModules = true,
   readInstalled = readInstalledPackages,
 }: RegistryDiscoveryInput): Promise<Discovery> => {
   const declared = readDeclaredDependencies(cwd, workspace)
 
+  // Any manifest that declares a dependency, or the root, may hold the
+  // install: a pnpm workspace with `sharedWorkspaceLockfile: false` has
+  // node_modules in each member and none at the root.
+  const installDirs = new Set(['.', ...declared.map((d) => d.workspace)])
   if (
+    requireNodeModules &&
     declared.length > 0 &&
-    readInstalled === readInstalledPackages &&
-    !fs.existsSync(path.join(cwd, 'node_modules'))
+    ![...installDirs].some((dir) =>
+      fs.existsSync(path.join(cwd, ...dir.split('/'), 'node_modules')),
+    )
   ) {
     throw new StepError(
       'discover',
@@ -111,7 +124,11 @@ export const discoverFromRegistry = async ({
     const { key, field } = dependency
     const label = `${dependency.workspace === '.' ? '' : `${dependency.workspace}: `}${key}`
     const found = installed[rowKey(rowFor(dependency))]
-    if (found?.linked || (!found && memberNames.has(key))) {
+    // A member's name is never looked up, whatever is installed: npm, yarn
+    // and bun link members by name, and pnpm may install a copy (injected
+    // workspace packages). An alias to a registry package of that name is
+    // another package.
+    if (found?.linked || (key === dependency.name && memberNames.has(key))) {
       logger.debug(`Skipping ${label}: a workspace package or link`)
       return false
     }

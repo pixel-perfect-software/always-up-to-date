@@ -189,6 +189,25 @@ describe('update with pnpm in a single-package project', () => {
       ['update', 'react'],
     ])
   })
+
+  it('moves only the catalog the spec references, not a same-named entry in another', async () => {
+    write(
+      'package.json',
+      JSON.stringify({ dependencies: { dayjs: 'catalog:old' } }),
+    )
+    write(
+      'pnpm-workspace.yaml',
+      'catalogs:\n  old:\n    dayjs: 1.11.9\n  other:\n    dayjs: 1.10.0\n',
+    )
+
+    await update(projectFor(pnpm, cwd, { beyondRange: 'patch' }), {
+      discovered: { dayjs: outdated.dayjs },
+    })
+
+    expect(read('pnpm-workspace.yaml')).toBe(
+      'catalogs:\n  old:\n    dayjs: 1.11.23\n  other:\n    dayjs: 1.10.0\n',
+    )
+  })
 })
 
 describe('pnpm.readWorkspace manifests', () => {

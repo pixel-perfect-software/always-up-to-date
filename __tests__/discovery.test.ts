@@ -278,6 +278,116 @@ describe('discoverFromRegistry', () => {
     expect(discovery.kind).toBe('single')
   })
 
+  it('skips a member whose copy was installed as a real directory, without a lookup', async () => {
+    // pnpm's injected workspace packages are copies, not links.
+    writeWorkspaceProject(cwd, { pnpm: true })
+    writeJson('packages/a/package.json', { name: '@ws/a', version: '1.0.0' })
+    writeJson('packages/b/package.json', {
+      name: '@ws/b',
+      version: '1.0.0',
+      dependencies: { '@ws/a': '^1.0.0', dayjs: '^1.11.9' },
+    })
+    installPackages(cwd, '.', { dayjs: '1.11.9', ms: '2.1.1' })
+    installPackages(cwd, 'packages/b', { '@ws/a': '1.0.0' })
+
+    // capturedRegistry throws for @ws/a if it is looked up.
+    const discovery = await discover(
+      capturedRegistry(['dayjs', 'ms'], { asOf: AS_OF }),
+      pnpm,
+    )
+
+    expect(
+      discovery.kind === 'workspace' &&
+        discovery.entries.some((entry) => entry.name === '@ws/a'),
+    ).toBe(false)
+  })
+
+  it('still looks up an alias whose target shares a member name', async () => {
+    writeWorkspaceProject(cwd)
+    writeJson('packages/b/package.json', {
+      name: 'ms',
+      version: '1.0.0',
+      dependencies: { m: 'npm:ms@^2.1.1' },
+    })
+    installPackages(cwd, '.', { dayjs: '1.11.9', ms: '2.1.1' })
+    installPackages(cwd, 'packages/b', { m: '2.1.1' })
+    const registry = capturedRegistry(['dayjs', 'ms'], { asOf: AS_OF })
+    const lookup = jest.fn(registry.lookup)
+
+    await discover({ ...registry, lookup })
+
+    expect(lookup.mock.calls.map(([name]) => name)).toContain('ms')
+  })
+
+  it('looks a bare npm: alias up as the latest of its target, keyed by the alias', async () => {
+    writeJson('package.json', { dependencies: { l: 'npm:ms' } })
+    installPackages(cwd, '.', { l: '2.1.1' })
+    const registry = capturedRegistry(['ms'], { asOf: AS_OF })
+    const lookup = jest.fn(registry.lookup)
+
+    const discovery = await discover({ ...registry, lookup })
+
+    expect(lookup).toHaveBeenCalledWith('ms')
+    expect(discovery.kind === 'single' && discovery.outdated.l).toEqual({
+      name: 'l',
+      current: '2.1.1',
+      wanted: '2.1.3',
+      latest: '2.1.3',
+    })
+  })
+
+  describe('the nothing-installed guard', () => {
+    it('passes when only a member that declares a dependency has a node_modules', async () => {
+      // pnpm with sharedWorkspaceLockfile: false installs per member.
+      writeJson('package.json', { name: 'root', private: true })
+      fs.writeFileSync(
+        path.join(cwd, 'pnpm-workspace.yaml'),
+        'packages:\n  - packages/*\n',
+      )
+      writeJson('packages/a/package.json', {
+        name: '@ws/a',
+        dependencies: { ms: '2.1.1' },
+      })
+      installPackages(cwd, 'packages/a', { ms: '2.1.1' })
+
+      const discovery = await discover(
+        capturedRegistry(['ms'], { asOf: AS_OF }),
+        pnpm,
+      )
+
+      expect(
+        discovery.kind === 'workspace' && discovery.entries.map((e) => e.name),
+      ).toEqual(['ms'])
+    })
+
+    it('fails when no manifest that declares a dependency has a node_modules', async () => {
+      writeWorkspaceProject(cwd)
+
+      await expect(discover(capturedRegistry([]))).rejects.toMatchObject({
+        step: 'discover',
+        message: expect.stringContaining('`npm install`'),
+      })
+    })
+
+    it('applies to a custom reader too, unless requireNodeModules is off', async () => {
+      writeJson('package.json', { dependencies: { ms: '2.1.1' } })
+      const input = {
+        cwd,
+        manager: 'npm' as const,
+        workspace: npm.readWorkspace(cwd),
+        registry: capturedRegistry(['ms'], { asOf: AS_OF }),
+        readInstalled: () => ({ ms: { version: '2.1.1', linked: false } }),
+      }
+
+      await expect(discoverFromRegistry(input)).rejects.toBeInstanceOf(
+        StepError,
+      )
+      await expect(
+        discoverFromRegistry({ ...input, requireNodeModules: false }),
+      ).resolves.toMatchObject({ kind: 'single' })
+    })
+  })
+
   describe('failed lookups', () => {
     const failure = (name: string, reason: string): PackageLookup => ({
       ok: false,

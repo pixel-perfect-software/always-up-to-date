@@ -123,6 +123,8 @@ __tests__/
     installed.test.ts       # Installed root-dependency versions (hoisted, scoped, alias, pnpm symlink); readInstalledPackages linked detection (junction to a member, pnpm store link, link outside the project); checkApplied
     wanted.test.ts          # wantedVersion on the yarn and pnpm captures, each on deps.dev and on the packument
     dependencySpecs.test.ts # classifySpec table; readDeclaredDependencies on temp dirs (field order, peers, catalogs, members, unreadable manifest)
+    aliasSpec.test.ts       # parseAlias / parseBareAlias (`npm:` specs) and isRecord
+    rows.test.ts            # Display rows: the in-range note is left out when wanted fell back to current
 ```
 
 ## Tech Stack
