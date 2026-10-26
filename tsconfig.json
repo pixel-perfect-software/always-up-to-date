@@ -19,6 +19,6 @@
     },
     "types": ["node", "jest"]
   },
-  "include": ["src/**/*", "__tests__/**/*"],
+  "include": ["src/**/*", "__tests__/**/*", "bench/**/*"],
   "exclude": ["node_modules", "dist"]
 }

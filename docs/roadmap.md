@@ -1,7 +1,8 @@
 # Roadmap: performance, correctness and portability
 
 Status: proposed 2026-10-23 from an analysis of v1.0.31. M0 and M1 done and closed 2026-10-23,
-released as 2.0.0. M2 done and closed 2026-10-23, not yet released; M3 next.
+released as 2.0.0. M2 done and closed 2026-10-23, released as 2.1.0 on 2026-10-24. M3 planned
+2026-10-26 from a new baseline on 2.1.0; next.
 
 Tracking: GitHub milestones M0 through M6 at
 https://github.com/pixel-perfect-software/always-up-to-date/milestones. Pull requests
@@ -49,6 +50,36 @@ Node 24, macOS, warm runs.
 Startup: bare Node 30 ms, autd 102 ms, of which 48 ms is eager-loading the registry
 client and its 171 modules. Bundled to one file: 89 ms. Bun-compiled binary after
 re-signing: 47 ms, 62 MB. Node SEA: 65 ms, 117 MB.
+
+### M3 baseline (2.1.0)
+
+Measured 2026-10-26 on autd 2.1.0 (31bdb10), Node 24.22.1, macOS, on the 40-dependency
+benchmark, now `bench/pinned/` and run by `pnpm run bench` (rebuilt from
+`__tests__/fixtures/npm/outdated.stdout`: every dependency pinned to its old exact version).
+Bun has since moved to 1.4.4: warm 0.17 s, cold 22.5 s ± 7.5 over 2 runs. Registry traffic on this machine passes through an endpoint TLS proxy
+(Aikido), so absolute network times are indicative. "Cold" empties the manager's own cache.
+
+| Manager | `autd check`, warm | `autd check`, cold | Peak memory |
+|---|---|---|---|
+| npm 11.19.1 | 0.92 s | 1.53 s | 347 MB |
+| pnpm 12.14.0 | 0.25 s | 1.88 s | 85 MB |
+| yarn 1.22.22 | 2.65 s | 3.17 s | 756 MB |
+| bun 1.4.0 | 0.16 s | 14.8 s | 89 MB |
+| yarn 4.12.0 (berry, node-modules linker) | 8.5 s | 9.5 s | 802 MB |
+| yarn 4.12.0 (berry, PnP, yarn's default) | 9.4 s | 10.1 s | 793 MB |
+
+- The yarn, bun and berry memory figures, berry's cold times and the PnP row come from the first
+  `pnpm run bench` (hyperfine, 5 warm and 3 cold runs). Berry keeps no registry metadata cache
+  (its global folder holds only package zips), so its cold and warm times differ only by noise.
+- Startup: bare `node -e 0` 39 to 41 ms, `autd --version` 126 ms, 215 modules loaded, most of
+  them npm-registry-fetch's. Bundled with the registry client stubbed out: 60 ms (57 ms with
+  Node's compile cache), 21 ms over bare Node.
+- Cooldown at 7 days: `check` on pnpm goes from 0.23 s to 2.54 s and from 85 MB to 600 MB peak
+  memory. It parses 146 MB of full packuments for the 40 packages.
+- Registry payloads for the 40: dist-tags 5.1 KB (0.69 s); abbreviated packuments 53 MB decoded,
+  about 16 s (next alone 25.7 MB, typescript 8.8 MB); deps.dev GetPackage about 10 KB per
+  package gzipped (next 43.5 KB). Bun's cold `outdated` downloads the abbreviated packuments,
+  which is its 14.8 s.
 
 ## Milestones
 
@@ -107,25 +138,43 @@ Done when: a new manager needs no changes outside its adapter and fixtures.
 Goal: `check` is fast on every manager and no longer depends on `<pm> outdated`.
 
 - Read manifests including workspaces and catalogs (writers already exist in
-  `src/utils/files.ts`); read installed versions from node_modules.
-- Resolve latest through the dist-tags endpoint; fall back to the abbreviated packument
-  per registry host when the endpoint is missing.
-- Publish times from a cached per-package time map: deps.dev as the public fast path,
-  full packument as fallback, fetched only for candidates that pass policy.
-- ETag disk cache under the user cache dir, bounded concurrency.
-- Drop the heavy registry client and the ini dependency; bundle to one file; lower the
-  Node floor to 20 or 22.
+  `src/utils/files.ts`); read installed versions from node_modules, and from `yarn.lock` or
+  `package-lock.json` where there is none (yarn berry's PnP, an npm workspace never installed).
+- Public npm names: `latest` from the dist-tags endpoint; the version list, deprecation and
+  publish times from one deps.dev GetPackage call per package (about 10 KB, against 0.3 to
+  25 MB for the abbreviated packument). Only names served by registry.npmjs.org go to deps.dev,
+  and a config switch turns it off.
+- Other registries, and public names deps.dev has not caught up with (`latest` missing from its
+  list): the abbreviated packument, revalidated by ETag. Publish times from its `time` when the
+  registry includes it, else the full packument, fetched only for candidates that pass policy.
+  A version with no known publish time is fetched, not let through.
+- When the packument and the dist-tags disagree, the packument wins: security proxies remove
+  fresh versions from the packument but leave the dist-tags endpoint alone.
+- `wanted`: an exact pin is its own; else `latest` when it satisfies the range and is not
+  deprecated; else the highest satisfying non-deprecated version. Yarn berry does not prefer
+  the `latest` tag, so its adapter turns that step off. Every other manager gets this rule.
+- A small disk cache under the user cache dir, in a folder named `ca.pixel-perfect.alwaysuptodate`
+  (`~/Library/Caches/…` on macOS, `$XDG_CACHE_HOME/…` on Linux, `%LOCALAPPDATA%\…` on Windows).
+  It holds derived values only, never whole packuments, with a size cap: dist-tags for 300 s,
+  deps.dev answers for an hour, ETags for revalidation. Bounded concurrency.
+- Drop npm-registry-fetch and ini for a `node:https` client with one keep-alive agent per
+  registry, honoring `.npmrc` auth, client certificates, CA, `strict-ssl`, proxies and retries.
+  Lower the Node floor to `^22.23.0 || >=24.17.0` (agent proxy support plus the CVE-2026-48615
+  fix); native `fetch` can't do per-registry client certificates or CA, and the undici
+  package costs 44 ms at startup. Bundle to one file.
 - The package manager is used only for apply.
 
-Done when the perf gates below pass in CI.
+Done when the perf gates below pass in CI, `check` runs no `<pm> outdated` or `yarn info`, and
+the integration matrix passes unchanged.
 
 ### M4: Policy signals (medium)
 
 Goal: risky updates are flagged in the plan, never applied silently.
 
 - Per-version registry document (2 to 4 KB) for candidates only: license change,
-  deprecation, engines versus the project's engines and current Node.
-- Peer-conflict pre-check against installed packages.
+  deprecation, engines versus the project's engines and current Node. npm's own `wanted` also
+  skips versions whose engines exclude the running Node; M3's native `wanted` doesn't yet.
+- Peer-conflict pre-check against installed packages: done in M1 (`src/utils/peers.ts`).
 - Honor pnpm's native minimum release age when present.
 - Versioned `--json` schema with reasons on every row.
 
@@ -139,7 +188,9 @@ Goal: a machine without Node can run autd.
 - Bundled npm package with few runtime dependencies.
 - Standalone binaries via `bun build --compile`, re-signed after build (Bun 1.4.0 emits
   an invalid ad-hoc signature on arm64 macOS; `codesign --force --sign -` fixes it, a
-  Developer ID is used for release and notarization).
+  Developer ID is used for release and notarization). The signing identifier is
+  `ca.pixel-perfect.alwaysuptodate`, the scheme env-router uses (`ca.pixel-perfect.envrouter`),
+  and the same name M3's cache folder takes.
 - Release workflow builds macOS arm64 and x64, Linux and Windows, signs each, attaches
   them to GitHub releases. Homebrew tap formula downloads the matching asset.
 - The test suite and integration matrix also run against the compiled binary, since it
@@ -166,8 +217,12 @@ Run hyperfine against the benchmark project on every pull request and fail above
 |---|---|
 | `check`, cold cache, any manager | under 1 s |
 | `check`, warm cache | under 0.3 s |
-| Startup (`--version`) | under 60 ms |
+| Startup (`--version`) | under 25 ms over bare `node -e 0` on the same runner |
 | Cooldown overhead, cold | under 0.5 s |
+
+The startup budget was "under 60 ms" until 2026-10-26. Bare Node alone measured 30 ms on
+2026-10-22 and 39 to 41 ms on 2026-10-26 on the same machine, so an absolute number measured
+the runner more than autd.
 
 ## Defects found during the analysis
 
@@ -186,3 +241,21 @@ Run hyperfine against the benchmark project on every pull request and fail above
 | Node 24 floor imposed only by npm-registry-fetch and ini | M3 | #46 |
 | Cooldown fetches full packuments, unbounded concurrency, no cache | M3 | #47 |
 | Config loaded at module import time in updateChecker, ignores cwd | M2 | #45 |
+| pnpm workspace rows that share a version get one owner's `wanted` | M3 | #95 |
+
+## M3 issues
+
+Filed 2026-10-26, in pick-up order.
+
+| Gap or defect | Milestone | Issue |
+|---|---|---|
+| The benchmark the perf gates measure is not in the repository | M3 | #103 |
+| Node >=24 floor and the npm-registry-fetch / ini client (`node:https` replacement) | M3 | #46 |
+| Cooldown ignores scoped registries, `strict-ssl` and `cafile` (2.1.0 bug, fixed by #46) | M3 | #104 |
+| No registry reader of its own: `latest`, versions, deprecation, publish times | M3 | #105 |
+| `check` runs `<pm> outdated`: native discovery for npm, pnpm, yarn v1, bun | M3 | #106 |
+| Discovery without `node_modules`: installed versions from the lockfile (berry, npm) | M3 | #107 |
+| Registry lookups repeat on every run: cache under `ca.pixel-perfect.alwaysuptodate` | M3 | #108 |
+| Cooldown fetches full packuments, unbounded concurrency, no cache | M3 | #47 |
+| Startup loads the whole CLI: bundle to one file | M3 | #109 |
+| Perf budgets are not enforced in CI | M3 | #110 |
