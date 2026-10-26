@@ -221,6 +221,21 @@ describe('registry reader', () => {
       expect(accepts(registry)[1]).toBe(ABBREVIATED_ACCEPT)
     })
 
+    it('asks a failing deps.dev once even when fetch-retries is set', async () => {
+      const { depsDev, reader } = await setup(
+        {
+          registry: msRegistry(),
+          depsDev: replies({
+            [`${DEPS_DEV_PREFIX}ms`]: { status: 503, body: '' },
+          }),
+        },
+        { config: { fetchRetries: 2 } },
+      )
+
+      expect(packageOf(await reader.lookup('ms')).source).toBe('packument')
+      expect(depsDev.requests).toHaveLength(1)
+    })
+
     it('when deps.dev hangs, after its own timeout rather than fetch-timeout', async () => {
       const { reader } = await setup(
         { registry: msRegistry(), depsDev: never },
@@ -277,6 +292,31 @@ describe('registry reader', () => {
       await reader.lookup('mkdirp')
 
       expect(depsDev.requests).toHaveLength(0)
+    })
+
+    it('sends nothing to deps.dev from lookups already queued when it trips', async () => {
+      const names = ['a', 'b', 'c', 'd', 'e']
+      const { depsDev, reader } = await setup(
+        {
+          registry: replies(
+            Object.fromEntries(
+              names.flatMap((n) => [
+                [`/-/package/${n}/dist-tags`, ok('ms.dist-tags')],
+                [`/${n}`, packument('ms.packument')],
+              ]),
+            ),
+          ),
+          depsDev: replies({
+            [`${DEPS_DEV_PREFIX}a`]: { status: 429, body: '' },
+          }),
+        },
+        { config: { maxSockets: 1 } },
+      )
+
+      const results = await Promise.all(names.map((n) => reader.lookup(n)))
+
+      expect(results.every((r) => r.ok)).toBe(true)
+      expect(depsDev.requests).toHaveLength(1)
     })
 
     it('keeps asking deps.dev after a 404', async () => {

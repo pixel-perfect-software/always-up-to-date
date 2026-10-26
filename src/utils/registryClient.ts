@@ -19,15 +19,21 @@ import {
 export interface RegistryClient {
   /**
    * GET url as JSON with the credentials and agent for its registry; rejects
-   * with RegistryRequestError. `accept` (default `application/json`) and
-   * `timeout` (default `fetch-timeout`, in ms) are per request.
+   * with RegistryRequestError. `accept` (default `application/json`),
+   * `timeout` (default `fetch-timeout`, in ms) and `retries` (default
+   * `fetch-retries`) are per request.
    */
   getJson(
     url: string,
     registry: string,
-    options?: { signal?: AbortSignal; accept?: string; timeout?: number },
+    options?: {
+      signal?: AbortSignal
+      accept?: string
+      timeout?: number
+      retries?: number
+    },
   ): Promise<unknown>
-  /** What this client has received so far, per `url.host`. */
+  /** What this client has received so far, per `url.host`: copies, so a snapshot stays as it was. */
   stats(): Record<string, RegistryHostStats>
   destroy(): void
 }
@@ -290,10 +296,12 @@ export const createRegistryClient = (
       signal?: AbortSignal
       accept?: string
       timeout?: number
+      retries?: number
     } = {},
   ): Promise<unknown> => {
     const accept = requestOptions.accept ?? 'application/json'
     const timeoutMs = requestOptions.timeout ?? config.fetchTimeout
+    const retries = requestOptions.retries ?? config.fetchRetries
     const callerSignals = requestOptions.signal ? [requestOptions.signal] : []
     let target = new URL(url)
     let redirects = 0
@@ -303,7 +311,7 @@ export const createRegistryClient = (
       try {
         outcome = await once(target, registry, callerSignals, accept, timeoutMs)
       } catch (error) {
-        if (attempt < config.fetchRetries && isRetryableError(error)) {
+        if (attempt < retries && isRetryableError(error)) {
           await sleep(retryDelay(attempt, undefined, Date.now()) ?? 0)
           attempt++
           continue
@@ -336,7 +344,7 @@ export const createRegistryClient = (
         continue
       }
 
-      if (attempt < config.fetchRetries && isRetryableStatus(outcome.status)) {
+      if (attempt < retries && isRetryableStatus(outcome.status)) {
         const delay = retryDelay(attempt, outcome.retryAfter, Date.now())
         if (delay !== undefined) {
           await sleep(delay)
@@ -353,7 +361,10 @@ export const createRegistryClient = (
 
   return {
     getJson,
-    stats: () => Object.fromEntries(hostStats),
+    stats: () =>
+      Object.fromEntries(
+        [...hostStats].map(([host, stats]) => [host, { ...stats }]),
+      ),
     destroy: () => {
       for (const agent of agents.values()) agent.destroy()
       agents.clear()

@@ -105,7 +105,7 @@ __tests__/
     npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
     npmrcLoader.test.ts     # Layering (global, user, project, npm_config_*), workspace root, RegistryConfig, on temp dirs
     registryRequest.test.ts # Pure client helpers: scoped registry, prefix walk, Authorization forms, retry rules, public-registry check, dist-tags and deps.dev URLs, package-name rule
-    registryClient.test.ts  # node:https client against local HTTP(S) servers and a CONNECT proxy: auth, TLS, mTLS, proxies, retries, timeout, maxsockets, redirects
+    registryClient.test.ts  # node:https client against local HTTP(S) servers and a CONNECT proxy: auth, TLS, mTLS, proxies, retries, timeout, maxsockets, redirects, per-request accept/timeout/retries, stats()
     registry.test.ts        # createRegistrySession: lazy config and client, one per run, in-flight dedupe, fails open, scoped registry (#104), close(), lookup() sharing the client and honoring depsDev
     registryReader.test.ts  # createRegistryReader on captured bodies and local servers: deps.dev path, packument fallbacks, breaker, depsDev: false, other registries, credentials, 404s, failures, dedupe, bounded concurrency
     registryDocuments.test.ts # dist-tags, deps.dev and packument parsers on the fixtures; the sources agree; malformed input

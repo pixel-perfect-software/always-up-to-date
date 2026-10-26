@@ -136,6 +136,11 @@ export const createRegistrySession = (
     },
     close: () => {
       created?.destroy()
+      // A client still loading is destroyed as soon as it exists.
+      void clientRequest?.then(
+        (pending) => pending.destroy(),
+        () => undefined,
+      )
     },
   }
 }

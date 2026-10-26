@@ -44,7 +44,7 @@ const DEPS_DEV_TIMEOUT_MS = 5000
 
 type Fetched =
   | { ok: true; body: unknown }
-  | { ok: false; status?: number; message: string }
+  | { ok: false; status?: number; message: string; skipped?: true }
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -77,11 +77,18 @@ export const createRegistryReader = ({
     url: string,
     base: string,
     accept: string,
-    timeout?: number,
+    extra: { timeout?: number; retries?: number; skipIf?: () => boolean } = {},
   ): Promise<Fetched> =>
     limit(async (): Promise<Fetched> => {
+      // Checked once the slot is ours: the world may have changed while queued.
+      if (extra.skipIf?.())
+        return { ok: false, message: 'skipped', skipped: true }
       try {
-        const body = await client.getJson(url, base, { accept, timeout })
+        const body = await client.getJson(url, base, {
+          accept,
+          timeout: extra.timeout,
+          retries: extra.retries,
+        })
         return { ok: true, body }
       } catch (error) {
         return { ok: false, status: statusOf(error), message: messageOf(error) }
@@ -112,8 +119,15 @@ export const createRegistryReader = ({
       depsDevUrl(name, endpoints.depsDev),
       endpoints.depsDev,
       'application/json',
-      Math.min(registryConfig.fetchTimeout, DEPS_DEV_TIMEOUT_MS),
+      {
+        timeout: Math.min(registryConfig.fetchTimeout, DEPS_DEV_TIMEOUT_MS),
+        // deps.dev has a fallback, and any 429, 5xx or transport failure trips
+        // the breaker anyway, so a retry only delays the fallback.
+        retries: 0,
+        skipIf: () => !depsDevUsable,
+      },
     )
+    if (!fetched.ok && fetched.skipped) return undefined
     if (fetched.ok) {
       const versions = parseDepsDevPackage(fetched.body)
       if (!versions)

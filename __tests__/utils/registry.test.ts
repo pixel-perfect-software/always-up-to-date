@@ -3,6 +3,7 @@ jest.mock('@/utils/logger')
 import type http from 'http'
 import type { RegistryConfig } from '@/types'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
+import type { RegistryClient } from '@/utils/registryClient'
 import {
   registryBody,
   replies,
@@ -226,6 +227,41 @@ describe('registry session', () => {
     await session.releaseTimes('a')
     session.close()
     expect(() => session.close()).not.toThrow()
+  })
+
+  it('destroys a client that was still loading when close() ran', async () => {
+    const server = await start(packument({ time: {} }))
+    const created: RegistryClient[] = []
+    let fresh: typeof import('@/utils/registry') | undefined
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock('@/utils/registryClient', () => {
+        const actual = jest.requireActual<
+          typeof import('@/utils/registryClient')
+        >('@/utils/registryClient')
+        return {
+          ...actual,
+          createRegistryClient: (
+            ...args: Parameters<typeof actual.createRegistryClient>
+          ) => {
+            const client = actual.createRegistryClient(...args)
+            jest.spyOn(client, 'destroy')
+            created.push(client)
+            return client
+          },
+        }
+      })
+      fresh = await import('@/utils/registry')
+    })
+    const session = fresh?.createRegistrySession('/project', {
+      loadConfig: () => configFor(server.url),
+    })
+
+    const pending = session?.client()
+    session?.close()
+    await pending
+
+    expect(created).toHaveLength(1)
+    expect(created[0]?.destroy).toHaveBeenCalledTimes(1)
   })
 
   describe('lookup', () => {
