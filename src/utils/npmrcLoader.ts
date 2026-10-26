@@ -34,7 +34,7 @@ const stringValue = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined
 
 /** A string with something in it: npm treats an empty setting as unset (`||`). */
-const nonEmpty = (value: unknown): string | undefined =>
+export const nonEmpty = (value: unknown): string | undefined =>
   typeof value === 'string' && value !== '' ? value : undefined
 
 const boolValue = (value: unknown): boolean | undefined => {
@@ -103,7 +103,7 @@ const isDirectory = (dir: string): boolean => {
  * package.json or node_modules, or the root of the workspace that lists it
  * as a member.
  */
-const findNpmProjectRoot = (cwd: string): string => {
+export const findNpmProjectRoot = (cwd: string): string => {
   let localPrefix: string | undefined
   let dir = path.resolve(cwd)
 
@@ -136,12 +136,14 @@ const findNpmProjectRoot = (cwd: string): string => {
 
 /**
  * The merged .npmrc settings, as npm resolves them. Precedence (high → low):
- * `npm_config_*` environment variables → the project's .npmrc → the user's
+ * `npm_config_*` environment variables → the project's .npmrc (the nearest npm
+ * project root's, or `projectRoot` when the manager has its own) → the user's
  * (`~/.npmrc`) → the global one (`<prefix>/etc/npmrc`) → npm's builtin one.
  */
 export const loadNpmrc = (
   cwd: string,
   sources: NpmrcSources = processSources(),
+  projectRoot?: string,
 ): Npmrc => {
   const { env, home, execPath, platform } = sources
   const envLayer = envConfig(env)
@@ -156,7 +158,10 @@ export const loadNpmrc = (
       platform,
     )
 
-  const projectFile = path.join(findNpmProjectRoot(cwd), '.npmrc')
+  const projectFile = path.join(
+    projectRoot ?? findNpmProjectRoot(cwd),
+    '.npmrc',
+  )
   const project: Npmrc =
     projectFile === userconfigOf(Object.create(null))
       ? Object.create(null)
@@ -401,4 +406,6 @@ export const registryConfigFrom = (
 export const loadRegistryConfig = (
   cwd: string,
   sources: NpmrcSources = processSources(),
-): RegistryConfig => registryConfigFrom(loadNpmrc(cwd, sources), cwd, sources)
+  projectRoot?: string,
+): RegistryConfig =>
+  registryConfigFrom(loadNpmrc(cwd, sources, projectRoot), cwd, sources)

@@ -11,6 +11,7 @@ import logger from './logger'
 import {
   authorizationFor,
   credentialsFor,
+  decodeUri,
   isRetryableError,
   isRetryableStatus,
   retryDelay,
@@ -79,17 +80,9 @@ type Outcome =
   | { kind: 'redirect'; location: string }
   | { kind: 'status'; status: number; message: string; retryAfter?: string }
 
-const decode = (value: string): string => {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
-
 const basicFromUserinfo = (url: URL): string | undefined =>
   url.username || url.password
-    ? `Basic ${Buffer.from(`${decode(url.username)}:${decode(url.password)}`).toString('base64')}`
+    ? `Basic ${Buffer.from(`${decodeUri(url.username)}:${decodeUri(url.password)}`).toString('base64')}`
     : undefined
 
 /** The URL without userinfo or query: safe to put in an error or a log line. */

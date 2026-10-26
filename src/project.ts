@@ -37,7 +37,11 @@ export const openProject = (
       depsDev: config.depsDev,
       loadConfig: (dir) => {
         const sources = processSources()
-        const fromNpmrc = loadRegistryConfig(dir, sources)
+        const fromNpmrc = loadRegistryConfig(
+          dir,
+          sources,
+          adapter.projectRoot?.(dir),
+        )
         return adapter.registryConfig?.(dir, fromNpmrc, sources) ?? fromNpmrc
       },
     }),

@@ -104,6 +104,19 @@ describe('pnpmRegistrySettings', () => {
     })
   })
 
+  it('reads the flat legacy shape written as one-line flow', () => {
+    const yaml = `registries: { default: ${A}, "@acme": ${B}, '@corp': "${B}" } # routes\n`
+    expect(pnpmRegistrySettings(yaml)).toEqual({
+      registry: A,
+      scopes: { '@acme': B, '@corp': B },
+    })
+  })
+
+  it('ignores a nested flow mapping', () => {
+    const yaml = `registries: { ${A}: { scopes: ["@acme"] } }\n`
+    expect(pnpmRegistrySettings(yaml)).toEqual({ scopes: {} })
+  })
+
   it('is empty without registry settings', () => {
     expect(pnpmRegistrySettings('saveExact: true\n')).toEqual({ scopes: {} })
     expect(pnpmRegistrySettings('')).toEqual({ scopes: {} })

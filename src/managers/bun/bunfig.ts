@@ -3,17 +3,23 @@ import path from 'path'
 import type { RegistryConfig, RegistryCredentials } from '@/types'
 import logger from '@/utils/logger'
 import {
-  DEFAULT_REGISTRY,
+  findNpmProjectRoot,
   isRegistryUrl,
   type NpmrcSources,
+  nonEmpty,
 } from '@/utils/npmrcLoader'
-import { nerfDart } from '@/utils/registryRequest'
+import {
+  DEFAULT_ENDPOINTS,
+  decodeUri,
+  isPublicNpmRegistry,
+  nerfDart,
+} from '@/utils/registryRequest'
 import { readTextFile } from '@/utils/saveStyle'
 
 /** `exact = true` inside bunfig.toml's `[install]` table. */
 export const bunfigExact = (content: string): boolean => {
   let inInstall = false
-  for (const line of content.split('\n')) {
+  for (const line of content.split(/\r?\n/)) {
     const table = /^\s*\[([^\]]+)\]/.exec(line)
     if (table) {
       inInstall = table[1].trim() === 'install'
@@ -27,41 +33,52 @@ export const bunfigExact = (content: string): boolean => {
 /** A string, or an inline table of strings: the two shapes a registry takes. */
 type TomlValue = string | Record<string, string>
 
-/** The line without its `#` comment, which may sit after quoted text. */
-const stripComment = (line: string): string => {
+/**
+ * Calls `visit` for each character outside a TOML string; `visit` returns
+ * true to stop. A backslash escapes the next character in a basic string
+ * (`"`), so `"a\\"` ends at its second quote; a literal string (`'`) has no
+ * escapes.
+ */
+const scanOutsideStrings = (
+  text: string,
+  visit: (char: string, index: number) => boolean | undefined,
+): void => {
   let quote: string | undefined
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i]
-    if (quote) {
-      if (c === quote && (quote === "'" || line[i - 1] !== '\\')) {
-        quote = undefined
-      }
-    } else if (c === '"' || c === "'") quote = c
-    else if (c === '#') return line.slice(0, i)
-  }
-  return line
-}
-
-/** Splits at `separator` outside quotes, `{}` and `[]`. */
-const splitTop = (text: string, separator: string): string[] => {
-  const parts: string[] = []
-  let quote: string | undefined
-  let depth = 0
-  let from = 0
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
     if (quote) {
-      if (c === quote && (quote === "'" || text[i - 1] !== '\\')) {
-        quote = undefined
-      }
+      if (c === '\\' && quote === '"') i++
+      else if (c === quote) quote = undefined
     } else if (c === '"' || c === "'") quote = c
-    else if (c === '{' || c === '[') depth++
+    else if (visit(c, i)) return
+  }
+}
+
+/** The line without its `#` comment, which may sit after quoted text. */
+const stripComment = (line: string): string => {
+  let end = line.length
+  scanOutsideStrings(line, (c, i) => {
+    if (c !== '#') return undefined
+    end = i
+    return true
+  })
+  return line.slice(0, end)
+}
+
+/** Splits at `separator` outside strings, `{}` and `[]`. */
+const splitTop = (text: string, separator: string): string[] => {
+  const parts: string[] = []
+  let depth = 0
+  let from = 0
+  scanOutsideStrings(text, (c, i) => {
+    if (c === '{' || c === '[') depth++
     else if (c === '}' || c === ']') depth--
     else if (c === separator && depth === 0) {
       parts.push(text.slice(from, i))
       from = i + 1
     }
-  }
+    return undefined
+  })
   parts.push(text.slice(from))
   return parts
 }
@@ -99,7 +116,16 @@ interface BunfigRegistries {
   scopes: Record<string, TomlValue>
 }
 
-/** `[install] registry` and `[install.scopes]` from a bunfig.toml. */
+const SCOPES_TABLE = 'install.scopes.'
+
+const scopeName = (name: string): string =>
+  name.startsWith('@') ? name : `@${name}`
+
+/**
+ * `[install] registry`, `[install.scopes]` and `[install.scopes.<name>]`
+ * from a bunfig.toml. Dotted keys (`scopes.acme = …`) and
+ * `scopes = { … }` are not read.
+ */
 const readBunfigRegistries = (content: string): BunfigRegistries => {
   const result: BunfigRegistries = { scopes: {} }
   let table = ''
@@ -111,14 +137,25 @@ const readBunfigRegistries = (content: string): BunfigRegistries => {
       table = header[1].trim()
       continue
     }
-    if (table !== 'install' && table !== 'install.scopes') continue
+    const subtable = table.startsWith(SCOPES_TABLE)
+      ? scopeName(tomlKey(table.slice(SCOPES_TABLE.length)))
+      : undefined
+    if (table !== 'install' && table !== 'install.scopes' && !subtable) continue
     const [key, ...rest] = splitTop(text, '=')
     if (rest.length === 0) continue
     const name = tomlKey(key)
     const value = tomlValue(rest.join('='))
     if (value === undefined) continue
-    if (table === 'install.scopes') {
-      result.scopes[name.startsWith('@') ? name : `@${name}`] = value
+    if (subtable) {
+      // `[install.scopes.acme]` with url / token / username / password keys:
+      // the inline-table form, one key per line.
+      const existing = result.scopes[subtable]
+      result.scopes[subtable] = {
+        ...(typeof existing === 'object' ? existing : {}),
+        ...(typeof value === 'string' ? { [name]: value } : {}),
+      }
+    } else if (table === 'install.scopes') {
+      result.scopes[scopeName(name)] = value
     } else if (name === 'registry') {
       result.registry = value
     }
@@ -135,37 +172,31 @@ interface Route {
 const base64 = (value: string): string =>
   Buffer.from(value, 'utf8').toString('base64')
 
-const decode = (value: string): string => {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
-
 /**
- * `$NAME` in a token, as bun expands it (verified on bun 1.4.4, 2026-10-26).
- * `${NAME}` is sent as is by bun, and an unset `$NAME` drops the credential;
- * both leave nothing worth sending, so both give undefined.
+ * `$NAME` in a token, username or password, as bun expands it (verified on
+ * bun 1.4.4, 2026-10-26). `${NAME}` is sent as is by bun, and an unset
+ * `$NAME` drops the credential; both leave nothing worth sending, so both
+ * give undefined.
  */
-const expandToken = (
-  token: string,
+const expandSecret = (
+  secret: string,
   env: NodeJS.ProcessEnv,
   where: string,
+  what: string,
 ): string | undefined => {
-  if (token.includes('${')) {
-    logger.debug(`Ignoring token for ${where} in bunfig.toml: holds \${…}`)
+  if (secret.includes('${')) {
+    logger.debug(`Ignoring ${what} for ${where} in bunfig.toml: holds \${…}`)
     return undefined
   }
   let unset: string | undefined
-  const expanded = token.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, name) => {
+  const expanded = secret.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, name) => {
     const value = env[name]
     if (!value) unset ??= name
     return value ?? ''
   })
   if (unset !== undefined) {
     logger.debug(
-      `Ignoring token for ${where} in bunfig.toml: $${unset} is not set`,
+      `Ignoring ${what} for ${where} in bunfig.toml: $${unset} is not set`,
     )
     return undefined
   }
@@ -198,19 +229,26 @@ const routeFrom = (
 
   const credentials: RegistryCredentials = {}
   if (url.username && url.password) {
-    credentials.username = decode(url.username)
-    credentials.password = base64(decode(url.password))
+    credentials.username = decodeUri(url.username)
+    credentials.password = base64(decodeUri(url.password))
+  } else if (url.username) {
+    // `http://TOKEN@host/`: bun sends Basic `TOKEN:`, an empty password.
+    credentials.auth = base64(`${decodeUri(url.username)}:`)
   }
   url.username = ''
   url.password = ''
   if (entry.token !== undefined) {
-    credentials.authToken = expandToken(entry.token, env, where)
+    credentials.authToken = expandSecret(entry.token, env, where, 'token')
   }
   if (entry.username && entry.password) {
-    credentials.username = entry.username
-    credentials.password = base64(entry.password)
+    const username = expandSecret(entry.username, env, where, 'username')
+    const password = expandSecret(entry.password, env, where, 'password')
+    if (username && password) {
+      credentials.username = username
+      credentials.password = base64(password)
+    }
   }
-  const held = credentials.authToken || credentials.username
+  const held = credentials.authToken || credentials.username || credentials.auth
   return { url: url.href, credentials: held ? credentials : undefined }
 }
 
@@ -233,9 +271,6 @@ export const parseBunfigRegistries = (
     scopes,
   }
 }
-
-const nonEmpty = (value: string | undefined): string | undefined =>
-  value ? value : undefined
 
 /**
  * bun reads one global bunfig: `$XDG_CONFIG_HOME/.bunfig.toml` when that is
@@ -268,7 +303,7 @@ export const bunRegistryConfig = (
   const { env } = sources
   const global = parseBunfigRegistries(readTextFile(globalBunfig(sources)), env)
   const project = parseBunfigRegistries(
-    readTextFile(path.join(cwd, 'bunfig.toml')),
+    readTextFile(path.join(findNpmProjectRoot(cwd), 'bunfig.toml')),
     env,
   )
 
@@ -282,11 +317,14 @@ export const bunRegistryConfig = (
   const registry = fromEnv ?? route?.url ?? base.registry
   const credentials = { ...base.credentials }
   const token = nonEmpty(env.BUN_CONFIG_TOKEN) ?? nonEmpty(env.NPM_CONFIG_TOKEN)
-  // A token with no registry configured is not sent to the public default.
+  // A token with no registry configured is not sent to a public registry.
   const defaultCredentials =
     route?.credentials ??
-    (token && registry !== DEFAULT_REGISTRY ? { authToken: token } : undefined)
-  if (defaultCredentials) credentials[nerfDart(registry)] = defaultCredentials
+    (token && !isPublicNpmRegistry(registry, DEFAULT_ENDPOINTS.publicRegistries)
+      ? { authToken: token }
+      : undefined)
+  const defaultPrefix = nerfDart(registry)
+  if (defaultCredentials) credentials[defaultPrefix] = defaultCredentials
 
   const scopedRegistries = { ...base.scopedRegistries }
   for (const [scope, scoped] of Object.entries({
@@ -294,8 +332,17 @@ export const bunRegistryConfig = (
     ...project.scopes,
   })) {
     scopedRegistries[scope] = scoped.url
-    if (scoped.credentials)
-      credentials[nerfDart(scoped.url)] = scoped.credentials
+    if (!scoped.credentials) continue
+    // A credential is stored per URL prefix, as .npmrc does, so a scope on the
+    // default route's prefix would replace the default's; the default wins.
+    const prefix = nerfDart(scoped.url)
+    if (defaultCredentials && prefix === defaultPrefix) {
+      logger.debug(
+        `Ignoring credentials for scope ${scope} in bunfig.toml: ${prefix} already has the default registry's`,
+      )
+      continue
+    }
+    credentials[prefix] = scoped.credentials
   }
 
   return { ...base, registry, scopedRegistries, credentials }

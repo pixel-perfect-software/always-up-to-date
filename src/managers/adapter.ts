@@ -94,6 +94,12 @@ export interface ManagerAdapter {
     rows: { name: string; workspace?: string }[],
   ): Promise<Record<string, string>>
   /**
+   * The directory whose `.npmrc` this manager reads, when it is not the
+   * nearest npm project root `loadNpmrc` finds from `package.json`
+   * `workspaces` (pnpm: the nearest `pnpm-workspace.yaml`).
+   */
+  projectRoot?(cwd: string): string
+  /**
    * The run's registry config for this manager: the .npmrc view, adjusted
    * where the manager reads registries from somewhere else too (pnpm's
    * pnpm-workspace.yaml, bun's bunfig.toml). Called once, on the session's

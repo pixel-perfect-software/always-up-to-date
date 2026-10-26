@@ -1,7 +1,7 @@
 import type { RegistryConfig } from '@/types'
 import logger from '@/utils/logger'
 import { isRegistryUrl } from '@/utils/npmrcLoader'
-import { yamlValue } from '@/utils/saveStyle'
+import { unquote, yamlValue } from '@/utils/saveStyle'
 
 /** What pnpm-workspace.yaml routes: the default registry and per-scope registries. */
 export interface PnpmRegistrySettings {
@@ -9,9 +9,6 @@ export interface PnpmRegistrySettings {
   /** '@scope' → registry URL */
   scopes: Record<string, string>
 }
-
-const unquote = (value: string): string =>
-  value.trim().replace(/^(['"])(.*)\1$/, '$2')
 
 const withoutComment = (value: string): string =>
   value.replace(/(^|\s)#.*$/, '').trim()
@@ -25,14 +22,42 @@ interface Entry {
 }
 
 /**
- * The entries of the top-level `registries:` mapping. A key is quoted, or
+ * The key and value of one `key: value` mapping line. A key is quoted, or
  * ends at its last `:` when nothing follows it (a URL key), or at its first
  * `: ` otherwise (`default: https://…`).
  */
+const keyValue = (text: string): [string, string] | undefined => {
+  const quoted = /^(["'])(.*?)\1\s*:\s*(.*)$/.exec(text)
+  if (quoted) return [quoted[2], quoted[3]]
+  if (text.endsWith(':')) return [text.slice(0, -1).trim(), '']
+  const bare = /^(.*?):\s+(.*)$/.exec(text)
+  return bare ? [bare[1], bare[2]] : undefined
+}
+
+/**
+ * The entries of the top-level `registries:` mapping, written as a block or
+ * as one-line flow (`registries: { default: https://x/, "@a": https://a/ }`).
+ * A flow mapping is read only in its flat legacy shape.
+ */
 const registryEntries = (yaml: string): Entry[] => {
   const lines = yaml.split(/\r?\n/)
-  const start = lines.findIndex((line) => /^registries:\s*(#.*)?$/.test(line))
+  const start = lines.findIndex((line) => /^registries:/.test(line))
   if (start === -1) return []
+
+  const flow = /^registries:\s*\{(.*)\}\s*(#.*)?$/.exec(lines[start])
+  if (flow) {
+    if (/[{[]/.test(flow[1])) {
+      logger.debug(
+        'Ignoring registries in pnpm-workspace.yaml: nested flow mapping',
+      )
+      return []
+    }
+    return flow[1].split(',').flatMap((pair) => {
+      const found = keyValue(withoutComment(pair))
+      return found ? [{ key: found[0], value: found[1], body: [] }] : []
+    })
+  }
+  if (!/^registries:\s*(#.*)?$/.test(lines[start])) return []
 
   const entries: Entry[] = []
   let indent: number | undefined
@@ -45,17 +70,8 @@ const registryEntries = (yaml: string): Entry[] => {
       entries.at(-1)?.body.push(line)
       continue
     }
-    const text = withoutComment(line)
-    const quoted = /^(["'])(.*?)\1\s*:\s*(.*)$/.exec(text)
-    const bare = text.endsWith(':')
-      ? [text, text.slice(0, -1).trim(), '']
-      : /^(.*?):\s+(.*)$/.exec(text)
-    const [key, value] = quoted
-      ? [quoted[2], quoted[3]]
-      : bare
-        ? [bare[1], bare[2] ?? '']
-        : [undefined, '']
-    if (key !== undefined) entries.push({ key, value, body: [] })
+    const found = keyValue(withoutComment(line))
+    if (found) entries.push({ key: found[0], value: found[1], body: [] })
   }
   return entries
 }
