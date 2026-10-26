@@ -7,8 +7,8 @@ Documentation registry and index for the Always Up To Date project. This file ma
 | Tier | Scope | Location |
 |------|-------|----------|
 | 1 - Foundational | Project-wide overview, dev commands, architecture summary | `/CLAUDE.md` |
-| 2 - Component-Level | Component purpose, patterns, integration points | `src/{component}/CONTEXT.md` |
-| 3 - Feature-Specific | Granular feature implementation details | `src/{component}/{feature}/CONTEXT.md` |
+| 2 - Component-Level | Component purpose, patterns, integration points | `src/{component}/CLAUDE.md` |
+| 3 - Feature-Specific | Granular feature implementation details | `src/{component}/{feature}/CLAUDE.md` |
 
 ## Documentation Registry
 
@@ -23,15 +23,15 @@ Documentation registry and index for the Always Up To Date project. This file ma
 
 | Component | Path | Description |
 |-----------|------|-------------|
-| Package Managers | `src/managers/CONTEXT.md` | Manager abstraction, CommandRunner, detection, workspace support |
-| CLI Commands | `src/commands/CONTEXT.md` | Commander.js setup, command registration, binary aliases |
-| Utilities | `src/utils/CONTEXT.md` | Config system, update logic, logging, file ops, package grouping |
-| Migrator | `src/migrator/CONTEXT.md` | Framework migration rules (stub) |
-| PR Generator | `src/prGenerator/CONTEXT.md` | Automated PR creation (stub) |
+| Package Managers | `src/managers/CLAUDE.md` | Manager abstraction, CommandRunner, detection, workspace support |
+| CLI Commands | `src/commands/CLAUDE.md` | Commander.js setup, command registration, binary aliases |
+| Utilities | `src/utils/CLAUDE.md` | Config system, update logic, logging, file ops, package grouping |
+| Migrator | `src/migrator/CLAUDE.md` | Framework migration rules (stub) |
+| PR Generator | `src/prGenerator/CLAUDE.md` | Automated PR creation (stub) |
 
 ### Tier 3 (Feature-Specific)
 
-No Tier 3 documents yet. As features grow in complexity, add `CONTEXT.md` files in subdirectories (e.g., `src/managers/npm/CONTEXT.md`).
+No Tier 3 documents yet. As features grow in complexity, add `CLAUDE.md` files in subdirectories (e.g., `src/managers/npm/CLAUDE.md`).
 
 ## Project Structure
 
@@ -46,15 +46,15 @@ src/
   detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
   commands/                 # CLI command definitions
-    CONTEXT.md
+    CLAUDE.md
   managers/                 # One adapter per package manager (adapter.ts interface, index.ts registry)
-    CONTEXT.md
+    CLAUDE.md
   utils/                    # Shared utilities
-    CONTEXT.md
+    CLAUDE.md
   migrator/                 # Framework migration (stub)
-    CONTEXT.md
+    CLAUDE.md
   prGenerator/              # PR automation (stub)
-    CONTEXT.md
+    CLAUDE.md
 schema/
   config.schema.json        # JSON schema for .always-up-to-date.json (referenced via $schema)
 testRepos/                  # Integration fixtures, <manager>-<layout> (README.md); lockfiles are generated in temp copies, never committed

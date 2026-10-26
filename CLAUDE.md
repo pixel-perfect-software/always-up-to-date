@@ -129,8 +129,8 @@ TypeScript paths are configured with `@/*` mapping to `src/*`:
 
 This project uses a 3-tier AI-optimized context system:
 - **Tier 1 (Foundational)**: This file (`CLAUDE.md`) - project overview and dev commands
-- **Tier 2 (Component-Level)**: `CONTEXT.md` files co-located in `src/` component directories
-- **Tier 3 (Feature-Specific)**: `CONTEXT.md` files in feature subdirectories (added as needed)
+- **Tier 2 (Component-Level)**: `CLAUDE.md` files co-located in `src/` component directories; Claude Code loads each one when it reads files in that directory
+- **Tier 3 (Feature-Specific)**: `CLAUDE.md` files in feature subdirectories (added as needed)
 
 Documentation registry: `.claude/context/ai-context/docs-overview.md`
 
