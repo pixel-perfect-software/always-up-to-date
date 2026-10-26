@@ -52,14 +52,66 @@ describe('parseYarnrc', () => {
   })
 })
 
+describe('parseYarnrc: what yarn 1.22.22 does (checked with `yarn config get`, 2026-10-26)', () => {
+  it('stops at an indented line, keeping the keys before it', () => {
+    const text = `registry "${A}"\n  \n"@s:registry" "${B}"\n`
+    expect(parseYarnrc(text)).toEqual({ registry: A })
+    expect(parseYarnrc(`registry "${A}"\n    # note\nother x\n`)).toEqual({
+      registry: A,
+    })
+  })
+
+  it('skips the spaces of a first line', () => {
+    expect(parseYarnrc(`  \nregistry "${A}"\n`)).toEqual({ registry: A })
+  })
+
+  it('reads a file with an odd indent as nothing (yarn falls back to YAML)', () => {
+    const text = `registry "${A}"\n \n"@s:registry" "${B}"\n`
+    expect(parseYarnrc(text)).toEqual({})
+    expect(parseYarnrc(`registry "${A}"\n   "x" "y"\n`)).toEqual({})
+  })
+
+  it('drops a leading BOM', () => {
+    expect(parseYarnrc(`\uFEFFregistry "${A}"\n`)).toEqual({ registry: A })
+  })
+
+  it('reads a file with a tab outside a comment as nothing', () => {
+    expect(parseYarnrc(`registry\t"${A}"\n`)).toEqual({})
+    expect(parseYarnrc(`registry "${A}"\t\n`)).toEqual({})
+    expect(parseYarnrc(`\tregistry "${A}"\n`)).toEqual({})
+    expect(parseYarnrc(`registry "${A}"\nother "x\ty"\n`)).toEqual({})
+    expect(parseYarnrc(`registry "${A}" # a\ttab\n`)).toEqual({ registry: A })
+  })
+
+  it('reads a line yarn rejects as the whole file being nothing', () => {
+    expect(parseYarnrc(`registry "${A}"\nregistry ${B}\n`)).toEqual({})
+  })
+
+  it('reads numbers, several keys on a line, and a key with only a colon', () => {
+    expect(parseYarnrc('network-timeout 30000\na, "b" c\nd:\n')).toEqual({
+      'network-timeout': '30000',
+      a: 'c',
+      b: 'c',
+    })
+  })
+})
+
 describe('yarnrcRoutes', () => {
   it('splits the registry, the flag and the scopes, keeping http(s) URLs only', () => {
     const text = `registry "${B}"\n--registry "${A}"\n"@acme:registry" "${C}"\n"@bad:registry" "ftp://x/"\n"acme:registry" "${A}"\n`
     expect(yarnrcRoutes(text)).toEqual({
       registry: B,
       flagRegistry: A,
+      upgradeRegistry: undefined,
       scopes: { '@acme': C },
     })
+  })
+
+  it("reads --upgrade.registry and no other command's", () => {
+    const text = `--upgrade.registry "${A}"\n--install.registry "${B}"\n`
+    const routes = yarnrcRoutes(text)
+    expect(routes.upgradeRegistry).toBe(A)
+    expect(routes.flagRegistry).toBeUndefined()
   })
 })
 
@@ -198,6 +250,83 @@ describe('yarnRegistryConfig', () => {
     expect(configFor(proj()).credentials).toEqual({
       '//127.0.0.1:4002/': { authToken: 'N' },
     })
+  })
+
+  it('puts --upgrade.registry above --registry whatever the file or order', () => {
+    write(at('home', '.yarnrc'), `--registry "${A}"\n`)
+    write(
+      at('proj', '.yarnrc'),
+      `--upgrade.registry "${B}"\n--registry "${C}"\n`,
+    )
+    expect(configFor(proj()).registry).toBe(B)
+  })
+
+  it("ignores another command's scoped flag, and a scope still beats --upgrade.registry", () => {
+    write(
+      at('proj', '.yarnrc'),
+      `--install.registry "${B}"\n--upgrade.registry "${C}"\n`,
+    )
+    write(at('proj', '.npmrc'), `@acme:registry=${A}\n`)
+    const config = configFor(proj())
+    expect(registryFor('left-pad', config)).toBe(C)
+    expect(registryFor('@acme/probe', config)).toBe(A)
+    write(at('proj', '.yarnrc'), `--install.registry "${B}"\n`)
+    expect(configFor(proj()).registry).toBe('https://registry.npmjs.org/')
+  })
+
+  describe('the filesystem root', () => {
+    const rootFile = path.join(path.parse(process.cwd()).root, '.yarnrc')
+    const withRootYarnrc = (content: string) => {
+      const real = fs.readFileSync
+      return jest
+        .spyOn(fs, 'readFileSync')
+        .mockImplementation(((
+          file: fs.PathOrFileDescriptor,
+          ...rest: unknown[]
+        ) =>
+          file === rootFile
+            ? content
+            : (real as (...args: unknown[]) => unknown)(
+                file,
+                ...rest,
+              )) as typeof fs.readFileSync)
+    }
+
+    it('does not read /.yarnrc for ordinary keys', () => {
+      withRootYarnrc(`registry "${B}"\n"@acme:registry" "${B}"\n`)
+      const config = configFor(proj())
+      expect(config.registry).toBe('https://registry.npmjs.org/')
+      expect(config.scopedRegistries).toEqual({})
+    })
+
+    it('reads /.yarnrc for the flags, as yarn does', () => {
+      withRootYarnrc(`--registry "${B}"\n`)
+      expect(configFor(proj()).registry).toBe(B)
+    })
+  })
+
+  it('matches the variables as loadNpmrc does: empty skipped, last match wins', () => {
+    write(at('proj', '.yarnrc'), `registry "${C}"\n`)
+    expect(
+      configFor(proj(), { yarn_registry: '', YARN_REGISTRY: B }).registry,
+    ).toBe(B)
+    expect(
+      configFor(proj(), { yarn_registry: A, YARN_REGISTRY: B }).registry,
+    ).toBe(B)
+    expect(
+      configFor(proj(), { npm_config_registry: '', NPM_CONFIG_REGISTRY: A })
+        .registry,
+    ).toBe(A)
+  })
+
+  it('reads each .yarnrc once', () => {
+    write(at('proj', '.yarnrc'), `registry "${A}"\n`)
+    const spy = jest.spyOn(fs, 'readFileSync')
+    configFor(proj())
+    const reads = spy.mock.calls.filter(
+      ([file]) => file === at('proj', '.yarnrc'),
+    )
+    expect(reads).toHaveLength(1)
   })
 
   it('returns the .npmrc view when nothing routes', () => {
