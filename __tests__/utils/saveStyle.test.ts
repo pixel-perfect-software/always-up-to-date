@@ -7,6 +7,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { adapterFor } from '@/managers'
+import { isolateNpmConfig } from '../fixtures'
 
 // Each case mirrors a real `add` on the manager's current version, which
 // wrote the spec shown in the comment.
@@ -17,16 +18,18 @@ describe('adapter.saveStyle', () => {
     fs.writeFileSync(path.join(cwd, file), content)
 
   let home: string
+  let restoreNpmConfig: () => void
 
   beforeEach(() => {
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-save-style-'))
     // Keep the developer's own ~/.npmrc out of these cases.
     home = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-home-'))
-    jest.spyOn(os, 'homedir').mockReturnValue(home)
+    restoreNpmConfig = isolateNpmConfig(home)
     write('package.json', '{}')
   })
 
   afterEach(() => {
+    restoreNpmConfig()
     fs.rmSync(cwd, { recursive: true, force: true })
     fs.rmSync(home, { recursive: true, force: true })
   })

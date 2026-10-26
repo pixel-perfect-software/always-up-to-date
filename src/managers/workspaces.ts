@@ -183,6 +183,29 @@ const matchesSegments = (pattern: string[], parts: string[]): boolean => {
 }
 
 /**
+ * Whether the workspace `patterns` include `member`, a posix path relative to
+ * the root. A pure match, with the expansion's syntax: no directory is read,
+ * so the member's own package.json is the caller's check.
+ */
+export const matchesWorkspacePatterns = (
+  patterns: string[],
+  member: string,
+): boolean => {
+  const parts = member.split('/')
+  let included = false
+  for (const pattern of patterns) {
+    if (UNSUPPORTED_SYNTAX.test(pattern)) continue
+    const negated = pattern.startsWith('!')
+    const matches = expandBraces(negated ? pattern.slice(1) : pattern).some(
+      (expanded) => matchesSegments(segmentsOf(expanded), parts),
+    )
+    if (negated && matches) return false
+    if (!negated && matches) included = true
+  }
+  return included
+}
+
+/**
  * The root's manifest, then every member directory the workspace patterns
  * match, sorted by path. Supported: literal directories, `{a,b}` braces, `*`,
  * `?` and `[…]` / `[!…]` classes inside a segment, `**` as a whole segment,
