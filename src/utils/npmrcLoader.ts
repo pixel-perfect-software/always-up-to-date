@@ -1,46 +1,37 @@
 import fs from 'fs'
-import ini from 'ini'
 import os from 'os'
 import path from 'path'
+import {
+  readManifest,
+  readWorkspaceManifests,
+  toPosix,
+  workspacePatterns,
+} from '@/managers/workspaces'
 import type { RegistryConfig } from '@/types'
+import { type Npmrc, parseNpmrc, substituteEnv } from './npmrc'
 
-const ENV_VAR_PATTERN = /\$\{([^}]+)\}/g
-
-const substituteEnvVars = (value: string): string =>
-  value.replace(ENV_VAR_PATTERN, (_, name) => process.env[name] ?? '')
-
-const readNpmrc = (filePath: string): Record<string, unknown> => {
-  try {
-    const content = fs.readFileSync(filePath, 'utf8')
-    return ini.parse(content) as Record<string, unknown>
-  } catch {
-    return {}
-  }
+/** What the loader reads from the machine, injectable for tests. */
+export interface NpmrcSources {
+  env: NodeJS.ProcessEnv
+  home: string
+  execPath: string
+  platform: NodeJS.Platform
 }
 
-const collectEnvOverrides = (): Record<string, string> => {
-  const overrides: Record<string, string> = {}
-  for (const [envKey, envValue] of Object.entries(process.env)) {
-    if (!envValue) continue
-    if (!envKey.startsWith('NPM_CONFIG_')) continue
-    const key = envKey
-      .slice('NPM_CONFIG_'.length)
-      .toLowerCase()
-      .replace(/_/g, '-')
-    overrides[key] = envValue
-  }
-  return overrides
-}
+export const processSources = (): NpmrcSources => ({
+  env: process.env,
+  home: process.env.HOME || os.homedir(),
+  execPath: process.execPath,
+  platform: process.platform,
+})
 
 const stringValue = (value: unknown): string | undefined =>
-  typeof value === 'string' ? substituteEnvVars(value) : undefined
+  typeof value === 'string' ? value : undefined
 
 const boolValue = (value: unknown): boolean | undefined => {
   if (typeof value === 'boolean') return value
-  const str = stringValue(value)
-  if (str === undefined) return undefined
-  if (str === 'true') return true
-  if (str === 'false') return false
+  if (value === 'true') return true
+  if (value === 'false') return false
   return undefined
 }
 
@@ -55,15 +46,144 @@ const hostFromAuthKey = (key: string): string | undefined => {
   return match ? match[1] : undefined
 }
 
+/** `npm_config_*` variables as npm reads them: any case, empty values skipped. */
+const envConfig = (env: NodeJS.ProcessEnv): Npmrc => {
+  const layer: Npmrc = Object.create(null)
+  for (const [name, value] of Object.entries(env)) {
+    if (!value || !/^npm_config_/i.test(name)) continue
+    const rest = name.slice('npm_config_'.length)
+    const key = rest.startsWith('//')
+      ? rest
+      : rest.replace(/(?!^)_/g, '-').toLowerCase()
+    layer[key] = substituteEnv(value, env)
+  }
+  return layer
+}
+
+const readNpmrc = (filePath: string, env: NodeJS.ProcessEnv): Npmrc => {
+  try {
+    return parseNpmrc(fs.readFileSync(filePath, 'utf8'), env)
+  } catch {
+    return Object.create(null)
+  }
+}
+
+/** A path from config: `~/` is the home directory, the rest is relative to cwd. */
+const resolveNpmPath = (
+  value: string,
+  home: string,
+  cwd: string,
+  platform: NodeJS.Platform,
+): string => {
+  if (
+    value.startsWith('~/') ||
+    (platform === 'win32' && value.startsWith('~\\'))
+  ) {
+    return path.resolve(home, value.slice(2))
+  }
+  return path.resolve(cwd, value)
+}
+
+const isFile = (filePath: string): boolean => {
+  try {
+    return fs.statSync(filePath).isFile()
+  } catch {
+    return false
+  }
+}
+
+const isDirectory = (dir: string): boolean => {
+  try {
+    return fs.statSync(dir).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The directory whose .npmrc npm reads: the nearest directory with a
+ * package.json or node_modules, or the root of the workspace that lists it
+ * as a member.
+ */
+const findNpmProjectRoot = (cwd: string): string => {
+  let localPrefix: string | undefined
+  let dir = path.resolve(cwd)
+
+  for (;;) {
+    const hasManifest = isFile(path.join(dir, 'package.json'))
+    if (localPrefix === undefined) {
+      if (hasManifest || isDirectory(path.join(dir, 'node_modules'))) {
+        localPrefix = dir
+      }
+    } else if (hasManifest) {
+      const patterns = workspacePatterns(readManifest(dir))
+      if (patterns.length > 0) {
+        const member = toPosix(path.relative(dir, localPrefix))
+        const members = readWorkspaceManifests(dir, patterns)
+        if (members.some((manifest) => manifest.path === member)) return dir
+      }
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+
+  return localPrefix ?? path.resolve(cwd)
+}
+
 /**
  * The merged .npmrc settings, as npm resolves them. Precedence (high → low):
- * NPM_CONFIG_* env vars → project .npmrc → user ~/.npmrc.
+ * `npm_config_*` environment variables → the project's .npmrc → the user's
+ * (`~/.npmrc`) → the global one (`<prefix>/etc/npmrc`).
  */
-export const loadNpmrc = (cwd: string): Record<string, unknown> => ({
-  ...readNpmrc(path.join(os.homedir(), '.npmrc')),
-  ...readNpmrc(path.join(cwd, '.npmrc')),
-  ...collectEnvOverrides(),
-})
+export const loadNpmrc = (
+  cwd: string,
+  sources: NpmrcSources = processSources(),
+): Npmrc => {
+  const { env, home, execPath, platform } = sources
+  const envLayer = envConfig(env)
+
+  const userconfigOf = (layer: Npmrc): string =>
+    resolveNpmPath(
+      stringValue(envLayer.userconfig) ??
+        stringValue(layer.userconfig) ??
+        '~/.npmrc',
+      home,
+      cwd,
+      platform,
+    )
+
+  const projectFile = path.join(findNpmProjectRoot(cwd), '.npmrc')
+  const project: Npmrc =
+    projectFile === userconfigOf(Object.create(null))
+      ? Object.create(null)
+      : readNpmrc(projectFile, env)
+
+  const user = readNpmrc(userconfigOf(project), env)
+
+  const prefix =
+    env.PREFIX ??
+    (platform === 'win32'
+      ? path.dirname(execPath)
+      : path.dirname(path.dirname(execPath)))
+  const globalconfig = resolveNpmPath(
+    stringValue(envLayer.globalconfig) ??
+      stringValue(project.globalconfig) ??
+      stringValue(user.globalconfig) ??
+      path.join(prefix, 'etc', 'npmrc'),
+    home,
+    cwd,
+    platform,
+  )
+
+  return Object.assign(
+    Object.create(null),
+    readNpmrc(globalconfig, env),
+    user,
+    project,
+    envLayer,
+  )
+}
 
 /** A boolean .npmrc value (`true` / `false`, as a string or a boolean). */
 export const npmrcBoolean = (value: unknown): boolean | undefined =>
@@ -74,8 +194,11 @@ export const npmrcBoolean = (value: unknown): boolean | undefined =>
  * registry/auth fields we care about (see `loadNpmrc` for precedence). Yarn
  * berry's .yarnrc.yml and Bun's bunfig.toml are not yet read.
  */
-export const loadRegistryConfig = (cwd: string): RegistryConfig => {
-  const merged = loadNpmrc(cwd)
+export const loadRegistryConfig = (
+  cwd: string,
+  sources: NpmrcSources = processSources(),
+): RegistryConfig => {
+  const merged = loadNpmrc(cwd, sources)
 
   const registry = stringValue(merged.registry) ?? 'https://registry.npmjs.org/'
 
@@ -84,17 +207,16 @@ export const loadRegistryConfig = (cwd: string): RegistryConfig => {
 
   for (const [key, value] of Object.entries(merged)) {
     if (typeof value !== 'string') continue
-    const resolved = substituteEnvVars(value)
 
     if (/^@[^:]+:registry$/.test(key)) {
       const scope = key.slice(0, key.indexOf(':'))
-      scopedRegistries[scope] = resolved
+      scopedRegistries[scope] = value
       continue
     }
 
     if (key.startsWith('//') && key.endsWith(':_authToken')) {
       const host = hostFromAuthKey(key)
-      if (host) authTokens[stripTrailingSlash(host)] = resolved
+      if (host) authTokens[stripTrailingSlash(host)] = value
     }
   }
 

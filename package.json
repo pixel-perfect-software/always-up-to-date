@@ -63,7 +63,6 @@
     "@inquirer/prompts": "catalog:",
     "colorette": "catalog:",
     "commander": "catalog:",
-    "ini": "catalog:",
     "npm-registry-fetch": "catalog:",
     "semver": "catalog:"
   },
@@ -71,7 +70,6 @@
     "@biomejs/biome": "catalog:",
     "@swc/core": "catalog:",
     "@swc/jest": "catalog:",
-    "@types/ini": "catalog:",
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
     "@types/npm-registry-fetch": "catalog:",
