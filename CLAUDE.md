@@ -132,7 +132,8 @@ This project uses a 3-tier AI-optimized context system:
 - **Tier 2 (Component-Level)**: `CLAUDE.md` files co-located in `src/` component directories; Claude Code loads each one when it reads files in that directory
 - **Tier 3 (Feature-Specific)**: `CLAUDE.md` files in feature subdirectories (added as needed)
 
-Documentation registry: `.claude/context/ai-context/docs-overview.md`
+Documentation registry, loaded with this file:
+@.claude/context/ai-context/docs-overview.md
 
 ## Testing Notes
 
