@@ -80,7 +80,6 @@
     "globals": "catalog:",
     "jest": "catalog:",
     "jest-coverage-badges": "catalog:",
-    "ts-node": "catalog:",
     "tsc-alias": "catalog:",
     "typescript": "catalog:"
   }
