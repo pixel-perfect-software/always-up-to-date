@@ -4,6 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { openProject, type Project } from '@/project'
+import { registryFor } from '@/utils/registryRequest'
 
 // The real project, session and adapter hook on temp directories: which files
 // a run from a workspace member reads (pnpm 12.15.0 and bun 1.4.4, probed
@@ -91,5 +92,60 @@ describe('openProject registry config from a workspace member', () => {
     expect(config.credentials['//127.0.0.1:4002/']).toEqual({
       authToken: 'root',
     })
+  })
+})
+
+// #120: a yarn v1 project's .yarnrc routes reach the session's config
+// (yarn 1.22.22, 2026-10-26).
+describe('openProject registry config from a .yarnrc', () => {
+  const A = 'http://127.0.0.1:4873/'
+  const B = 'http://127.0.0.1:4874/'
+  let tmp: string
+  let home: string | undefined
+  const projects: Project[] = []
+  const write = (file: string, content: string) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, content)
+  }
+  const registryOf = () => {
+    const project = openProject(tmp)
+    projects.push(project)
+    return project.registry.registryConfig()
+  }
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarnrc-')),
+    )
+    home = process.env.HOME
+    process.env.HOME = path.join(tmp, 'home')
+    write(
+      path.join(tmp, 'package.json'),
+      '{"name":"p","dependencies":{"@acme/probe":"1.0.0","probe-unscoped":"1.0.0"}}',
+    )
+    write(path.join(tmp, 'yarn.lock'), '# yarn lockfile v1\n')
+  })
+  afterEach(() => {
+    for (const project of projects.splice(0)) project.registry.close()
+    process.env.HOME = home
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('routes the default registry and a scope from .yarnrc', () => {
+    write(
+      path.join(tmp, '.yarnrc'),
+      `registry "${A}"\n"@acme:registry" "${B}"\n`,
+    )
+    const config = registryOf()
+    expect(registryFor('probe-unscoped', config)).toBe(A)
+    expect(registryFor('@acme/probe', config)).toBe(B)
+  })
+
+  it('ignores .yarnrc in a yarn berry project', () => {
+    write(path.join(tmp, '.yarnrc'), `registry "${A}"\n`)
+    write(path.join(tmp, '.yarnrc.yml'), 'nodeLinker: node-modules\n')
+    expect(registryFor('probe-unscoped', registryOf())).toBe(
+      'https://registry.npmjs.org/',
+    )
   })
 })

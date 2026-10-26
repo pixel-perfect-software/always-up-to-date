@@ -14,7 +14,7 @@ All four package managers are implemented with workspace support. Yarn is one ad
   - `apply(run, cwd, plan, workspace)`: writes the specs the manager does not write itself, then runs its update commands. `plan` is `{ names, withinRange, beyondRange, manifests }`; the first three are unions across manifests, `manifests` is the same split per manifest (`ManifestPlan[]`, root first), which a workspace apply reads
   - `installed?(run, cwd, rows)`: optional. The versions installed after apply, keyed by `rowKey`, for a manager whose installs can't be read from node_modules. The pipeline uses it instead of `readInstalledVersions` when present; yarn implements it (berry: `yarn info -A --json`, since PnP has no node_modules; v1: the node_modules reader)
   - `projectRoot?(cwd)`: optional. Where the manager's project `.npmrc` lives when `package.json` `workspaces` doesn't say (pnpm: the nearest `pnpm-workspace.yaml`). From a workspace member, pnpm and bun read the workspace root's settings files, not the member's
-  - `registryConfig?(cwd, fromNpmrc, sources)`: optional. The run's `RegistryConfig` for this manager, adjusting the `.npmrc` view where the manager reads registries elsewhere: pnpm (`pnpm/registries.ts`, pnpm-workspace.yaml) and bun (`bun/bunfig.ts`, bunfig.toml and the registry/token variables). Precedence in `src/utils/CLAUDE.md`
+  - `registryConfig?(cwd, fromNpmrc, sources)`: optional. The run's `RegistryConfig` for this manager, adjusting the `.npmrc` view where the manager reads registries elsewhere: pnpm (`pnpm/registries.ts`, pnpm-workspace.yaml), yarn v1 (`yarn/yarnrc.ts`, .yarnrc; berry keeps the `.npmrc` view) and bun (`bun/bunfig.ts`, bunfig.toml and the registry/token variables). Precedence in `src/utils/CLAUDE.md`
   - `saveStyle(cwd)`: exact or prefix for specs that can't keep their shape, read from where the manager's current version keeps it
   - `overrides(cwd)`: packages pinned by an override field the manager enforces
 - Adapters never log progress, group output, run the policy or catch failures: the pipeline does. `run` is bound to the step, so a failure is already a `StepError`
@@ -28,6 +28,7 @@ managers/
   workspaces.ts        # readManifest(), packageJsonWorkspace() (npm/yarn/bun), workspacePatterns(), readWorkspaceManifests() (the member map), ownerPath() (berry)
   npm/index.ts         # npm adapter, readLockedVersions (kept for #107)
   yarn/index.ts        # yarn adapter (v1 `upgrade`, berry's ownDiscovery), isYarnBerry
+  yarn/yarnrc.ts       # parseYarnrc(), yarnrcRoutes(), yarnRegistryConfig(): registry routes from yarn v1's .yarnrc
   yarn/berry.ts        # berry: parseBerryInfo, parseBerryRegistry, discoverBerry, applyBerry, installedBerry
   pnpm/index.ts        # pnpm adapter
   pnpm/registries.ts   # pnpmRegistrySettings(yaml), applyPnpmRegistrySettings(): registry routes from pnpm-workspace.yaml
