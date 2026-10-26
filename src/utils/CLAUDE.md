@@ -22,8 +22,8 @@ utils/
   cooldown.ts         # normalizeCooldown(), isCooldownEnabled(), cooldownDaysFor(), evaluateCooldown()
   duration.ts         # parseDuration() (number | '1 week' | '24h' → days), formatAgeDays(), MS_PER_DAY
   npmrc.ts            # parseNpmrc(text, env), substituteEnv(): the .npmrc parser (pure)
-  npmrcLoader.ts      # loadNpmrc() layers global, user, project, npm_config_* env as npm 12 does; loadRegistryConfig() returns RegistryConfig
-  registryRequest.ts  # Pure client helpers: registryFor, packumentUrl, distTagsUrl, depsDevUrl, isPublicNpmRegistry, isValidPackageName, credentialsFor, authorizationFor, retry rules
+  npmrcLoader.ts      # loadNpmrc() layers global, user, project, npm_config_* env as npm 12 does; loadRegistryConfig() returns RegistryConfig (adapters' `registryConfig?` adjust it)
+  registryRequest.ts  # Pure client helpers: registryFor, packumentUrl, nerfDart, distTagsUrl, depsDevUrl, isPublicNpmRegistry, isValidPackageName, credentialsFor, authorizationFor, retry rules
   registryClient.ts   # node:https transport (agents, gzip, per-request accept and timeout, retries, redirects, per-host stats()); loaded lazily by registry.ts only
   registry.ts         # createRegistrySession(cwd, { depsDev }): one lazy .npmrc view and one client per run; releaseTimes() with in-flight per-run cache, fails open; lookup() via the lazy reader
   registryReader.ts   # createRegistryReader(): latest, versions, deprecation, publish times per package (dist-tags + deps.dev, packument fallback); loaded by registry.ts only
@@ -86,7 +86,10 @@ utils/
   - A body the client cannot parse as JSON is a `request` failure; a JSON body that is not a packument is `invalid`. `not-found` and `invalid` reasons name the registry's host; a `request` reason is the client's message, which carries the URL without userinfo, query or credentials
   - Keep `registryReader`, `registryDocuments` and `limiter` out of the barrel as values (`export type` is fine): the barrel loads at startup
 - The cache is per session and holds the in-flight request, so a package several workspace manifests declare is fetched once; a new session asks again
-- Limitation: yarn berry's `.yarnrc.yml` and bun's `bunfig.toml` are not read in v1. Common case (npm-spec `.npmrc`) covers all four PMs.
+- `ManagerAdapter.registryConfig?(cwd, fromNpmrc, sources)` adjusts the `.npmrc` view for a manager that routes registries elsewhere too. `openProject` passes the session a `loadConfig` that builds `loadRegistryConfig(dir, processSources())` and then the hook, so it still reads nothing until the session's first `registryConfig()`. The adapter returns the final config, so each encodes its manager's precedence (verified on pnpm 12.15.0 / bun 1.4.4, 2026-10-26)
+  - pnpm (`managers/pnpm/registries.ts`): the project `pnpm-workspace.yaml` beats `.npmrc` per key (default registry and each scope); top-level `registry` beats a `registries` default; a `${…}` value is ignored; credentials stay with the `.npmrc` entry for the host
+  - bun (`managers/bun/bunfig.ts`): default registry `BUN_CONFIG_REGISTRY` > `NPM_CONFIG_REGISTRY` > project bunfig > global bunfig > `.npmrc`; scopes project bunfig > global bunfig > `.npmrc`; credentials inline (`token`, `username` + `password`, URL userinfo) > `BUN_CONFIG_TOKEN` / `NPM_CONFIG_TOKEN` (default registry only, not the public default) > the `.npmrc` entry
+- Limitation: not read yet are pnpm's `pnpm_config_*` variables, global `config.yaml` and `auth.ini`, bun's `$XDG_CONFIG_HOME/.npmrc` (bun reads it in place of `~/.npmrc`), and yarn's `.yarnrc` / `.yarnrc.yml`. For those managers the `.npmrc` view stands
 
 ### Manifest Specs (`files.ts`)
 - Every writer builds the new spec with `nextVersionSpec()`: a single comparator (`^1.2.3`, `~1.2.3`, `1.2.3`) keeps its decorator, so an exact pin stays exact; an `npm:` alias keeps the alias and rewrites the spec inside it; a spec that can't keep its shape (`1.x`, `*`, `>=1 <2`, `^1 || ^2`) is written in the project's save style; git, file and URL specs are left alone

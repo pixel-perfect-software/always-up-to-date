@@ -11,6 +11,7 @@ import {
   isRetryableError,
   isRetryableStatus,
   isValidPackageName,
+  nerfDart,
   packumentUrl,
   RETRY_AFTER_MAX_MS,
   RETRY_MAX_MS,
@@ -304,5 +305,16 @@ describe('isValidPackageName', () => {
 
   it('accepts a name of exactly 214 characters', () => {
     expect(isValidPackageName('x'.repeat(214))).toBe(true)
+  })
+})
+
+describe('nerfDart', () => {
+  it('keys a registry by host, port and path with a trailing slash', () => {
+    expect(nerfDart('https://registry.npmjs.org/')).toBe(
+      '//registry.npmjs.org/',
+    )
+    expect(nerfDart('http://127.0.0.1:4002')).toBe('//127.0.0.1:4002/')
+    expect(nerfDart('https://h.test/a/b')).toBe('//h.test/a/b/')
+    expect(nerfDart('https://user:pw@h.test/a/?q=1')).toBe('//h.test/a/')
   })
 })

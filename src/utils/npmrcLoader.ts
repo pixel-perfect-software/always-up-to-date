@@ -345,9 +345,9 @@ const timeoutFrom = (value: unknown): number => {
   return n === 0 ? 30_000 : Math.min(n, MAX_TIMER_MS)
 }
 
-const DEFAULT_REGISTRY = 'https://registry.npmjs.org/'
+export const DEFAULT_REGISTRY = 'https://registry.npmjs.org/'
 
-const isRegistryUrl = (value: string): boolean => {
+export const isRegistryUrl = (value: string): boolean => {
   try {
     const { protocol } = new URL(value)
     return protocol === 'https:' || protocol === 'http:'
@@ -395,8 +395,8 @@ export const registryConfigFrom = (
 
 /**
  * Loads .npmrc-style config the way npm does for the registry fields we care
- * about (see `loadNpmrc` for precedence). Yarn berry's .yarnrc.yml and Bun's
- * bunfig.toml are not read.
+ * about (see `loadNpmrc` for precedence). Managers that route registries
+ * elsewhere adjust the result through `ManagerAdapter.registryConfig`.
  */
 export const loadRegistryConfig = (
   cwd: string,

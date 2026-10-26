@@ -1,6 +1,7 @@
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
+import { bunfigExact, bunRegistryConfig } from '@/managers/bun/bunfig'
 import {
   packageJsonWorkspace,
   readManifest,
@@ -132,20 +133,6 @@ export const parseBunWorkspaceOutdated = (
     }))
 }
 
-/** `exact = true` inside bunfig.toml's `[install]` table. */
-const bunfigExact = (content: string): boolean => {
-  let inInstall = false
-  for (const line of content.split('\n')) {
-    const table = /^\s*\[([^\]]+)\]/.exec(line)
-    if (table) {
-      inInstall = table[1].trim() === 'install'
-      continue
-    }
-    if (inInstall && /^\s*exact\s*=\s*true\s*(#.*)?$/.test(line)) return true
-  }
-  return false
-}
-
 /**
  * Catalogs in package.json: `catalog` (the default one) and the keys of
  * `catalogs` (named ones).
@@ -170,6 +157,8 @@ const bun: ManagerAdapter = {
     ...packageJsonWorkspace(cwd),
     catalogs: catalogNames(cwd),
   }),
+
+  registryConfig: bunRegistryConfig,
 
   discover: async (run, _cwd, { isWorkspace, manifests }) => {
     const output = await run(

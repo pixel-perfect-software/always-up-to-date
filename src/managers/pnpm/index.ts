@@ -2,6 +2,7 @@ import path from 'path'
 
 import type { SuccessCheck } from '@/commandRunner'
 import type { ManagerAdapter } from '@/managers/adapter'
+import { applyPnpmRegistrySettings } from '@/managers/pnpm/registries'
 import { ownerPath, readWorkspaceManifests } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { OutdatedEntry, PackageInfo } from '@/types'
@@ -213,6 +214,9 @@ const pnpm: ManagerAdapter = {
       manifests: readWorkspaceManifests(cwd, patterns),
     }
   },
+
+  registryConfig: (cwd, fromNpmrc) =>
+    applyPnpmRegistrySettings(fromNpmrc, readWorkspaceYaml(cwd)),
 
   discover: async (run, cwd, { isWorkspace }) => {
     const args = isWorkspace

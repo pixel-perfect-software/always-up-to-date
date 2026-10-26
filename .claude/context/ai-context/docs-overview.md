@@ -91,6 +91,8 @@ __tests__/
     withinRange.test.ts     # Real output, default config: proposes exactly npm update's set; zero for pins
     applyRanges.test.ts     # In-range apply writes nothing; beyond-range writes the target spec first
     aliases.test.ts         # Real alias output from all four managers: manifest key, no crash on exotic
+    pnpmRegistries.test.ts  # pnpm-workspace.yaml registry routes: both shapes, scopes, "@", ${…}, ecosystem, CRLF
+    bunfig.test.ts          # bunfig.toml routes and credentials, $NAME, global/project merge, env overrides, bunfigExact
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
     workspaces.test.ts      # Member map (patterns, negations, skips) and workspaceOwner
     workspaceDiscovery.test.ts  # Workspace check on all four managers returns one record; unnamed roots

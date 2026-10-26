@@ -13,6 +13,7 @@ All four package managers are implemented with workspace support. Yarn is one ad
   - `discover(run, cwd, workspace)` → a `Discovery`: `{ kind: 'single', outdated: Record<string, PackageInfo> }` in a single-package project, `{ kind: 'workspace', entries: OutdatedEntry[] }` (one entry per package per owning manifest) in a workspace. The output parsers are exported pure functions (`parseNpmOutdated`, `parsePnpmOutdated`, `parseYarnOutdated`, `parseBunOutdated`, and for workspaces `parseNpmWorkspaceOutdated`, `parsePnpmWorkspaceOutdated`, `parseYarnWorkspaceOutdated`, `parseBunWorkspaceOutdated`) with direct tests on captured fixtures. Every row has a `current`: pnpm, yarn v1 and bun read it from their lockfile, while `npm outdated` reads node_modules and omits it for a package that isn't installed, so `parseNpmOutdated` takes it from `package-lock.json` (`readLockedVersions`), else `missing`
   - `apply(run, cwd, plan, workspace)`: writes the specs the manager does not write itself, then runs its update commands. `plan` is `{ names, withinRange, beyondRange, manifests }`; the first three are unions across manifests, `manifests` is the same split per manifest (`ManifestPlan[]`, root first), which a workspace apply reads
   - `installed?(run, cwd, rows)`: optional. The versions installed after apply, keyed by `rowKey`, for a manager whose installs can't be read from node_modules. The pipeline uses it instead of `readInstalledVersions` when present; yarn implements it (berry: `yarn info -A --json`, since PnP has no node_modules; v1: the node_modules reader)
+  - `registryConfig?(cwd, fromNpmrc, sources)`: optional. The run's `RegistryConfig` for this manager, adjusting the `.npmrc` view where the manager reads registries elsewhere: pnpm (`pnpm/registries.ts`, pnpm-workspace.yaml) and bun (`bun/bunfig.ts`, bunfig.toml and the registry/token variables). Precedence in `src/utils/CLAUDE.md`
   - `saveStyle(cwd)`: exact or prefix for specs that can't keep their shape, read from where the manager's current version keeps it
   - `overrides(cwd)`: packages pinned by an override field the manager enforces
 - Adapters never log progress, group output, run the policy or catch failures: the pipeline does. `run` is bound to the step, so a failure is already a `StepError`
@@ -28,7 +29,9 @@ managers/
   yarn/index.ts        # yarn adapter (v1 `outdated`/`upgrade`), parseYarnOutdated, isYarnBerry
   yarn/berry.ts        # berry: parseBerryInfo, parseBerryRegistry, discoverBerry, applyBerry, installedBerry
   pnpm/index.ts        # pnpm adapter, parsePnpmOutdated
+  pnpm/registries.ts   # pnpmRegistrySettings(yaml), applyPnpmRegistrySettings(): registry routes from pnpm-workspace.yaml
   bun/index.ts         # bun adapter, parseBunOutdated
+  bun/bunfig.ts        # bunfigExact(), parseBunfigRegistries(), bunRegistryConfig(): registry routes and credentials from bunfig.toml
 ```
 
 ## Architectural Patterns

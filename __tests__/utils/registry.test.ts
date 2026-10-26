@@ -1,7 +1,13 @@
 jest.mock('@/utils/logger')
 
+import fs from 'fs'
 import type http from 'http'
+import os from 'os'
+import path from 'path'
+import bun from '@/managers/bun'
+import pnpm from '@/managers/pnpm'
 import type { RegistryConfig } from '@/types'
+import { loadRegistryConfig, type NpmrcSources } from '@/utils/npmrcLoader'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
 import type { RegistryClient } from '@/utils/registryClient'
 import {
@@ -363,6 +369,101 @@ describe('registry session', () => {
       await session.lookup('ms')
 
       expect(depsDev.requests).toHaveLength(1)
+    })
+  })
+
+  describe('routes read from the manager own files', () => {
+    let tmp: string
+    beforeEach(() => {
+      tmp = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-route-')),
+      )
+    })
+    afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }))
+
+    const sources = (): NpmrcSources => ({
+      env: {},
+      home: path.join(tmp, 'home'),
+      execPath: process.execPath,
+      platform: process.platform,
+    })
+
+    // The scope's registry answers the abbreviated packument and the full one.
+    const scopeServer = () =>
+      start((req, res) => {
+        res.setHeader('content-type', 'application/json')
+        const full = !String(req.headers.accept).includes('install-v1')
+        res.end(
+          registryBody(full ? 'types-ms.packument-full' : 'types-ms.packument'),
+        )
+      })
+
+    const sessionWith = (
+      adapter: Pick<typeof bun, 'registryConfig'>,
+    ): RegistrySession => {
+      const session = createRegistrySession(tmp, {
+        depsDev: false,
+        loadConfig: (dir) => {
+          const fromNpmrc = loadRegistryConfig(dir, sources())
+          return (
+            adapter.registryConfig?.(dir, fromNpmrc, sources()) ?? fromNpmrc
+          )
+        },
+      })
+      sessions.push(session)
+      return session
+    }
+
+    it('sends a scope routed only by bunfig.toml to its server with the bunfig token, for lookup and releaseTimes', async () => {
+      const decoy = await start(replies({}))
+      const server = await scopeServer()
+      fs.writeFileSync(
+        path.join(tmp, 'bunfig.toml'),
+        `[install]\nregistry = "${decoy.url}"\n[install.scopes]\n"@types" = { url = "${server.url}", token = "T-bunfig" }\n`,
+      )
+      fs.writeFileSync(
+        path.join(tmp, '.npmrc'),
+        `//127.0.0.1:${server.port}/:_authToken=T-npmrc\n`,
+      )
+      const session = sessionWith(bun)
+
+      const found = await session.lookup('@types/ms')
+      const times = await session.releaseTimes('@types/ms')
+
+      expect(found).toMatchObject({ ok: true, package: { latest: '2.1.0' } })
+      expect(Object.keys(times).length).toBeGreaterThan(0)
+      expect(server.requests.map((r) => r.url)).toEqual([
+        '/@types%2fms',
+        '/@types%2fms',
+      ])
+      expect(server.requests.map((r) => r.headers.authorization)).toEqual([
+        'Bearer T-bunfig',
+        'Bearer T-bunfig',
+      ])
+      expect(decoy.requests).toEqual([])
+    })
+
+    it('sends a scope routed only by pnpm-workspace.yaml to its server with the .npmrc token, for lookup and releaseTimes', async () => {
+      const server = await scopeServer()
+      fs.writeFileSync(
+        path.join(tmp, 'pnpm-workspace.yaml'),
+        `registries:\n  "@types": ${server.url}\n`,
+      )
+      fs.writeFileSync(
+        path.join(tmp, '.npmrc'),
+        `//127.0.0.1:${server.port}/:_authToken=T-npmrc\n`,
+      )
+      const session = sessionWith(pnpm)
+
+      const found = await session.lookup('@types/ms')
+      const times = await session.releaseTimes('@types/ms')
+
+      expect(found).toMatchObject({ ok: true, package: { latest: '2.1.0' } })
+      expect(Object.keys(times).length).toBeGreaterThan(0)
+      expect(server.requests.map((r) => r.headers.authorization)).toEqual([
+        'Bearer T-npmrc',
+        'Bearer T-npmrc',
+      ])
     })
   })
 })
