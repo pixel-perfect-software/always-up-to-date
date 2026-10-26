@@ -19,7 +19,11 @@ import { fakeRegistry } from './fixtures'
 
 describe('openProject', () => {
   it('returns the directory, the loaded config and the detected adapter', () => {
-    const config = { ...DEFAULT_CONFIG, beyondRange: 'minor' as const }
+    const config = {
+      ...DEFAULT_CONFIG,
+      beyondRange: 'minor' as const,
+      depsDev: true,
+    }
     jest.mocked(loadConfig).mockReturnValue(config)
     jest.mocked(detectPackageManager).mockReturnValue('pnpm')
     const session = fakeRegistry()
@@ -33,8 +37,23 @@ describe('openProject', () => {
       adapter: pnpm,
       registry: session,
     })
-    expect(createRegistrySession).toHaveBeenCalledWith('/project')
+    expect(createRegistrySession).toHaveBeenCalledWith('/project', {
+      depsDev: true,
+    })
     expect(detectPackageManager).toHaveBeenCalledWith('/project', undefined)
+  })
+
+  it("hands the config's depsDev switch to the registry session", () => {
+    jest
+      .mocked(loadConfig)
+      .mockReturnValue({ ...DEFAULT_CONFIG, depsDev: false })
+    jest.mocked(detectPackageManager).mockReturnValue('npm')
+
+    openProject('/project')
+
+    expect(createRegistrySession).toHaveBeenCalledWith('/project', {
+      depsDev: false,
+    })
   })
 
   it('hands --pm to detection', () => {

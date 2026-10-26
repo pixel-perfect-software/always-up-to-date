@@ -21,6 +21,7 @@ const DEFAULT_CONFIG: AlwaysUpToDateConfig = {
   updateAllowlist: [],
   updateDenylist: [],
   cooldown: 0,
+  depsDev: true,
 }
 
 /** The config file exists but cannot be used: malformed JSON or an invalid value. */
@@ -91,6 +92,15 @@ const parseCooldownInput = (input: unknown): CooldownConfig => {
   return DEFAULT_CONFIG.cooldown
 }
 
+// A privacy switch must not fail open: Boolean("false") is true.
+const parseDepsDev = (input: unknown): boolean => {
+  if (input === undefined) return DEFAULT_CONFIG.depsDev
+  if (typeof input === 'boolean') return input
+  throw new Error(
+    `depsDev must be true or false (got ${JSON.stringify(input)})`,
+  )
+}
+
 /**
  * Load JSON configuration file
  */
@@ -118,6 +128,7 @@ const loadJsonConfig = (filePath: string): AlwaysUpToDateConfig => {
         ? jsonConfig.updateDenylist
         : DEFAULT_CONFIG.updateDenylist,
       cooldown: parseCooldownInput(jsonConfig.cooldown),
+      depsDev: parseDepsDev(jsonConfig.depsDev),
     }
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)

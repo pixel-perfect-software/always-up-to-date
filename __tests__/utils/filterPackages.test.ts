@@ -29,6 +29,7 @@ const DEFAULTS = {
   updateAllowlist: [],
   updateDenylist: [],
   cooldown: 0,
+  depsDev: true,
   rules: {},
 } as AlwaysUpToDateConfig
 

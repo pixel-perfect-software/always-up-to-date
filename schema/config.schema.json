@@ -65,6 +65,11 @@
       "deprecationMessage": "Use a \"hold\" rule instead: \"rules\": { \"<name>\": \"hold\" }.",
       "description": "Deprecated: use a \"hold\" rule. Package names that are never updated. A matching rule wins."
     },
+    "depsDev": {
+      "type": "boolean",
+      "default": true,
+      "description": "Look up versions of packages served by the public npm registry (registry.npmjs.org, registry.yarnpkg.com) through deps.dev, Google's open-source dependency service: about 8 KB per package on the wire instead of a registry document that can run to megabytes. Each such package name is sent to api.deps.dev, including private packages published to registry.npmjs.org. Names from any other registry, including a scope's own registry, are never sent. false reads everything from the registry."
+    },
     "cooldown": {
       "default": 0,
       "description": "Hold off on suggesting versions newer than this. Accepts a number (days), a duration string ('1 week', '24h', '7 days'), or a per-update-type object whose values are themselves numbers or duration strings.",

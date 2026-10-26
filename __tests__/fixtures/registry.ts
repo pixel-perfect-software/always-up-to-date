@@ -10,6 +10,39 @@ export const readTls = (
   name: 'ca.pem' | 'server.pem' | 'server.key' | 'client.pem' | 'client.key',
 ): string => fs.readFileSync(path.join(__dirname, 'tls', name), 'utf8')
 
+/** A captured response body, verbatim, from `fixtures/registry/<name>.body`. */
+export const registryBody = (name: string): string =>
+  fs.readFileSync(path.join(__dirname, 'registry', `${name}.body`), 'utf8')
+
+/**
+ * A captured JSON body, parsed, edited and stringified again: how a test gets
+ * a variant (a version dropped, a field missing) without hand-writing one.
+ */
+export const derive = <T>(name: string, edit: (body: T) => void): string => {
+  const body = JSON.parse(registryBody(name)) as T
+  edit(body)
+  return JSON.stringify(body)
+}
+
+export interface Reply {
+  status?: number
+  type?: string
+  body: string
+}
+
+/** Answers from an exact `req.url` to reply table; anything else is 404 text/plain. */
+export const replies =
+  (table: Record<string, Reply>): Handler =>
+  (req, res) => {
+    const reply = table[req.url ?? '']
+    res.statusCode = reply ? (reply.status ?? 200) : 404
+    res.setHeader(
+      'content-type',
+      reply ? (reply.type ?? 'application/json') : 'text/plain',
+    )
+    res.end(reply ? reply.body : 'not found')
+  }
+
 export interface RecordedRequest {
   url: string
   headers: http.IncomingHttpHeaders
@@ -28,7 +61,10 @@ export interface TestRegistry {
   close(): Promise<void>
 }
 
-type Handler = (req: http.IncomingMessage, res: http.ServerResponse) => void
+export type Handler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+) => void
 
 const listen = (server: net.Server): Promise<number> =>
   new Promise((resolve) => {

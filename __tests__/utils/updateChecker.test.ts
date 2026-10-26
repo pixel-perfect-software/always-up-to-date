@@ -158,6 +158,7 @@ describe('policyFromConfig (legacy fields as the override layer)', () => {
     updateAllowlist: [],
     updateDenylist: [],
     cooldown: 0,
+    depsDev: true,
     rules: {},
     ...overrides,
   })

@@ -160,6 +160,31 @@ describe('loadConfig', () => {
   })
 })
 
+describe('depsDev', () => {
+  beforeEach(() => mockedCheckIfFileExists.mockReturnValue(true))
+
+  it('defaults to true', () => {
+    mockedFs.readFileSync.mockReturnValue('{}')
+    expect(loadConfig('/test').depsDev).toBe(true)
+    expect(DEFAULT_CONFIG.depsDev).toBe(true)
+  })
+
+  it('reads false', () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify({ depsDev: false }))
+    expect(loadConfig('/test').depsDev).toBe(false)
+  })
+
+  it.each([['"false"'], ['0'], ['null'], ['"no"']])(
+    'rejects %s instead of reading it as true',
+    (value) => {
+      mockedFs.readFileSync.mockReturnValue(`{ "depsDev": ${value} }`)
+      expect(() => loadConfig('/test')).toThrow(
+        `depsDev must be true or false (got ${value})`,
+      )
+    },
+  )
+})
+
 describe('saveJsonConfig', () => {
   it('writes config as formatted JSON', () => {
     mockedFs.writeFileSync.mockImplementation(() => undefined)

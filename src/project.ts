@@ -30,6 +30,6 @@ export const openProject = (
     cwd,
     config,
     adapter: adapterFor(detectPackageManager(cwd, pm)),
-    registry: createRegistrySession(cwd),
+    registry: createRegistrySession(cwd, { depsDev: config.depsDev }),
   }
 }

@@ -3,7 +3,12 @@ jest.mock('@/utils/logger')
 import type http from 'http'
 import type { RegistryConfig } from '@/types'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
-import { startRegistry, type TestRegistry } from '../fixtures/registry'
+import {
+  registryBody,
+  replies,
+  startRegistry,
+  type TestRegistry,
+} from '../fixtures/registry'
 
 const configFor = (
   registry: string,
@@ -221,5 +226,107 @@ describe('registry session', () => {
     await session.releaseTimes('a')
     session.close()
     expect(() => session.close()).not.toThrow()
+  })
+
+  describe('lookup', () => {
+    const msServer = () =>
+      start(
+        replies({
+          '/-/package/ms/dist-tags': { body: registryBody('ms.dist-tags') },
+          '/ms': { body: registryBody('ms.packument') },
+        }),
+      )
+
+    it('looks a package up once per session', async () => {
+      const server = await msServer()
+      const session = createRegistrySession('/project', {
+        loadConfig: () => configFor(server.url),
+        depsDev: false,
+      })
+      sessions.push(session)
+
+      const [first, second] = await Promise.all([
+        session.lookup('ms'),
+        session.lookup('ms'),
+      ])
+      await session.lookup('ms')
+
+      expect(first).toBe(second)
+      expect(first).toMatchObject({ ok: true, package: { latest: '2.1.3' } })
+      expect(server.requests.map((r) => r.url)).toEqual(['/ms'])
+    })
+
+    it('shares the client and the config load with releaseTimes', async () => {
+      const server = await msServer()
+      const loadConfig = jest.fn(() => configFor(server.url))
+      const session = createRegistrySession('/project', {
+        loadConfig,
+        depsDev: false,
+      })
+      sessions.push(session)
+
+      await session.lookup('ms')
+      await session.releaseTimes('ms')
+
+      expect(loadConfig).toHaveBeenCalledTimes(1)
+      expect(server.requests).toHaveLength(2)
+      expect(server.connections).toBe(1)
+      expect(Object.keys((await session.client()).stats())).toHaveLength(1)
+    })
+
+    it('passes depsDev to the reader: false sends nothing to deps.dev', async () => {
+      const registry = await msServer()
+      const depsDev = await start(
+        replies({
+          '/v3/systems/npm/packages/ms': { body: registryBody('ms.deps-dev') },
+        }),
+      )
+      const endpoints = {
+        publicRegistries: [new URL(registry.url).origin],
+        depsDev: `${depsDev.url}v3/systems/npm/packages/`,
+      }
+      const open = (flag: boolean) => {
+        const session = createRegistrySession('/project', {
+          loadConfig: () => configFor(registry.url),
+          depsDev: flag,
+          endpoints,
+        })
+        sessions.push(session)
+        return session
+      }
+
+      expect(await open(false).lookup('ms')).toMatchObject({
+        ok: true,
+        package: { source: 'packument' },
+      })
+      expect(depsDev.requests).toEqual([])
+
+      expect(await open(true).lookup('ms')).toMatchObject({
+        ok: true,
+        package: { source: 'deps.dev' },
+      })
+      expect(depsDev.requests).toHaveLength(1)
+    })
+
+    it('asks deps.dev by default', async () => {
+      const registry = await msServer()
+      const depsDev = await start(
+        replies({
+          '/v3/systems/npm/packages/ms': { body: registryBody('ms.deps-dev') },
+        }),
+      )
+      const session = createRegistrySession('/project', {
+        loadConfig: () => configFor(registry.url),
+        endpoints: {
+          publicRegistries: [new URL(registry.url).origin],
+          depsDev: `${depsDev.url}v3/systems/npm/packages/`,
+        },
+      })
+      sessions.push(session)
+
+      await session.lookup('ms')
+
+      expect(depsDev.requests).toHaveLength(1)
+    })
   })
 })

@@ -1,8 +1,13 @@
-import type { RegistryConfig } from '@/types'
+import type { PackageLookup, RegistryConfig } from '@/types'
 import logger from './logger'
 import { loadRegistryConfig } from './npmrcLoader'
 import type { RegistryClient, RegistryClientOptions } from './registryClient'
-import { packumentUrl, registryFor } from './registryRequest'
+import type { RegistryReader } from './registryReader'
+import {
+  packumentUrl,
+  type RegistryEndpoints,
+  registryFor,
+} from './registryRequest'
 
 /** One command run's view of the registries: its .npmrc, its client, its cache. */
 export interface RegistrySession {
@@ -18,15 +23,26 @@ export interface RegistrySession {
    * updates.
    */
   releaseTimes(name: string): Promise<Record<string, string>>
+  /**
+   * Latest, versions, deprecation and publish times, from the registry the
+   * package manager has resolved. One lookup per name per run. Resolves for a
+   * network, HTTP or parse failure too, as `ok: false` with a reason: the
+   * caller decides what a failed lookup means.
+   */
+  lookup(name: string): Promise<PackageLookup>
   /** Destroys the client's agents. Safe to call twice, or when no client was made. */
   close(): void
 }
 
 export interface RegistrySessionOptions {
+  /** Ask deps.dev about public npm names; default true (the config default). */
+  depsDev?: boolean
   /** Test seam; default `loadRegistryConfig`. */
   loadConfig?: (cwd: string) => RegistryConfig
   /** Test seam: sleep, lookup. */
   clientOptions?: RegistryClientOptions
+  /** Test seam: the public registries and deps.dev's URL. */
+  endpoints?: RegistryEndpoints
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -46,6 +62,7 @@ export const createRegistrySession = (
   let config: RegistryConfig | undefined
   let clientRequest: Promise<RegistryClient> | undefined
   let created: RegistryClient | undefined
+  let reader: Promise<RegistryReader> | undefined
   // The in-flight request is cached, not its result: a workspace asks for the
   // same package once per manifest, at the same time.
   const releaseTimeCache = new Map<string, Promise<Record<string, string>>>()
@@ -91,9 +108,24 @@ export const createRegistrySession = (
     }
   }
 
+  // The reader loads with the first lookup, not with the CLI.
+  const readerOnce = (): Promise<RegistryReader> => {
+    reader ??= Promise.all([import('./registryReader'), client()]).then(
+      ([{ createRegistryReader }, registryClient]) =>
+        createRegistryReader({
+          registryConfig: registryConfig(),
+          client: registryClient,
+          depsDev: options.depsDev ?? true,
+          endpoints: options.endpoints,
+        }),
+    )
+    return reader
+  }
+
   return {
     registryConfig,
     client,
+    lookup: async (name) => (await readerOnce()).lookup(name),
     releaseTimes: (name) => {
       let request = releaseTimeCache.get(name)
       if (!request) {

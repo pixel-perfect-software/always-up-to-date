@@ -43,6 +43,7 @@ export const fakeRegistry = (
     registryConfig: unexpected,
     client: unexpected,
     releaseTimes: unexpected,
+    lookup: unexpected,
     close: () => undefined,
     ...overrides,
   }
