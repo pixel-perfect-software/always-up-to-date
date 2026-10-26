@@ -1,6 +1,6 @@
 import type { Command } from 'commander'
 import { check } from '@/pipeline'
-import { openProject } from '@/project'
+import { openProject, type Project } from '@/project'
 import type { SupportedPackageManager } from '@/types'
 import logger from '@/utils/logger'
 import { pmOption } from './options'
@@ -27,13 +27,16 @@ const checkCommand = (program: Command) =>
     .action(async (options: CheckOptions) => {
       if (options.json) logger.setJsonOutput(true)
 
+      let project: Project | undefined
       try {
-        const project = openProject(workingDir, { pm: options.pm })
+        project = openProject(workingDir, { pm: options.pm })
 
         const result = await check(project)
         if (options.json) console.log(JSON.stringify(result, null, 2))
       } catch (error) {
         reportFailure(error, options.json)
+      } finally {
+        project?.registry.close()
       }
     })
 

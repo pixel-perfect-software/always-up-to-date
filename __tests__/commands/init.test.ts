@@ -3,10 +3,6 @@ import { Command } from 'commander'
 jest.mock('@/utils/logger')
 jest.mock('@/utils/config')
 jest.mock('@/utils/files')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 
 import initCommand from '@/commands/init'
 import { saveJsonConfig } from '@/utils/config'

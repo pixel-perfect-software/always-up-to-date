@@ -7,10 +7,9 @@ import type {
 } from '@/types'
 import { evaluateCooldown, isCooldownEnabled } from './cooldown'
 import { formatAgeDays } from './duration'
-import { loadRegistryConfig } from './npmrcLoader'
 import type { ControllingOverride } from './overrides'
 import { type PeerRequirement, readInstalledPeers } from './peers'
-import { fetchReleaseTimes } from './registry'
+import type { RegistrySession } from './registry'
 import updateChecker, {
   policyFromConfig,
   type UpdatePolicy,
@@ -21,6 +20,8 @@ interface FilterPackagesOptions {
   config: AlwaysUpToDateConfig
   targetPackages?: string[]
   cwd?: string
+  /** Where the cooldown gate reads publish times; only asked when cooldown is on. */
+  registry: Pick<RegistrySession, 'releaseTimes'>
   now?: number
   /** Packages pinned by an override the manager enforces; without it no package is held for one. */
   overrides?: Record<string, ControllingOverride>
@@ -131,12 +132,12 @@ const filterPackages = async (
     config,
     targetPackages,
     cwd = process.cwd(),
+    registry,
     now,
     overrides: controlled = {},
   } = options
   const policy = policyFromConfig(config)
   const cooldownActive = isCooldownEnabled(config.cooldown)
-  const registryConfig = cooldownActive ? loadRegistryConfig(cwd) : undefined
 
   const initialResults: UpdateResult[] = expandWorkspaces(outdatedPackages).map(
     ({ name, workspace, info: packageInfo }) => {
@@ -217,13 +218,13 @@ const filterPackages = async (
 
   const results = settle(initialResults)
 
-  if (!cooldownActive || !registryConfig) return results
+  if (!cooldownActive) return results
 
   const gated = await Promise.all(
     results.map(async (result) => {
       if (!result.updated || !result.target) return result
 
-      const releaseTimes = await fetchReleaseTimes(result.name, registryConfig)
+      const releaseTimes = await registry.releaseTimes(result.name)
       const releaseTime = releaseTimes[result.target]
       const evaluation = evaluateCooldown(
         releaseTime,

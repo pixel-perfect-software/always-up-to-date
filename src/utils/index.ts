@@ -17,7 +17,7 @@ export { default as logger } from './logger'
 export { loadRegistryConfig } from './npmrcLoader'
 export type { GroupedPackages } from './packageGrouper'
 export { getSortedGroupNames, groupAndSortPackages } from './packageGrouper'
-export { clearRegistryCache, fetchReleaseTimes } from './registry'
+export { createRegistrySession, type RegistrySession } from './registry'
 export { computeReleaseAges } from './releaseAges'
 export {
   toOutdatedRow,

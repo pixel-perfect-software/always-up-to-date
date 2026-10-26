@@ -6,10 +6,6 @@ import { check } from '@/pipeline'
 import { exitError, projectFor, readFixture } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 jest.mock('@/utils', () => ({
   ...jest.requireActual('@/utils'),
   runProcess: jest.fn(),
@@ -81,6 +77,7 @@ describe.each([
     const results = await filterPackages(outdated, {
       config: project.config,
       cwd: '/project',
+      registry: project.registry,
     })
     return Object.fromEntries(
       results.filter((r) => r.updated).map((r) => [r.name, r.target]),

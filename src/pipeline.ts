@@ -43,6 +43,7 @@ const discover = async ({
   adapter,
   cwd,
   config,
+  registry,
 }: Project): Promise<{
   outdated: Record<string, PackageInfo>
   workspace: Workspace
@@ -72,7 +73,11 @@ const discover = async ({
 
   logger.outdatedHeader()
 
-  const releaseAges = await computeReleaseAges(outdated, cwd, config.cooldown)
+  const releaseAges = await computeReleaseAges(
+    outdated,
+    registry,
+    config.cooldown,
+  )
   const groupedPackages = groupAndSortPackages(outdated)
   for (const groupName of getSortedGroupNames(groupedPackages)) {
     logger.packageGroupHeader(groupName)
@@ -96,7 +101,7 @@ export const check = async (
  * overrides the manager enforces, installed peer ranges and the cooldown.
  */
 export const plan = (
-  { adapter, cwd, config }: Project,
+  { adapter, cwd, config, registry }: Project,
   outdated: Record<string, PackageInfo>,
   targetPackages?: string[],
 ): Promise<UpdateResult[]> =>
@@ -104,6 +109,7 @@ export const plan = (
     config,
     targetPackages,
     cwd,
+    registry,
     overrides: adapter.overrides(cwd),
   })
 

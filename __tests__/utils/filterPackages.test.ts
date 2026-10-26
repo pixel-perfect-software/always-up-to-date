@@ -40,23 +40,10 @@ function loadFilterWithConfig(
   let split: typeof splitUpdatesType
   jest.isolateModules(() => {
     jest.doMock('@/utils/logger', () => mockLogger)
-    jest.doMock('@/utils/npmrcLoader', () => ({
-      loadRegistryConfig: () => ({
-        registry: 'https://registry.npmjs.org/',
-        scopedRegistries: {},
-        authTokens: {},
-      }),
-    }))
     jest.doMock('@/utils/peers', () => ({
       readInstalledPeers: jest.fn(
         () => new Map(Object.entries(opts.installedPeers ?? {})),
       ),
-    }))
-    jest.doMock('@/utils/registry', () => ({
-      fetchReleaseTimes: jest.fn(
-        async (name: string) => opts.releaseTimes?.[name] ?? {},
-      ),
-      clearRegistryCache: jest.fn(),
     }))
     // biome-ignore lint/style/noCommonJs: jest.isolateModules requires synchronous require
     const loaded = require('@/utils/filterPackages')
@@ -65,8 +52,20 @@ function loadFilterWithConfig(
   })
   const run = (
     outdated: Record<string, PackageInfo>,
-    options: Omit<Parameters<typeof filterPackagesType>[1], 'config'> = {},
-  ) => filter!(outdated, { config: { ...DEFAULTS, ...config }, ...options })
+    options: Omit<
+      Parameters<typeof filterPackagesType>[1],
+      'config' | 'registry'
+    > = {},
+  ) =>
+    filter!(outdated, {
+      config: { ...DEFAULTS, ...config },
+      registry: {
+        releaseTimes: jest.fn(
+          async (name: string) => opts.releaseTimes?.[name] ?? {},
+        ),
+      },
+      ...options,
+    })
   return Object.assign(run, { split: split! })
 }
 

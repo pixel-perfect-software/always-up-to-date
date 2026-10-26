@@ -40,8 +40,9 @@ const update = (program: Command) =>
     .action(async (packages: string[], options: UpdateOptions) => {
       if (options.json) logger.setJsonOutput(true)
 
+      let project: Project | undefined
       try {
-        const project = openProject(workingDir, { pm: options.pm })
+        project = openProject(workingDir, { pm: options.pm })
         const targetPackages = packages.length > 0 ? packages : undefined
 
         if (options.dryRun) {
@@ -61,6 +62,8 @@ const update = (program: Command) =>
         }
       } catch (error) {
         reportFailure(error, options.json)
+      } finally {
+        project?.registry.close()
       }
     })
 

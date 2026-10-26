@@ -2,7 +2,7 @@ jest.mock('@/utils/logger')
 
 import type http from 'http'
 import type { RegistryConfig } from '@/types'
-import { clearRegistryCache, fetchReleaseTimes } from '@/utils/registry'
+import { createRegistrySession, type RegistrySession } from '@/utils/registry'
 import { startRegistry, type TestRegistry } from '../fixtures/registry'
 
 const configFor = (
@@ -26,7 +26,7 @@ const packument =
     res.end(JSON.stringify(body))
   }
 
-describe('fetchReleaseTimes', () => {
+describe('registry session', () => {
   const servers: TestRegistry[] = []
   const start = async (handler: Parameters<typeof startRegistry>[0]) => {
     const server = await startRegistry(handler)
@@ -34,8 +34,17 @@ describe('fetchReleaseTimes', () => {
     return server
   }
 
+  const sessions: RegistrySession[] = []
+  const sessionFor = (config: RegistryConfig) => {
+    const session = createRegistrySession('/project', {
+      loadConfig: () => config,
+    })
+    sessions.push(session)
+    return session
+  }
+
   afterEach(async () => {
-    clearRegistryCache()
+    for (const session of sessions.splice(0)) session.close()
     await Promise.all(servers.splice(0).map((s) => s.close()))
   })
 
@@ -43,12 +52,12 @@ describe('fetchReleaseTimes', () => {
     const server = await start(
       packument({ time: { '1.0.0': '2026-01-01T00:00:00.000Z' } }),
     )
-    const config = configFor(server.url)
+    const session = sessionFor(configFor(server.url))
 
     const times = await Promise.all([
-      fetchReleaseTimes('dayjs', config),
-      fetchReleaseTimes('dayjs', config),
-      fetchReleaseTimes('dayjs', config),
+      session.releaseTimes('dayjs'),
+      session.releaseTimes('dayjs'),
+      session.releaseTimes('dayjs'),
     ])
 
     expect(server.requests.map((r) => r.url)).toEqual(['/dayjs'])
@@ -61,12 +70,12 @@ describe('fetchReleaseTimes', () => {
 
   it('shares one client between concurrent first requests for different packages', async () => {
     const server = await start(packument({ time: {} }))
-    const config = configFor(server.url)
+    const session = sessionFor(configFor(server.url))
 
     await Promise.all([
-      fetchReleaseTimes('a', config),
-      fetchReleaseTimes('b', config),
-      fetchReleaseTimes('c', config),
+      session.releaseTimes('a'),
+      session.releaseTimes('b'),
+      session.releaseTimes('c'),
     ])
 
     expect(server.requests).toHaveLength(3)
@@ -78,19 +87,19 @@ describe('fetchReleaseTimes', () => {
       res.statusCode = 500
       res.end()
     })
-    const config = configFor(server.url, { fetchRetries: 0 })
+    const session = sessionFor(configFor(server.url, { fetchRetries: 0 }))
 
-    expect(await fetchReleaseTimes('ms', config)).toEqual({})
-    expect(await fetchReleaseTimes('ms', config)).toEqual({})
+    expect(await session.releaseTimes('ms')).toEqual({})
+    expect(await session.releaseTimes('ms')).toEqual({})
     expect(server.requests).toHaveLength(1)
   })
 
   it('fails open when the registry is unreachable', async () => {
     const server = await start(packument({}))
-    const config = configFor(server.url)
+    const session = sessionFor(configFor(server.url))
     await server.close()
 
-    expect(await fetchReleaseTimes('ms', config)).toEqual({})
+    expect(await session.releaseTimes('ms')).toEqual({})
   })
 
   it('keeps only the string entries of time', async () => {
@@ -104,7 +113,7 @@ describe('fetchReleaseTimes', () => {
       }),
     )
 
-    expect(await fetchReleaseTimes('ms', configFor(server.url))).toEqual({
+    expect(await sessionFor(configFor(server.url)).releaseTimes('ms')).toEqual({
       '1.0.0': '2026-01-01T00:00:00.000Z',
     })
   })
@@ -116,7 +125,9 @@ describe('fetchReleaseTimes', () => {
   ])('returns an empty map for %s', async (_label, body) => {
     const server = await start(packument(body))
 
-    expect(await fetchReleaseTimes('ms', configFor(server.url))).toEqual({})
+    expect(await sessionFor(configFor(server.url)).releaseTimes('ms')).toEqual(
+      {},
+    )
   })
 
   it('asks the scope registry for a scoped package, with its own credentials (#104)', async () => {
@@ -126,15 +137,17 @@ describe('fetchReleaseTimes', () => {
     const standard = await start(
       packument({ time: { '9.9.9': '2026-03-01T00:00:00.000Z' } }),
     )
-    const config = configFor(standard.url, {
-      scopedRegistries: { '@corp': corp.url },
-      credentials: {
-        [`//127.0.0.1:${corp.port}/`]: { authToken: 'SCOPED' },
-        [`//127.0.0.1:${standard.port}/`]: { authToken: 'DEFAULT' },
-      },
-    })
+    const session = sessionFor(
+      configFor(standard.url, {
+        scopedRegistries: { '@corp': corp.url },
+        credentials: {
+          [`//127.0.0.1:${corp.port}/`]: { authToken: 'SCOPED' },
+          [`//127.0.0.1:${standard.port}/`]: { authToken: 'DEFAULT' },
+        },
+      }),
+    )
 
-    expect(await fetchReleaseTimes('@corp/pkg', config)).toEqual({
+    expect(await session.releaseTimes('@corp/pkg')).toEqual({
       '1.0.0': '2026-02-01T00:00:00.000Z',
     })
     expect(corp.requests.map((r) => [r.url, r.headers.authorization])).toEqual([
@@ -142,21 +155,71 @@ describe('fetchReleaseTimes', () => {
     ])
     expect(standard.requests).toEqual([])
 
-    await fetchReleaseTimes('ms', config)
+    await session.releaseTimes('ms')
     expect(
       standard.requests.map((r) => [r.url, r.headers.authorization]),
     ).toEqual([['/ms', 'Bearer DEFAULT']])
     expect(corp.requests).toHaveLength(1)
   })
 
-  it('asks again after the cache is cleared', async () => {
+  it('asks again in a new session', async () => {
     const server = await start(packument({ time: {} }))
     const config = configFor(server.url)
 
-    await fetchReleaseTimes('ms', config)
-    clearRegistryCache()
-    await fetchReleaseTimes('ms', config)
+    await sessionFor(config).releaseTimes('ms')
+    await sessionFor(config).releaseTimes('ms')
 
     expect(server.requests).toHaveLength(2)
+  })
+
+  it('reads no config until a request, then once for the whole run', async () => {
+    const server = await start(packument({ time: {} }))
+    const loadConfig = jest.fn(() => configFor(server.url))
+    const session = createRegistrySession('/project', { loadConfig })
+    sessions.push(session)
+
+    expect(loadConfig).not.toHaveBeenCalled()
+
+    await session.releaseTimes('a')
+    await session.releaseTimes('b')
+    await session.client()
+
+    expect(loadConfig).toHaveBeenCalledTimes(1)
+    expect(loadConfig).toHaveBeenCalledWith('/project')
+  })
+
+  it('hands every caller the same client and the same config', async () => {
+    const server = await start(packument({ time: {} }))
+    const session = sessionFor(configFor(server.url))
+
+    const [first, second] = await Promise.all([
+      session.client(),
+      session.client(),
+    ])
+
+    expect(first).toBe(second)
+    expect(session.registryConfig()).toBe(session.registryConfig())
+  })
+
+  it('reuses one connection for sequential packages', async () => {
+    const server = await start(packument({ time: {} }))
+    const session = sessionFor(configFor(server.url))
+
+    await session.releaseTimes('a')
+    await session.releaseTimes('b')
+
+    expect(server.requests).toHaveLength(2)
+    expect(server.connections).toBe(1)
+  })
+
+  it('closes safely before any request, and twice after one', async () => {
+    const server = await start(packument({ time: {} }))
+    const session = sessionFor(configFor(server.url))
+
+    expect(() => session.close()).not.toThrow()
+
+    await session.releaseTimes('a')
+    session.close()
+    expect(() => session.close()).not.toThrow()
   })
 })

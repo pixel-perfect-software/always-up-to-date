@@ -6,10 +6,6 @@ import { check, update } from '@/pipeline'
 import { prependPath, projectFor, writeNodeShim } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 
 /**
  * These tests spawn a real process: a fake `npm` placed first on PATH that

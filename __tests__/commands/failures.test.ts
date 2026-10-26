@@ -11,8 +11,7 @@ jest.mock('@/pipeline', () => ({
 }))
 jest.mock('@/utils/config')
 jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
+  createRegistrySession: jest.fn(),
 }))
 
 import checkCommand from '@/commands/check'
@@ -22,6 +21,8 @@ import { check, update } from '@/pipeline'
 import { StepError } from '@/stepError'
 import { loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
+import { createRegistrySession } from '@/utils/registry'
+import { fakeRegistry } from '../fixtures'
 
 const applyFailed = new StepError(
   'apply',
@@ -58,6 +59,7 @@ describe('command failures', () => {
   beforeEach(() => {
     pipeline.check.mockReset()
     pipeline.update.mockReset()
+    jest.mocked(createRegistrySession).mockReturnValue(fakeRegistry())
 
     stdout = []
     stderr = []
@@ -182,6 +184,32 @@ describe('command failures', () => {
         error: { message: configFailed.message, manifestWritten: false },
       })
       expect(stdout).toHaveLength(1)
+    },
+  )
+
+  it.each([
+    ['check', 'failed'],
+    ['update', 'failed'],
+    ['check', 'successful'],
+    ['update', 'successful'],
+  ] as const)(
+    "%s closes the run's registry session after a %s command",
+    async (command, outcome) => {
+      const close = jest.fn()
+      jest
+        .mocked(createRegistrySession)
+        .mockReturnValue(fakeRegistry({ close }))
+      if (outcome === 'failed') {
+        pipeline[command].mockRejectedValue(discoverFailed)
+      } else if (command === 'check') {
+        pipeline.check.mockResolvedValue({})
+      } else {
+        pipeline.update.mockResolvedValue([])
+      }
+
+      await run(command)
+
+      expect(close).toHaveBeenCalledTimes(1)
     },
   )
 

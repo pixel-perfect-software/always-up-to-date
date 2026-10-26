@@ -16,10 +16,6 @@ jest.mock('@/utils/config', () => ({
   loadConfig: jest.fn(),
 }))
 jest.mock('@/utils/logger')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 jest.mock('@/utils', () => ({
   ...jest.requireActual('@/utils'),
   runProcess: jest.fn(),

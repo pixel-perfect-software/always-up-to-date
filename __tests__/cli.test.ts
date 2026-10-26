@@ -1,8 +1,4 @@
 jest.mock('@/utils/config')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 
 import { loadConfig } from '@/utils/config'
 

@@ -5,6 +5,7 @@ import type { ManagerAdapter } from '@/managers'
 import type { Project } from '@/project'
 import type { AlwaysUpToDateConfig, OutdatedEntry } from '@/types'
 import { DEFAULT_CONFIG } from '@/utils/config'
+import type { RegistrySession } from '@/utils/registry'
 
 /**
  * Real package-manager output captured on the 40-dependency benchmark
@@ -28,12 +29,37 @@ export const exitError = (
     stderr,
   })
 
+/**
+ * A registry session that fails loudly: a unit test that reaches the registry
+ * without saying so is a bug. `close` does nothing.
+ */
+export const fakeRegistry = (
+  overrides: Partial<RegistrySession> = {},
+): RegistrySession => {
+  const unexpected = (): never => {
+    throw new Error('unexpected registry access in a unit test')
+  }
+  return {
+    registryConfig: unexpected,
+    client: unexpected,
+    releaseTimes: unexpected,
+    close: () => undefined,
+    ...overrides,
+  }
+}
+
 /** A project for the pipeline: the default config with `config` laid over it. */
 export const projectFor = (
   adapter: ManagerAdapter,
   cwd: string,
   config: Partial<AlwaysUpToDateConfig> = {},
-): Project => ({ adapter, cwd, config: { ...DEFAULT_CONFIG, ...config } })
+  registry: RegistrySession = fakeRegistry(),
+): Project => ({
+  adapter,
+  cwd,
+  config: { ...DEFAULT_CONFIG, ...config },
+  registry,
+})
 
 /**
  * The evidence workspace the `*-workspace` fixtures were captured in: root

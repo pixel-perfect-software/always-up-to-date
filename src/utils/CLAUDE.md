@@ -24,8 +24,8 @@ utils/
   npmrc.ts            # parseNpmrc(text, env), substituteEnv(): the .npmrc parser (pure)
   npmrcLoader.ts      # loadNpmrc() layers global, user, project, npm_config_* env as npm 12 does; loadRegistryConfig() returns RegistryConfig
   registryRequest.ts  # Pure client helpers: registryFor, packumentUrl, credentialsFor, authorizationFor, retry rules
-  registryClient.ts   # node:https transport (agents, gzip, timeout, retries, redirects); loaded lazily by registry.ts only
-  registry.ts         # fetchReleaseTimes() with in-flight per-run cache, fails open; loads registryClient on first use
+  registryClient.ts   # node:https transport (agents, gzip, per-request accept and timeout, retries, redirects, per-host stats()); loaded lazily by registry.ts only
+  registry.ts         # createRegistrySession(cwd): one lazy .npmrc view and one client per run; releaseTimes() with in-flight per-run cache, fails open
   updateChecker.ts    # Update policy: within range by default, beyondRange level, per-package rules (pure)
   rows.ts             # toOutdatedRow() / toOutdatedRows() / toUpdatingRow(): display rows (in-range note, beyond-range flag; one outdated row per manifest in a workspace)
   overrides.ts        # overridesFromField(), manifestOverrides(cwd, fields): packages an override pins, with field and range
@@ -70,10 +70,12 @@ utils/
 - `parseNpmrc(text, env)` is ini 7's decode (quoting, `;`/`#` cuts, `key[]` arrays, parsing stops at the first `[section]`, `__proto__` skipped) plus npm's `${VAR}` substitution: an unset `${VAR}` stays literal, `${VAR?}` is empty, `\${VAR}` is escaped
 - `loadNpmrc(cwd, sources)` merges four layers, later wins: global (`<prefix>/etc/npmrc`), user (`~/.npmrc`), project, `npm_config_*` env (any case, `_` → `-`). The project file is the `.npmrc` of the npm project root: from a workspace member, the root's. `NpmrcSources` (env, home, execPath, platform) is injectable for tests; an unreadable file is an empty layer
 - `registryConfigFrom(npmrc, cwd, sources)` builds `RegistryConfig` (registry, `scopedRegistries`, `credentials` by `//host[:port]/path/` prefix, `ca`, `strictSSL`, `proxy`, `fetchRetries`, `fetchTimeout`, `maxSockets`). Unscoped `_authToken` and `always-auth` are ignored, as npm 9+ does
-- `fetchReleaseTimes(name, registryConfig)` picks the registry by scope, GETs the full packument (corgi format strips `time`) through `registryClient`, and maps `time` to `Record<version, ISO>`. Any failure → empty map (cached) and a debug line, so the cooldown gate fails open
+- `session.releaseTimes(name)` (from `createRegistrySession(cwd)`) picks the registry by scope, GETs the full packument (corgi format strips `time`) through `registryClient`, and maps `time` to `Record<version, ISO>`. Any failure → empty map (cached) and a debug line, so the cooldown gate fails open
 - The client sends credentials only to the longest `.npmrc` prefix that matches the request URL, and recomputes them on each redirect. Retries cover 408, 420, 429, 5xx, ECONNRESET, ECONNREFUSED and ETIMEDOUT with a short capped backoff; a `Retry-After` over 1 s stops retrying
-- `registry.ts` imports `registryClient` with `await import()` on the first request, so nothing heavy loads at startup; keep top-level imports there to types and `registryRequest`
-- One in-memory cache per CLI run, holding the in-flight request, so a package several workspace manifests declare is fetched once; `clearRegistryCache()` (also destroys the clients) is exported for tests
+- `registry.ts` imports `registryClient` with `await import()` on the first request, so nothing heavy loads at startup; keep top-level imports there to types, `registryRequest`, `npmrcLoader` and `logger`
+- `openProject` makes one `RegistrySession` per run (`Project.registry`): `registryConfig()` reads the `.npmrc` layers and `cafile` on its first call, `client()` creates the one client, so every registry request in the run shares both. A session reads and loads nothing until asked; `close()` destroys the agents (safe twice, or before any request) and commands call it in a `finally`. `loadConfig` and `clientOptions` are test seams
+- `getJson(url, registry, { signal, accept, timeout })`: `accept` defaults to `application/json`, `timeout` to `fetch-timeout` (ms); both hold across redirects and retries. `stats()` counts per `url.host`: `responses` (every status), `bodyBytes` (2xx bodies as received) and `decodedBytes` (after gunzip)
+- The cache is per session and holds the in-flight request, so a package several workspace manifests declare is fetched once; a new session asks again
 - Limitation: yarn berry's `.yarnrc.yml` and bun's `bunfig.toml` are not read in v1. Common case (npm-spec `.npmrc`) covers all four PMs.
 
 ### Manifest Specs (`files.ts`)

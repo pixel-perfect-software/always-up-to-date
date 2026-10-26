@@ -41,7 +41,7 @@ src/
   cli.ts                    # Commander.js program setup, registers commands
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
   commandRunner.ts          # runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
-  project.ts                # openProject(cwd, { pm? }): loads the config once, configures the logger, detects the manager → Project
+  project.ts                # openProject(cwd, { pm? }): loads the config once, configures the logger, detects the manager → Project (with a lazy registry session)
   pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter
   detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
@@ -78,7 +78,7 @@ __tests__/
   startup.test.ts           # Loading the CLI never loads the registry client
   fixtures/
     registry.ts, tls/       # Local registry/proxy servers; test-only TLS material (generate.sh)
-    index.ts                # readFixture(), exitError(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers
+    index.ts                # readFixture(), exitError(), fakeRegistry(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers
     npm/ pnpm/ yarn/ bun/   # Real captured manager stdout/stderr (outdated, errors)
   managers/
     adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager
@@ -105,7 +105,7 @@ __tests__/
     npmrcLoader.test.ts     # Layering (global, user, project, npm_config_*), workspace root, RegistryConfig, on temp dirs
     registryRequest.test.ts # Pure client helpers: scoped registry, prefix walk, Authorization forms, retry rules
     registryClient.test.ts  # node:https client against local HTTP(S) servers and a CONNECT proxy: auth, TLS, mTLS, proxies, retries, timeout, maxsockets, redirects
-    registry.test.ts        # fetchReleaseTimes: in-flight dedupe, fails open, scoped registry (#104)
+    registry.test.ts        # createRegistrySession: lazy config and client, one per run, in-flight dedupe, fails open, scoped registry (#104), close()
     packageGrouper.test.ts  # Package grouping tests
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping

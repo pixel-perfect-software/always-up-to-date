@@ -13,10 +13,6 @@ jest.mock('@/pipeline', () => ({
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils/config')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 jest.mock('@inquirer/prompts', () => ({
   checkbox: jest.fn(),
 }))

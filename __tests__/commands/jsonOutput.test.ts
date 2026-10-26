@@ -10,10 +10,6 @@ jest.mock('@/pipeline', () => ({
   update: jest.fn(),
 }))
 jest.mock('@/utils/config')
-jest.mock('@/utils/registry', () => ({
-  clearRegistryCache: jest.fn(),
-  fetchReleaseTimes: jest.fn(),
-}))
 
 import checkCommand from '@/commands/check'
 import updateCommand from '@/commands/update'

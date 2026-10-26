@@ -1,5 +1,5 @@
 import type { CooldownConfig, PackageInfo } from '@/types'
-import type { computeReleaseAges as computeReleaseAgesType } from '@/utils/releaseAges'
+import { computeReleaseAges } from '@/utils/releaseAges'
 
 const NOW = Date.parse('2026-04-29T12:00:00Z')
 const isoDaysAgo = (days: number) =>
@@ -10,26 +10,11 @@ interface LoadOpts {
 }
 
 function loadComputeReleaseAges(opts: LoadOpts = {}) {
-  let fn: typeof computeReleaseAgesType
-  jest.isolateModules(() => {
-    jest.doMock('@/utils/npmrcLoader', () => ({
-      loadRegistryConfig: () => ({
-        registry: 'https://registry.npmjs.org/',
-        scopedRegistries: {},
-        authTokens: {},
-      }),
-    }))
-    jest.doMock('@/utils/registry', () => ({
-      fetchReleaseTimes: jest.fn(
-        async (name: string) => opts.releaseTimes?.[name] ?? {},
-      ),
-      clearRegistryCache: jest.fn(),
-    }))
-    // biome-ignore lint/style/noCommonJs: jest.isolateModules requires sync require
-    fn = require('@/utils/releaseAges').computeReleaseAges
-  })
+  const registry = {
+    releaseTimes: async (name: string) => opts.releaseTimes?.[name] ?? {},
+  }
   return (packages: Record<string, PackageInfo>, cooldown: CooldownConfig) =>
-    fn!(packages, '/proj', cooldown, NOW)
+    computeReleaseAges(packages, registry, cooldown, NOW)
 }
 
 const outdated = (pkgs: PackageInfo[]): Record<string, PackageInfo> =>

@@ -3,12 +3,15 @@ import { adapterFor, type ManagerAdapter } from '@/managers'
 import type { AlwaysUpToDateConfig, SupportedPackageManager } from '@/types'
 import { loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
+import { createRegistrySession, type RegistrySession } from '@/utils/registry'
 
 /** One command run's project, loaded once: where it is, its config, its manager. */
 export interface Project {
   cwd: string
   config: AlwaysUpToDateConfig
   adapter: ManagerAdapter
+  /** The run's registry config and client, loaded on first use; commands close it. */
+  registry: RegistrySession
 }
 
 /**
@@ -23,5 +26,10 @@ export const openProject = (
 ): Project => {
   const config = loadConfig(cwd)
   logger.configure(config)
-  return { cwd, config, adapter: adapterFor(detectPackageManager(cwd, pm)) }
+  return {
+    cwd,
+    config,
+    adapter: adapterFor(detectPackageManager(cwd, pm)),
+    registry: createRegistrySession(cwd),
+  }
 }

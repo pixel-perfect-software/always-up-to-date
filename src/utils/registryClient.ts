@@ -17,13 +17,28 @@ import {
 } from './registryRequest'
 
 export interface RegistryClient {
-  /** GET url as JSON with the credentials and agent for its registry; rejects with RegistryRequestError. */
+  /**
+   * GET url as JSON with the credentials and agent for its registry; rejects
+   * with RegistryRequestError. `accept` (default `application/json`) and
+   * `timeout` (default `fetch-timeout`, in ms) are per request.
+   */
   getJson(
     url: string,
     registry: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; accept?: string; timeout?: number },
   ): Promise<unknown>
+  /** What this client has received so far, per `url.host`. */
+  stats(): Record<string, RegistryHostStats>
   destroy(): void
+}
+
+export interface RegistryHostStats {
+  /** Every response, whatever its status. */
+  responses: number
+  /** Bytes of 2xx bodies as received (gzip bytes when compressed). */
+  bodyBytes: number
+  /** The same bodies after gunzip. */
+  decodedBytes: number
 }
 
 export interface RegistryClientOptions {
@@ -89,8 +104,11 @@ const headerValue = (
   value: string | string[] | undefined,
 ): string | undefined => (Array.isArray(value) ? value[0] : value)
 
-const readBody = async (res: http.IncomingMessage): Promise<Buffer> => {
+const readBody = async (
+  res: http.IncomingMessage,
+): Promise<{ body: Buffer; received: number }> => {
   const chunks: Buffer[] = []
+  let received = 0
   const encoding = headerValue(res.headers['content-encoding'])?.toLowerCase()
   if (encoding && encoding !== 'gzip' && encoding !== 'identity') {
     res.resume()
@@ -98,12 +116,18 @@ const readBody = async (res: http.IncomingMessage): Promise<Buffer> => {
   }
   await pipeline(
     res,
+    async function* count(source: AsyncIterable<Buffer>) {
+      for await (const chunk of source) {
+        received += chunk.length
+        yield chunk
+      }
+    },
     ...(encoding === 'gzip' ? [zlib.createGunzip()] : []),
     async (source: AsyncIterable<Buffer>) => {
       for await (const chunk of source) chunks.push(chunk)
     },
   )
-  return Buffer.concat(chunks)
+  return { body: Buffer.concat(chunks), received }
 }
 
 /** The client certificate and key, or nothing (with a debug line) when either cannot be read. */
@@ -136,6 +160,16 @@ export const createRegistryClient = (
       await sleepFor(ms)
     })
   const agents = new Map<string, http.Agent>()
+  const hostStats = new Map<string, RegistryHostStats>()
+
+  const statsFor = (url: URL): RegistryHostStats => {
+    let stats = hostStats.get(url.host)
+    if (!stats) {
+      stats = { responses: 0, bodyBytes: 0, decodedBytes: 0 }
+      hostStats.set(url.host, stats)
+    }
+    return stats
+  }
 
   const agentFor = (
     url: URL,
@@ -172,6 +206,8 @@ export const createRegistryClient = (
     target: URL,
     registry: string,
     callerSignals: AbortSignal[],
+    accept: string,
+    timeoutMs: number,
   ): Promise<Outcome> => {
     const url = new URL(target)
     // npm sends userinfo in the URL as Basic auth, unless .npmrc scopes
@@ -181,7 +217,7 @@ export const createRegistryClient = (
     url.password = ''
     const credentials = credentialsFor(url, registry, config.credentials)
     const authorization = authorizationFor(credentials) ?? userinfo
-    const timeout = AbortSignal.timeout(config.fetchTimeout)
+    const timeout = AbortSignal.timeout(timeoutMs)
     const signal = AbortSignal.any([timeout, ...callerSignals])
 
     try {
@@ -193,7 +229,7 @@ export const createRegistryClient = (
               agent: agentFor(url, credentials),
               signal,
               headers: {
-                accept: 'application/json',
+                accept,
                 'accept-encoding': 'gzip',
                 'user-agent': USER_AGENT,
                 ...(authorization ? { authorization } : {}),
@@ -207,8 +243,12 @@ export const createRegistryClient = (
       )
 
       const status = response.statusCode ?? 0
+      const stats = statsFor(url)
+      stats.responses++
       if (status >= 200 && status < 300) {
-        const body = await readBody(response)
+        const { body, received } = await readBody(response)
+        stats.bodyBytes += received
+        stats.decodedBytes += body.length
         try {
           return { kind: 'json', value: JSON.parse(body.toString('utf8')) }
         } catch {
@@ -231,7 +271,7 @@ export const createRegistryClient = (
     } catch (error) {
       if (timeout.aborted && !callerSignals.some((s) => s.aborted)) {
         throw new RegistryRequestError(
-          `GET ${redact(url)}: timed out after ${config.fetchTimeout}ms`,
+          `GET ${redact(url)}: timed out after ${timeoutMs}ms`,
           { code: 'ETIMEDOUT' },
         )
       }
@@ -246,8 +286,14 @@ export const createRegistryClient = (
   const getJson = async (
     url: string,
     registry: string,
-    requestOptions: { signal?: AbortSignal } = {},
+    requestOptions: {
+      signal?: AbortSignal
+      accept?: string
+      timeout?: number
+    } = {},
   ): Promise<unknown> => {
+    const accept = requestOptions.accept ?? 'application/json'
+    const timeoutMs = requestOptions.timeout ?? config.fetchTimeout
     const callerSignals = requestOptions.signal ? [requestOptions.signal] : []
     let target = new URL(url)
     let redirects = 0
@@ -255,7 +301,7 @@ export const createRegistryClient = (
     for (let attempt = 0; ; ) {
       let outcome: Outcome
       try {
-        outcome = await once(target, registry, callerSignals)
+        outcome = await once(target, registry, callerSignals, accept, timeoutMs)
       } catch (error) {
         if (attempt < config.fetchRetries && isRetryableError(error)) {
           await sleep(retryDelay(attempt, undefined, Date.now()) ?? 0)
@@ -307,6 +353,7 @@ export const createRegistryClient = (
 
   return {
     getJson,
+    stats: () => Object.fromEntries(hostStats),
     destroy: () => {
       for (const agent of agents.values()) agent.destroy()
       agents.clear()
