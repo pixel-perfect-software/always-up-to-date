@@ -23,7 +23,12 @@ describe('npmrc loader', () => {
   ): NpmrcSources => ({
     env,
     home: at('home'),
-    execPath: path.join(tmp, 'prefix', 'bin', 'node'),
+    // Node's own layout, so npm's default prefix is <tmp>/prefix on both:
+    // node.exe sits in the prefix on Windows, in <prefix>/bin elsewhere.
+    execPath:
+      process.platform === 'win32'
+        ? path.join(tmp, 'prefix', 'node.exe')
+        : path.join(tmp, 'prefix', 'bin', 'node'),
     platform: process.platform,
     ...overrides,
   })
