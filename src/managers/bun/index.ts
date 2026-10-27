@@ -2,6 +2,7 @@ import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
 import { bunfigExact, bunRegistryConfig } from '@/managers/bun/bunfig'
+import { bunNpmrcLayers } from '@/managers/bun/npmrc'
 import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
 import {
   readBunCatalogs,
@@ -21,6 +22,8 @@ const bun: ManagerAdapter = {
     ...packageJsonWorkspace(cwd),
     catalogs: readBunCatalogs(readManifest(cwd)),
   }),
+
+  npmrcLayers: bunNpmrcLayers,
 
   registryConfig: bunRegistryConfig,
 
