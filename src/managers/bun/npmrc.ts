@@ -1,102 +1,61 @@
 import fs from 'fs'
 import path from 'path'
 
-import { parseNpmrc } from '@/utils/npmrc'
 import {
   findNpmProjectRoot,
   type NpmrcLayer,
   type NpmrcSources,
   nonEmpty,
+  npmrcFileLayer,
 } from '@/utils/npmrcLoader'
 
 /**
- * A value as bun expands it (verified on bun 1.4.4, 2026-10-26: b30, b31,
- * rev r1, r4):
+ * A parsed value as bun expands it (verified on bun 1.4.4, 2026-10-26: b30,
+ * b31, rev r1, r4):
  * - `${VAR}` anywhere, and `${VAR?}`, which is '' when VAR is unset; any other
  *   unset variable stays literal, and bun sends it as written (autd treats a
  *   credential still holding `${…}` as absent instead, the one place it differs);
- * - `$VAR` only when it is the whole value (`pre$TOK` and `host:$PORT/` stay);
- * - backslashes before a `$` follow npm's rule: an odd run escapes it and
- *   loses half (one `\` + `${T}` gives the literal `${T}`), an even run loses
- *   half and the `$` stays active. The unescaped `\$TOK` of a whole value
- *   then expands like `$TOK`.
+ * - `$VAR` only when the parsed value as a whole is `$NAME` (`pre$TOK` and
+ *   `host:$PORT/` stay), judged before any substitution, so a substituted
+ *   `$…` value is never expanded again;
+ * - an odd run of backslashes before a `$` escapes it and loses half (one
+ *   `\` + `${T}` gives the literal `${T}`); an even run loses half and the `$`
+ *   stays active.
+ *
+ * One difference: the values come from the shared parser, which has already
+ * collapsed each `\\` pair, so two backslashes before `${T}` read as one and
+ * give the literal where bun sends `\VAL` (and three read as two, four as two).
  */
 export const substituteBun = (text: string, env: NodeJS.ProcessEnv): string => {
-  const unescaped = text.replace(
-    /(\\*)\$(?:\{([^${}?]+)(\?)?\}|([A-Za-z_][A-Za-z0-9_]*))/g,
+  const whole = /^\\?\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(text)
+  if (whole) return env[whole[1]] ?? text.replace(/^\\/, '')
+  return text.replace(
+    /(\\*)\$(?:\{([^${}?]+)(\?)?\}|[A-Za-z_][A-Za-z0-9_]*)/g,
     (original, slashes: string, name?: string, optional?: string) => {
-      const escaped = slashes.length % 2 === 1
       const kept = slashes.slice(Math.ceil(slashes.length / 2))
       const dollar = original.slice(slashes.length)
-      if (name === undefined || escaped) return kept + dollar
+      if (name === undefined || slashes.length % 2 === 1) return kept + dollar
       return kept + (env[name] ?? (optional === '?' ? '' : dollar))
     },
   )
-  const whole = /^\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(unescaped)
-  return whole ? (env[whole[1]] ?? unescaped) : unescaped
-}
-
-const QUOTED = /^(".*"|'.*')$/
-
-/**
- * The text of an .npmrc value that bun expands: the raw line's text, because
- * bun counts backslashes as written while `parseNpmrc` collapses each pair
- * first (so two and three backslashes before `${T}` would look alike). A
- * quoted value is its decoded text; an unquoted one ends at the first
- * unescaped `;` or `#`, and `\;` and `\#` are unescaped, as the parser does.
- */
-const valueText = (raw: string): string | undefined => {
-  const value = raw.trim()
-  if (QUOTED.test(value)) {
-    const decoded = parseNpmrc(`v=${value}`, {}, null).v
-    return typeof decoded === 'string' ? decoded : undefined
-  }
-  let result = ''
-  for (let i = 0; i < value.length; i++) {
-    const char = value[i]
-    if (char === '\\' && (value[i + 1] === ';' || value[i + 1] === '#')) {
-      result += value[++i]
-    } else if (char === '\\') {
-      result += char + (value[++i] ?? '')
-    } else if (char === ';' || char === '#') {
-      break
-    } else {
-      result += char
-    }
-  }
-  return result.trim()
 }
 
 /**
- * The file's text with every `key=value` value expanded as bun does and
- * written back as a JSON string, which `parseNpmrc` decodes unchanged (a
- * secret holding `;` or `#` survives). Keys are left as written: bun
- * expands values only (rev r3).
+ * A file's parsed settings with the values expanded (strings and the strings
+ * of an array; booleans and null stay). Keys stay as written: bun expands
+ * values only (rev r3).
  */
-const expandValues = (text: string, env: NodeJS.ProcessEnv): string =>
-  text
-    .split(/[\r\n]+/)
-    .map((line) => {
-      if (/^\s*[;#]/.test(line) || /^\[[^\]]*\]\s*$/.test(line)) return line
-      const equals = line.indexOf('=')
-      if (equals < 1) return line
-      const value = valueText(line.slice(equals + 1))
-      if (value === undefined) return line
-      return `${line.slice(0, equals)}=${JSON.stringify(substituteBun(value, env))}`
-    })
-    .join('\n')
-
 const readLayer = (file: string, env: NodeJS.ProcessEnv): NpmrcLayer => {
-  try {
-    const text = fs.readFileSync(file, 'utf8')
-    return {
-      kind: 'file',
-      file,
-      values: parseNpmrc(expandValues(text, env), env, null),
+  const layer = npmrcFileLayer(file, env, { substitute: null })
+  for (const [key, value] of Object.entries(layer.values)) {
+    if (typeof value === 'string') layer.values[key] = substituteBun(value, env)
+    else if (Array.isArray(value)) {
+      layer.values[key] = value.map((v) =>
+        typeof v === 'string' ? substituteBun(v, env) : v,
+      )
     }
-  } catch {
-    return { kind: 'file', file, values: Object.create(null) }
   }
+  return layer
 }
 
 /** Whether anything, a directory included, sits at `file` (a dangling symlink is nothing). */

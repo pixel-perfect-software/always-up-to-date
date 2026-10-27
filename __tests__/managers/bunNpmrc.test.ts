@@ -4,8 +4,13 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
+import { bunNpmrcLayers } from '@/managers/bun/npmrc'
 import type { RegistryConfig } from '@/types'
-import { managerRegistryConfig, type NpmrcSources } from '@/utils/npmrcLoader'
+import {
+  managerRegistryConfig,
+  mergeNpmrcLayers,
+  type NpmrcSources,
+} from '@/utils/npmrcLoader'
 import {
   authorizationFor,
   credentialsFor,
@@ -393,29 +398,64 @@ describe('bun .npmrc layers', () => {
       expect(unscoped(configFor({ env: { RK: 'registry' } })).server).toBe(BH)
     })
 
-    it('backslashes before $ follow npm: odd escapes, even halves (rev r4)', () => {
+    it('backslashes before $: an odd run escapes it, as bun does (rev r4)', () => {
       expect(authFor('\\${TOK}')).toBeUndefined() // literal ${TOK}: absent
-      expect(authFor('\\\\${TOK}')).toBe('Bearer \\VAL')
-      expect(authFor('\\\\\\${TOK}')).toBeUndefined() // \${TOK}
-      expect(authFor('\\\\\\\\${TOK}')).toBe('Bearer \\\\VAL')
       expect(authFor('\\$TOK')).toBe('Bearer VAL')
       expect(authFor('a\\$TOK')).toBe('Bearer a$TOK')
-      expect(authFor('\\\\$TOK')).toBe('Bearer \\$TOK')
       expect(authFor('x${TOK}\\${TOK}')).toBeUndefined()
     })
 
+    it('two backslashes before ${T} read as one: the shared parser collapses the pair first, where bun sends \\VAL', () => {
+      expect(authFor('\\\\${TOK}')).toBeUndefined()
+      expect(authFor('\\\\\\\\${TOK}')).toBe('Bearer \\VAL')
+    })
+
+    it('Windows backslashes elsewhere are collapsed by the parser as in npm', () => {
+      write(at('proj', '.npmrc'), 'cafile=C:\\\\certs\\\\ca.pem\n')
+      const view = mergeNpmrcLayers(
+        bunNpmrcLayers(
+          project(),
+          sourcesFor({ XDG_CONFIG_HOME: home('.config') }),
+        ),
+      )
+      expect(view.values.cafile).toBe('C:\\certs\\ca.pem')
+    })
+
+    it('an expanded value is not expanded again: ${A} with A=$B stays $B', () => {
+      expect(authFor('${A}', { A: '$B', B: 'x' })).toBe('Bearer $B')
+      expect(authFor('$A', { A: '$B', B: 'x' })).toBe('Bearer $B')
+    })
+
+    it("a variable whose value is 'true' stays a string", () => {
+      expect(authFor('${T}', { T: 'true' })).toBe('Bearer true')
+      expect(authFor('$T', { T: 'null' })).toBe('Bearer null')
+    })
+
+    it('U+2028 in a token: the shared parser drops the line (its `.` stops at it, as ini does), where bun keeps it', () => {
+      expect(authFor('a\u2028b')).toBeUndefined()
+    })
+
     it("saveStyle reads save-exact through bun's layers", () => {
-      write(home('.npmrc'), 'save-exact=true\n')
-      const prev = process.env.HOME
-      process.env.HOME = home()
+      const names = [
+        'HOME',
+        'XDG_CONFIG_HOME',
+        'NPM_CONFIG_USERCONFIG',
+        'npm_config_userconfig',
+      ]
+      const saved = names.map((name) => [name, process.env[name]] as const)
       try {
+        for (const name of names) delete process.env[name]
+        process.env.HOME = home()
+        process.env.XDG_CONFIG_HOME = home('.config')
+        write(home('.npmrc'), 'save-exact=true\n')
         expect(bun.saveStyle(project()).exact).toBe(true)
         write(xdgFile(), '')
-        process.env.XDG_CONFIG_HOME = home('.config')
         expect(bun.saveStyle(project()).exact).toBe(false)
       } finally {
-        process.env.HOME = prev
-        delete process.env.XDG_CONFIG_HOME
+        for (const [name, value] of saved) {
+          if (value === undefined) delete process.env[name]
+          else process.env[name] = value
+        }
       }
     })
   })

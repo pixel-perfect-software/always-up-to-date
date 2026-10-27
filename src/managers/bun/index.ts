@@ -75,7 +75,11 @@ const bun: ManagerAdapter = {
     }
   },
 
-  /** `exact` in bunfig.toml's `[install]`, or `save-exact` in .npmrc; bun has no prefix setting. */
+  /**
+   * `exact` in bunfig.toml's `[install]`, or `save-exact` in bun's own .npmrc
+   * layers (not npm's); bun has no prefix setting. Each call re-reads the two
+   * files, a small cost next to an update.
+   */
   saveStyle: (cwd) => ({
     exact:
       bunfigExact(readTextFile(path.join(cwd, 'bunfig.toml'))) ||
