@@ -7,7 +7,7 @@ import type {
   SupportedPackageManager,
 } from '@/types'
 import type { Catalogs } from '@/utils/dependencySpecs'
-import type { NpmrcSources } from '@/utils/npmrcLoader'
+import type { NpmrcLayer, NpmrcSources, NpmrcView } from '@/utils/npmrcLoader'
 import type { ControllingOverride } from '@/utils/overrides'
 import type { SaveStyle } from '@/utils/saveStyle'
 
@@ -97,21 +97,22 @@ export interface ManagerAdapter {
     rows: { name: string; workspace?: string }[],
   ): Promise<Record<string, string>>
   /**
-   * The directory whose `.npmrc` this manager reads, when it is not the
-   * nearest npm project root `loadNpmrc` finds from `package.json`
-   * `workspaces` (pnpm: the nearest `pnpm-workspace.yaml`).
+   * The `.npmrc` layers this manager reads, highest first, merged per key
+   * (`mergeNpmrcLayers`). Without it, npm's (`npmNpmrcLayers`). Called once,
+   * on the session's first use.
    */
-  projectRoot?(cwd: string): string
+  npmrcLayers?(cwd: string, sources: NpmrcSources): NpmrcLayer[]
   /**
-   * The run's registry config for this manager: the .npmrc view, adjusted
-   * where the manager reads registries from somewhere else too (pnpm's
-   * pnpm-workspace.yaml, bun's bunfig.toml). Called once, on the session's
-   * first use. Without it the .npmrc view is used as is.
+   * The run's registry config for this manager: the merged `.npmrc` view
+   * (`fromNpmrc`, built from `npmrc`), adjusted where the manager reads
+   * registries from somewhere else too (bun's bunfig.toml). Called once, on
+   * the session's first use. Without it the view is used as is.
    */
   registryConfig?(
     cwd: string,
     fromNpmrc: RegistryConfig,
     sources: NpmrcSources,
+    npmrc: NpmrcView,
   ): RegistryConfig
   /** How the manager writes a new spec, read from where its current version keeps that setting. */
   saveStyle(cwd: string): SaveStyle

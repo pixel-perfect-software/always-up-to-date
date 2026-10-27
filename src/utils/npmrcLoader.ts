@@ -1,6 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import type { ManagerAdapter } from '@/managers/adapter'
 import {
   matchesWorkspacePatterns,
   readManifest,
@@ -13,7 +14,13 @@ import type {
   RegistryCredentials,
 } from '@/types'
 import logger from './logger'
-import { type Npmrc, parseNpmrc, substituteEnv } from './npmrc'
+import {
+  type Npmrc,
+  type NpmrcValue,
+  parseNpmrc,
+  type Substitute,
+  substituteEnv,
+} from './npmrc'
 
 /** What the loader reads from the machine, injectable for tests. */
 export interface NpmrcSources {
@@ -44,26 +51,103 @@ const boolValue = (value: unknown): boolean | undefined => {
   return undefined
 }
 
-/** `npm_config_*` variables as npm reads them: any case, empty values skipped. */
-const envConfig = (env: NodeJS.ProcessEnv): Npmrc => {
-  const layer: Npmrc = Object.create(null)
-  for (const [name, value] of Object.entries(env)) {
-    if (!value || !/^npm_config_/i.test(name)) continue
-    const rest = name.slice('npm_config_'.length)
-    const key = rest.startsWith('//')
-      ? rest
-      : rest.replace(/(?!^)_/g, '-').toLowerCase()
-    layer[key] = substituteEnv(value, env)
-  }
-  return layer
+/** One source of .npmrc settings; a missing or unreadable file is an empty layer. */
+export type NpmrcLayer =
+  | { kind: 'env'; values: Npmrc }
+  | { kind: 'file'; file: string; values: Npmrc }
+
+/** The merged settings, and the layer that set each key. */
+export interface NpmrcView {
+  values: Npmrc
+  origin(key: string): NpmrcLayer | undefined
 }
 
-const readNpmrc = (filePath: string, env: NodeJS.ProcessEnv): Npmrc => {
-  try {
-    return parseNpmrc(fs.readFileSync(filePath, 'utf8'), env)
-  } catch {
-    return Object.create(null)
+/** How a manager reads its configuration variables. */
+export interface EnvRule {
+  /** Matches the variable names the manager reads; the rest of the name follows it. */
+  prefix: RegExp
+  /** The .npmrc key for a variable (`rest` is the name after the prefix); undefined skips it. */
+  key(rest: string, name: string): string | undefined
+  /** Applied to values; null leaves them as written. */
+  substitute: Substitute | null
+  /**
+   * Which of several variables that name the same key wins: the higher rank,
+   * and the later in `env` among equals. Without it the later one wins.
+   */
+  rank?(name: string, key: string): number
+}
+
+/** `npm_config_*` as npm reads it: any case, `//` keys as written, else `_` → `-` in lower case. */
+export const NPM_ENV: EnvRule = {
+  prefix: /^npm_config_/i,
+  key: (rest) =>
+    rest.startsWith('//') ? rest : rest.replace(/(?!^)_/g, '-').toLowerCase(),
+  substitute: substituteEnv,
+}
+
+/** The variables `rule` reads as one layer; empty values are skipped. */
+export const envLayer = (env: NodeJS.ProcessEnv, rule: EnvRule): NpmrcLayer => {
+  const values: Npmrc = Object.create(null)
+  const ranks = new Map<string, number>()
+  for (const [name, value] of Object.entries(env)) {
+    if (!value) continue
+    const match = rule.prefix.exec(name)
+    if (!match) continue
+    const key = rule.key(name.slice(match[0].length), name)
+    if (key === undefined) continue
+    const rank = rule.rank?.(name, key) ?? 0
+    if (rank < (ranks.get(key) ?? rank)) continue
+    ranks.set(key, rank)
+    values[key] = rule.substitute ? rule.substitute(value, env) : value
   }
+  return { kind: 'env', values }
+}
+
+/** A key or value (or array element) still holding a `${…}` reference. */
+const holdsReference = (key: string, value: NpmrcValue): boolean =>
+  key.includes('${') ||
+  (Array.isArray(value) ? value : [value]).some(
+    (v) => typeof v === 'string' && v.includes('${'),
+  )
+
+/**
+ * A file's settings as one layer. `substitute` defaults to npm's; null
+ * expands nothing. With `omitReferences`, an entry whose key or value still
+ * holds `${…}` is left out, so a lower layer decides (pnpm's project files).
+ */
+export const npmrcFileLayer = (
+  file: string,
+  env: NodeJS.ProcessEnv,
+  {
+    substitute = substituteEnv,
+    omitReferences = false,
+  }: { substitute?: Substitute | null; omitReferences?: boolean } = {},
+): NpmrcLayer => {
+  let values: Npmrc
+  try {
+    values = parseNpmrc(fs.readFileSync(file, 'utf8'), env, substitute)
+  } catch {
+    values = Object.create(null)
+  }
+  if (omitReferences) {
+    for (const [key, value] of Object.entries(values)) {
+      if (holdsReference(key, value)) delete values[key]
+    }
+  }
+  return { kind: 'file', file, values }
+}
+
+/** Merges layers, highest first, per key: the first layer that sets a key wins, whatever the value's type. */
+export const mergeNpmrcLayers = (layers: readonly NpmrcLayer[]): NpmrcView => {
+  const values: Npmrc = Object.create(null)
+  const origins = new Map<string, NpmrcLayer>()
+  for (const layer of [...layers].reverse()) {
+    for (const key of Object.keys(layer.values)) {
+      values[key] = layer.values[key]
+      origins.set(key, layer)
+    }
+  }
+  return { values, origin: (key) => origins.get(key) }
 }
 
 /** A path from config: `~/` is the home directory, the rest is relative to cwd. */
@@ -135,22 +219,30 @@ export const findNpmProjectRoot = (cwd: string): string => {
 }
 
 /**
- * The merged .npmrc settings, as npm resolves them. Precedence (high → low):
- * `npm_config_*` environment variables → the project's .npmrc (the nearest npm
- * project root's, or `projectRoot` when the manager has its own) → the user's
+ * The directory npm treats as the global prefix: node's own install, found
+ * from the running node. DESTDIR (npm prefixes the default prefix with it on
+ * posix) is not supported.
+ */
+export const execPrefix = ({ execPath, platform }: NpmrcSources): string =>
+  platform === 'win32'
+    ? path.dirname(execPath)
+    : path.dirname(path.dirname(execPath))
+
+/**
+ * npm's layers, highest first: `npm_config_*` environment variables → the
+ * project's .npmrc (the nearest npm project root's) → the user's
  * (`~/.npmrc`) → the global one (`<prefix>/etc/npmrc`) → npm's builtin one.
  */
-export const loadNpmrc = (
+export const npmNpmrcLayers = (
   cwd: string,
   sources: NpmrcSources = processSources(),
-  projectRoot?: string,
-): Npmrc => {
-  const { env, home, execPath, platform } = sources
-  const envLayer = envConfig(env)
+): NpmrcLayer[] => {
+  const { env, home, platform } = sources
+  const envL = envLayer(env, NPM_ENV)
 
   const userconfigOf = (layer: Npmrc): string =>
     resolveNpmPath(
-      stringValue(envLayer.userconfig) ??
+      stringValue(envL.values.userconfig) ??
         stringValue(layer.userconfig) ??
         '~/.npmrc',
       home,
@@ -158,41 +250,33 @@ export const loadNpmrc = (
       platform,
     )
 
-  const projectFile = path.join(
-    projectRoot ?? findNpmProjectRoot(cwd),
-    '.npmrc',
-  )
-  const project: Npmrc =
+  const projectFile = path.join(findNpmProjectRoot(cwd), '.npmrc')
+  const project: NpmrcLayer =
     projectFile === userconfigOf(Object.create(null))
-      ? Object.create(null)
-      : readNpmrc(projectFile, env)
+      ? { kind: 'file', file: projectFile, values: Object.create(null) }
+      : npmrcFileLayer(projectFile, env)
 
-  const user = readNpmrc(userconfigOf(project), env)
+  const user = npmrcFileLayer(userconfigOf(project.values), env)
 
-  // npm's builtin npmrc sits in its own install, found from the running node.
-  // DESTDIR (npm prefixes the default prefix with it on posix) is not supported.
-  const execPrefix =
+  const prefixDir = execPrefix(sources)
+  const builtin = npmrcFileLayer(
     platform === 'win32'
-      ? path.dirname(execPath)
-      : path.dirname(path.dirname(execPath))
-  const builtin = readNpmrc(
-    platform === 'win32'
-      ? path.join(execPrefix, 'node_modules', 'npm', 'npmrc')
-      : path.join(execPrefix, 'lib', 'node_modules', 'npm', 'npmrc'),
+      ? path.join(prefixDir, 'node_modules', 'npm', 'npmrc')
+      : path.join(prefixDir, 'lib', 'node_modules', 'npm', 'npmrc'),
     env,
   )
 
-  const layers = [envLayer, project, user, builtin]
+  const layers = [envL, project, user, builtin]
   const pick = (key: string): string | undefined => {
     for (const layer of layers) {
-      const value = stringValue(layer[key])
+      const value = stringValue(layer.values[key])
       if (value !== undefined) return value
     }
     return undefined
   }
 
   const prefix = resolveNpmPath(
-    pick('prefix') ?? nonEmpty(env.PREFIX) ?? execPrefix,
+    pick('prefix') ?? nonEmpty(env.PREFIX) ?? prefixDir,
     home,
     cwd,
     platform,
@@ -204,15 +288,14 @@ export const loadNpmrc = (
     platform,
   )
 
-  return Object.assign(
-    Object.create(null),
-    builtin,
-    readNpmrc(globalconfig, env),
-    user,
-    project,
-    envLayer,
-  )
+  return [envL, project, user, npmrcFileLayer(globalconfig, env), builtin]
 }
+
+/** The merged .npmrc settings, as npm resolves them (see `npmNpmrcLayers`). */
+export const loadNpmrc = (
+  cwd: string,
+  sources: NpmrcSources = processSources(),
+): Npmrc => mergeNpmrcLayers(npmNpmrcLayers(cwd, sources)).values
 
 /** A boolean .npmrc value (`true` / `false`, as a string or a boolean). */
 export const npmrcBoolean = (value: unknown): boolean | undefined =>
@@ -406,6 +489,21 @@ export const registryConfigFrom = (
 export const loadRegistryConfig = (
   cwd: string,
   sources: NpmrcSources = processSources(),
-  projectRoot?: string,
-): RegistryConfig =>
-  registryConfigFrom(loadNpmrc(cwd, sources, projectRoot), cwd, sources)
+): RegistryConfig => registryConfigFrom(loadNpmrc(cwd, sources), cwd, sources)
+
+/**
+ * The run's registry config for a manager: the merge of its `.npmrc` layers
+ * (`npmrcLayers`, else npm's), then the manager's own `registryConfig` hook.
+ * One place for the session's wiring, so tests exercise the real thing.
+ */
+export const managerRegistryConfig = (
+  adapter: Pick<ManagerAdapter, 'npmrcLayers' | 'registryConfig'>,
+  dir: string,
+  sources: NpmrcSources,
+): RegistryConfig => {
+  const npmrc = mergeNpmrcLayers(
+    (adapter.npmrcLayers ?? npmNpmrcLayers)(dir, sources),
+  )
+  const fromNpmrc = registryConfigFrom(npmrc.values, dir, sources)
+  return adapter.registryConfig?.(dir, fromNpmrc, sources, npmrc) ?? fromNpmrc
+}
