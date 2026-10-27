@@ -37,7 +37,7 @@ utils/
   limiter.ts          # createLimiter(max): FIFO cap on in-flight tasks; the reader makes one per host; loaded by the reader only
   updateChecker.ts    # Update policy: within range by default, beyondRange level, per-package rules (pure)
   overrides.ts        # overridesFromField(), manifestOverrides(cwd, fields): packages an override pins, with field and range
-  peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, pnpm store)
+  peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, and the pnpm store entries `.pnpm/lock.yaml` lists)
   saveStyle.ts        # SaveStyle, DEFAULT_SAVE_STYLE, readTextFile(), yamlValue(): what adapters' saveStyle() builds on
   dependencySpecs.ts  # DEPENDENCY_FIELDS, DISCOVERED_FIELDS (no peers), classifySpec(key, spec, catalogs) (catalog:, workspace:, npm: alias, a bare `npm:<name>` is `latest` of that name as npm reads it, skipped git/file/link/URL, latest, other dist-tag warns), readDeclaredDependencies(cwd, { manifests, catalogs }): every manifest's registry dependencies, first field wins, unreadable manifest is a `discover` StepError. Not in the barrel; `src/discovery.ts` uses it
   wanted.ts           # wantedVersion(range, pkg, { preferLatest }): exact pin, else `latest` if it satisfies and isn't deprecated, else highest non-deprecated, else highest satisfying (pure; `src/discovery.ts` uses it)
