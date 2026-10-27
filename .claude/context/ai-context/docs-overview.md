@@ -95,7 +95,8 @@ __tests__/
     withinRange.test.ts     # Native discovery on registry captures, default config: proposes exactly npm update's set; zero for pins
     applyRanges.test.ts     # In-range apply writes nothing; beyond-range writes the target spec first
     aliases.test.ts         # An npm: alias on all four managers: manifest key, looked up by the target, never by the key
-    pnpmRegistries.test.ts  # pnpm-workspace.yaml registry routes: both shapes, scopes, "@", ${…}, ecosystem, CRLF
+    pnpmRegistries.test.ts  # pnpm yaml registry routes: both shapes, scopes, "@", ${…}, ecosystem, CRLF; env expansion for the global file; substitutePnpm
+    pnpmNpmrc.test.ts       # pnpm 12 layers on temp dirs: #117 evidence rows, one test per probe decision (p20-p55), config directory per platform (Linux and Windows source-read), workspace members
     yarnrc.test.ts          # yarn v1 .yarnrc grammar (quotes, comments, CRLF, --registry), routes, precedence against .npmrc, env and ~/.yarnrc, workspace parents
     bunfig.test.ts          # bunfig.toml routes and credentials, $NAME, global/project merge, env overrides, bunfigExact
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
@@ -110,6 +111,7 @@ __tests__/
     filterPackages.test.ts  # Package filtering, targeting, cooldown integration
     logger.test.ts          # Logger output, configure(), quiet and JSON output modes
     npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
+    npmrcLayers.test.ts     # mergeNpmrcLayers (per key, origin), envLayer rules, npmrcFileLayer (substitute null leaves out ${…}), npmNpmrcLayers order and merge
     npmrcLoader.test.ts     # Layering (global, user, project, npm_config_*), workspace root, RegistryConfig, on temp dirs
     registryRequest.test.ts # Pure client helpers: scoped registry, prefix walk, Authorization forms, retry rules, public-registry check, dist-tags and deps.dev URLs, package-name rule
     registryClient.test.ts  # node:https client against local HTTP(S) servers and a CONNECT proxy: auth, TLS, mTLS, proxies, retries, timeout, maxsockets, redirects, per-request accept/timeout/retries, stats()

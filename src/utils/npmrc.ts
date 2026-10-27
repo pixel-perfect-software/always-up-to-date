@@ -3,6 +3,9 @@ export type NpmrcValue = NpmrcScalar | NpmrcScalar[]
 /** A parsed .npmrc: flat keys, built without a prototype. */
 export type Npmrc = Record<string, NpmrcValue>
 
+/** Replaces variable references in a key or value; see `substituteEnv`. */
+export type Substitute = (text: string, env: NodeJS.ProcessEnv) => string
+
 const ENV_REFERENCE = /(?<!\\)(\\*)\$\{([^${}?]+)(\?)?\}/g
 
 /**
@@ -67,8 +70,15 @@ const LINE = /^\[([^\]]*)\]\s*$|^([^=]+)(=(.*))?$/
  * substitution on keys and values. Parsing stops at the first `[section]`,
  * since .npmrc has none. A later plain key replaces an earlier one; `key[]`
  * collects an array, and a plain key repeated after one appends to it.
+ * `substitute` (npm's by default) is applied to keys and values; null leaves
+ * them as written.
  */
-export const parseNpmrc = (text: string, env: NodeJS.ProcessEnv): Npmrc => {
+export const parseNpmrc = (
+  text: string,
+  env: NodeJS.ProcessEnv,
+  substitute: Substitute | null = substituteEnv,
+): Npmrc => {
+  const expand: Substitute = substitute ?? ((value) => value)
   const result: Npmrc = Object.create(null)
 
   for (const line of text.split(/[\r\n]+/)) {
@@ -79,7 +89,7 @@ export const parseNpmrc = (text: string, env: NodeJS.ProcessEnv): Npmrc => {
 
     const keyText = unquote(match[2])
     const isArray = keyText.length > 2 && keyText.endsWith('[]')
-    const key = substituteEnv(isArray ? keyText.slice(0, -2) : keyText, env)
+    const key = expand(isArray ? keyText.slice(0, -2) : keyText, env)
     if (key === '__proto__') continue
 
     let value: NpmrcScalar
@@ -90,7 +100,7 @@ export const parseNpmrc = (text: string, env: NodeJS.ProcessEnv): Npmrc => {
       if (raw === 'true') value = true
       else if (raw === 'false') value = false
       else if (raw === 'null') value = null
-      else value = substituteEnv(raw, env)
+      else value = expand(raw, env)
     }
 
     const existing = result[key]

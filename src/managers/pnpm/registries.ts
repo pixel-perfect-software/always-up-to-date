@@ -1,4 +1,3 @@
-import type { RegistryConfig } from '@/types'
 import logger from '@/utils/logger'
 import { isRegistryUrl } from '@/utils/npmrcLoader'
 import { unquote, yamlValue } from '@/utils/saveStyle'
@@ -110,15 +109,39 @@ const ecosystemOf = (entry: Entry): string | undefined => {
   return undefined
 }
 
-/** A URL pnpm would use: no `${…}` (pnpm ignores those values) and http(s). */
-const usable = (url: string, where: string): string | undefined => {
+/**
+ * pnpm's `${VAR}` and `${VAR:-default}` in the user and global files and in
+ * env values. An unset `${VAR}` with no default becomes `''` (pnpm warns
+ * "Failed to replace env in config" and carries on), so a path or URL holding
+ * it keeps its other parts and shadows lower layers. `${VAR:-default}` takes
+ * the default when VAR is unset or empty, as a shell does. Verified on pnpm
+ * 12.15.0 and 12.14.0, 2026-10-26 (p26, p34, p35, p34e-g).
+ */
+export const substitutePnpm = (text: string, env: NodeJS.ProcessEnv): string =>
+  text.replace(
+    /\$\{([^${}:]+)(?::-([^}]*))?\}/g,
+    (_, name: string, fallback: string | undefined) =>
+      fallback === undefined ? (env[name] ?? '') : env[name] || fallback,
+  )
+
+/**
+ * A URL pnpm would use. Without `env` a value holding `${…}` is ignored (a
+ * project file's); with it the reference is expanded first (a global file's).
+ */
+const usable = (
+  raw: string,
+  where: string,
+  file: string,
+  env?: NodeJS.ProcessEnv,
+): string | undefined => {
+  const url = env ? substitutePnpm(raw, env) : raw
   if (url === '') return undefined
   if (url.includes('${')) {
-    logger.debug(`Ignoring ${where} in pnpm-workspace.yaml: holds \${…}`)
+    logger.debug(`Ignoring ${where} in ${file}: holds \${…}`)
     return undefined
   }
   if (!isRegistryUrl(url)) {
-    logger.debug(`Ignoring ${where} in pnpm-workspace.yaml: not an http(s) URL`)
+    logger.debug(`Ignoring ${where} in ${file}: not an http(s) URL`)
     return undefined
   }
   return url
@@ -133,17 +156,30 @@ const usable = (url: string, where: string): string | undefined => {
  *   means the default registry (pnpm rejects a file that mixes the shapes;
  *   each entry is read on its own terms here);
  * - an entry with an `ecosystem` other than npm is not an npm route;
- * - a value holding `${…}` is ignored, so the next source decides.
- * The file never carries credentials.
+ * - the project file's value holding `${…}` is ignored, so the next source
+ *   decides (p33); the global `config.yaml` is read with `env`, which expands
+ *   it (p34c, p35d).
+ * The file never carries credentials (p43).
  */
-export const pnpmRegistrySettings = (yaml: string): PnpmRegistrySettings => {
+export const pnpmRegistrySettings = (
+  yaml: string,
+  {
+    env,
+    file = 'pnpm-workspace.yaml',
+  }: { env?: NodeJS.ProcessEnv; file?: string } = {},
+): PnpmRegistrySettings => {
   const scopes: Record<string, string> = {}
   let fromRegistries: string | undefined
 
   for (const entry of registryEntries(yaml)) {
     const scalar = entry.value !== '' && !entry.value.startsWith('{')
     if (scalar) {
-      const url = usable(unquote(entry.value), `registries.${entry.key}`)
+      const url = usable(
+        unquote(entry.value),
+        `registries.${entry.key}`,
+        file,
+        env,
+      )
       if (!url) continue
       if (entry.key === 'default') fromRegistries = url
       else if (/^@.+/.test(entry.key)) scopes[entry.key] = url
@@ -152,7 +188,7 @@ export const pnpmRegistrySettings = (yaml: string): PnpmRegistrySettings => {
 
     const ecosystem = ecosystemOf(entry)
     if (ecosystem !== undefined && ecosystem !== 'npm') continue
-    const url = usable(entry.key, `registries entry ${entry.key}`)
+    const url = usable(entry.key, `registries entry ${entry.key}`, file, env)
     if (!url) continue
     for (const scope of scopesOf(entry)) {
       if (scope === '@') fromRegistries = url
@@ -162,26 +198,7 @@ export const pnpmRegistrySettings = (yaml: string): PnpmRegistrySettings => {
 
   const topLevel = yamlValue(yaml, 'registry')
   return {
-    registry: usable(topLevel ?? '', 'registry') ?? fromRegistries,
+    registry: usable(topLevel ?? '', 'registry', file, env) ?? fromRegistries,
     scopes,
-  }
-}
-
-/**
- * pnpm 12 reads registries from the project's pnpm-workspace.yaml over its
- * .npmrc, per key (verified on pnpm 12.15.0 and 12.14.0, 2026-10-26).
- * Credentials stay with the .npmrc entry for the host the request lands on.
- * Not read yet: `pnpm_config_*` variables, the global `config.yaml` and
- * `auth.ini`.
- */
-export const applyPnpmRegistrySettings = (
-  base: RegistryConfig,
-  yaml: string,
-): RegistryConfig => {
-  const settings = pnpmRegistrySettings(yaml)
-  return {
-    ...base,
-    registry: settings.registry ?? base.registry,
-    scopedRegistries: { ...base.scopedRegistries, ...settings.scopes },
   }
 }
