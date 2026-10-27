@@ -42,6 +42,7 @@ export const YARN_NPM_ENV: EnvRule = {
  */
 const yarnEnvLayer = (env: NodeJS.ProcessEnv): NpmrcLayer => {
   const values: Npmrc = Object.create(null)
+  const labels: Record<string, string> = Object.create(null)
   for (const [name, raw] of Object.entries(env)) {
     if (raw === undefined) continue
     const match = YARN_NPM_ENV.prefix.exec(name)
@@ -49,8 +50,9 @@ const yarnEnvLayer = (env: NodeJS.ProcessEnv): NpmrcLayer => {
     const key = YARN_NPM_ENV.key(name.slice(match[0].length), name)
     if (key === undefined) continue
     values[key] = raw === 'true' ? true : raw === 'false' ? false : raw
+    labels[key] = name
   }
-  return { kind: 'env', values }
+  return { kind: 'env', values, labels }
 }
 
 const YARN_REFERENCE = /(\\*)\$\{([^}]+)\}/g

@@ -64,7 +64,7 @@ describe('yarn v1 .npmrc layers', () => {
     const view = mergeNpmrcLayers(yarnNpmrcLayers(cwd, sources))
     return yarnRegistryConfig(
       cwd,
-      registryConfigFrom(view.values, cwd, sources),
+      registryConfigFrom(view, cwd, sources),
       sources,
       view,
     )
@@ -383,7 +383,7 @@ describe('yarn v1 .npmrc layers', () => {
       const route = (cwd: string) => {
         const layers = yarn.npmrcLayers?.(cwd, sources) ?? []
         const view = mergeNpmrcLayers(layers)
-        const base = registryConfigFrom(view.values, cwd, sources)
+        const base = registryConfigFrom(view, cwd, sources)
         return yarn.registryConfig?.(cwd, base, sources, view)?.registry
       }
       write(path.join(root(), '.yarnrc'), `registry "${A}"\n`)

@@ -93,6 +93,9 @@ const pnpm: ManagerAdapter = {
 
   npmrcLayers: pnpmNpmrcLayers,
 
+  // pnpm fails on an empty default registry and on an empty scope route.
+  emptyRegistry: { registry: true, scopes: true },
+
   apply: async (
     run,
     cwd,

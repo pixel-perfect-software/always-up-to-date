@@ -1,5 +1,9 @@
 import { createHash } from 'crypto'
-import type { RegistryConfig, RegistryCredentials } from '@/types'
+import type {
+  RegistryConfig,
+  RegistryCredentials,
+  UnusableRegistry,
+} from '@/types'
 
 export const RETRY_BASE_MS = 100
 export const RETRY_MAX_MS = 1000
@@ -276,6 +280,70 @@ export const describeUrl = (
   } catch {
     return INVALID_URL
   }
+}
+
+/** What `describeUnusable` shows for a value that may hold a credential. */
+export const VALUE_NOT_SHOWN = '(value not shown)'
+
+/** Only `${NAME}` / `$NAME` references and spaces: the names are no secret. */
+const ONLY_REFERENCES =
+  /^(?:\s|\$\{[A-Za-z_][A-Za-z0-9_]*\??\}|\$[A-Za-z_][A-Za-z0-9_]*)+$/
+
+/**
+ * A registry setting the manager cannot use, as it may appear in an error.
+ * The error names the file and key, so the value is only a hint, and nothing
+ * that could hold a credential is shown: `<scheme>://<host>/` for a URL, or
+ * `<scheme>://<host>/…[3fa9c1]` (see `pathMarker`) when it has a path. The
+ * host is what follows the last `@` of the authority, which ends at the first
+ * `/`, `?` or `#` after it, so a password holding a `/` leaks nothing;
+ * userinfo, query and fragment never show. A value with no scheme and host
+ * shows as `VALUE_NOT_SHOWN`, unless it is only variable references
+ * (`${REGISTRY}`), whose names explain the error.
+ */
+export const describeUnusable = (value: string): string => {
+  const text = value.trim()
+  if (text === '') return '(empty)'
+  if (ONLY_REFERENCES.test(text)) return text
+  const shaped = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/is.exec(text)
+  if (!shaped) return VALUE_NOT_SHOWN
+  const [, scheme, rest] = shaped
+  const afterUserinfo = rest.slice(rest.lastIndexOf('@') + 1)
+  const hostEnd = afterUserinfo.search(/[/?#]/)
+  const host = hostEnd === -1 ? afterUserinfo : afterUserinfo.slice(0, hostEnd)
+  if (host === '') return VALUE_NOT_SHOWN
+  const path =
+    hostEnd === -1
+      ? ''
+      : (/^[^?#]*/.exec(afterUserinfo.slice(hostEnd))?.[0] ?? '')
+  const hidden = path.replace(/\/+$/, '')
+  return `${scheme.toLowerCase()}://${host}${hidden === '' ? '/' : `/${pathMarker(hidden)}`}`
+}
+
+/** `registry \`value\` from <file> (<reason>)`: an unusable setting, in an error. */
+export const unusableText = ({
+  key,
+  value,
+  source,
+  reason,
+}: UnusableRegistry): string => `${key} \`${value}\` from ${source} (${reason})`
+
+/**
+ * The route a package takes when the manager cannot use it: its scope's
+ * unusable value, else the default's when no scope route (usable or not)
+ * covers it. Undefined when the package's route is fine.
+ */
+export const unusableRouteFor = (
+  name: string,
+  config: RegistryConfig,
+): UnusableRegistry | undefined => {
+  const unusable = config.unusable
+  if (!unusable) return undefined
+  if (name.startsWith('@')) {
+    const scope = name.slice(0, name.indexOf('/'))
+    if (config.scopedRegistries[scope]) return undefined
+    if (unusable.scopes[scope]) return unusable.scopes[scope]
+  }
+  return unusable.registry
 }
 
 /** `<registry>/-/package/<name>/dist-tags`, with the scope's slash escaped. */

@@ -1,4 +1,4 @@
-import type { PackageLookup, RegistryConfig } from '@/types'
+import type { PackageLookup, RegistryConfig, UnusableRegistry } from '@/types'
 import { isRecord } from './isRecord'
 import logger from './logger'
 import { loadRegistryConfig, processSources } from './npmrcLoader'
@@ -9,12 +9,19 @@ import {
   packumentUrl,
   type RegistryEndpoints,
   registryFor,
+  unusableRouteFor,
+  unusableText,
 } from './registryRequest'
 
 /** One command run's view of the registries: its .npmrc, its client, its cache. */
 export interface RegistrySession {
   /** The run's .npmrc view: loaded on the first call, the same object after. */
   registryConfig(): RegistryConfig
+  /**
+   * The setting that stops the manager from resolving this package (its
+   * route is a registry value the manager cannot use), else undefined.
+   */
+  unusableRoute(name: string): UnusableRegistry | undefined
   /** The run's one client; node:https, node:http and zlib load on the first call. */
   client(): Promise<RegistryClient>
   /**
@@ -83,6 +90,9 @@ export const createRegistrySession = (
     return config
   }
 
+  const refusal = (bad: UnusableRegistry): string =>
+    `the manager can't use ${unusableText(bad)}; fix or remove it`
+
   const client = (): Promise<RegistryClient> => {
     clientRequest ??= import('./registryClient').then(
       ({ createRegistryClient }) => {
@@ -96,6 +106,13 @@ export const createRegistrySession = (
   const requestReleaseTimes = async (
     packageName: string,
   ): Promise<Record<string, string>> => {
+    const bad = unusableRouteFor(packageName, registryConfig())
+    if (bad) {
+      // The manager cannot reach this package either; the public registry
+      // must not be asked for a name routed elsewhere.
+      logger.debug(`Not asking for ${packageName}: ${refusal(bad)}`)
+      return {}
+    }
     try {
       const registry = registryFor(packageName, registryConfig())
       const packument = await (await client()).getJson(
@@ -166,8 +183,15 @@ export const createRegistrySession = (
 
   return {
     registryConfig,
+    unusableRoute: (name) => unusableRouteFor(name, registryConfig()),
     client,
-    lookup: async (name) => (await readerOnce()).lookup(name),
+    lookup: async (name) => {
+      const bad = unusableRouteFor(name, registryConfig())
+      if (bad) {
+        return { ok: false, name, kind: 'invalid', reason: refusal(bad) }
+      }
+      return (await readerOnce()).lookup(name)
+    },
     releaseTimes: (name) => {
       let request = releaseTimeCache.get(name)
       if (!request) {

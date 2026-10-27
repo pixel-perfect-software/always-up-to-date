@@ -108,13 +108,13 @@ describe('parseYarnrc: what yarn 1.22.22 does (checked with `yarn config get`, 2
 })
 
 describe('yarnrcRoutes', () => {
-  it('splits the registry, the flag and the scopes, keeping http(s) URLs only', () => {
+  it('splits the registry, the flag and the scopes as written, usable or not', () => {
     const text = `registry "${B}"\n--registry "${A}"\n"@acme:registry" "${C}"\n"@bad:registry" "ftp://x/"\n"acme:registry" "${A}"\n`
     expect(yarnrcRoutes(text)).toEqual({
       registry: B,
       flagRegistry: A,
       upgradeRegistry: undefined,
-      scopes: { '@acme': C },
+      scopes: { '@acme': C, '@bad': 'ftp://x/' },
     })
   })
 
@@ -152,7 +152,7 @@ describe('yarnRegistryConfig', () => {
     const view = viewFor(cwd, sources)
     return yarnRegistryConfig(
       cwd,
-      registryConfigFrom(view.values, cwd, sources),
+      registryConfigFrom(view, cwd, sources),
       sources,
       view,
     )
@@ -359,7 +359,7 @@ describe('yarnRegistryConfig', () => {
   it('returns the .npmrc view when nothing routes', () => {
     const sources = sourcesFor()
     const view = viewFor(proj(), sources)
-    const base = registryConfigFrom(view.values, proj(), sources)
+    const base = registryConfigFrom(view, proj(), sources)
     expect(yarnRegistryConfig(proj(), base, sources, view)).toEqual(base)
   })
 

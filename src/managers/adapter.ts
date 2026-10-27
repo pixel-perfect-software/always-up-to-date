@@ -7,7 +7,12 @@ import type {
   SupportedPackageManager,
 } from '@/types'
 import type { Catalogs } from '@/utils/dependencySpecs'
-import type { NpmrcLayer, NpmrcSources, NpmrcView } from '@/utils/npmrcLoader'
+import type {
+  EmptyRegistryPolicy,
+  NpmrcLayer,
+  NpmrcSources,
+  NpmrcView,
+} from '@/utils/npmrcLoader'
 import type { ControllingOverride } from '@/utils/overrides'
 import type { SaveStyle } from '@/utils/saveStyle'
 
@@ -102,6 +107,11 @@ export interface ManagerAdapter {
    * on the session's first use.
    */
   npmrcLayers?(cwd: string, sources: NpmrcSources): NpmrcLayer[]
+  /**
+   * Whether an empty registry value fails this manager's run (default npm's).
+   * `registryConfigFrom` records an empty value as unusable only where it does.
+   */
+  emptyRegistry?: EmptyRegistryPolicy
   /**
    * The run's registry config for this manager: the merged `.npmrc` view
    * (`fromNpmrc`, built from `npmrc`), adjusted where the manager reads

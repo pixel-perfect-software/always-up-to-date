@@ -151,15 +151,18 @@ describe('parseBunfigRegistries', () => {
     })
   })
 
-  it('ignores a registry URL holding a variable or not http(s)', () => {
+  it('marks a registry URL holding a variable or not http(s) as one bun fails on', () => {
     expect(
       parseBunfigRegistries('[install]\nregistry = "http://h:$PORT/"\n', {
         PORT: '1',
-      }),
-    ).toEqual({ scopes: {} })
+      }).registry,
+    ).toEqual({
+      url: 'http://h:$PORT/',
+      problem: 'it holds a `$` that bun does not expand in bunfig.toml',
+    })
     expect(
-      parseBunfigRegistries('[install]\nregistry = "ftp://h/"\n', {}),
-    ).toEqual({ scopes: {} })
+      parseBunfigRegistries('[install]\nregistry = "ftp://h/"\n', {}).registry,
+    ).toEqual({ url: 'ftp://h/', problem: 'it is not an http(s) URL' })
   })
 })
 
