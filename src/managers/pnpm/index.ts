@@ -172,6 +172,11 @@ const pnpm: ManagerAdapter = {
   },
 
   /** `overrides` in pnpm-workspace.yaml; pnpm 12 ignores `pnpm.overrides` and `resolutions` in package.json. */
+  pinning: () => ({
+    install: INSTALL_AFTER_WRITE,
+    writeCatalog: updatePNPMWorkspaceYAML,
+  }),
+
   overrides: (cwd) =>
     overridesFromField(
       readWorkspaceOverrides(readWorkspaceYaml(cwd)),

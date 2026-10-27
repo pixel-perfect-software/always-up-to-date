@@ -8,6 +8,11 @@ import {
   discoverBerry,
   installedBerry,
 } from '@/managers/yarn/berry'
+import {
+  type RangedDependency,
+  rewriteBerryLock,
+  rewriteYarnV1Lock,
+} from '@/managers/yarn/lockfile'
 import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import { StepError } from '@/stepError'
@@ -40,6 +45,14 @@ const MEMBER_FIELD_FLAGS: [DescriptorField, string[]][] = [
 
 /** Whether the last `npmrcLayers` load for a directory took berry's path. */
 const berryLoads = new Map<string, boolean>()
+
+/** Rewrites the project's yarn.lock in place with one of the lockfile rewriters. */
+const relockWith =
+  (rewrite: (lock: string, pins: RangedDependency[]) => string) =>
+  (cwd: string, pins: RangedDependency[]): void => {
+    const file = path.join(cwd, 'yarn.lock')
+    fs.writeFileSync(file, rewrite(fs.readFileSync(file, 'utf8'), pins), 'utf8')
+  }
 
 const yarn: ManagerAdapter = {
   name: 'yarn',
@@ -188,6 +201,16 @@ const yarn: ManagerAdapter = {
    * dependencies but not to a direct one (verified on 1.22.22: the direct
    * dependency still moved), so there is nothing to hold.
    */
+  // Both yarns key yarn.lock by spec and resolve a restored range again
+  // (yarn 1.22.22 and 4.12.0, 2026-10-27), so the pin is relocked first.
+  pinning: (cwd) =>
+    isYarnBerry(cwd)
+      ? {
+          install: ['install', '--no-immutable'],
+          relock: relockWith(rewriteBerryLock),
+        }
+      : { install: ['install'], relock: relockWith(rewriteYarnV1Lock) },
+
   overrides: (cwd) =>
     isYarnBerry(cwd) ? manifestOverrides(cwd, ['resolutions']) : {},
 }

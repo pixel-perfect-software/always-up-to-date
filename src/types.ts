@@ -53,6 +53,19 @@ export interface UpdateResult {
   releaseAge?: number
 }
 
+/**
+ * A cooldown fallback (#147): a row moving below the version its manager
+ * would pick when asked by name, so apply pins it in the manifest first.
+ */
+export interface PinnedRow {
+  /** The manifest's directory relative to the root ('.' is the root). */
+  path: string
+  name: string
+  version: string
+  /** Past the manifest range: the spec then moves to `version`, as a beyond-range row's does. */
+  beyondRange: boolean
+}
+
 /** One manifest's share of the plan. */
 export interface ManifestPlan {
   /** The manifest's directory relative to the root ('.' is the root). */

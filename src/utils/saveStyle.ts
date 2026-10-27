@@ -4,6 +4,11 @@ import fs from 'fs'
 export interface SaveStyle {
   exact: boolean
   prefix: string
+  /**
+   * Write the bare version whatever the current spec's decorator (an `npm:`
+   * alias keeps its alias): how apply pins a cooldown fallback (#147).
+   */
+  pin?: boolean
 }
 
 export const DEFAULT_SAVE_STYLE: SaveStyle = { exact: false, prefix: '^' }

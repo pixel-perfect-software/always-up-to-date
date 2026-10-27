@@ -64,6 +64,8 @@ const npm: ManagerAdapter = {
     }
   },
 
+  pinning: () => ({ install: ['install'] }),
+
   overrides: (cwd) => manifestOverrides(cwd, ['overrides']),
 }
 

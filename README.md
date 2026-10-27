@@ -28,14 +28,15 @@ manager your package.json declares, or the one your lockfile belongs to.
 ```console
 $ autd update --dry-run
 
-Would update (15 packages)
+Would update (16 packages)
   axios       1.4.0   → 1.20.0   within range
   commander   9.0.0   → 9.5.0    within range
   debug       4.3.1   → 4.3.7    within range
+  zod         3.20.0  → 3.25.75  within range; 3.25.76 released 1d ago, needs 2d
   …
 
 Held by cooldown (1 package)
-  zod         3.20.0  → 3.25.76  released 1d ago, needs 2d
+  ms          2.1.2   → 2.1.3    released 1d ago, needs 2d
 
 Past the range in package.json (5 packages)
   express     4.17.1  → 5.3.0    major; "beyondRange": "major" would move it
@@ -43,7 +44,7 @@ Past the range in package.json (5 packages)
   typescript  5.0.4   → 7.0.2    major; "beyondRange": "major" would move it
   …
 
-15 to update · 1 held by cooldown · 5 past the range
+16 to update · 1 held by cooldown · 5 past the range
 ```
 
 `check` prints the same report, and `update` prints it once more after the package manager has run, with what it actually installed. Every package shows up once, under what happened to it: updated, left in place by the package manager, held by cooldown, past its range, or held by a rule, an override or a peer conflict.
@@ -122,7 +123,7 @@ You only need a config file to go further than your package.json ranges. Run `au
 | ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `beyondRange` | `"none"` | How far past its range a dependency may move, to its latest version: `"none"`, `"patch"`, `"minor"` or `"major"`. Applies to exact pins too, so `"patch"` moves `"1.11.9"` to `"1.11.23"`.                                                                                                                                                                                                                                                  |
 | `rules`       | `{}`     | Per-package overrides (see below).                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `cooldown`    | `0`      | Skip versions published more recently than this: days (`7`), a duration (`"1 week"`, `"24h"`), or per update type (`{ "major": "30 days" }`). A version whose publish date can't be found is held too.                                                                                                                                                                                                                                      |
+| `cooldown`    | `0`      | Skip versions published more recently than this: days (`7`), a duration (`"1 week"`, `"24h"`), or per update type (`{ "major": "30 days" }`). A package whose newest version is too fresh moves to the newest one that is old enough, and is held only when there is none. A version whose publish date can't be found is held too.                                                                                                         |
 | `depsDev`     | `true`   | Look up versions of packages on the public npm registry (registry.npmjs.org, registry.yarnpkg.com) through [deps.dev](https://deps.dev), which is much smaller than the registry's own documents. Each such package name is sent to api.deps.dev, **including private packages published to registry.npmjs.org**; set `false` to read everything from the registry. Names from any other registry, including a scope's own, are never sent. |
 | `debug`       | `false`  | Print each package-manager command and its stderr.                                                                                                                                                                                                                                                                                                                                                                                          |
 | `silent`      | `false`  | Suppress all output.                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -191,7 +192,7 @@ It holds derived version lists only, never a registry document, a header or anyt
 - **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)` or `peer conflict: …`. After `autd update`, a package your manager was asked to move but left where it was is listed under "left in place by …" and reported with `"updated": false` and `not applied by npm (installed …)`. npm does this to a package another dependency pins exactly, and to a workspace member's copy it dedupes onto the root's. In a workspace, `held with <path> (…)` means the same package is held in that manifest, so its other manifests wait for it.
 - **`check` or `update` exits 1.** The message names the step that failed (`detect`, `discover` or `apply`) and says whether package.json was already written. Set `"debug": true` to see each package-manager command and its stderr.
 - **"No package manager detected".** package.json declares no manager and there's no lockfile in the current directory. Set `"packageManager"`, pass `--pm`, or run your package manager's install first.
-- **`cooldown` doesn't hold anything back.** It reads `.npmrc` the way npm does: registries and scoped registries, per-registry auth, `ca` / `cafile` / `strict-ssl`, `https-proxy` / `proxy` / `noproxy`, `fetch-retries`, `fetch-timeout` and `maxsockets`. SOCKS proxies aren't supported. A lookup that fails lets the update through; set `"debug": true` to see the request that failed.
+- **`cooldown` holds a package with `release date unknown`.** autd couldn't read that version's publish time from the registry. It reads `.npmrc` the way npm does: registries and scoped registries, per-registry auth, `ca` / `cafile` / `strict-ssl`, `https-proxy` / `proxy` / `noproxy`, `fetch-retries`, `fetch-timeout` and `maxsockets`. SOCKS proxies aren't supported. Set `"debug": true` to see the request that failed.
 - **The wrong package manager runs.** A leftover lockfile decided it. Set `"packageManager"` in package.json or pass `--pm`; with `"debug": true`, autd logs which lockfiles it ignored.
 
 ## 🔄 Upgrading from 1.x

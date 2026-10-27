@@ -1,3 +1,4 @@
+import semver from 'semver'
 import type { UpdateResult } from '@/types'
 
 /** What happened to one candidate, or will. */
@@ -72,8 +73,18 @@ const noteFor = (
   const reason = result.reason ?? ''
   switch (outcome) {
     case 'update': {
+      const { target = '', wanted } = result
+      const within =
+        target === wanted ||
+        (semver.valid(target) !== null &&
+          semver.valid(wanted) !== null &&
+          semver.lt(target, wanted))
       const notes = [
-        result.target === result.wanted ? 'within range' : 'past its range',
+        within ? 'within range' : 'past its range',
+        // A cooldown fallback (#147) names the newer version it held.
+        reason.startsWith('cooldown: ')
+          ? reason.replace(/^cooldown: /, '').replace(/requires /, 'needs ')
+          : undefined,
         result.warning,
       ]
       return notes.filter(Boolean).join('; ')

@@ -95,6 +95,8 @@ const bun: ManagerAdapter = {
     prefix: DEFAULT_SAVE_STYLE.prefix,
   }),
 
+  pinning: () => ({ install: ['install'], writeCatalog: updateBunCatalogs }),
+
   overrides: (cwd) => manifestOverrides(cwd, ['overrides', 'resolutions']),
 }
 
