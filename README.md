@@ -28,19 +28,25 @@ manager your package.json declares, or the one your lockfile belongs to.
 ```console
 $ autd update --dry-run
 
-Would update (15)
-  axios      1.4.0   → 1.20.0
-  commander  9.0.0   → 9.5.0
-  debug      4.3.1   → 4.3.7
-  zod        3.20.0  → 3.25.76
+Would update (15 packages)
+  axios       1.4.0   → 1.20.0   within range
+  commander   9.0.0   → 9.5.0    within range
+  debug       4.3.1   → 4.3.7    within range
   …
 
-Would skip (5)
-  express     4.17.1 → 5.3.0   (major beyond the range)
-  react       18.2.0 → 19.3.1  (major beyond the range)
-  typescript  5.0.4  → 7.0.2   (major beyond the range)
+Held by cooldown (1 package)
+  zod         3.20.0  → 3.25.76  released 1d ago, needs 2d
+
+Past the range in package.json (5 packages)
+  express     4.17.1  → 5.3.0    major; "beyondRange": "major" would move it
+  react       18.2.0  → 19.3.1   major; "beyondRange": "major" would move it
+  typescript  5.0.4   → 7.0.2    major; "beyondRange": "major" would move it
   …
+
+15 to update · 1 held by cooldown · 5 past the range
 ```
+
+`check` prints the same report, and `update` prints it once more after the package manager has run, with what it actually installed. Every package shows up once, under what happened to it: updated, left in place by the package manager, held by cooldown, past its range, or held by a rule, an override or a peer conflict.
 
 What happens to each kind of spec:
 

@@ -1,8 +1,8 @@
 import { type Command, Option } from 'commander'
-import { check, plan, update as runUpdate } from '@/pipeline'
+import { findOutdated, plan, update as runUpdate } from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import type { SupportedPackageManager, UpdateResult } from '@/types'
-import { logger, toSkippedRow, toUpdatingRow } from '@/utils'
+import { logger } from '@/utils'
 import { workspaceLabel } from '@/utils/workspaceRows'
 import { noCacheOption, pmOption } from './options'
 import reportFailure from './reportFailure'
@@ -77,7 +77,7 @@ const dryRun = async (
   targetPackages?: string[],
   json?: boolean,
 ) => {
-  const outdatedPackages = await check(project)
+  const outdatedPackages = await findOutdated(project)
 
   if (Object.keys(outdatedPackages).length === 0) {
     if (json) console.log(JSON.stringify([], null, 2))
@@ -85,23 +85,13 @@ const dryRun = async (
   }
 
   const results = await plan(project, outdatedPackages, targetPackages)
-  const wouldUpdate = results.filter((r) => r.updated)
-  const wouldSkip = results.filter((r) => !r.updated)
 
   if (json) {
     console.log(JSON.stringify(results, null, 2))
     return
   }
 
-  if (wouldUpdate.length > 0) {
-    logger.clean(`\nWould update (${wouldUpdate.length})`)
-    logger.printUpdatingRows(wouldUpdate.map(toUpdatingRow))
-  }
-
-  if (wouldSkip.length > 0) {
-    logger.clean(`\nWould skip (${wouldSkip.length})`)
-    logger.printSkippedRows(wouldSkip.map(toSkippedRow))
-  }
+  logger.report(results, project.adapter.name, 'plan')
 }
 
 /** One choice per package: a package in several manifests moves in all of them. */
@@ -126,17 +116,16 @@ const choicesByPackage = (eligible: UpdateResult[]) => {
 }
 
 const interactiveUpdate = async (project: Project) => {
-  const outdatedPackages = await check(project)
+  const outdatedPackages = await findOutdated(project)
 
   if (Object.keys(outdatedPackages).length === 0) return
 
   const results = await plan(project, outdatedPackages)
   const eligible = results.filter((r) => r.updated)
 
-  if (eligible.length === 0) {
-    logger.info('No eligible packages to update based on your configuration.')
-    return
-  }
+  // What is held, and why, before the checklist offers the rest.
+  logger.report(results, project.adapter.name, 'plan')
+  if (eligible.length === 0) return
 
   const { checkbox } = await import('@inquirer/prompts')
 

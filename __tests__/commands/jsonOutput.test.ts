@@ -6,6 +6,7 @@ jest.mock('@/detectPackageManager', () => ({
 }))
 jest.mock('@/pipeline', () => ({
   check: jest.fn(),
+  findOutdated: jest.fn(),
   plan: jest.fn(),
   update: jest.fn(),
 }))
@@ -13,7 +14,7 @@ jest.mock('@/utils/config')
 
 import checkCommand from '@/commands/check'
 import updateCommand from '@/commands/update'
-import { check, plan, update } from '@/pipeline'
+import { check, findOutdated, plan, update } from '@/pipeline'
 import type { PackageInfo, UpdateResult } from '@/types'
 import logger from '@/utils/logger'
 
@@ -44,14 +45,11 @@ const results: UpdateResult[] = [
 const fakePipeline = {
   check: async () => {
     logger.starting('Checking dependencies', 'npm')
-    logger.outdatedHeader()
-    logger.printOutdatedRows([
-      { name: 'dayjs', current: '1.11.9', latest: '1.11.23' },
-    ])
+    logger.report(results, 'npm', 'plan')
     return outdated
   },
   update: async () => {
-    logger.updatingHeader('npm')
+    logger.updatingHeader('npm', 1)
     logger.warn('Skipped ms: not listed in the root package.json.')
     return results
   },
@@ -72,6 +70,7 @@ describe('--json output', () => {
 
   beforeEach(() => {
     jest.mocked(check).mockImplementation(fakePipeline.check)
+    jest.mocked(findOutdated).mockImplementation(fakePipeline.check)
     jest.mocked(update).mockImplementation(fakePipeline.update)
     jest.mocked(plan).mockResolvedValue(results)
 
@@ -104,7 +103,7 @@ describe('--json output', () => {
   })
 
   it('update --dry-run --json prints [] when nothing is outdated', async () => {
-    jest.mocked(check).mockImplementationOnce(async () => {
+    jest.mocked(findOutdated).mockImplementationOnce(async () => {
       logger.allUpToDate()
       return {}
     })

@@ -16,7 +16,7 @@ Core utilities fully implemented. Central barrel export via `index.ts`.
 ## Major Subsystem Organization
 ```
 utils/
-  index.ts            # Barrel: re-exports runProcess, config, cooldown, duration, logger, filterPackages, npmrcLoader, packageGrouper, registry, updateChecker, files
+  index.ts            # Barrel: re-exports runProcess, config, cooldown, duration, logger, filterPackages, npmrcLoader, registry, updateChecker, files
   runProcess.ts       # runProcess() (execFile + args, no output cap), buildWindowsCommand()
   config.ts           # loadConfig(), saveJsonConfig(), DEFAULT_CONFIG, INITIAL_CONFIG, ConfigError
   cooldown.ts         # normalizeCooldown(), isCooldownEnabled(), cooldownDaysFor(), evaluateCooldown()
@@ -32,7 +32,6 @@ utils/
   registryDocuments.ts # Pure parsers: parseDistTags, parseDepsDevPackage, parsePackument; loaded by the reader only
   limiter.ts          # createLimiter(max): FIFO cap on in-flight tasks; the reader makes one per host; loaded by the reader only
   updateChecker.ts    # Update policy: within range by default, beyondRange level, per-package rules (pure)
-  rows.ts             # toOutdatedRow() / toOutdatedRows() / toUpdatingRow(): display rows (in-range note, shown only when `wanted` differs from `latest` and `current` and is ahead of `current` or `current` is `missing`; beyond-range flag; one outdated row per manifest in a workspace)
   overrides.ts        # overridesFromField(), manifestOverrides(cwd, fields): packages an override pins, with field and range
   peers.ts            # readInstalledPeers(cwd): installed peer ranges by constrained package (node_modules, pnpm store)
   saveStyle.ts        # SaveStyle, DEFAULT_SAVE_STYLE, readTextFile(), yamlValue(): what adapters' saveStyle() builds on
@@ -43,8 +42,8 @@ utils/
   workspaceRows.ts    # foldWorkspaceEntries(entries): one PackageInfo per name with `workspaces`; expandWorkspaces(record): the inverse, one row per manifest; workspaceLabel(path): `(root)` or the path
   installed.ts        # readInstalledPackages(cwd, rows, { links }) returns `{ version, linked }` (resolves the project's real path once per call; `links: false` skips the link test and `linked` is always false, which is what `readInstalledVersions` and the post-apply check use; linked: a symlink or junction to a directory inside the project and outside node_modules, i.e. a workspace member; pnpm and bun store links are not), readInstalledVersions(cwd, rows) is its versions: each moving row's installed version (the pipeline uses an adapter's own `installed()` instead when it has one: yarn berry, PnP), keyed by `rowKey` (the name, plus `<workspace>:` in a workspace project), read from `<member>/node_modules/<name>` first, then the root's, only for names that manifest declares; checkApplied(): rows the manager left in place become `not applied by <pm> (installed …)`
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
-  packageGrouper.ts   # Groups packages by @scope for display
-  logger.ts           # Colored logging (colorette); configure(config) takes `debug`, `silent` and the deprecated allow/deny lists (defaults before it: debug off, not quiet, no lists), setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
+  report.ts           # outcomeOf(), groupResults(): planned rows grouped by outcome, merged across manifests, for logger.report (#138)
+  logger.ts           # Colored logging (colorette); configure(config) takes `debug` and `silent` (defaults before it: debug off, not quiet); report(results, manager, phase) prints the grouped report and its summary line, setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
   ancestors.ts        # ancestorFiles(cwd, name): a file's name in cwd and each parent, nearest first (yarn v1's .npmrc and .yarnrc)
   files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML() (on the shared catalog walk), readPnpmCatalogs(yaml), readBunCatalogs(manifest) (reads `workspaces.catalog(s)` too), updateBunCatalogs(), readSpec(), splitCatalogUpdates(), buildUpdateDescriptors()
 ```
@@ -140,8 +139,8 @@ utils/
 - Bun reads `workspaces.catalog` / `workspaces.catalogs` as well as the top-level fields; when the `workspaces` one is set it replaces the top-level one as a whole, per field (verified on bun 1.4.4). `readBunCatalogs` and `updateBunCatalogs(cwd, versions, style, catalog?)` follow that
 - `buildUpdateDescriptors()` applies the same rule to produce `name@spec` for managers that write the manifest themselves (yarn), reading `dependencies`, then `devDependencies`, then `optionalDependencies`
 
-### Package Grouping (`packageGrouper.ts`)
-Groups packages by `@scope/` prefix. Unscoped packages go to a default group. Groups sorted alphabetically.
+### Report (`report.ts`, `logger.report`)
+`outcomeOf(result)` files each `UpdateResult` by its `reason` prefix (`not applied by`, `cooldown:`, `… beyond the range`, `held by rule` / `(rule followRange)`, `controlled by`, `peer conflict:`, `held with`; `not targeted` rows are left out). `groupResults` merges rows that share name, versions and note across manifests, sorts by name then root first, and orders sections update → left in place → cooldown → past the range → rule → override → peer → held with → other. A new hold reason needs its prefix here, or it lands under "Not updated".
 
 ### Package Filtering (`filterPackages.ts`)
 - Async. Signature: `filterPackages(outdated, { config, registry, targetPackages?, cwd?, now?, overrides? })`; `registry` is `Pick<RegistrySession, 'releaseTimes'>`, the project's session; `config` is the project's loaded config, never loaded inside

@@ -36,7 +36,7 @@ const checkCommand = (program: Command) =>
           cache: options.cache,
         })
 
-        const result = await check(project)
+        const result = await check(project, { report: !options.json })
         if (options.json) console.log(JSON.stringify(result, null, 2))
       } catch (error) {
         reportFailure(error, options.json)

@@ -54,6 +54,7 @@ describe('check command', () => {
     await program.parseAsync(['node', 'test', 'check'])
     expect(mockCheckPackageVersions).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      { report: true },
     )
   })
 
@@ -69,6 +70,7 @@ describe('check command', () => {
     )
     expect(mockCheckPackageVersions).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: yarn }),
+      { report: true },
     )
   })
 

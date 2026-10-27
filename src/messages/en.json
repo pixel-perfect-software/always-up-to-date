@@ -1,8 +1,0 @@
-{
-  "noPackagesToUpdate": [
-    "There are outdated packages, but none of them can move within the version ranges in package.json.",
-    "By default always-up-to-date stays within each range, and an exact pin is held.",
-    "To go further, set \"beyondRange\" (\"patch\", \"minor\" or \"major\") in .always-up-to-date.json,",
-    "or give a package a \"latest\" rule. Run `autd update --dry-run` to see why each one was held."
-  ]
-}

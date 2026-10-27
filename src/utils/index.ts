@@ -15,15 +15,6 @@ export { checkIfFileExists } from './files'
 export { default as filterPackages, splitUpdates } from './filterPackages'
 export { default as logger } from './logger'
 export { loadRegistryConfig } from './npmrcLoader'
-export type { GroupedPackages } from './packageGrouper'
-export { getSortedGroupNames, groupAndSortPackages } from './packageGrouper'
 export { createRegistrySession, type RegistrySession } from './registry'
-export { computeReleaseAges } from './releaseAges'
-export {
-  toOutdatedRow,
-  toOutdatedRows,
-  toSkippedRow,
-  toUpdatingRow,
-} from './rows'
 export { runProcess } from './runProcess'
 export { default as updateChecker } from './updateChecker'

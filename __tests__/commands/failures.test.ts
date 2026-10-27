@@ -6,6 +6,7 @@ jest.mock('@/detectPackageManager', () => ({
 }))
 jest.mock('@/pipeline', () => ({
   check: jest.fn(),
+  findOutdated: jest.fn(),
   plan: jest.fn(),
   update: jest.fn(),
 }))
@@ -17,7 +18,7 @@ jest.mock('@/utils/registry', () => ({
 import checkCommand from '@/commands/check'
 import updateCommand from '@/commands/update'
 import detectPackageManager from '@/detectPackageManager'
-import { check, update } from '@/pipeline'
+import { check, findOutdated, update } from '@/pipeline'
 import { StepError } from '@/stepError'
 import { loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
@@ -40,6 +41,7 @@ const configFailed = new (jest.requireActual('@/utils/config').ConfigError)(
 
 const pipeline = {
   check: jest.mocked(check),
+  findOutdated: jest.mocked(findOutdated),
   update: jest.mocked(update),
 }
 
@@ -111,7 +113,7 @@ describe('command failures', () => {
   })
 
   it('update --dry-run --json reports a discovery failure as JSON', async () => {
-    pipeline.check.mockRejectedValue(discoverFailed)
+    pipeline.findOutdated.mockRejectedValue(discoverFailed)
 
     const output = await run('update', '--dry-run', '--json')
 

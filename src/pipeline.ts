@@ -1,20 +1,10 @@
 import CommandRunner from '@/commandRunner'
 import { discoverFromRegistry } from '@/discovery'
 import type { ManagerAdapter, RunManager, Workspace } from '@/managers'
-import messages from '@/messages/en.json'
 import type { Project } from '@/project'
 import type { PipelineStep } from '@/stepError'
 import type { PackageInfo, UpdateResult } from '@/types'
-import {
-  computeReleaseAges,
-  filterPackages,
-  getSortedGroupNames,
-  groupAndSortPackages,
-  logger,
-  splitUpdates,
-  toOutdatedRows,
-  toUpdatingRow,
-} from '@/utils'
+import { filterPackages, logger, splitUpdates } from '@/utils'
 import { checkApplied, readInstalledVersions } from '@/utils/installed'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 
@@ -28,24 +18,25 @@ const runFor =
 
 const readWorkspace = (adapter: ManagerAdapter, cwd: string): Workspace => {
   const workspace = adapter.readWorkspace(cwd)
-  if (workspace.isWorkspace) logger.workspace(adapter.name)
   const catalogs = Object.keys(workspace.catalogs)
-  if (workspace.isWorkspace && catalogs.length > 0) {
-    logger.info(`Detected catalogs: ${catalogs.join(', ')}`)
+  // A pnpm workspace listing only "." is one package: nothing to announce.
+  if (workspace.isWorkspace && workspace.manifests.length > 1) {
+    logger.workspace(adapter.name, workspace.manifests.length, catalogs.length)
   }
+  if (catalogs.length > 0) logger.debug(`catalogs: ${catalogs.join(', ')}`)
   return workspace
 }
 
 /**
- * detect → discover → report: the outdated packages keyed by their
- * package.json names, printed in groups. Discovery reads the manifests,
+ * detect → discover: the outdated packages keyed by their package.json
+ * names. Nothing is listed here; the report groups them by outcome once
+ * they are planned. Discovery reads the manifests,
  * node_modules and the registry, with no manager subprocess; yarn berry
  * alone discovers through the manager.
  */
 const discover = async ({
   adapter,
   cwd,
-  config,
   registry,
 }: Project): Promise<{
   outdated: Record<string, PackageInfo>
@@ -78,30 +69,28 @@ const discover = async ({
     return { outdated: {}, workspace }
   }
 
-  logger.outdatedHeader()
-
-  const releaseAges = await computeReleaseAges(
-    outdated,
-    registry,
-    config.cooldown,
-  )
-  const groupedPackages = groupAndSortPackages(outdated)
-  for (const groupName of getSortedGroupNames(groupedPackages)) {
-    logger.packageGroupHeader(groupName)
-    logger.printOutdatedRows(
-      groupedPackages[groupName].flatMap(({ name, info }) =>
-        toOutdatedRows(name, info, releaseAges[name]),
-      ),
-    )
-  }
-
   return { outdated, workspace }
 }
 
-/** The outdated packages, printed in groups. */
-export const check = async (
+/** The outdated packages, without a report: dry-run and interactive plan their own. */
+export const findOutdated = async (
   project: Project,
 ): Promise<Record<string, PackageInfo>> => (await discover(project)).outdated
+
+/**
+ * The outdated packages. The human report plans them first, so each one
+ * shows what `update` would do with it and why; `--json` skips the plan.
+ */
+export const check = async (
+  project: Project,
+  { report = true }: { report?: boolean } = {},
+): Promise<Record<string, PackageInfo>> => {
+  const found = await findOutdated(project)
+  if (report && Object.keys(found).length > 0) {
+    logger.report(await plan(project, found), project.adapter.name, 'plan')
+  }
+  return found
+}
 
 /**
  * Each outdated package's target or hold reason: the config's policy, the
@@ -146,13 +135,11 @@ export const update = async (
   const { names, withinRange, beyondRange, manifests } = splitUpdates(results)
 
   if (names.length === 0) {
-    logger.noPackagesToUpdate(messages.noPackagesToUpdate)
-    logger.cooldownSummary(results)
+    logger.report(results, adapter.name, 'plan')
     return results
   }
 
-  logger.updatingHeader(adapter.name)
-  logger.printUpdatingRows(results.filter((r) => r.updated).map(toUpdatingRow))
+  logger.updatingHeader(adapter.name, names.length)
 
   await adapter.apply(
     runFor(adapter, cwd, 'apply'),
@@ -170,7 +157,6 @@ export const update = async (
       : readInstalledVersions(cwd, moved),
     adapter.name,
   )
-  logger.notAppliedSummary(applied, adapter.name)
-  logger.cooldownSummary(applied)
+  logger.report(applied, adapter.name, 'applied')
   return applied
 }

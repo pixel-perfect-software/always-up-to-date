@@ -16,7 +16,7 @@ Four commands implemented: `init`, `check`, `update`, `help`.
 commands/
   index.ts    # Re-exports check, help, init, update
   init.ts     # Creates .always-up-to-date.json with INITIAL_CONFIG (beyondRange, rules, cooldown, debug, silent)
-  check.ts    # Detects package manager, lists outdated deps (grouped by scope)
+  check.ts    # Detects package manager, prints the planned report (each outdated dep under its outcome); --json prints the outdated record and doesn't plan
   update.ts   # Detects package manager, updates packages per config rules
   reportFailure.ts  # Reports a failed command once (human or JSON) and sets exit code 1
   help.ts     # Displays usage information
@@ -40,7 +40,7 @@ commands/
 
 #### `update [packages...]`
 - Accepts optional variadic package names to target specific packages
-- `--dry-run` - Preview which packages would be updated without making changes: each row shows `current → target`, flagged `beyond range` when it leaves its manifest range; held rows show the policy's reason
+- `--dry-run` - Preview without making changes: the report `check` prints, for the targeted packages (`findOutdated`, then `plan`, then `logger.report(…, 'plan')`)
 - `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). The checklist has one choice per package, listing its manifests in a workspace project; targeting stays by name. Discovery runs once: the checklist's `check` result is passed to `update(project, { targetPackages: selected, discovered })`
 - `--json` - Output `UpdateResult[]` as JSON (one row per package and manifest; in a workspace project each row has `workspace`, `'.'` for the root) (`[]` when nothing is outdated, including with `--dry-run`). Conflicts with `--interactive`
 
