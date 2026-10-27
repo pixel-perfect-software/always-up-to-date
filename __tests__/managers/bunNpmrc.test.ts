@@ -354,6 +354,72 @@ describe('bun .npmrc layers', () => {
     })
   })
 
+  describe('review fixes', () => {
+    const authFor = (
+      value: string,
+      env: NodeJS.ProcessEnv = { TOK: 'VAL' },
+    ) => {
+      write(
+        at('proj', '.npmrc'),
+        `registry=${B}\n//${BH}/:_authToken=${value}\n`,
+      )
+      return unscoped(configFor({ env })).auth
+    }
+
+    it('${VAR?} is the value when set and empty (no auth) when unset', () => {
+      expect(authFor('${TOK?}')).toBe('Bearer VAL')
+      write(xdgFile(), token('X'))
+      expect(authFor('${TOK?}', {})).toBeUndefined()
+    })
+
+    it('a dangling symlink at $XDG/.npmrc is not an entry: ~/.npmrc is read', () => {
+      write(home('.npmrc'), `registry=${A}\n`)
+      fs.mkdirSync(path.dirname(xdgFile()), { recursive: true })
+      try {
+        fs.symlinkSync(at('nowhere'), xdgFile())
+      } catch {
+        return // symlinks need privileges on some Windows setups
+      }
+      expect(unscoped(configFor()).server).toBe(AH)
+    })
+
+    it('variables in keys are not expanded', () => {
+      write(
+        at('proj', '.npmrc'),
+        `registry=${B}\n//127.0.0.1:\${P}/:_authToken=KT\n`,
+      )
+      expect(unscoped(configFor({ env: { P: '4002' } })).auth).toBeUndefined()
+      write(at('proj', '.npmrc'), `\${RK}=${A}\n$RK=${A}\nregistry=${B}\n`)
+      expect(unscoped(configFor({ env: { RK: 'registry' } })).server).toBe(BH)
+    })
+
+    it('backslashes before $ follow npm: odd escapes, even halves (rev r4)', () => {
+      expect(authFor('\\${TOK}')).toBeUndefined() // literal ${TOK}: absent
+      expect(authFor('\\\\${TOK}')).toBe('Bearer \\VAL')
+      expect(authFor('\\\\\\${TOK}')).toBeUndefined() // \${TOK}
+      expect(authFor('\\\\\\\\${TOK}')).toBe('Bearer \\\\VAL')
+      expect(authFor('\\$TOK')).toBe('Bearer VAL')
+      expect(authFor('a\\$TOK')).toBe('Bearer a$TOK')
+      expect(authFor('\\\\$TOK')).toBe('Bearer \\$TOK')
+      expect(authFor('x${TOK}\\${TOK}')).toBeUndefined()
+    })
+
+    it("saveStyle reads save-exact through bun's layers", () => {
+      write(home('.npmrc'), 'save-exact=true\n')
+      const prev = process.env.HOME
+      process.env.HOME = home()
+      try {
+        expect(bun.saveStyle(project()).exact).toBe(true)
+        write(xdgFile(), '')
+        process.env.XDG_CONFIG_HOME = home('.config')
+        expect(bun.saveStyle(project()).exact).toBe(false)
+      } finally {
+        process.env.HOME = prev
+        delete process.env.XDG_CONFIG_HOME
+      }
+    })
+  })
+
   describe('what bun does not read (b32, b33)', () => {
     it("b32: <prefix>/etc/npmrc and npm's builtin npmrc are not read", () => {
       write(at('prefix', 'etc', 'npmrc'), `registry=${A}\n`)

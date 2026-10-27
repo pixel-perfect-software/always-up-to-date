@@ -10,7 +10,11 @@ import {
   updateBunCatalogs,
   updatePackageJson,
 } from '@/utils/files'
-import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
+import {
+  mergeNpmrcLayers,
+  npmrcBoolean,
+  processSources,
+} from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile } from '@/utils/saveStyle'
 
@@ -75,7 +79,12 @@ const bun: ManagerAdapter = {
   saveStyle: (cwd) => ({
     exact:
       bunfigExact(readTextFile(path.join(cwd, 'bunfig.toml'))) ||
-      (npmrcBoolean(loadNpmrc(cwd)['save-exact']) ?? false),
+      (npmrcBoolean(
+        mergeNpmrcLayers(bunNpmrcLayers(cwd, processSources())).values[
+          'save-exact'
+        ],
+      ) ??
+        false),
     prefix: DEFAULT_SAVE_STYLE.prefix,
   }),
 
