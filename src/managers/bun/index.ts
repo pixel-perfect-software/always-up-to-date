@@ -2,6 +2,7 @@ import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
 import { bunfigExact, bunRegistryConfig } from '@/managers/bun/bunfig'
+import { bunNpmrcLayers } from '@/managers/bun/npmrc'
 import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
 import {
   readBunCatalogs,
@@ -9,7 +10,11 @@ import {
   updateBunCatalogs,
   updatePackageJson,
 } from '@/utils/files'
-import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
+import {
+  mergeNpmrcLayers,
+  npmrcBoolean,
+  processSources,
+} from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile } from '@/utils/saveStyle'
 
@@ -21,6 +26,8 @@ const bun: ManagerAdapter = {
     ...packageJsonWorkspace(cwd),
     catalogs: readBunCatalogs(readManifest(cwd)),
   }),
+
+  npmrcLayers: bunNpmrcLayers,
 
   registryConfig: bunRegistryConfig,
 
@@ -68,11 +75,20 @@ const bun: ManagerAdapter = {
     }
   },
 
-  /** `exact` in bunfig.toml's `[install]`, or `save-exact` in .npmrc; bun has no prefix setting. */
+  /**
+   * `exact` in bunfig.toml's `[install]`, or `save-exact` in bun's own .npmrc
+   * layers (not npm's); bun has no prefix setting. Each call re-reads the two
+   * files, a small cost next to an update.
+   */
   saveStyle: (cwd) => ({
     exact:
       bunfigExact(readTextFile(path.join(cwd, 'bunfig.toml'))) ||
-      (npmrcBoolean(loadNpmrc(cwd)['save-exact']) ?? false),
+      (npmrcBoolean(
+        mergeNpmrcLayers(bunNpmrcLayers(cwd, processSources())).values[
+          'save-exact'
+        ],
+      ) ??
+        false),
     prefix: DEFAULT_SAVE_STYLE.prefix,
   }),
 

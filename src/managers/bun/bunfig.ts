@@ -292,8 +292,9 @@ const globalBunfig = ({ env, home }: NpmrcSources): string => {
  * - credentials for a route: an inline `token` / `username` + `password` /
  *   URL userinfo, then (for the default registry) `BUN_CONFIG_TOKEN` /
  *   `NPM_CONFIG_TOKEN`, then the .npmrc entry for the host.
- * Not read yet: `$XDG_CONFIG_HOME/.npmrc`, which bun reads in place of
- * `~/.npmrc`, and that autd also layers npm's global npmrc.
+ * `base` is the merge of bun's own `.npmrc` layers (`bunNpmrcLayers`), which
+ * carry no environment, so the variables above are read here, not through
+ * `base`. A token with `${…}` left in it is never sent (bun sends it literally).
  */
 export const bunRegistryConfig = (
   cwd: string,
