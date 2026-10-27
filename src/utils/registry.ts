@@ -84,6 +84,10 @@ export const createRegistrySession = (
   // The in-flight request is cached, not its result: a workspace asks for the
   // same package once per manifest, at the same time.
   const releaseTimeCache = new Map<string, Promise<Record<string, string>>>()
+  // Publish times the run's lookups already returned (deps.dev has one for
+  // every version). A packument served by a mirror or proxy that lags can lack
+  // a fresh version that deps.dev and the dist-tags already show (#139).
+  const lookedUpTimes = new Map<string, Record<string, string>>()
 
   const registryConfig = (): RegistryConfig => {
     config ??= load(cwd)
@@ -190,12 +194,23 @@ export const createRegistrySession = (
       if (bad) {
         return { ok: false, name, kind: 'invalid', reason: refusal(bad) }
       }
-      return (await readerOnce()).lookup(name)
+      const result = await (await readerOnce()).lookup(name)
+      if (result.ok) {
+        const times: Record<string, string> = {}
+        for (const { version, publishedAt } of result.package.versions) {
+          if (publishedAt) times[version] = publishedAt
+        }
+        lookedUpTimes.set(name, times)
+      }
+      return result
     },
     releaseTimes: (name) => {
       let request = releaseTimeCache.get(name)
       if (!request) {
-        request = requestReleaseTimes(name)
+        request = requestReleaseTimes(name).then((times) => ({
+          ...lookedUpTimes.get(name),
+          ...times,
+        }))
         releaseTimeCache.set(name, request)
       }
       return request

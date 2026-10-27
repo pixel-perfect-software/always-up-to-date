@@ -238,9 +238,11 @@ const filterPackages = async (
           ...result,
           target: undefined,
           updated: false,
-          reason: `cooldown: released ${formatAgeDays(
-            evaluation.ageDays,
-          )} ago, requires ${evaluation.requiredDays}d`,
+          reason: evaluation.unknown
+            ? `cooldown: release date unknown, requires ${evaluation.requiredDays}d`
+            : `cooldown: released ${formatAgeDays(
+                evaluation.ageDays,
+              )} ago, requires ${evaluation.requiredDays}d`,
           releaseAge: evaluation.ageDays,
         }
       }

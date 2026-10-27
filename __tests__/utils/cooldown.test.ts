@@ -121,14 +121,24 @@ describe('evaluateCooldown', () => {
     )
   })
 
-  it('fails open when release time is missing', () => {
+  it('holds a version whose release time is missing (#139)', () => {
     const result = evaluateCooldown(undefined, 'patch', 7, NOW)
-    expect(result.gated).toBe(false)
-    expect(result.ageDays).toBeUndefined()
+    expect(result).toEqual({
+      gated: true,
+      ageDays: undefined,
+      requiredDays: 7,
+      unknown: true,
+    })
   })
 
-  it('fails open on unparseable timestamps', () => {
+  it('holds a version whose timestamp does not parse', () => {
     const result = evaluateCooldown('not-a-date', 'patch', 7, NOW)
+    expect(result.gated).toBe(true)
+    expect(result.unknown).toBe(true)
+  })
+
+  it('does not hold an unknown release time when the update type has no cooldown', () => {
+    const result = evaluateCooldown(undefined, 'patch', { major: 7 }, NOW)
     expect(result.gated).toBe(false)
   })
 })

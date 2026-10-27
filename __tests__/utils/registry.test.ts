@@ -352,6 +352,41 @@ describe('registry session', () => {
       expect(depsDev.requests).toHaveLength(1)
     })
 
+    it("fills releaseTimes from the lookup's deps.dev dates where the packument lacks a version (#139)", async () => {
+      // A mirror that lags (or a proxy hiding fresh versions) serves a
+      // packument without 2.1.3, while the dist-tags and deps.dev show it.
+      const registry = await start(
+        replies({
+          '/-/package/ms/dist-tags': { body: registryBody('ms.dist-tags') },
+          '/ms': {
+            body: JSON.stringify({
+              time: { '2.1.2': '2019-06-07T00:00:00.000Z' },
+            }),
+          },
+        }),
+      )
+      const depsDev = await start(
+        replies({
+          '/v3/systems/npm/packages/ms': { body: registryBody('ms.deps-dev') },
+        }),
+      )
+      const session = createRegistrySession('/project', {
+        loadConfig: () => configFor(registry.url),
+        endpoints: {
+          publicRegistries: [new URL(registry.url).origin],
+          depsDev: `${depsDev.url}v3/systems/npm/packages/`,
+        },
+      })
+      sessions.push(session)
+
+      await session.lookup('ms')
+      const times = await session.releaseTimes('ms')
+
+      expect(times['2.1.3']).toBe('2020-12-08T13:54:35Z')
+      // The packument's own time wins where it has one.
+      expect(times['2.1.2']).toBe('2019-06-07T00:00:00.000Z')
+    })
+
     it('asks deps.dev by default', async () => {
       const registry = await msServer()
       const depsDev = await start(
