@@ -69,6 +69,59 @@ describe('readInstalledPeers', () => {
     expect(readInstalledPeers(cwd).get('react')).toHaveLength(2)
   })
 
+  // pnpm keeps an orphan in `.pnpm` until `modules-cache-max-age` passes; its
+  // `.pnpm/lock.yaml` lists only what is installed (#146, pnpm 12.14.0)
+  it('skips pnpm store entries that .pnpm/lock.yaml no longer lists', () => {
+    install(
+      'node_modules/.pnpm/@storybook+addon-jest@9.1.12_storybook@9.1.12/node_modules/@storybook/addon-jest',
+      {
+        name: '@storybook/addon-jest',
+        version: '9.1.12',
+        peerDependencies: { storybook: '^9.1.12' },
+      },
+    )
+    install(
+      'node_modules/.pnpm/@storybook+addon-a11y@10.6.3_storybook@10.6.3/node_modules/@storybook/addon-a11y',
+      {
+        name: '@storybook/addon-a11y',
+        version: '10.6.3',
+        peerDependencies: { storybook: '^10.6.3' },
+      },
+    )
+    install(
+      'node_modules/.pnpm/local-plugin@file+..+plugin_storybook@10.6.3/node_modules/local-plugin',
+      {
+        name: 'local-plugin',
+        version: '1.0.0',
+        peerDependencies: { storybook: '>=10' },
+      },
+    )
+    fs.writeFileSync(
+      path.join(cwd, 'node_modules/.pnpm/lock.yaml'),
+      [
+        "lockfileVersion: '9.0'",
+        '',
+        'packages:',
+        '',
+        "  '@storybook/addon-a11y@10.6.3':",
+        '    resolution: {integrity: sha512-x}',
+        '',
+        '  local-plugin@file:../plugin:',
+        '    resolution: {directory: ../plugin, type: directory}',
+        '',
+        'snapshots:',
+        '',
+        "  '@storybook/addon-jest@9.1.12(storybook@9.1.12)': {}",
+        '',
+      ].join('\n'),
+    )
+
+    expect(readInstalledPeers(cwd).get('storybook')).toEqual([
+      { name: '@storybook/addon-a11y', version: '10.6.3', range: '^10.6.3' },
+      { name: 'local-plugin', version: '1.0.0', range: '>=10' },
+    ])
+  })
+
   it('returns nothing when node_modules is missing', () => {
     expect(readInstalledPeers(cwd).size).toBe(0)
   })
