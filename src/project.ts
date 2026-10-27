@@ -18,12 +18,13 @@ export interface Project {
 /**
  * Loads the config, configures the logger from it, then detects the manager,
  * in that order so detection can log by the config's settings. `pm` (the
- * `--pm` option) overrides detection. Throws `ConfigError` for a bad config
+ * `--pm` option) overrides detection. `cache: false` (`--no-cache`) or
+ * `AUTD_NO_CACHE=1` keeps registry answers off disk. Throws `ConfigError` for a bad config
  * file.
  */
 export const openProject = (
   cwd: string,
-  { pm }: { pm?: SupportedPackageManager } = {},
+  { pm, cache = true }: { pm?: SupportedPackageManager; cache?: boolean } = {},
 ): Project => {
   const config = loadConfig(cwd)
   logger.configure(config)
@@ -35,6 +36,7 @@ export const openProject = (
     // Called on the session's first use, so opening a project reads no files.
     registry: createRegistrySession(cwd, {
       depsDev: config.depsDev,
+      cache: cache && process.env.AUTD_NO_CACHE !== '1' ? {} : undefined,
       loadConfig: (dir) =>
         managerRegistryConfig(adapter, dir, processSources()),
     }),

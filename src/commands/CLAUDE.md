@@ -25,7 +25,7 @@ commands/
 ## Architectural Patterns
 
 ### Command Flow (check/update)
-1. Open the project inside the `try` with `openProject(cwd, { pm: options.pm })` (`src/project.ts`): loads the config, configures the logger, detects the manager (or takes `--pm`) and gets its adapter. A bad config or no manager fails here and goes through `reportFailure` like any other failure
+1. Open the project inside the `try` with `openProject(cwd, { pm: options.pm, cache: options.cache })` (`src/project.ts`): loads the config, configures the logger, detects the manager (or takes `--pm`) and gets its adapter. A bad config or no manager fails here and goes through `reportFailure` like any other failure
 2. Run the pipeline (`src/pipeline.ts`) with that project: `check(project)`, or `update(project, { targetPackages })`. Dry-run is `check` then `plan(project, outdated, targetPackages)`
 3. Close the run's registry session in `finally` (`project?.registry.close()`; `project` is declared before the `try`), so a failed run releases its connections too
 
@@ -33,6 +33,7 @@ commands/
 
 #### `check` and `update`
 - `--pm <npm|yarn|pnpm|bun>` - Use this manager instead of detecting one (`pmOption()` in `src/commands/options.ts`; commander rejects other values)
+- `--no-cache` - Ask the registries instead of autd's cache (`noCacheOption()`; commander makes `options.cache` true unless passed, and the commands hand it to `openProject(cwd, { pm, cache })`)
 
 #### `check`
 - `--json` - Output raw JSON instead of formatted display: a `Record<name, PackageInfo>`. In a workspace project each value is `{ name, current, wanted, latest, workspaces: [{ path, current, wanted }] }`, one `workspaces` element per manifest declaring the package (root `'.'` first, then by path); top-level `current`/`wanted` repeat the root's, else the first member's. Manager pass-through fields are dropped in workspace projects. Human output adds a gray workspace column (`(root)` or the path)

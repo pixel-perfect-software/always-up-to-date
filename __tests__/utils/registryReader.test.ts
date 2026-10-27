@@ -1,6 +1,10 @@
 jest.mock('@/utils/logger')
 
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import type { PackageLookup, RegistryConfig } from '@/types'
+import { createRegistryCache } from '@/utils/registryCache'
 import {
   createRegistryClient,
   type RegistryClient,
@@ -11,6 +15,7 @@ import {
   type RegistryEndpoints,
 } from '@/utils/registryRequest'
 import {
+  conditional,
   derive,
   type Handler,
   type Reply,
@@ -91,7 +96,7 @@ describe('registry reader', () => {
     clients.push(client)
     const reader = createRegistryReader({
       registryConfig,
-      client,
+      client: async () => client,
       depsDev: options.depsDev ?? true,
       endpoints,
     })
@@ -435,7 +440,7 @@ describe('registry reader', () => {
       clients.push(client)
       const own = createRegistryReader({
         registryConfig,
-        client,
+        client: async () => client,
         depsDev: true,
         endpoints: {
           publicRegistries: [new URL(mirror.url).origin],
@@ -464,7 +469,7 @@ describe('registry reader', () => {
       clients.push(client)
       const reader = createRegistryReader({
         registryConfig,
-        client,
+        client: async () => client,
         depsDev: true,
         endpoints: {
           publicRegistries: [new URL(mirror.url).origin],
@@ -494,7 +499,7 @@ describe('registry reader', () => {
       clients.push(client)
       const own = createRegistryReader({
         registryConfig: scoped,
-        client,
+        client: async () => client,
         depsDev: true,
         endpoints: {
           publicRegistries: [new URL(registry.url).origin],
@@ -523,7 +528,7 @@ describe('registry reader', () => {
     clients.push(client)
     const reader = createRegistryReader({
       registryConfig,
-      client,
+      client: async () => client,
       depsDev: true,
       endpoints: {
         publicRegistries: [new URL(registry.url).origin],
@@ -738,7 +743,7 @@ describe('registry reader', () => {
       clients.push(client)
       const reader = createRegistryReader({
         registryConfig,
-        client,
+        client: async () => client,
         depsDev: false,
       })
 
@@ -783,7 +788,7 @@ describe('registry reader', () => {
     clients.push(client)
     const reader = createRegistryReader({
       registryConfig,
-      client,
+      client: async () => client,
       depsDev: true,
       endpoints: {
         publicRegistries: [new URL(combined.url).origin],
@@ -827,5 +832,516 @@ describe('registry reader', () => {
     expect(depsDev.peak).toBe(2)
     expect(overall).toBeGreaterThan(2)
     expect(overall).toBeLessThanOrEqual(4)
+  })
+
+  describe('with the disk cache', () => {
+    const START = Date.UTC(2026, 9, 27)
+    const SECOND = 1000
+    let dir: string
+    let clock: number
+
+    beforeEach(() => {
+      dir = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-reader-cache-')),
+      )
+      clock = START
+    })
+    afterEach(() => {
+      fs.rmSync(dir, { recursive: true, force: true })
+    })
+
+    /** A handler a test can swap between runs. */
+    const switchable = (initial: Handler) => {
+      let current = initial
+      const handler: Handler = (req, res) => current(req, res)
+      return {
+        handler,
+        use: (next: Handler) => {
+          current = next
+        },
+      }
+    }
+
+    const status =
+      (code: number): Handler =>
+      (_req, res) => {
+        res.statusCode = code
+        res.end('failed')
+      }
+
+    /**
+     * A registry and a deps.dev whose requests the test counts, and `run()`:
+     * one command run, a new reader over a new client and a new cache handle
+     * on the same folder, as a second `autd check` is.
+     */
+    const cached = async (
+      handlers: { registry: Handler; depsDev?: Handler },
+      options: {
+        depsDev?: boolean
+        credentials?: boolean
+        cacheDir?: string
+      } = {},
+    ) => {
+      const registry = await start(handlers.registry)
+      const depsDev = await start(handlers.depsDev ?? msDepsDev())
+      const endpoints: RegistryEndpoints = {
+        publicRegistries: [new URL(registry.url).origin],
+        depsDev: `${depsDev.url}v3/systems/npm/packages/`,
+      }
+      const registryConfig = configFor(registry.url, {
+        credentials: options.credentials
+          ? { [`//127.0.0.1:${registry.port}/`]: { authToken: 'TOK' } }
+          : {},
+      })
+      const run = () => {
+        let made = 0
+        let client: RegistryClient | undefined
+        const cache = createRegistryCache({
+          dir: options.cacheDir ?? dir,
+          now: () => clock,
+        })
+        const reader = createRegistryReader({
+          registryConfig,
+          client: async () => {
+            made++
+            client ??= createRegistryClient(registryConfig, {
+              sleep: async () => undefined,
+            })
+            clients.push(client)
+            return client
+          },
+          depsDev: options.depsDev ?? true,
+          endpoints,
+          cache,
+        })
+        return { reader, cache, clientsMade: () => made }
+      }
+      /** The URLs each server was asked since the last call. */
+      const asked = () => ({
+        registry: registry.requests.splice(0).map((r) => r.url),
+        depsDev: depsDev.requests.splice(0).map((r) => r.url),
+      })
+      return { registry, depsDev, run, asked }
+    }
+
+    const filesIn = (kind: string): string[] => {
+      try {
+        return fs.readdirSync(path.join(dir, 'v1', kind))
+      } catch {
+        return []
+      }
+    }
+
+    describe('a public name through dist-tags and deps.dev', () => {
+      it('answers a second run within the TTL without a request or a client', async () => {
+        const { run, asked } = await cached({ registry: msRegistry() })
+        const first = packageOf(await run().reader.lookup('ms'))
+        expect(asked().registry).toEqual(['/-/package/ms/dist-tags'])
+
+        clock += 299 * SECOND
+        const second = run()
+        const result = packageOf(await second.reader.lookup('ms'))
+
+        expect(result).toEqual(first)
+        expect(result.source).toBe('deps.dev')
+        expect(asked()).toEqual({ registry: [], depsDev: [] })
+        expect(second.clientsMade()).toBe(0)
+      })
+
+      it('asks dist-tags alone once its 300 s are over', async () => {
+        const { run, asked } = await cached({ registry: msRegistry() })
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += 301 * SECOND
+        const result = packageOf(await run().reader.lookup('ms'))
+
+        expect(result.source).toBe('deps.dev')
+        expect(asked()).toEqual({
+          registry: ['/-/package/ms/dist-tags'],
+          depsDev: [],
+        })
+      })
+
+      it('asks both once deps.dev is an hour old', async () => {
+        const { run, asked } = await cached({ registry: msRegistry() })
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += 3601 * SECOND
+        await run().reader.lookup('ms')
+
+        expect(asked()).toEqual({
+          registry: ['/-/package/ms/dist-tags'],
+          depsDev: [`${DEPS_DEV_PREFIX}ms`],
+        })
+      })
+
+      describe('a fresh deps.dev entry that lacks the latest dist-tags names', () => {
+        const lacksLatest = derive<{
+          versions: Array<{ versionKey: { version: string } }>
+        }>('ms.deps-dev', (body) => {
+          body.versions = body.versions.filter(
+            (v) => v.versionKey.version !== '2.1.3',
+          )
+        })
+
+        it('asks deps.dev once more, and uses what it now lists', async () => {
+          const depsDevSide = switchable(
+            replies({ [`${DEPS_DEV_PREFIX}ms`]: { body: lacksLatest } }),
+          )
+          const { run, asked } = await cached({
+            registry: msRegistry(),
+            depsDev: depsDevSide.handler,
+          })
+          expect(packageOf(await run().reader.lookup('ms')).source).toBe(
+            'packument',
+          )
+          asked()
+          depsDevSide.use(msDepsDev())
+
+          clock += 10 * SECOND
+          const result = packageOf(await run().reader.lookup('ms'))
+
+          expect(result.source).toBe('deps.dev')
+          expect(asked()).toEqual({
+            registry: [],
+            depsDev: [`${DEPS_DEV_PREFIX}ms`],
+          })
+        })
+
+        it('reads the packument when deps.dev still lacks it', async () => {
+          const { run, asked } = await cached({
+            registry: msRegistry(),
+            depsDev: replies({
+              [`${DEPS_DEV_PREFIX}ms`]: { body: lacksLatest },
+            }),
+          })
+          await run().reader.lookup('ms')
+          asked()
+
+          clock += 301 * SECOND
+          const result = packageOf(await run().reader.lookup('ms'))
+
+          expect(result.source).toBe('packument')
+          expect(asked()).toEqual({
+            registry: ['/-/package/ms/dist-tags', '/ms'],
+            depsDev: [`${DEPS_DEV_PREFIX}ms`],
+          })
+        })
+      })
+    })
+
+    describe('the packument path', () => {
+      const etagged = (etag: string) =>
+        conditional(packument('ms.packument'), etag)
+
+      it('revalidates with If-None-Match, and a 304 answers with the same versions', async () => {
+        const side = switchable(etagged('W/"one"'))
+        const { registry, run, asked } = await cached(
+          { registry: side.handler },
+          { depsDev: false },
+        )
+        const first = packageOf(await run().reader.lookup('ms'))
+        asked()
+
+        clock += 301 * SECOND
+        const second = run()
+        const result = packageOf(await second.reader.lookup('ms'))
+
+        expect(result).toEqual(first)
+        expect(asked().registry).toEqual(['/ms'])
+        expect(registry.requests).toEqual([])
+        expect(second.reader.stats().notModified).toBe(1)
+      })
+
+      it('sends the stored ETag and replaces the entry when the registry sends a new one', async () => {
+        const side = switchable(etagged('W/"one"'))
+        const { registry, run } = await cached(
+          { registry: side.handler },
+          { depsDev: false },
+        )
+        await run().reader.lookup('ms')
+        side.use(etagged('W/"two"'))
+
+        clock += 301 * SECOND
+        const replaced = run()
+        await replaced.reader.lookup('ms')
+        clock += 301 * SECOND
+        const confirmed = run()
+        await confirmed.reader.lookup('ms')
+
+        expect(
+          registry.requests.map((r) => r.headers['if-none-match']),
+        ).toEqual([undefined, 'W/"one"', 'W/"two"'])
+        expect(replaced.reader.stats().notModified).toBe(0)
+        expect(confirmed.reader.stats().notModified).toBe(1)
+      })
+
+      it('revalidates a fresh entry that lacks the latest dist-tags names', async () => {
+        const without = derive<{
+          versions: Record<string, unknown>
+          'dist-tags': Record<string, string>
+        }>('ms.packument', (body) => {
+          delete body.versions['2.1.3']
+          body['dist-tags'].latest = '2.1.2'
+        })
+        const side = switchable(
+          replies({
+            '/ms': { body: without },
+            '/-/package/ms/dist-tags': ok('ms.dist-tags'),
+          }),
+        )
+        const { run, asked } = await cached({
+          registry: side.handler,
+          depsDev: status(404),
+        })
+        expect(packageOf(await run().reader.lookup('ms')).latest).toBe('2.1.2')
+        asked()
+        side.use(
+          replies({
+            '/ms': packument('ms.packument'),
+            '/-/package/ms/dist-tags': ok('ms.dist-tags'),
+          }),
+        )
+
+        clock += 10 * SECOND
+        const result = packageOf(await run().reader.lookup('ms'))
+
+        expect(result.latest).toBe('2.1.3')
+        expect(asked().registry).toEqual(['/ms'])
+      })
+
+      it('keeps the full document, publish times included, when the abbreviated one is 404', async () => {
+        const full = replies({
+          '/@types%2fms': { body: registryBody('types-ms.packument-full') },
+        })
+        const { run, asked } = await cached(
+          {
+            registry: (req, res) =>
+              req.headers.accept === ABBREVIATED_ACCEPT
+                ? status(404)(req, res)
+                : full(req, res),
+          },
+          { depsDev: false },
+        )
+        await run().reader.lookup('@types/ms')
+        expect(asked().registry).toHaveLength(2)
+
+        clock += 60 * SECOND
+        const result = packageOf(await run().reader.lookup('@types/ms'))
+
+        expect(result.latest).toBe('2.1.0')
+        expect(result.versions.every((v) => v.publishedAt)).toBe(true)
+        expect(asked().registry).toEqual([])
+      })
+    })
+
+    describe('depsDev: false', () => {
+      it('reads and writes no deps.dev entry', async () => {
+        const { run, asked } = await cached({ registry: msRegistry() })
+        await run().reader.lookup('ms')
+        asked()
+        const entry = path.join(dir, 'v1', 'deps.dev')
+        const before = fs.statSync(
+          path.join(entry, filesIn('deps.dev')[0] ?? ''),
+        )
+
+        clock += 10 * SECOND
+        const off = await cached({ registry: msRegistry() }, { depsDev: false })
+        const result = packageOf(await off.run().reader.lookup('ms'))
+
+        expect(result.source).toBe('packument')
+        expect(off.asked().depsDev).toEqual([])
+        expect(filesIn('deps.dev')).toHaveLength(1)
+        // A read would have touched the file to the new time.
+        expect(
+          fs.statSync(path.join(entry, filesIn('deps.dev')[0] ?? '')).mtimeMs,
+        ).toBe(before.mtimeMs)
+      })
+
+      it('writes none from a clean folder', async () => {
+        const { run } = await cached(
+          { registry: msRegistry() },
+          { depsDev: false },
+        )
+
+        await run().reader.lookup('ms')
+
+        expect(filesIn('deps.dev')).toEqual([])
+        expect(filesIn('packument')).toHaveLength(1)
+      })
+    })
+
+    describe('an authenticated registry (Q1 a)', () => {
+      it('does not keep dist-tags when deps.dev does not list the name', async () => {
+        const { run, asked } = await cached(
+          { registry: msRegistry(), depsDev: replies({}) },
+          { credentials: true },
+        )
+        expect(packageOf(await run().reader.lookup('ms')).source).toBe(
+          'packument',
+        )
+        asked()
+
+        clock += 10 * SECOND
+        await run().reader.lookup('ms')
+
+        expect(filesIn('dist-tags')).toEqual([])
+        expect(asked().registry).toEqual(['/-/package/ms/dist-tags', '/ms'])
+      })
+
+      it('keeps dist-tags when deps.dev lists the name: the answer is the same for everyone', async () => {
+        const { run, asked } = await cached(
+          { registry: msRegistry() },
+          { credentials: true },
+        )
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += 10 * SECOND
+        await run().reader.lookup('ms')
+
+        expect(filesIn('dist-tags')).toHaveLength(1)
+        expect(asked()).toEqual({ registry: [], depsDev: [] })
+      })
+
+      it('asks again, with the ETag, on every run for a packument that is not public', async () => {
+        const { registry, run } = await cached(
+          { registry: conditional(packument('ms.packument'), 'W/"auth"') },
+          { depsDev: false, credentials: true },
+        )
+
+        await run().reader.lookup('ms')
+        clock += SECOND
+        await run().reader.lookup('ms')
+        clock += SECOND
+        const third = run()
+        await third.reader.lookup('ms')
+
+        expect(
+          registry.requests.map((r) => r.headers['if-none-match']),
+        ).toEqual([undefined, 'W/"auth"', 'W/"auth"'])
+        expect(third.reader.stats().notModified).toBe(1)
+      })
+
+      it('does not keep a packument that has no ETag', async () => {
+        const { run, asked } = await cached(
+          { registry: msRegistry() },
+          { depsDev: false, credentials: true },
+        )
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += SECOND
+        await run().reader.lookup('ms')
+
+        expect(filesIn('packument')).toEqual([])
+        expect(asked().registry).toEqual(['/ms'])
+      })
+
+      it('serves a public answer without asking', async () => {
+        const { run, asked } = await cached(
+          {
+            registry: conditional(
+              {
+                ...packument('ms.packument'),
+                headers: { 'cache-control': 'public, max-age=300' },
+              },
+              'W/"pub"',
+            ),
+          },
+          { depsDev: false, credentials: true },
+        )
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += 10 * SECOND
+        await run().reader.lookup('ms')
+
+        expect(asked().registry).toEqual([])
+      })
+    })
+
+    describe('Cache-Control', () => {
+      it('keeps nothing the registry says not to store', async () => {
+        const { run, asked } = await cached(
+          {
+            registry: replies({
+              '/ms': {
+                ...packument('ms.packument'),
+                headers: { 'cache-control': 'no-store' },
+              },
+            }),
+          },
+          { depsDev: false },
+        )
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += SECOND
+        await run().reader.lookup('ms')
+
+        expect(filesIn('packument')).toEqual([])
+        expect(asked().registry).toEqual(['/ms'])
+      })
+
+      it('lowers the TTL to max-age', async () => {
+        const { run, asked } = await cached(
+          {
+            registry: replies({
+              '/ms': {
+                ...packument('ms.packument'),
+                headers: { 'cache-control': 'public, max-age=60' },
+              },
+            }),
+          },
+          { depsDev: false },
+        )
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += 59 * SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual([])
+
+        clock += 2 * SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual(['/ms'])
+      })
+    })
+
+    describe('failures', () => {
+      it('never answers from a stale entry when the request fails', async () => {
+        const side = switchable(msRegistry())
+        const { run } = await cached(
+          { registry: side.handler },
+          { depsDev: false },
+        )
+        expect((await run().reader.lookup('ms')).ok).toBe(true)
+        side.use(status(500))
+
+        clock += 301 * SECOND
+        const result = await run().reader.lookup('ms')
+
+        expect(result).toMatchObject({ ok: false, kind: 'request' })
+      })
+
+      it('gives the results of no cache when the folder cannot be written', async () => {
+        const file = path.join(dir, 'in-the-way')
+        fs.writeFileSync(file, 'a file, not a folder')
+        const { run, asked } = await cached(
+          { registry: msRegistry() },
+          { cacheDir: file },
+        )
+
+        const first = packageOf(await run().reader.lookup('ms'))
+        const second = packageOf(await run().reader.lookup('ms'))
+
+        expect(first.source).toBe('deps.dev')
+        expect(second).toEqual(first)
+        expect(asked().registry).toHaveLength(2)
+      })
+    })
   })
 })

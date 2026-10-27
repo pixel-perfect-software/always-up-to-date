@@ -21,6 +21,7 @@ import {
   readCatalogs,
   readDependencies,
   runCli,
+  runCliThroughTripwire,
   runCliWithoutManagers,
   selectedManagers,
 } from './harness'
@@ -114,6 +115,31 @@ export const runMatrix = (manager: Manager): void => {
             projectCheck(await check(cwd, ['check', '--json']), layout),
           ).toEqual(expectedCheck(layout))
         })
+
+        // Berry still asks its manager (#107). The rest answer the repeat from
+        // autd's cache, and a proxy that records every request proves it.
+        if (manager !== 'berry') {
+          it('check --json again within the TTL asks no registry', async () => {
+            const first = await runCliWithoutManagers(cwd, ['check', '--json'])
+
+            const { output, seen } = await runCliThroughTripwire(cwd, [
+              'check',
+              '--json',
+            ])
+
+            expect(output).toEqual(first)
+            expect(seen).toEqual([])
+
+            // The tripwire is live: the same run without the cache is seen.
+            const bypassed = await runCliThroughTripwire(cwd, [
+              'check',
+              '--json',
+              '--no-cache',
+            ])
+            expect(bypassed.output).toEqual(first)
+            expect(bypassed.seen.length).toBeGreaterThan(0)
+          })
+        }
 
         it('update --dry-run --json plans the moves and holds the pins', async () => {
           expect(

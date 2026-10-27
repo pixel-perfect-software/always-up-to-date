@@ -7,3 +7,7 @@ if (!process.env.DEBUG) {
   console.error = noop
   console.warn = noop
 }
+
+// Tests never read or write the developer's cache folder; the ones that
+// exercise the cache pass their own directory.
+process.env.AUTD_NO_CACHE = '1'

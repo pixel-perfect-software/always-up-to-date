@@ -4,7 +4,7 @@ import { openProject, type Project } from '@/project'
 import type { SupportedPackageManager, UpdateResult } from '@/types'
 import { logger, toSkippedRow, toUpdatingRow } from '@/utils'
 import { workspaceLabel } from '@/utils/workspaceRows'
-import { pmOption } from './options'
+import { noCacheOption, pmOption } from './options'
 import reportFailure from './reportFailure'
 
 const workingDir = process.cwd()
@@ -14,6 +14,7 @@ interface UpdateOptions {
   interactive?: boolean
   json?: boolean
   pm?: SupportedPackageManager
+  cache?: boolean
 }
 
 /**
@@ -37,12 +38,16 @@ const update = (program: Command) =>
       new Option('--json', 'Output results as JSON').conflicts('interactive'),
     )
     .addOption(pmOption())
+    .addOption(noCacheOption())
     .action(async (packages: string[], options: UpdateOptions) => {
       if (options.json) logger.setJsonOutput(true)
 
       let project: Project | undefined
       try {
-        project = openProject(workingDir, { pm: options.pm })
+        project = openProject(workingDir, {
+          pm: options.pm,
+          cache: options.cache,
+        })
         const targetPackages = packages.length > 0 ? packages : undefined
 
         if (options.dryRun) {

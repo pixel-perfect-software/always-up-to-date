@@ -8,6 +8,7 @@ import type { ManagerAdapter } from '@/managers/adapter'
 import bun from '@/managers/bun'
 import pnpm from '@/managers/pnpm'
 import type { RegistryConfig } from '@/types'
+import logger from '@/utils/logger'
 import { managerRegistryConfig, type NpmrcSources } from '@/utils/npmrcLoader'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
 import type { RegistryClient } from '@/utils/registryClient'
@@ -370,6 +371,117 @@ describe('registry session', () => {
       await session.lookup('ms')
 
       expect(depsDev.requests).toHaveLength(1)
+    })
+  })
+
+  describe('the disk cache', () => {
+    let dir: string
+    beforeEach(() => {
+      dir = path.join(
+        fs.realpathSync(
+          fs.mkdtempSync(path.join(os.tmpdir(), 'autd-session-')),
+        ),
+        'cache',
+      )
+    })
+    afterEach(() => {
+      fs.rmSync(path.dirname(dir), { recursive: true, force: true })
+    })
+
+    const msServer = () =>
+      start(
+        replies({
+          '/-/package/ms/dist-tags': { body: registryBody('ms.dist-tags') },
+          '/ms': { body: registryBody('ms.packument') },
+        }),
+      )
+    const sessionWith = (
+      server: TestRegistry,
+      cache?: { dir?: string; maxBytes?: number },
+    ) => {
+      const session = createRegistrySession('/project', {
+        loadConfig: () => configFor(server.url),
+        depsDev: false,
+        cache,
+      })
+      sessions.push(session)
+      return session
+    }
+    const debugLines = () =>
+      jest
+        .mocked(logger.debug)
+        .mock.calls.map(([line]) => String(line))
+        .filter((line) => line.startsWith('registry cache'))
+
+    it('writes nothing without the option, and logs nothing at close', async () => {
+      const server = await msServer()
+      const session = sessionWith(server)
+
+      await session.lookup('ms')
+      session.close()
+
+      expect(fs.existsSync(dir)).toBe(false)
+      expect(debugLines()).toEqual([])
+    })
+
+    it('reads and creates nothing until the first lookup, and none for a close before it', async () => {
+      const server = await msServer()
+      const session = sessionWith(server, { dir })
+
+      session.close()
+
+      expect(fs.existsSync(dir)).toBe(false)
+      expect(debugLines()).toEqual([])
+      expect(server.requests).toEqual([])
+    })
+
+    it('hands its folder to the reader: a second session asks nobody', async () => {
+      const server = await msServer()
+      const first = sessionWith(server, { dir })
+      await first.lookup('ms')
+      first.close()
+      server.requests.splice(0)
+
+      const second = sessionWith(server, { dir })
+      const result = await second.lookup('ms')
+
+      expect(result).toMatchObject({ ok: true, package: { latest: '2.1.3' } })
+      expect(server.requests).toEqual([])
+    })
+
+    it('prunes at close once, logs one line, and is safe twice', async () => {
+      const server = await msServer()
+      const session = sessionWith(server, { dir, maxBytes: 1 })
+      await session.lookup('ms')
+      expect(fs.readdirSync(path.join(dir, 'v1', 'packument'))).toHaveLength(1)
+
+      session.close()
+      session.close()
+
+      expect(fs.readdirSync(path.join(dir, 'v1', 'packument'))).toEqual([])
+      const lines = debugLines()
+      expect(lines).toHaveLength(1)
+      expect(lines[0]).toMatch(
+        /1 written, 1 pruned; requests: 127\.0\.0\.1:\d+ 1/,
+      )
+    })
+
+    it('says "none" when the run asked nobody', async () => {
+      const server = await msServer()
+      const first = sessionWith(server, { dir })
+      await first.lookup('ms')
+      first.close()
+      jest.mocked(logger.debug).mockClear()
+
+      const second = sessionWith(server, { dir })
+      await second.lookup('ms')
+      second.close()
+
+      expect(debugLines()).toEqual([
+        expect.stringMatching(
+          /1 fresh, 0 revalidated, 0 fetched, 0 written, 0 pruned; requests: none$/,
+        ),
+      ])
     })
   })
 

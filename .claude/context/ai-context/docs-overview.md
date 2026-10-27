@@ -64,7 +64,7 @@ jest.integration.config.ts  # Jest config for the integration matrix (not part o
 __tests__/
   integration/              # pnpm run test:integration: harness.ts (copy, pin to minimum, install, run the CLI), lockfiles.ts (yarn v1/berry/bun rewriters), expectations.ts (derived values, per-manager overrides), matrix.ts, <manager>.test.ts
   bench/                    # report.test.ts (hyperfine 2 JSON parsing, formatting, table), targets.test.ts (selection, cold caches)
-  setup.ts                  # Global test setup (console suppression)
+  setup.ts                  # Global test setup (console suppression, AUTD_NO_CACHE=1)
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
   project.test.ts           # openProject: config loaded once, logger configured before detection
@@ -116,7 +116,8 @@ __tests__/
     registryRequest.test.ts # Pure client helpers: scoped registry, prefix walk, Authorization forms, retry rules, public-registry check, dist-tags and deps.dev URLs, package-name rule
     registryClient.test.ts  # node:https client against local HTTP(S) servers and a CONNECT proxy: auth, TLS, mTLS, proxies, retries, timeout, maxsockets, redirects, per-request accept/timeout/retries, stats()
     registry.test.ts        # createRegistrySession: lazy config and client, one per run, in-flight dedupe, fails open, scoped registry (#104), close(), lookup() sharing the client and honoring depsDev
-    registryReader.test.ts  # createRegistryReader on captured bodies and local servers: deps.dev path, packument fallbacks, breaker, depsDev: false, other registries, credentials, 404s, failures, dedupe, bounded concurrency
+    registryReader.test.ts  # createRegistryReader on captured bodies and local servers: deps.dev path, packument fallbacks, breaker, depsDev: false, other registries, credentials, 404s, failures, dedupe, bounded concurrency; with the disk cache: TTLs, 304 revalidation, Q1 (authenticated answers), Cache-Control, no stale fallback, unwritable folder
+    registryCache.test.ts   # The store: cacheDirectory per platform, endpointKey, freshFor, round trips, misses, atomic writes across processes, pruning, fails open, modes
     registryDocuments.test.ts # dist-tags, deps.dev and packument parsers on the fixtures; the sources agree; malformed input
     limiter.test.ts         # createLimiter: peak, FIFO, rejection frees the slot
     packageGrouper.test.ts  # Package grouping tests
