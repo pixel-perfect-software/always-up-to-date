@@ -632,6 +632,57 @@ describe('pnpm .npmrc layers', () => {
     })
   })
 
+  // Probed on pnpm 12.14.0, 2026-10-27 (#125): a registry answering after 2 s,
+  // `fetchTimeout: 500` and `fetchRetries: 0`. Honored, pnpm times out in 0.6 s;
+  // not honored, it waits for the 404.
+  describe('fetchTimeout and fetchRetries come from the yaml files and the env only (#125)', () => {
+    const fetchOf = (config: RegistryConfig) => ({
+      fetchTimeout: config.fetchTimeout,
+      fetchRetries: config.fetchRetries,
+    })
+    const tuned = { fetchTimeout: 500, fetchRetries: 0 }
+
+    it("reads the project pnpm-workspace.yaml's", () => {
+      write(
+        at('proj', 'pnpm-workspace.yaml'),
+        'fetchTimeout: 500\nfetchRetries: 0 # no retries\n',
+      )
+      expect(fetchOf(configFor())).toEqual(tuned)
+    })
+
+    it("reads the global config.yaml's, under the project yaml's", () => {
+      write(global('config.yaml'), 'fetchTimeout: 500\nfetchRetries: 0\n')
+      expect(fetchOf(configFor())).toEqual(tuned)
+      write(at('proj', 'pnpm-workspace.yaml'), 'fetchTimeout: 900\n')
+      expect(fetchOf(configFor())).toEqual({ ...tuned, fetchTimeout: 900 })
+    })
+
+    it('reads pnpm_config_fetch_timeout and pnpm_config_fetch_retries over the yaml', () => {
+      write(at('proj', 'pnpm-workspace.yaml'), 'fetchTimeout: 900\n')
+      const config = configFor({
+        env: {
+          pnpm_config_fetch_timeout: '500',
+          pnpm_config_fetch_retries: '0',
+        },
+      })
+      expect(fetchOf(config)).toEqual(tuned)
+    })
+
+    it.each([
+      ['the project .npmrc', () => at('proj', '.npmrc')],
+      ['the global auth.ini', () => global('auth.ini')],
+      ['~/.npmrc', () => home('.npmrc')],
+    ])('ignores them in %s, in either spelling', (_, file) => {
+      const defaults = fetchOf(configFor())
+      write(
+        file(),
+        'fetch-timeout=500\nfetch-retries=0\nfetchTimeout=500\nfetchRetries=0\n',
+      )
+      expect(fetchOf(configFor())).toEqual(defaults)
+      expect(defaults).not.toEqual(tuned)
+    })
+  })
+
   describe('from a workspace member', () => {
     const member = () => at('ws', 'packages', 'app')
 
