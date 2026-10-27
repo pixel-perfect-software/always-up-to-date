@@ -97,6 +97,7 @@ __tests__/
     aliases.test.ts         # An npm: alias on all four managers: manifest key, looked up by the target, never by the key
     pnpmRegistries.test.ts  # pnpm yaml registry routes: both shapes, scopes, "@", ${…}, ecosystem, CRLF; env expansion for the global file; substitutePnpm
     pnpmNpmrc.test.ts       # pnpm 12 layers on temp dirs: #117 evidence rows, one test per probe decision (p20-p55), config directory per platform (Linux and Windows source-read), workspace members
+    yarnNpmrc.test.ts       # yarn v1 .npmrc layers on temp dirs: #122 evidence rows, the comment's example, one test per probe decision (y20-y32), the filesystem root, berry keeps npm's
     yarnrc.test.ts          # yarn v1 .yarnrc grammar (quotes, comments, CRLF, --registry), routes, precedence against .npmrc, env and ~/.yarnrc, workspace parents
     bunNpmrc.test.ts        # bun's .npmrc layers on temp dirs: project, one user file (XDG, userconfig), no env/prefix/parent, $VAR forms
     bunfig.test.ts          # bunfig.toml routes and credentials, $NAME, global/project merge, env overrides, bunfigExact

@@ -1,14 +1,25 @@
 jest.mock('@/utils/logger')
+// swc's exports cannot be spied on; a counting stand-in for loadNpmrc.
+jest.mock('@/utils/npmrcLoader', () => ({
+  ...jest.requireActual('@/utils/npmrcLoader'),
+  loadNpmrc: jest.fn(),
+}))
 
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import {
   parseYarnrc,
   yarnRegistryConfig,
   yarnrcRoutes,
 } from '@/managers/yarn/yarnrc'
-import { loadRegistryConfig, type NpmrcSources } from '@/utils/npmrcLoader'
+import * as npmrcLoader from '@/utils/npmrcLoader'
+import {
+  mergeNpmrcLayers,
+  type NpmrcSources,
+  registryConfigFrom,
+} from '@/utils/npmrcLoader'
 import { registryFor } from '@/utils/registryRequest'
 
 const A = 'http://127.0.0.1:4001/'
@@ -125,12 +136,26 @@ describe('yarnRegistryConfig', () => {
   const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources => ({
     env,
     home: at('home'),
-    execPath: process.execPath,
+    // A temp prefix, so the real Node install's etc/npmrc cannot leak in.
+    // node.exe sits in the prefix on Windows, in <prefix>/bin elsewhere.
+    execPath:
+      process.platform === 'win32'
+        ? at('prefix', 'node.exe')
+        : at('prefix', 'bin', 'node'),
     platform: process.platform,
   })
+  /** yarn's view, as the session builds it: its own .npmrc layers, then the hook. */
+  const viewFor = (cwd: string, sources: NpmrcSources) =>
+    mergeNpmrcLayers(yarnNpmrcLayers(cwd, sources))
   const configFor = (cwd: string, env: NodeJS.ProcessEnv = {}) => {
     const sources = sourcesFor(env)
-    return yarnRegistryConfig(cwd, loadRegistryConfig(cwd, sources), sources)
+    const view = viewFor(cwd, sources)
+    return yarnRegistryConfig(
+      cwd,
+      registryConfigFrom(view.values, cwd, sources),
+      sources,
+      view,
+    )
   }
   const proj = () => at('proj')
 
@@ -333,7 +358,18 @@ describe('yarnRegistryConfig', () => {
 
   it('returns the .npmrc view when nothing routes', () => {
     const sources = sourcesFor()
-    const base = loadRegistryConfig(proj(), sources)
-    expect(yarnRegistryConfig(proj(), base, sources)).toEqual(base)
+    const view = viewFor(proj(), sources)
+    const base = registryConfigFrom(view.values, proj(), sources)
+    expect(yarnRegistryConfig(proj(), base, sources, view)).toEqual(base)
+  })
+
+  it('reads the .npmrc layers once: loadNpmrc is not called again', () => {
+    write(at('proj', '.npmrc'), `registry=${A}\n`)
+    const reads = jest.spyOn(fs, 'readFileSync')
+    expect(configFor(proj()).registry).toBe(A)
+    expect(npmrcLoader.loadNpmrc).not.toHaveBeenCalled()
+    expect(
+      reads.mock.calls.filter(([file]) => file === at('proj', '.npmrc')),
+    ).toHaveLength(1)
   })
 })
