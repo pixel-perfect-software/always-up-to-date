@@ -7,6 +7,7 @@ import {
   DEFAULT_ENDPOINTS,
   decodeUri,
   depsDevUrl,
+  describeUrl,
   distTagsUrl,
   isPublicNpmRegistry,
   isRetryableError,
@@ -15,6 +16,7 @@ import {
   nerfDart,
   packumentUrl,
   parseCacheControl,
+  pathMarker,
   RETRY_AFTER_MAX_MS,
   RETRY_MAX_MS,
   registryFor,
@@ -387,5 +389,109 @@ describe('parseCacheControl', () => {
 
   it('ignores garbage and unknown directives', () => {
     expect(parseCacheControl(',,;;=, s-maxage=5, immutable, ===')).toEqual(none)
+  })
+})
+
+describe('describeUrl', () => {
+  const fury = 'https://npm-proxy.fury.io/SECRET/acme/'
+  const marker = pathMarker('/SECRET/acme')
+
+  it('hides the registry path behind a stable marker and keeps the package name', () => {
+    expect(marker).toMatch(/^…\[[0-9a-f]{6}\]$/)
+    expect(describeUrl(packumentUrl('left-pad', fury), fury)).toBe(
+      `https://npm-proxy.fury.io/${marker}/left-pad`,
+    )
+    expect(describeUrl(packumentUrl('@acme/ui', fury), fury)).toBe(
+      `https://npm-proxy.fury.io/${marker}/@acme%2fui`,
+    )
+    expect(describeUrl(distTagsUrl('left-pad', fury), fury)).toBe(
+      `https://npm-proxy.fury.io/${marker}/-/package/left-pad/dist-tags`,
+    )
+  })
+
+  it('shows the same marker for the same registry and another for another', () => {
+    const a = 'https://artifactory.corp/npm-remote/'
+    const b = 'https://artifactory.corp/acme-local/'
+    const shown = (registry: string) =>
+      describeUrl(packumentUrl('ms', registry), registry)
+    expect(shown(a)).toBe(shown(a.slice(0, -1)))
+    expect(shown(a)).not.toBe(shown(b))
+    expect(shown(a)).toMatch(
+      /^https:\/\/artifactory\.corp\/…\[[0-9a-f]{6}\]\/ms$/,
+    )
+  })
+
+  it('shows the public endpoints and a root registry whole', () => {
+    const npm = 'https://registry.npmjs.org/'
+    expect(describeUrl(packumentUrl('ms', npm), npm)).toBe(
+      'https://registry.npmjs.org/ms',
+    )
+    expect(
+      describeUrl('https://api.deps.dev/v3/systems/npm/packages/ms', npm),
+    ).toBe('https://api.deps.dev/v3/systems/npm/packages/ms')
+    const root = 'https://registry.corp.test/'
+    expect(describeUrl(packumentUrl('ms', root), root)).toBe(
+      'https://registry.corp.test/ms',
+    )
+  })
+
+  it('handles a registry without a trailing slash', () => {
+    const bare = 'https://npm-proxy.fury.io/SECRET/acme'
+    expect(describeUrl(packumentUrl('ms', bare), bare)).toBe(
+      `https://npm-proxy.fury.io/${marker}/ms`,
+    )
+  })
+
+  it('handles percent-encoded and space-containing paths', () => {
+    const encoded = 'https://h.test/a%2Fb/s%20x/'
+    const shown = describeUrl(packumentUrl('ms', encoded), encoded)
+    expect(shown).toMatch(/^https:\/\/h\.test\/…\[[0-9a-f]{6}\]\/ms$/)
+    const spaced = 'https://h.test/with space/'
+    expect(describeUrl(packumentUrl('ms', spaced), spaced)).not.toContain(
+      'space',
+    )
+  })
+
+  it('drops an explicit default port as the origin does', () => {
+    const port = 'https://npm-proxy.fury.io:443/SECRET/acme/'
+    expect(describeUrl(packumentUrl('ms', port), port)).toBe(
+      `https://npm-proxy.fury.io/${marker}/ms`,
+    )
+  })
+
+  it('hides the path of a redirect target, even under a root registry', () => {
+    const root = 'https://registry.corp.test/'
+    expect(
+      describeUrl('https://registry.corp.test/signed/TOKEN/ms.tgz', root, {
+        redirect: true,
+      }),
+    ).toBe('https://registry.corp.test/…')
+  })
+
+  it('hides the whole path of a URL outside the registry path', () => {
+    expect(describeUrl('https://cdn.example/SECRET/ms.tgz', fury)).toBe(
+      'https://cdn.example/…',
+    )
+    expect(describeUrl('https://npm-proxy.fury.io/OTHER/ms', fury)).toBe(
+      'https://npm-proxy.fury.io/…',
+    )
+    expect(
+      describeUrl('https://npm-proxy.fury.io/SECRET/acme/ms', 'nope'),
+    ).toBe('https://npm-proxy.fury.io/…')
+  })
+
+  it('never throws: an unparseable URL gives a placeholder', () => {
+    expect(describeUrl('http://[bad', fury)).toBe('(invalid URL)')
+    expect(describeUrl('', '')).toBe('(invalid URL)')
+    expect(describeUrl('http://[bad', fury, { redirect: true })).toBe(
+      '(invalid URL)',
+    )
+  })
+
+  it('never shows userinfo or the query', () => {
+    const base = 'https://u:p@npm-proxy.fury.io/SECRET/acme/'
+    expect(describeUrl(`${base}ms?token=q`, base)).toBe(
+      `https://npm-proxy.fury.io/${marker}/ms`,
+    )
   })
 })

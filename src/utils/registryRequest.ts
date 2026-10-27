@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import type { RegistryConfig, RegistryCredentials } from '@/types'
 
 export const RETRY_BASE_MS = 100
@@ -211,6 +212,69 @@ export const isPublicNpmRegistry = (
     return origins.includes(url.origin) && url.pathname === '/'
   } catch {
     return false
+  }
+}
+
+/** What `describeUrl` shows for a URL it cannot read. */
+export const INVALID_URL = '(invalid URL)'
+
+/** The public endpoints whose paths hold no secret and are shown whole. */
+const PUBLIC_ORIGINS = [
+  ...DEFAULT_ENDPOINTS.publicRegistries,
+  DEFAULT_ENDPOINTS.depsDev,
+].map((endpoint) => new URL(endpoint).origin)
+
+/**
+ * `…[3fa9c1]`: the hidden path of a registry, as the first 6 hex characters of
+ * the SHA-256 of the path without its trailing slash. The same registry always
+ * shows the same marker, so two registries on one host stay apart, and six
+ * characters of a hash tell nothing about a token in the path.
+ */
+export const pathMarker = (pathname: string): string =>
+  `…[${createHash('sha256')
+    .update(pathname.replace(/\/+$/, ''))
+    .digest('hex')
+    .slice(0, 6)}]`
+
+/**
+ * A request URL as it may appear in an error, a reason or a debug line: the
+ * origin, then what follows the registry's own path. Some registries keep a
+ * token in that path (`https://npm-proxy.fury.io/<TOKEN>/<user>/`), so it is
+ * shown as `/…[3fa9c1]` (see `pathMarker`) and the package name after it
+ * stays: `https://npm-proxy.fury.io/…[3fa9c1]/left-pad`. The public npm
+ * registries and deps.dev show their whole path. A redirect target, or any
+ * other URL outside the registry's path, shows its origin and `/…` only, as
+ * its path may hold a signed token. Userinfo and the query never show. A URL
+ * or registry that does not parse gives `INVALID_URL`; this never throws.
+ * Display only: nothing is sent from this.
+ */
+export const describeUrl = (
+  url: URL | string,
+  registry: string,
+  { redirect = false }: { redirect?: boolean } = {},
+): string => {
+  try {
+    const target = typeof url === 'string' ? new URL(url) : url
+    if (redirect) return `${target.origin}/…`
+    if (PUBLIC_ORIGINS.includes(target.origin)) {
+      return `${target.origin}${target.pathname}`
+    }
+    let base: URL | undefined
+    try {
+      base = new URL(registry.trim())
+    } catch {
+      // An unreadable registry hides the whole path, below.
+    }
+    if (base?.origin === target.origin) {
+      const own = base.pathname.replace(/\/+$/, '')
+      if (own === '') return `${target.origin}${target.pathname}`
+      if (target.pathname.startsWith(`${own}/`)) {
+        return `${target.origin}/${pathMarker(own)}${target.pathname.slice(own.length)}`
+      }
+    }
+    return `${target.origin}/…`
+  } catch {
+    return INVALID_URL
   }
 }
 

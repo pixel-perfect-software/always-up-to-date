@@ -12,6 +12,7 @@ import {
   authorizationFor,
   credentialsFor,
   decodeUri,
+  describeUrl,
   isRetryableError,
   isRetryableStatus,
   retryDelay,
@@ -144,8 +145,22 @@ const basicFromUserinfo = (url: URL): string | undefined =>
     ? `Basic ${Buffer.from(`${decodeUri(url.username)}:${decodeUri(url.password)}`).toString('base64')}`
     : undefined
 
-/** The URL without userinfo or query: safe to put in an error or a log line. */
-const redact = (url: URL): string => `${url.origin}${url.pathname}`
+/**
+ * The one way a request failure is worded: `GET <url>: <text>`, the URL shown
+ * by `describeUrl` and nothing else, so no site can format a raw URL. `hop`
+ * is where the request is: the registry it was built from, and whether a
+ * redirect brought it to `target`.
+ */
+const requestError = (
+  hop: { registry: string; redirected: boolean },
+  target: URL | string,
+  text: string,
+  details?: { code?: string; status?: number },
+): RegistryRequestError =>
+  new RegistryRequestError(
+    `GET ${describeUrl(target, hop.registry, { redirect: hop.redirected })}: ${text}`,
+    details,
+  )
 
 const codeOf = (error: unknown): string | undefined =>
   typeof error === 'object' &&
@@ -263,12 +278,14 @@ export const createRegistryClient = (
   const once = async (
     target: URL,
     registry: string,
+    redirected: boolean,
     callerSignals: AbortSignal[],
     accept: string,
     timeoutMs: number,
     ifNoneMatch: string | undefined,
   ): Promise<Outcome> => {
     const url = new URL(target)
+    const hop = { registry, redirected }
     // npm sends userinfo in the URL as Basic auth, unless .npmrc scopes
     // credentials to the prefix. It is never sent in the URL, logged or thrown.
     const userinfo = basicFromUserinfo(url)
@@ -329,9 +346,7 @@ export const createRegistryClient = (
             authenticated,
           }
         } catch {
-          throw new RegistryRequestError(
-            `GET ${redact(url)}: response is not valid JSON`,
-          )
+          throw requestError(hop, url, 'response is not valid JSON')
         }
       }
       response.resume()
@@ -348,16 +363,14 @@ export const createRegistryClient = (
       }
     } catch (error) {
       if (timeout.aborted && !callerSignals.some((s) => s.aborted)) {
-        throw new RegistryRequestError(
-          `GET ${redact(url)}: timed out after ${timeoutMs}ms`,
-          { code: 'ETIMEDOUT' },
-        )
+        throw requestError(hop, url, `timed out after ${timeoutMs}ms`, {
+          code: 'ETIMEDOUT',
+        })
       }
       if (error instanceof RegistryRequestError) throw error
-      throw new RegistryRequestError(
-        `GET ${redact(url)}: ${messageOf(error)}`,
-        { code: codeOf(error) },
-      )
+      throw requestError(hop, url, messageOf(error), {
+        code: codeOf(error),
+      })
     }
   }
 
@@ -375,11 +388,13 @@ export const createRegistryClient = (
     let authenticated = false
 
     for (let attempt = 0; ; ) {
+      const hop = { registry, redirected: redirects > 0 }
       let outcome: Outcome
       try {
         outcome = await once(
           target,
           registry,
+          redirects > 0,
           callerSignals,
           accept,
           timeoutMs,
@@ -422,18 +437,16 @@ export const createRegistryClient = (
         try {
           next = new URL(outcome.location, target)
         } catch {
-          throw new RegistryRequestError(
-            `GET ${redact(target)}: redirect to an invalid location`,
-          )
+          throw requestError(hop, target, 'redirect to an invalid location')
         }
         if (++redirects > MAX_REDIRECTS) {
-          throw new RegistryRequestError(
-            `GET ${redact(target)}: too many redirects`,
-          )
+          throw requestError(hop, target, 'too many redirects')
         }
         if (target.protocol === 'https:' && next.protocol !== 'https:') {
-          throw new RegistryRequestError(
-            `GET ${redact(target)}: refused redirect from https to ${redact(next)}`,
+          throw requestError(
+            hop,
+            target,
+            `refused redirect from https to ${describeUrl(next, registry, { redirect: true })}`,
           )
         }
         target = next
@@ -448,8 +461,10 @@ export const createRegistryClient = (
           continue
         }
       }
-      throw new RegistryRequestError(
-        `GET ${redact(target)}: ${outcome.status} ${outcome.message}`.trim(),
+      throw requestError(
+        hop,
+        target,
+        `${outcome.status} ${outcome.message}`.trim(),
         { status: outcome.status },
       )
     }

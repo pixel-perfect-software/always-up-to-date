@@ -732,6 +732,34 @@ describe('registry reader', () => {
       expect(depsDev.requests).toEqual([])
     })
 
+    it.each([
+      ['a 500', { status: 500, body: 'oops' }, '500'],
+      ['invalid JSON', { body: 'oops' }, 'not valid JSON'],
+    ])(
+      'keeps a registry path token out of the reason for %s',
+      async (_label, reply, expected) => {
+        const server = await start(replies({ '/SECRET/acme/ms': reply }))
+        const registryConfig = configFor(`${server.url}SECRET/acme/`)
+        const client = createRegistryClient(registryConfig)
+        clients.push(client)
+        const reader = createRegistryReader({
+          registryConfig,
+          client: async () => client,
+          depsDev: false,
+        })
+
+        const result = await reader.lookup('ms')
+
+        expect(result).toMatchObject({
+          ok: false,
+          kind: 'request',
+          reason: expect.stringContaining(expected),
+        })
+        expect(JSON.stringify(result)).not.toContain('SECRET')
+        expect(result.ok ? '' : result.reason).toMatch(/\/…\[[0-9a-f]{6}\]\/ms/)
+      },
+    )
+
     it('keeps URL userinfo out of every reason', async () => {
       const server = await start(msRegistry())
       const url = new URL(server.url)

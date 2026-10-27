@@ -2,6 +2,7 @@ import { blue, bold, cyan, gray, green, red, yellow } from 'colorette'
 import type SemVer from 'semver'
 import type { AlwaysUpToDateConfig, UpdateResult } from '@/types'
 import { formatAgeDays } from './duration'
+import { scrub } from './redaction'
 import { toSkippedRow } from './rows'
 import { workspaceLabel } from './workspaceRows'
 
@@ -79,8 +80,9 @@ class Logger {
   /** Errors, warnings and debug lines: stderr in `--json` mode. */
   private diagnostic(line: string): void {
     if (this.quiet) return
-    if (this.jsonOutput) console.error(line)
-    else console.log(line)
+    const shown = scrub(line)
+    if (this.jsonOutput) console.error(shown)
+    else console.log(shown)
   }
 
   info(message: string): void {

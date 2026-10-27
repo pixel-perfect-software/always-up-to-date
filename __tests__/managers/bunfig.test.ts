@@ -9,6 +9,7 @@ import {
   parseBunfigRegistries,
 } from '@/managers/bun/bunfig'
 import type { RegistryConfig } from '@/types'
+import logger from '@/utils/logger'
 import type { NpmrcSources } from '@/utils/npmrcLoader'
 import { authorizationFor } from '@/utils/registryRequest'
 
@@ -340,6 +341,17 @@ describe('bunRegistryConfig', () => {
       '//127.0.0.1:4002/': { authToken: 'default' },
     })
     expect(config.scopedRegistries).toEqual({ '@acme': B })
+  })
+
+  it('names the host, never the path, when it ignores a scope credential', () => {
+    const route = 'http://127.0.0.1:4002/SECRET/acme/'
+    projectBunfig(
+      `[install]\nregistry = { url = "${route}", token = "default" }\n[install.scopes]\n"@acme" = { url = "${route}", token = "scope" }\n`,
+    )
+    bunRegistryConfig(at('proj'), base(), sourcesFor())
+    const lines = jest.mocked(logger.debug).mock.calls.map(([line]) => line)
+    expect(lines).toEqual([expect.stringContaining('127.0.0.1:4002')])
+    expect(lines.join('\n')).not.toContain('SECRET')
   })
 
   it('reads the workspace root bunfig.toml from a member directory, not the member', () => {

@@ -1,5 +1,6 @@
 import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
+import { scrub } from '@/utils/redaction'
 
 /**
  * Reports a failed command once and sets exit code 1. With `--json`, stdout
@@ -9,7 +10,7 @@ import logger from '@/utils/logger'
 const reportFailure = (error: unknown, json?: boolean): void => {
   const step = error instanceof StepError ? error.step : undefined
   const manifestWritten = error instanceof StepError && error.manifestWritten
-  const message = error instanceof Error ? error.message : String(error)
+  const message = scrub(error instanceof Error ? error.message : String(error))
 
   process.exitCode = 1
 

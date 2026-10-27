@@ -77,6 +77,7 @@ __tests__/
     check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options
     jsonOutput.test.ts      # Real logger: stdout is exactly one JSON document with --json
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, JSON error object
+    registryPathToken.test.ts # A token in a registry URL path never reaches a message: the client's errors, a fake npm's stderr, debug lines and the --json error object (#131)
   detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging
   startup.test.ts           # Loading the CLI never loads the registry client or reader
   fixtures/
