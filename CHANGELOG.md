@@ -3,6 +3,58 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-10-27 — 3.0.0: outdated packages found without the package manager, a registry cache, and each manager's own registry settings
+
+**Breaking:** `check` no longer runs the package manager's `outdated` for npm, pnpm, yarn v1 and bun. It reads the manifests, `node_modules` and the registry itself. As a result:
+- `check --json` loses the manager-specific fields;
+- peer-only dependencies are no longer listed;
+- a failed lookup fails the run;
+- a project with nothing installed must be installed first.
+
+A repeated `check` within 5 minutes makes no request at all. On the 40-dependency benchmark, it takes 0.10 s and about 85 MB on every manager, against 0.74–2.70 s and 116–819 MB in 2.2.0. Registries and credentials are now read from the files each manager reads, for lookups and cooldown alike. By default, the names of packages served by registry.npmjs.org are looked up at deps.dev; `depsDev: false` turns that off.
+
+### Breaking
+- `check --json` no longer passes through npm's `dependent` and `location` or pnpm's `isDeprecated` and `dependencyType` ([#106](https://github.com/pixel-perfect-software/always-up-to-date/issues/106)).
+- A dependency declared only in `peerDependencies` is no longer listed. npm and bun used to list one; pnpm and yarn did not ([#106](https://github.com/pixel-perfect-software/always-up-to-date/issues/106)).
+- A failed registry lookup fails `check` with exit code 1, naming each package and its reason ([#106](https://github.com/pixel-perfect-software/always-up-to-date/issues/106)).
+- With no `node_modules`, `check` stops with "Nothing is installed in … (no node_modules): run `<pm> install`, then check again." npm projects used to be read from `package-lock.json` (#91). Reading lockfiles returns in [#107](https://github.com/pixel-perfect-software/always-up-to-date/issues/107).
+
+### Added
+- Repeat registry lookups are answered from a disk cache, for as long as each registry says its answer stays good ([#108](https://github.com/pixel-perfect-software/always-up-to-date/issues/108)):
+  - **Location:** `ca.pixel-perfect.alwaysuptodate` under `~/Library/Caches`, `$XDG_CACHE_HOME` or `~/.cache`, or `%LOCALAPPDATA%`; `AUTD_CACHE_DIR` moves it.
+  - **Contents:** only the versions, their deprecation and publish dates, and `latest`; no registry document, header or credential. It's capped at 32 MiB, and deleting it is always safe.
+  - **Turning it off:** `--no-cache` on `check` and `update`, or `AUTD_NO_CACHE`, reads and writes nothing.
+- `depsDev` in `.always-up-to-date.json`, default `true` ([#105](https://github.com/pixel-perfect-software/always-up-to-date/issues/105)):
+  - **What is sent:** packages served by registry.npmjs.org or registry.yarnpkg.com are looked up at api.deps.dev, about 8 KB each instead of a registry document that can run to megabytes. Their names are sent there, private packages published to registry.npmjs.org included.
+  - **What is never sent:** names from any other registry, and any credential.
+  - **Turning it off:** `false` reads everything from the registry. The value must be a real boolean; `"false"` is an error.
+
+### Changed
+- `check` doesn't need the package manager on `PATH`, except for yarn 2+ ([#106](https://github.com/pixel-perfect-software/always-up-to-date/issues/106)).
+- `wanted` follows one rule for every manager, per manifest. The highest version the range allows wins, and deprecated versions are passed over unless nothing else fits; yarn v1 used to pick deprecated ones ([#106](https://github.com/pixel-perfect-software/always-up-to-date/issues/106)).
+- Lists are sorted by name for every manager ([#106](https://github.com/pixel-perfect-software/always-up-to-date/issues/106)).
+- Registries and credentials come from each manager's own files and order, for lookups and cooldown alike:
+  - pnpm 12 reads `pnpm_config_*`, `pnpm-workspace.yaml`, its global `config.yaml`, the project `.npmrc`, its global `auth.ini`, then `~/.npmrc`. Of `npm_config_*`, only `//` credentials count, and a `${…}` in a project file is ignored ([#117](https://github.com/pixel-perfect-software/always-up-to-date/issues/117)).
+  - bun 1.4 reads `bunfig.toml`, `BUN_CONFIG_REGISTRY` and `BUN_CONFIG_TOKEN`, the project `.npmrc`, then one user file: `$XDG_CONFIG_HOME/.npmrc` when it exists, else `~/.npmrc`. npm's global npmrc, and `npm_config_*` beyond the registry, token and user file, are no longer read ([#118](https://github.com/pixel-perfect-software/always-up-to-date/issues/118)).
+  - yarn v1 reads `.yarnrc` registry routes, a member's own `.npmrc`, and the `.npmrc` of each parent directory ([#120](https://github.com/pixel-perfect-software/always-up-to-date/issues/120), [#122](https://github.com/pixel-perfect-software/always-up-to-date/issues/122)).
+  - From a workspace member, pnpm and bun read the workspace root's settings files ([#119](https://github.com/pixel-perfect-software/always-up-to-date/pull/119)).
+
+### Fixed
+- In a pnpm workspace, members that share an installed version get their own rows, each with its own in-range maximum. They used to be merged into one row ([#95](https://github.com/pixel-perfect-software/always-up-to-date/issues/95)).
+- A registry URL the package manager can't use now fails `check`, naming the file, the setting and the reason. Examples are a URL that doesn't parse, a non-http(s) one, or one with an unset variable. Before, autd fell back to registry.npmjs.org and sent it the names of privately routed packages ([#129](https://github.com/pixel-perfect-software/always-up-to-date/issues/129)).
+- A token in a registry URL's path is no longer printed ([#131](https://github.com/pixel-perfect-software/always-up-to-date/issues/131)). Gemfury puts tokens there. This covers errors, debug lines, `--json` error objects, and the manager's own output as autd reports it.
+- yarn v1 `npm:` alias rows show the target package's real versions ([#106](https://github.com/pixel-perfect-software/always-up-to-date/issues/106)).
+- Moving a pnpm or bun catalog entry no longer moves the same package in other catalogs. A range like `>=18.0.0 <19` is no longer rewritten as `^19.0.0 <19` ([#121](https://github.com/pixel-perfect-software/always-up-to-date/pull/121)).
+
+### Known issues
+- yarn 2+ still runs the manager to find outdated packages ([#107](https://github.com/pixel-perfect-software/always-up-to-date/issues/107)). With PnP, installed peer ranges aren't read, so no update is held for a peer conflict. `yarn up -R` also moves transitive copies of the updated packages within their ranges.
+- Run from inside a workspace member, autd finds no package manager ([#123](https://github.com/pixel-perfect-software/always-up-to-date/issues/123)).
+- A few registry settings are still read differently from the manager:
+  - pnpm's `fetchTimeout` and `fetchRetries` ([#125](https://github.com/pixel-perfect-software/always-up-to-date/issues/125));
+  - yarn v1's `always-auth` and bare `_authToken` ([#126](https://github.com/pixel-perfect-software/always-up-to-date/issues/126));
+  - a yarn v1 member's own `.npmrc` during its upgrade ([#127](https://github.com/pixel-perfect-software/always-up-to-date/issues/127)).
+- Cooldown still reads full registry documents, uncached ([#47](https://github.com/pixel-perfect-software/always-up-to-date/issues/47)).
+
 ## 2026-10-26 — 2.2.0: cooldown reads `.npmrc` the way npm does, Node 22 support, and faster startup
 
 Cooldown's registry lookups now go through autd's own client, which reads `.npmrc` the way npm 12 does. A scoped package is looked up on its own registry with its own credentials, and custom CAs, `strict-ssl` and proxies apply. The supported Node range is now `^22.23.0 || >=24.17.0`: Node 22 works, and Node 24 needs 24.17 or later. Every command starts about 50 ms sooner, since the registry client loads only when cooldown needs it.
