@@ -14,6 +14,7 @@ import {
   isValidPackageName,
   nerfDart,
   packumentUrl,
+  parseCacheControl,
   RETRY_AFTER_MAX_MS,
   RETRY_MAX_MS,
   registryFor,
@@ -324,5 +325,67 @@ describe('decodeUri', () => {
   it('decodes percent-encoding and leaves invalid sequences as written', () => {
     expect(decodeUri('pa%3Ass')).toBe('pa:ss')
     expect(decodeUri('100%')).toBe('100%')
+  })
+})
+
+describe('parseCacheControl', () => {
+  const none = {
+    noStore: false,
+    noCache: false,
+    isPublic: false,
+    isPrivate: false,
+  }
+
+  it('reads the captured npm and deps.dev values', () => {
+    expect(parseCacheControl('public, max-age=300')).toEqual({
+      ...none,
+      isPublic: true,
+      maxAge: 300,
+    })
+    expect(parseCacheControl('public, max-age=3600')).toEqual({
+      ...none,
+      isPublic: true,
+      maxAge: 3600,
+    })
+  })
+
+  it('is empty without a header', () => {
+    expect(parseCacheControl(undefined)).toEqual(none)
+    expect(parseCacheControl('')).toEqual(none)
+  })
+
+  it('ignores case and spaces', () => {
+    expect(
+      parseCacheControl('  PUBLIC ,Max-Age = 60,No-Cache,NO-STORE, Private'),
+    ).toEqual({
+      noStore: true,
+      noCache: true,
+      isPublic: true,
+      isPrivate: true,
+      maxAge: 60,
+    })
+  })
+
+  it('accepts a quoted max-age', () => {
+    expect(parseCacheControl('max-age="120"').maxAge).toBe(120)
+  })
+
+  it('keeps the smallest of a repeated max-age', () => {
+    expect(parseCacheControl('max-age=600, max-age=60').maxAge).toBe(60)
+    expect(parseCacheControl('max-age=60, max-age=600').maxAge).toBe(60)
+  })
+
+  it('reads max-age=0', () => {
+    expect(parseCacheControl('max-age=0').maxAge).toBe(0)
+  })
+
+  it('ignores a max-age that is not a non-negative integer', () => {
+    for (const value of ['-1', '1.5', 'abc', '', '1e3', '"abc"']) {
+      expect(parseCacheControl(`max-age=${value}`)).toEqual(none)
+    }
+  })
+
+  it('ignores garbage and unknown directives', () => {
+    expect(parseCacheControl(',,;;=, s-maxage=5, immutable, ===')).toEqual(none)
   })
 })

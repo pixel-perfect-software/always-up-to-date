@@ -35,7 +35,18 @@ export const derive = <T>(name: string, edit: (body: T) => void): string => {
 export interface Reply {
   status?: number
   type?: string
+  /** Extra response headers; values are opaque test strings. */
+  headers?: Record<string, string>
   body: string
+}
+
+const send = (res: http.ServerResponse, reply: Reply): void => {
+  res.statusCode = reply.status ?? 200
+  res.setHeader('content-type', reply.type ?? 'application/json')
+  for (const [name, value] of Object.entries(reply.headers ?? {})) {
+    res.setHeader(name, value)
+  }
+  res.end(reply.body)
 }
 
 /** Answers from an exact `req.url` to reply table; anything else is 404 text/plain. */
@@ -43,12 +54,27 @@ export const replies =
   (table: Record<string, Reply>): Handler =>
   (req, res) => {
     const reply = table[req.url ?? '']
-    res.statusCode = reply ? (reply.status ?? 200) : 404
-    res.setHeader(
-      'content-type',
-      reply ? (reply.type ?? 'application/json') : 'text/plain',
-    )
-    res.end(reply ? reply.body : 'not found')
+    if (reply) send(res, reply)
+    else send(res, { status: 404, type: 'text/plain', body: 'not found' })
+  }
+
+/**
+ * Answers `reply` with `ETag: etag`, or a bodiless 304 (same ETag, same extra
+ * headers) when the request's `If-None-Match` is that etag.
+ */
+export const conditional =
+  (reply: Reply, etag: string): Handler =>
+  (req, res) => {
+    const headers = { ...reply.headers, etag }
+    if (req.headers['if-none-match'] === etag) {
+      res.statusCode = 304
+      for (const [name, value] of Object.entries(headers)) {
+        res.setHeader(name, value)
+      }
+      res.end()
+      return
+    }
+    send(res, { ...reply, headers })
   }
 
 export interface RecordedRequest {

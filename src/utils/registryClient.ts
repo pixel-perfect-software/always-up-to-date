@@ -17,7 +17,39 @@ import {
   retryDelay,
 } from './registryRequest'
 
+/** What a GET came back with; `authenticated` is true when any hop sent credentials. */
+export type RegistryResponse =
+  | {
+      notModified: false
+      body: unknown
+      etag?: string
+      cacheControl?: string
+      authenticated: boolean
+    }
+  | {
+      notModified: true
+      etag?: string
+      cacheControl?: string
+      authenticated: boolean
+    }
+
+export interface RegistryRequestOptions {
+  signal?: AbortSignal
+  accept?: string
+  timeout?: number
+  retries?: number
+}
+
 export interface RegistryClient {
+  /**
+   * As getJson, plus the validators. A 304 is returned (`notModified`) only
+   * when `ifNoneMatch` was sent; otherwise it stays an error.
+   */
+  getResponse(
+    url: string,
+    registry: string,
+    options?: RegistryRequestOptions & { ifNoneMatch?: string },
+  ): Promise<RegistryResponse>
   /**
    * GET url as JSON with the credentials and agent for its registry; rejects
    * with RegistryRequestError. `accept` (default `application/json`),
@@ -27,12 +59,7 @@ export interface RegistryClient {
   getJson(
     url: string,
     registry: string,
-    options?: {
-      signal?: AbortSignal
-      accept?: string
-      timeout?: number
-      retries?: number
-    },
+    options?: RegistryRequestOptions,
   ): Promise<unknown>
   /** What this client has received so far, per `url.host`: copies, so a snapshot stays as it was. */
   stats(): Record<string, RegistryHostStats>
@@ -75,10 +102,21 @@ const MAX_REDIRECTS = 5
 
 const USER_AGENT = `always-up-to-date/${packageJson.version} node/${process.version} ${process.platform} ${process.arch}`
 
-type Outcome =
-  | { kind: 'json'; value: unknown }
+type Outcome = { authenticated: boolean } & (
+  | { kind: 'json'; value: unknown; etag?: string; cacheControl?: string }
+  | { kind: 'not-modified'; etag?: string; cacheControl?: string }
   | { kind: 'redirect'; location: string }
   | { kind: 'status'; status: number; message: string; retryAfter?: string }
+)
+
+// Node throws ERR_INVALID_CHAR on a header value outside printable ASCII, and
+// a validator that long is no validator: drop it and the entry is TTL-only.
+const usableEtag = (value: string | undefined): string | undefined =>
+  value !== undefined &&
+  value.length <= 1024 &&
+  /^[\x21-\x7e][\x20-\x7e]*$/.test(value)
+    ? value
+    : undefined
 
 const basicFromUserinfo = (url: URL): string | undefined =>
   url.username || url.password
@@ -207,6 +245,7 @@ export const createRegistryClient = (
     callerSignals: AbortSignal[],
     accept: string,
     timeoutMs: number,
+    ifNoneMatch: string | undefined,
   ): Promise<Outcome> => {
     const url = new URL(target)
     // npm sends userinfo in the URL as Basic auth, unless .npmrc scopes
@@ -216,6 +255,9 @@ export const createRegistryClient = (
     url.password = ''
     const credentials = credentialsFor(url, registry, config.credentials)
     const authorization = authorizationFor(credentials) ?? userinfo
+    const authenticated =
+      Boolean(authorization) ||
+      Boolean(credentials?.certfile && credentials?.keyfile)
     const timeout = AbortSignal.timeout(timeoutMs)
     const signal = AbortSignal.any([timeout, ...callerSignals])
 
@@ -232,6 +274,7 @@ export const createRegistryClient = (
                 'accept-encoding': 'gzip',
                 'user-agent': USER_AGENT,
                 ...(authorization ? { authorization } : {}),
+                ...(ifNoneMatch ? { 'if-none-match': ifNoneMatch } : {}),
               },
             },
             resolve,
@@ -244,12 +287,24 @@ export const createRegistryClient = (
       const status = response.statusCode ?? 0
       const stats = statsFor(url)
       stats.responses++
+      const etag = usableEtag(headerValue(response.headers.etag))
+      const cacheControl = headerValue(response.headers['cache-control'])
+      if (status === 304 && ifNoneMatch) {
+        response.resume()
+        return { kind: 'not-modified', etag, cacheControl, authenticated }
+      }
       if (status >= 200 && status < 300) {
         const { body, received } = await readBody(response)
         stats.bodyBytes += received
         stats.decodedBytes += body.length
         try {
-          return { kind: 'json', value: JSON.parse(body.toString('utf8')) }
+          return {
+            kind: 'json',
+            value: JSON.parse(body.toString('utf8')),
+            etag,
+            cacheControl,
+            authenticated,
+          }
         } catch {
           throw new RegistryRequestError(
             `GET ${redact(url)}: response is not valid JSON`,
@@ -259,13 +314,14 @@ export const createRegistryClient = (
       response.resume()
       const location = headerValue(response.headers.location)
       if (status >= 300 && status < 400 && location) {
-        return { kind: 'redirect', location }
+        return { kind: 'redirect', location, authenticated }
       }
       return {
         kind: 'status',
         status,
         message: response.statusMessage ?? '',
         retryAfter: headerValue(response.headers['retry-after']),
+        authenticated,
       }
     } catch (error) {
       if (timeout.aborted && !callerSignals.some((s) => s.aborted)) {
@@ -282,27 +338,30 @@ export const createRegistryClient = (
     }
   }
 
-  const getJson = async (
+  const getResponse = async (
     url: string,
     registry: string,
-    requestOptions: {
-      signal?: AbortSignal
-      accept?: string
-      timeout?: number
-      retries?: number
-    } = {},
-  ): Promise<unknown> => {
+    requestOptions: RegistryRequestOptions & { ifNoneMatch?: string } = {},
+  ): Promise<RegistryResponse> => {
     const accept = requestOptions.accept ?? 'application/json'
     const timeoutMs = requestOptions.timeout ?? config.fetchTimeout
     const retries = requestOptions.retries ?? config.fetchRetries
     const callerSignals = requestOptions.signal ? [requestOptions.signal] : []
     let target = new URL(url)
     let redirects = 0
+    let authenticated = false
 
     for (let attempt = 0; ; ) {
       let outcome: Outcome
       try {
-        outcome = await once(target, registry, callerSignals, accept, timeoutMs)
+        outcome = await once(
+          target,
+          registry,
+          callerSignals,
+          accept,
+          timeoutMs,
+          requestOptions.ifNoneMatch,
+        )
       } catch (error) {
         if (attempt < retries && isRetryableError(error)) {
           await sleep(retryDelay(attempt, undefined, Date.now()) ?? 0)
@@ -312,7 +371,26 @@ export const createRegistryClient = (
         throw error
       }
 
-      if (outcome.kind === 'json') return outcome.value
+      authenticated ||= outcome.authenticated
+
+      if (outcome.kind === 'json') {
+        return {
+          notModified: false,
+          body: outcome.value,
+          etag: outcome.etag,
+          cacheControl: outcome.cacheControl,
+          authenticated,
+        }
+      }
+
+      if (outcome.kind === 'not-modified') {
+        return {
+          notModified: true,
+          etag: outcome.etag,
+          cacheControl: outcome.cacheControl,
+          authenticated,
+        }
+      }
 
       if (outcome.kind === 'redirect') {
         let next: URL
@@ -352,7 +430,21 @@ export const createRegistryClient = (
     }
   }
 
+  const getJson = async (
+    url: string,
+    registry: string,
+    requestOptions: RegistryRequestOptions = {},
+  ): Promise<unknown> => {
+    const response = await getResponse(url, registry, requestOptions)
+    // Unreachable: a 304 is returned only for a request with ifNoneMatch.
+    if (response.notModified) {
+      throw new RegistryRequestError('unexpected 304 response')
+    }
+    return response.body
+  }
+
   return {
+    getResponse,
     getJson,
     stats: () =>
       Object.fromEntries(

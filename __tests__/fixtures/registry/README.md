@@ -69,3 +69,17 @@ A body over 100 KB decoded is committed as `<name>.body.gz` (`gzip -9 -n`); gunz
 | `react-dom.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/react-dom` | 200 | `application/json; charset=utf-8` | 49807 B | 569528 B | yes |
 | `yarn.packument.body.gz` | `registry.npmjs.org/yarn`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 49698 B | 205172 B | yes |
 | `pnpm.packument.body.gz` | `registry.npmjs.org/pnpm`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 646327 B | 1910352 B | yes |
+
+## Cache headers (2026-10-27)
+
+Captured for #108 with `curl --compressed -D`, no credentials, no `.npmrc`, `Accept: application/json` (dist-tags, full packument, deps.dev) or the abbreviated `Accept` (packument). Header files are not kept. The Aikido TLS proxy sits in front of registry.npmjs.org on this machine and may rewrite headers; registry.npmjs.org answered through Cloudflare (`cf-cache-status: DYNAMIC` on dist-tags), and the values below are what reached curl. `ms`, `next` and `@types/ms` gave the same headers per endpoint apart from `ETag`, `Age` and `Last-Modified`.
+
+| Endpoint | `Cache-Control` | `ETag` | `Age` | `Vary` | `If-None-Match` |
+|---|---|---|---|---|---|
+| registry.npmjs.org `/-/package/<name>/dist-tags` | none | none | none | `accept-encoding` | no ETag to send; a made-up one gets 200 |
+| registry.yarnpkg.com `/-/package/ms/dist-tags` | none | none | none | `accept-encoding` | no ETag to send |
+| registry.npmjs.org `/<name>`, abbreviated | `public, max-age=300` | weak, `W/"<32 hex>"` | 42 to 132 s | `accept-encoding, accept` | the ETag of `ms` gets 304 |
+| registry.npmjs.org `/<name>`, `application/json` | `public, max-age=300` | weak, `W/"<32 hex>"` (differs from the abbreviated one) | 15 to 118 s | `accept-encoding, accept` | not tried |
+| api.deps.dev `/v3/systems/npm/packages/<name>` | `public, max-age=3600` | none | none | `Accept-Encoding` | no ETag to send |
+
+The dist-tags answers carry only a `__cf_bm` cookie, no validator and no freshness header, so a cache of them is TTL-only. Packuments carry both, and a conditional request is answered with 304.

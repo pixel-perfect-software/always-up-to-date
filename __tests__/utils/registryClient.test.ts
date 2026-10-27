@@ -18,7 +18,10 @@ import {
   RegistryRequestError,
 } from '@/utils/registryClient'
 import {
+  conditional,
   readTls,
+  registryBody,
+  replies,
   startProxy,
   startRegistry,
   type TestProxy,
@@ -808,6 +811,241 @@ describe('registry client', () => {
     it('talks to an http registry', async () => {
       const server = await registry(json({ plain: true }))
       expect(await get(configFrom(''), server)).toEqual({ plain: true })
+    })
+  })
+
+  describe('validators and getResponse', () => {
+    const body = registryBody('ms.packument')
+    const parsed: unknown = JSON.parse(body)
+    const type = 'application/vnd.npm.install-v1+json'
+    const ETAG = 'W/"test-etag-1"'
+    const CACHE = 'public, max-age=300'
+
+    it('returns the ETag and Cache-Control', async () => {
+      const server = await registry(
+        replies({
+          '/pkg': {
+            type,
+            body,
+            headers: { etag: ETAG, 'cache-control': CACHE },
+          },
+        }),
+      )
+      const response = await clientFor(configFrom('')).getResponse(
+        `${server.url}pkg`,
+        server.url,
+      )
+      expect(response).toEqual({
+        notModified: false,
+        body: parsed,
+        etag: ETAG,
+        cacheControl: CACHE,
+        authenticated: false,
+      })
+    })
+
+    it('leaves them out when the registry sends none', async () => {
+      const server = await registry(replies({ '/pkg': { body } }))
+      const response = await clientFor(configFrom('')).getResponse(
+        `${server.url}pkg`,
+        server.url,
+      )
+      expect(response).toMatchObject({ notModified: false, body: parsed })
+      expect(response).toMatchObject({
+        etag: undefined,
+        cacheControl: undefined,
+      })
+    })
+
+    it('sends if-none-match only when given', async () => {
+      const server = await registry(replies({ '/pkg': { body } }))
+      const client = clientFor(configFrom(''))
+      await client.getResponse(`${server.url}pkg`, server.url)
+      await client.getResponse(`${server.url}pkg`, server.url, {
+        ifNoneMatch: ETAG,
+      })
+      expect(server.requests.map((r) => r.headers['if-none-match'])).toEqual([
+        undefined,
+        ETAG,
+      ])
+    })
+
+    it('keeps if-none-match across a redirect', async () => {
+      const server = await registry((req, res) => {
+        if (req.url === '/pkg') {
+          res.statusCode = 302
+          res.setHeader('location', '/final/pkg')
+          res.end()
+          return
+        }
+        json({ done: true })(req, res)
+      })
+      await clientFor(configFrom('')).getResponse(
+        `${server.url}pkg`,
+        server.url,
+        {
+          ifNoneMatch: ETAG,
+        },
+      )
+      expect(server.requests.map((r) => r.headers['if-none-match'])).toEqual([
+        ETAG,
+        ETAG,
+      ])
+    })
+
+    it('returns a 304 to a conditional request without a body, and counts it', async () => {
+      const server = await registry(
+        conditional({ type, body, headers: { 'cache-control': CACHE } }, ETAG),
+      )
+      const client = clientFor(configFrom(''))
+      const response = await client.getResponse(
+        `${server.url}pkg`,
+        server.url,
+        {
+          ifNoneMatch: ETAG,
+        },
+      )
+      expect(response).toEqual({
+        notModified: true,
+        etag: ETAG,
+        cacheControl: CACHE,
+        authenticated: false,
+      })
+      expect(client.stats()).toEqual({
+        [`127.0.0.1:${server.port}`]: {
+          responses: 1,
+          bodyBytes: 0,
+          decodedBytes: 0,
+        },
+      })
+    })
+
+    it('answers 200 with the body and the new ETag when the validator is stale', async () => {
+      const server = await registry(conditional({ type, body }, ETAG))
+      const response = await clientFor(configFrom('')).getResponse(
+        `${server.url}pkg`,
+        server.url,
+        { ifNoneMatch: 'W/"old"' },
+      )
+      expect(response).toMatchObject({
+        notModified: false,
+        body: parsed,
+        etag: ETAG,
+      })
+    })
+
+    it('still rejects a 304 nobody asked for, in getResponse and getJson', async () => {
+      const server = await registry((_req, res) => {
+        res.statusCode = 304
+        res.end()
+      })
+      const client = clientFor({ ...configFrom(''), fetchRetries: 0 })
+      await expect(
+        client.getResponse(`${server.url}pkg`, server.url),
+      ).rejects.toMatchObject({ status: 304 })
+      await expect(
+        client.getJson(`${server.url}pkg`, server.url),
+      ).rejects.toMatchObject({ status: 304 })
+    })
+
+    it('getJson returns the body of a conditional 200 as before', async () => {
+      const server = await registry(conditional({ type, body }, ETAG))
+      expect(
+        await clientFor(configFrom('')).getJson(`${server.url}pkg`, server.url),
+      ).toEqual(parsed)
+    })
+
+    describe('authenticated', () => {
+      const authenticatedOf = async (
+        config: RegistryConfig,
+        server: TestRegistry,
+        url = `${server.url}pkg`,
+      ) => (await clientFor(config).getResponse(url, server.url)).authenticated
+
+      it('is true with an _authToken', async () => {
+        const server = await registry()
+        const config = configFrom(`//127.0.0.1:${server.port}/:_authToken=TOK`)
+        expect(await authenticatedOf(config, server)).toBe(true)
+      })
+
+      it('is true with _auth', async () => {
+        const server = await registry()
+        const config = configFrom(
+          `//127.0.0.1:${server.port}/:_auth=dXNlcjpwYXNz`,
+        )
+        expect(await authenticatedOf(config, server)).toBe(true)
+      })
+
+      it('is true with userinfo in the URL', async () => {
+        const server = await registry()
+        const url = `${server.url.replace('//', '//user:pass@')}pkg`
+        expect(await authenticatedOf(configFrom(''), server, url)).toBe(true)
+        expect(authOf(server)).toEqual([
+          `Basic ${Buffer.from('user:pass').toString('base64')}`,
+        ])
+      })
+
+      it('is true with a client certificate', async () => {
+        const server = await registry(json(), { tls: 'mtls' })
+        const prefix = `//127.0.0.1:${server.port}/`
+        const config = configFrom(
+          [
+            `ca=${ca}`,
+            `${prefix}:certfile=${JSON.stringify(clientCert)}`,
+            `${prefix}:keyfile=${JSON.stringify(clientKey)}`,
+          ].join('\n'),
+        )
+        expect(await authenticatedOf(config, server)).toBe(true)
+      })
+
+      it('is false with no credentials', async () => {
+        const server = await registry()
+        expect(await authenticatedOf(configFrom(''), server)).toBe(false)
+      })
+
+      it('is true when a hop that was redirected away carried credentials', async () => {
+        const target = await registry()
+        const server = await registry((_req, res) => {
+          res.statusCode = 302
+          res.setHeader('location', `${target.url}pkg`)
+          res.end()
+        })
+        const config = configFrom(`//127.0.0.1:${server.port}/:_authToken=TOK`)
+        expect(await authenticatedOf(config, server)).toBe(true)
+        expect(authOf(target)).toEqual([undefined])
+      })
+    })
+
+    describe('the ETag guard', () => {
+      const etagOf = async (value: string) => {
+        const server = await registry((_req, res) => {
+          res.setHeader('etag', value)
+          json({ ok: true })(_req, res)
+        })
+        const response = await clientFor(configFrom('')).getResponse(
+          `${server.url}pkg`,
+          server.url,
+        )
+        return response.etag
+      }
+
+      it('keeps a printable ASCII ETag of up to 1024 characters', async () => {
+        const longest = `"${'a'.repeat(1022)}"`
+        expect(await etagOf(longest)).toBe(longest)
+      })
+
+      it('drops one over 1024 characters', async () => {
+        expect(await etagOf(`"${'a'.repeat(1023)}"`)).toBeUndefined()
+      })
+
+      it('drops one with a tab or a non-ASCII character', async () => {
+        expect(await etagOf('"a\tb"')).toBeUndefined()
+        expect(await etagOf('"caf\u00e9"')).toBeUndefined()
+      })
+
+      it('drops an empty one', async () => {
+        expect(await etagOf('')).toBeUndefined()
+      })
     })
   })
 
