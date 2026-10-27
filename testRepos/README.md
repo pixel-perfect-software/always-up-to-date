@@ -9,6 +9,13 @@ installs its dependencies at the lowest version each range allows, restores the 
 and runs the built CLI (`dist/index.js`) against the copy. So the checkout stays clean and
 the copy sits outside this repository's own pnpm workspace, Biome and git.
 
+Each manifest is committed as `package.fixture.json`, and the copy renames it to
+`package.json` (`copyProject` in `__tests__/integration/harness.ts`; `bench/` uses the
+same copy). GitHub's dependency graph reads every `package.json` in the repository, and
+these pin old versions on purpose, so under their real name they raised Dependabot alerts.
+`exclude-paths` in `.github/dependabot.yml` only stops update pull requests, not alerts.
+Edit a fixture's `package.fixture.json`, never a `package.json` here.
+
 ## Rules for the dependency lines
 
 The sets are frozen on purpose: they must resolve the same way for as long as possible.
