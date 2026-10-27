@@ -1,6 +1,7 @@
 import CommandRunner from '@/commandRunner'
 import { discoverFromRegistry } from '@/discovery'
 import type { ManagerAdapter, RunManager, Workspace } from '@/managers'
+import { applyPinned } from '@/managers/pin'
 import type { Project } from '@/project'
 import type { PipelineStep } from '@/stepError'
 import type { PackageInfo, UpdateResult } from '@/types'
@@ -132,21 +133,30 @@ export const update = async (
   if (Object.keys(outdated).length === 0) return []
 
   const results = await plan(project, outdated, targetPackages)
-  const { names, withinRange, beyondRange, manifests } = splitUpdates(results)
+  const { names, withinRange, beyondRange, manifests, pinned } =
+    splitUpdates(results)
+  const moving = names.length + new Set(pinned.map((row) => row.name)).size
 
-  if (names.length === 0) {
+  if (moving === 0) {
     logger.report(results, adapter.name, 'plan')
     return results
   }
 
-  logger.updatingHeader(adapter.name, names.length)
+  logger.updatingHeader(adapter.name, moving)
 
-  await adapter.apply(
-    runFor(adapter, cwd, 'apply'),
-    cwd,
-    { names, withinRange, beyondRange, manifests },
-    workspace,
-  )
+  // Cooldown fallbacks first: the apply below asks for the rest by name, and
+  // leaves the versions they pinned where the lockfile has them.
+  if (pinned.length > 0) {
+    await applyPinned(runFor(adapter, cwd, 'apply'), cwd, pinned, adapter)
+  }
+  if (names.length > 0) {
+    await adapter.apply(
+      runFor(adapter, cwd, 'apply'),
+      cwd,
+      { names, withinRange, beyondRange, manifests },
+      workspace,
+    )
+  }
 
   // Report what the manager installed, not what it was asked to install.
   const moved = results.filter((r) => r.updated)

@@ -8,134 +8,18 @@
  * disagreeing with the manifest and the matrix would fail somewhere far away.
  */
 
-/** A dependency spec the harness replaced by the minimum version of its range. */
-export interface RangedDependency {
-  /** The manifest's directory relative to the root, POSIX separators ('.' = root). */
-  workspace?: string
-  /** A catalog entry instead of a manifest dependency: 'default' or the catalog's name. */
-  catalog?: string
-  name: string
-  /** The range as written in the repo, e.g. `^4.0.0`. */
-  range: string
-  /** The version installed instead: `semver.minVersion(range)`. */
-  installed: string
-}
+import {
+  manifestEntries,
+  type RangedDependency,
+  splitLines,
+} from '@/managers/yarn/lockfile'
 
-export const escapeRegExp = (text: string): string =>
-  text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-const splitLines = (text: string): { lines: string[]; eol: string } => ({
-  lines: text.split(/\r?\n/),
-  eol: text.includes('\r\n') ? '\r\n' : '\n',
-})
-
-const manifestEntries = (ranged: RangedDependency[]): RangedDependency[] =>
-  ranged.filter((dep) => dep.catalog === undefined)
-
-const unquote = (text: string): string => text.replace(/^"(.*)"$/, '$1')
-
-/**
- * yarn v1: the key line that lists `name@<installed>` gains `name@<range>`:
- * `chalk@4.0.0:` becomes `chalk@4.0.0, chalk@^4.0.0:`.
- */
-export const rewriteYarnV1Lock = (
-  lock: string,
-  ranged: RangedDependency[],
-): string => {
-  const { lines, eol } = splitLines(lock)
-  const wanted = manifestEntries(ranged)
-  const done = new Set<RangedDependency>()
-
-  const out = lines.map((line) => {
-    const match = /^(\S.*):$/.exec(line)
-    if (!match || line.startsWith('#')) return line
-
-    const keys = match[1].split(', ').map(unquote)
-    const added: string[] = []
-    for (const dep of wanted) {
-      if (!keys.includes(`${dep.name}@${dep.installed}`)) continue
-      done.add(dep)
-      const key = `${dep.name}@${dep.range}`
-      if (!keys.includes(key) && !added.includes(key)) added.push(key)
-    }
-    if (added.length === 0) return line
-
-    const quote = (key: string): string =>
-      key.startsWith('@') ? `"${key}"` : key
-    return `${[...keys, ...added].sort().map(quote).join(', ')}:`
-  })
-
-  for (const dep of wanted) {
-    if (!done.has(dep)) {
-      throw new Error(`yarn.lock: no key for ${dep.name}@${dep.installed}`)
-    }
-  }
-  return out.join(eol)
-}
-
-/**
- * yarn berry: `"name@npm:<installed>":` gains `name@npm:<range>`, and inside
- * each `"<name>@workspace:<path>":` entry the dependency `name: "npm:<installed>"`
- * becomes `name: "npm:<range>"`.
- */
-export const rewriteBerryLock = (
-  lock: string,
-  ranged: RangedDependency[],
-): string => {
-  const { lines, eol } = splitLines(lock)
-  const wanted = manifestEntries(ranged)
-  const keyDone = new Set<string>()
-  const specDone = new Set<RangedDependency>()
-  let workspace: string | undefined
-
-  const out = lines.map((line) => {
-    if (line === '') {
-      workspace = undefined
-      return line
-    }
-    const key = /^"(.*)":$/.exec(line)
-    if (key) {
-      workspace = /@workspace:(.*)$/.exec(key[1])?.[1]
-      if (workspace !== undefined) return line
-
-      const items = key[1].split(', ')
-      const added: string[] = []
-      for (const dep of wanted) {
-        if (!items.includes(`${dep.name}@npm:${dep.installed}`)) continue
-        keyDone.add(`${dep.name}@${dep.installed}`)
-        const item = `${dep.name}@npm:${dep.range}`
-        if (!items.includes(item) && !added.includes(item)) added.push(item)
-      }
-      return added.length === 0
-        ? line
-        : `"${[...items, ...added].sort().join(', ')}":`
-    }
-
-    if (workspace === undefined) return line
-    for (const dep of wanted) {
-      if (dep.workspace !== workspace) continue
-      const spec = new RegExp(
-        `^(\\s+"?${escapeRegExp(dep.name)}"?: )"npm:${escapeRegExp(dep.installed)}"$`,
-      ).exec(line)
-      if (!spec) continue
-      specDone.add(dep)
-      return `${spec[1]}"npm:${dep.range}"`
-    }
-    return line
-  })
-
-  for (const dep of wanted) {
-    if (!keyDone.has(`${dep.name}@${dep.installed}`)) {
-      throw new Error(`yarn.lock: no key for ${dep.name}@npm:${dep.installed}`)
-    }
-    if (!specDone.has(dep)) {
-      throw new Error(
-        `yarn.lock: no ${dep.name} dependency in the workspace entry for ${dep.workspace}`,
-      )
-    }
-  }
-  return out.join(eol)
-}
+export {
+  escapeRegExp,
+  type RangedDependency,
+  rewriteBerryLock,
+  rewriteYarnV1Lock,
+} from '@/managers/yarn/lockfile'
 
 const BUN_DEPENDENCY_FIELDS =
   /^ {6}"(dependencies|devDependencies|optionalDependencies)": \{$/

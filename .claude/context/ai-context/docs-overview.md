@@ -102,6 +102,7 @@ __tests__/
     yarnrc.test.ts          # yarn v1 .yarnrc grammar (quotes, comments, CRLF, --registry), routes, precedence against .npmrc, env and ~/.yarnrc, workspace parents
     bunNpmrc.test.ts        # bun's .npmrc layers on temp dirs: project, one user file (XDG, userconfig), no env/prefix/parent, $VAR forms
     bunfig.test.ts          # bunfig.toml routes and credentials, $NAME, global/project merge, env overrides, bunfigExact
+    pin.test.ts             # applyPinned on temp dirs: exact pin then a byte-for-byte restore, past-the-range spec, catalog entry, relock order, relock failure (#147)
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
     workspaces.test.ts      # Member map: workspace patterns, negations, skips
     workspaceDiscovery.test.ts  # Workspace check on all four managers (native) returns one record; unnamed roots
@@ -111,7 +112,7 @@ __tests__/
     cooldown.test.ts        # Normalize/evaluate cooldown gate
     duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests; readPnpmCatalogs / readBunCatalogs and their agreement with the pnpm writer
-    filterPackages.test.ts  # Package filtering, targeting, cooldown integration
+    filterPackages.test.ts  # Package filtering, targeting, cooldown integration, cooldown fallbacks and pinned rows (#147)
     logger.test.ts          # Logger output, configure(), quiet and JSON output modes; report(): every row once under its outcome, merged manifests, summary line (#138)
     npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
     npmrcLayers.test.ts     # mergeNpmrcLayers (per key, origin), envLayer rules, npmrcFileLayer (substitute null leaves out ${…}), npmNpmrcLayers order and merge

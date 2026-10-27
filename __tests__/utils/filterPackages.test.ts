@@ -19,6 +19,8 @@ interface LoadOpts {
     string,
     Array<{ name: string; version: string; range: string }>
   >
+  /** Deprecated versions per package; given, the registry answers `lookup`. */
+  deprecated?: Record<string, string[]>
 }
 
 const DEFAULTS = {
@@ -64,6 +66,23 @@ function loadFilterWithConfig(
         releaseTimes: jest.fn(
           async (name: string) => opts.releaseTimes?.[name] ?? {},
         ),
+        ...(opts.deprecated && {
+          lookup: async (name: string) => ({
+            ok: true as const,
+            package: {
+              name,
+              latest: '',
+              source: 'packument' as const,
+              versions: Object.keys(opts.releaseTimes?.[name] ?? {}).map(
+                (version) => ({
+                  version,
+                  deprecated:
+                    opts.deprecated?.[name]?.includes(version) ?? false,
+                }),
+              ),
+            },
+          }),
+        }),
       },
       ...options,
     })
@@ -510,6 +529,128 @@ describe('filterPackages', () => {
       expect(results[0].reason).toBe('major beyond the range')
     })
 
+    it('moves to the newest version past cooldown when the target is too fresh (#147)', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 2 },
+        {
+          releaseTimes: {
+            foo: {
+              '4.0.101': daysAgo(10),
+              '4.0.102': daysAgo(3),
+              '4.0.103': daysAgo(1),
+            },
+          },
+        },
+      )
+
+      const results = await filter(
+        makeOutdated([
+          {
+            name: 'foo',
+            current: '4.0.101',
+            wanted: '4.0.103',
+            latest: '4.0.103',
+          },
+        ]),
+        { now: NOW },
+      )
+
+      expect(results[0]).toMatchObject({
+        updated: true,
+        target: '4.0.102',
+        updateType: 'patch',
+        reason: 'cooldown: 4.0.103 released 1d ago, requires 2d',
+      })
+      expect(Math.round(results[0].releaseAge ?? 0)).toBe(3)
+      expect(filter.split(results)).toMatchObject({
+        names: [],
+        withinRange: [],
+        pinned: [
+          { path: '.', name: 'foo', version: '4.0.102', beyondRange: false },
+        ],
+      })
+    })
+
+    it('skips deprecated, pre-release and too-fresh versions for the fallback (#147)', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 2 },
+        {
+          releaseTimes: {
+            foo: {
+              '1.0.1': daysAgo(10),
+              '1.0.2': daysAgo(1),
+              '1.0.3-beta.1': daysAgo(20),
+              '1.0.3': daysAgo(5),
+              '1.0.4': daysAgo(1),
+            },
+          },
+          deprecated: { foo: ['1.0.3'] },
+        },
+      )
+
+      const [result] = await filter(
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.4', latest: '1.0.4' },
+        ]),
+        { now: NOW },
+      )
+
+      expect(result).toMatchObject({ updated: true, target: '1.0.1' })
+    })
+
+    it('judges the fallback by its own step with a per-type cooldown (#147)', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: { minor: 7, patch: 1 } },
+        {
+          releaseTimes: {
+            foo: {
+              '1.0.5': daysAgo(2),
+              '1.1.0': daysAgo(3),
+              '1.2.0': daysAgo(3),
+            },
+          },
+        },
+      )
+
+      const [result] = await filter(
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.2.0', latest: '1.2.0' },
+        ]),
+        { now: NOW },
+      )
+
+      expect(result).toMatchObject({
+        updated: true,
+        target: '1.0.5',
+        updateType: 'patch',
+      })
+    })
+
+    it('falls back past the range, below latest, as a pinned beyond-range row (#147)', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 7, beyondRange: 'major' },
+        {
+          releaseTimes: {
+            foo: { '2.0.0': daysAgo(30), '2.1.0': daysAgo(1) },
+          },
+        },
+      )
+
+      const results = await filter(
+        makeOutdated([{ name: 'foo', current: '1.0.0', latest: '2.1.0' }]),
+        { now: NOW },
+      )
+
+      expect(results[0]).toMatchObject({
+        updated: true,
+        target: '2.0.0',
+        updateType: 'major',
+      })
+      expect(filter.split(results).pinned).toEqual([
+        { path: '.', name: 'foo', version: '2.0.0', beyondRange: true },
+      ])
+    })
+
     it('holds a version the registry gives no time for (#139)', async () => {
       const filter = loadFilterWithConfig(
         { cooldown: 7 },
@@ -661,6 +802,46 @@ describe('filterPackages', () => {
     })
 
     it('holds the package in every manifest when one is held by the cooldown', async () => {
+      // packages/m has no version past cooldown above its current to fall
+      // back to, so it is held, and the root with it.
+      const filter = loadFilterWithConfig(
+        { cooldown: 7 },
+        {
+          releaseTimes: {
+            foo: { '1.11.23': daysAgo(2), '1.10.8': daysAgo(60) },
+          },
+        },
+      )
+
+      const results = await filter(
+        foldWorkspaceEntries([
+          {
+            name: 'foo',
+            workspace: '.',
+            current: '1.10.0',
+            wanted: '1.10.8',
+            latest: '1.11.23',
+          },
+          {
+            name: 'foo',
+            workspace: 'packages/m',
+            current: '1.11.0',
+            wanted: '1.11.23',
+            latest: '1.11.23',
+          },
+        ]),
+        { now: NOW },
+      )
+
+      expect(results.map((r) => r.updated)).toEqual([false, false])
+      expect(results[0].reason).toMatch(/^held with packages\/m \(cooldown: /)
+      expect(results[1].reason).toMatch(/^cooldown: /)
+    })
+
+    it('pins every row of a package when one falls back from the cooldown (#147)', async () => {
+      // packages/m falls back to 1.10.8, the root's own wanted: both move,
+      // and both are pinned, since the root's in-range command would move
+      // packages/m's range to 1.11.23 as well.
       const filter = loadFilterWithConfig(
         { cooldown: 7 },
         {
@@ -672,9 +853,23 @@ describe('filterPackages', () => {
 
       const results = await filter(together(), { now: NOW })
 
-      expect(results.map((r) => r.updated)).toEqual([false, false])
-      expect(results[0].reason).toMatch(/^held with packages\/m \(cooldown: /)
-      expect(results[1].reason).toMatch(/^cooldown: /)
+      expect(results.map((r) => [r.updated, r.target])).toEqual([
+        [true, '1.10.8'],
+        [true, '1.10.8'],
+      ])
+      expect(filter.split(results)).toMatchObject({
+        names: [],
+        manifests: [],
+        pinned: [
+          { path: '.', name: 'foo', version: '1.10.8', beyondRange: false },
+          {
+            path: 'packages/m',
+            name: 'foo',
+            version: '1.10.8',
+            beyondRange: false,
+          },
+        ],
+      })
     })
 
     it('names the root as the blocker when the root row is the held one', async () => {

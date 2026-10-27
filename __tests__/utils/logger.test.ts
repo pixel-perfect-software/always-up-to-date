@@ -283,6 +283,24 @@ describe('Logger', () => {
       expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1  within range')
     })
 
+    it('names the version a cooldown fallback skipped, within its range (#147)', () => {
+      logger.report(
+        [
+          moved('a', {
+            wanted: '1.0.3',
+            latest: '1.0.3',
+            target: '1.0.2',
+            reason: 'cooldown: 1.0.3 released 1d ago, requires 2d',
+          }),
+        ],
+        'npm',
+        'plan',
+      )
+      expect(printed()[1]).toBe(
+        '  a  1.0.0 → 1.0.2  within range; 1.0.3 released 1d ago, needs 2d',
+      )
+    })
+
     it('counts three or more manifests instead of listing them', () => {
       logger.report(
         ['.', 'a', 'b'].map((workspace) =>

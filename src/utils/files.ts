@@ -71,6 +71,7 @@ const applyVersionDecorator = (
  * - a spec that cannot keep its shape (`1.x`, `*`, `>=1 <2`, `^1 || ^2`) is
  *   written the way the project's manager writes a new entry (`style`)
  * - a git, file or URL spec is left alone
+ * - with `style.pin`, the bare version (#147)
  */
 const nextVersionSpec = (
   currentSpec: string,
@@ -82,6 +83,7 @@ const nextVersionSpec = (
     return `npm:${alias.name}@${nextVersionSpec(alias.range, newVersion, style)}`
   }
   if (/[:/#]/.test(currentSpec)) return currentSpec
+  if (style.pin) return newVersion
 
   const { decorator, version } = parseVersionString(currentSpec)
   if (semver.valid(version)) return applyVersionDecorator(decorator, newVersion)

@@ -15,6 +15,7 @@ import type {
 } from '@/utils/npmrcLoader'
 import type { ControllingOverride } from '@/utils/overrides'
 import type { SaveStyle } from '@/utils/saveStyle'
+import type { RangedDependency } from './yarn/lockfile'
 
 /** One package.json in the project: the root, or a workspace member. */
 export interface WorkspaceManifest {
@@ -57,7 +58,7 @@ export type RunManager = (
 
 /** What the policy chose to move, split as `splitUpdates` returns it. */
 export interface ApplyPlan {
-  /** Every package that moves. */
+  /** Every package that moves, except the pinned ones (`applyPinned` moves those first). */
   names: string[]
   /** Packages moving to `wanted`: the manager installs them by name. */
   withinRange: string[]
@@ -65,6 +66,25 @@ export interface ApplyPlan {
   beyondRange: Record<string, string>
   /** Each manifest with something moving, root first. A single-package project has the root only. */
   manifests: ManifestPlan[]
+}
+
+/** What pinning a cooldown fallback (#147, `applyPinned`) needs from the manager. */
+export interface Pinning {
+  /** The install after autd rewrote a manifest: it keeps locked versions the specs still allow. */
+  install: string[]
+  /** Writes catalog entries, for a manager with catalogs (`updatePNPMWorkspaceYAML`'s signature). */
+  writeCatalog?(
+    cwd: string,
+    versions: Record<string, string>,
+    style: SaveStyle,
+    catalog: string,
+  ): Promise<void>
+  /**
+   * A lockfile keyed by spec (yarn) resolves a restored range again, to the
+   * newest version: this records each range against the version pinned
+   * under its exact spec, before the second install.
+   */
+  relock?(cwd: string, pins: RangedDependency[]): void
 }
 
 /**
@@ -126,6 +146,8 @@ export interface ManagerAdapter {
   ): RegistryConfig
   /** How the manager writes a new spec, read from where its current version keeps that setting. */
   saveStyle(cwd: string): SaveStyle
+  /** How a cooldown fallback is pinned and restored with this manager. */
+  pinning(cwd: string): Pinning
   /** Packages pinned by an override this manager enforces. */
   overrides(cwd: string): Record<string, ControllingOverride>
 }

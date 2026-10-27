@@ -1,8 +1,10 @@
 import semver, { type ReleaseType } from 'semver'
 import type {
   AlwaysUpToDateConfig,
+  CooldownConfig,
   ManifestPlan,
   PackageInfo,
+  PinnedRow,
   UpdateResult,
 } from '@/types'
 import { evaluateCooldown, isCooldownEnabled } from './cooldown'
@@ -20,8 +22,12 @@ interface FilterPackagesOptions {
   config: AlwaysUpToDateConfig
   targetPackages?: string[]
   cwd?: string
-  /** Where the cooldown gate reads publish times; only asked when cooldown is on. */
-  registry: Pick<RegistrySession, 'releaseTimes'>
+  /**
+   * Where the cooldown gate reads publish times, and (`lookup`, when given)
+   * which versions are deprecated; only asked when cooldown is on.
+   */
+  registry: Pick<RegistrySession, 'releaseTimes'> &
+    Partial<Pick<RegistrySession, 'lookup'>>
   now?: number
   /** Packages pinned by an override the manager enforces; without it no package is held for one. */
   overrides?: Record<string, ControllingOverride>
@@ -116,6 +122,62 @@ const holdTogether = (results: UpdateResult[]): UpdateResult[] => {
       reason: `held with ${where} (${by.reason})`,
     }
   })
+}
+
+/**
+ * The newest version between `current` and a target the cooldown held that
+ * is past cooldown for its own step and not deprecated (#147), so a package
+ * that publishes more often than the cooldown still moves. It is below the
+ * target, so the policy allows it: a step no larger, and for an in-range
+ * target, inside the range (between `current` and `wanted`). A pre-release
+ * only when the target is one.
+ */
+const cooledOffVersion = (
+  { current, target }: UpdateResult,
+  times: Record<string, string>,
+  deprecated: Set<string>,
+  cooldown: CooldownConfig | undefined,
+  now: number | undefined,
+): { version: string; ageDays: number | undefined } | undefined => {
+  if (!target || !semver.valid(current) || !semver.valid(target)) {
+    return undefined
+  }
+  const preRelease = semver.prerelease(target) !== null
+  const candidates = Object.keys(times)
+    .filter(
+      (version) =>
+        semver.valid(version) &&
+        semver.gt(version, current) &&
+        semver.lt(version, target) &&
+        (preRelease || semver.prerelease(version) === null) &&
+        !deprecated.has(version),
+    )
+    .sort(semver.rcompare)
+  for (const version of candidates) {
+    const evaluation = evaluateCooldown(
+      times[version],
+      stepType(current, version),
+      cooldown,
+      now,
+    )
+    if (!evaluation.gated) return { version, ageDays: evaluation.ageDays }
+  }
+  return undefined
+}
+
+/** Versions the registry marks deprecated, when the session can say. */
+const deprecatedVersions = async (
+  registry: FilterPackagesOptions['registry'],
+  name: string,
+): Promise<Set<string>> => {
+  const lookup = await registry.lookup?.(name)
+  return new Set(
+    lookup?.ok
+      ? lookup.package.versions
+          .filter((v) => v.deprecated)
+          .map((v) => v.version)
+      : [],
+  )
 }
 
 /**
@@ -234,15 +296,32 @@ const filterPackages = async (
       )
 
       if (evaluation.gated) {
+        const held = evaluation.unknown
+          ? `release date unknown, requires ${evaluation.requiredDays}d`
+          : `released ${formatAgeDays(
+              evaluation.ageDays,
+            )} ago, requires ${evaluation.requiredDays}d`
+        const fallback = cooledOffVersion(
+          result,
+          releaseTimes,
+          await deprecatedVersions(registry, result.name),
+          config.cooldown,
+          now,
+        )
+        if (fallback) {
+          return {
+            ...result,
+            target: fallback.version,
+            updateType: stepType(result.current, fallback.version),
+            reason: `cooldown: ${result.target} ${held}`,
+            releaseAge: fallback.ageDays,
+          }
+        }
         return {
           ...result,
           target: undefined,
           updated: false,
-          reason: evaluation.unknown
-            ? `cooldown: release date unknown, requires ${evaluation.requiredDays}d`
-            : `cooldown: released ${formatAgeDays(
-                evaluation.ageDays,
-              )} ago, requires ${evaluation.requiredDays}d`,
+          reason: `cooldown: ${held}`,
           releaseAge: evaluation.ageDays,
         }
       }
@@ -259,7 +338,11 @@ const filterPackages = async (
  * `beyondRange` maps each package moving past its range to its new version,
  * which must be written into the manifest first. `manifests` is the same
  * split per manifest (root first, then by path), for the writes that belong
- * to one manifest; a single-package project has the root only.
+ * to one manifest; a single-package project has the root only. `pinned` are
+ * the rows moving below the version their manager would pick (`wanted`, or
+ * `latest` past the range): cooldown fallbacks (#147), which `applyPinned`
+ * moves first. Every moving row of a package with one pinned row is pinned,
+ * since the in-range commands are workspace-wide; `names` leaves them out.
  */
 export const splitUpdates = (
   results: UpdateResult[],
@@ -268,14 +351,40 @@ export const splitUpdates = (
   withinRange: string[]
   beyondRange: Record<string, string>
   manifests: ManifestPlan[]
+  pinned: PinnedRow[]
 } => {
   const names: string[] = []
   const withinRange: string[] = []
   const beyondRange: Record<string, string> = {}
   const byManifest = new Map<string, ManifestPlan>()
+  const pinned: PinnedRow[] = []
+
+  const pinnedNames = new Set(
+    results
+      .filter(
+        (r) =>
+          r.updated &&
+          r.target &&
+          r.target !== r.wanted &&
+          r.target !== r.latest,
+      )
+      .map((r) => r.name),
+  )
 
   for (const { name, workspace = '.', updated, target, wanted } of results) {
     if (!updated || !target) continue
+    if (pinnedNames.has(name)) {
+      pinned.push({
+        path: workspace,
+        name,
+        version: target,
+        beyondRange:
+          semver.valid(target) !== null &&
+          semver.valid(wanted) !== null &&
+          semver.gt(target, wanted),
+      })
+      continue
+    }
     const inRange = target === wanted
     if (!names.includes(name)) names.push(name)
     if (inRange) {
@@ -293,7 +402,7 @@ export const splitUpdates = (
   }
 
   const manifests = [...byManifest.values()].sort(byPath)
-  return { names, withinRange, beyondRange, manifests }
+  return { names, withinRange, beyondRange, manifests, pinned }
 }
 
 export default filterPackages

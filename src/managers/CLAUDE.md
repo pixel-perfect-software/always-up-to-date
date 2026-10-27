@@ -20,6 +20,7 @@ All four package managers are implemented with workspace support. Yarn is one ad
   - `emptyRegistry?`: whether an empty `registry` / scope route fails the manager's run (npm's `{ registry: true, scopes: false }` by default; pnpm both, yarn and bun neither); an unusable value is recorded in `RegistryConfig.unusable` and fails discovery (`src/utils/CLAUDE.md`)
   - `registryConfig?(cwd, fromNpmrc, sources, npmrc)`: optional. The run's `RegistryConfig` for this manager, adjusting the merged `.npmrc` view (`npmrc`) where the manager reads registries elsewhere: yarn v1 (`yarn/yarnrc.ts`, .yarnrc, over `yarn/npmrc.ts`'s own `.npmrc` layers; berry keeps the `.npmrc` view) and bun (`bun/bunfig.ts`, bunfig.toml and the registry/token variables). Precedence in `src/utils/CLAUDE.md`
   - `saveStyle(cwd)`: exact or prefix for specs that can't keep their shape, read from where the manager's current version keeps it
+  - `pinning(cwd)`: what `applyPinned` needs for a cooldown fallback (#147): `install` (the install after a manifest write), `writeCatalog?` (pnpm, bun) and `relock?` (both yarns)
   - `overrides(cwd)`: packages pinned by an override field the manager enforces
 - Adapters never log progress, group output, run the policy or catch failures: the pipeline does. `run` is bound to the step, so a failure is already a `StepError`
 - Adding a manager: its adapter directory, its entry in `adapters` (`index.ts`) and `SupportedPackageManager`, and fixtures in `__tests__/fixtures/<pm>/`. Nothing else changes
@@ -36,6 +37,8 @@ managers/
   yarn/npmrc.ts        # yarnNpmrcLayers(), YARN_NPM_ENV: yarn v1's .npmrc layers (cwd, user, prefix, parents)
   yarn/yarnrc.ts       # parseYarnrc(), yarnrcRoutes(), yarnRegistryConfig(): registry routes from yarn v1's .yarnrc
   yarn/berry.ts        # berry: parseBerryInfo, parseBerryRegistry, discoverBerry, applyBerry, installedBerry
+  yarn/lockfile.ts     # rewriteYarnV1Lock, rewriteBerryLock: record a range against a version locked under another spec (pin relock, integration harness)
+  pin.ts               # applyPinned(): cooldown fallbacks, pinned and restored before apply (#147)
   pnpm/index.ts        # pnpm adapter
   pnpm/npmrc.ts        # pnpmNpmrcLayers(), PNPM_ENV, pnpmConfigDir(), pnpmProjectRoot(): pnpm 12's .npmrc layers
   pnpm/registries.ts   # pnpmRegistrySettings(yaml, { env }?), substitutePnpm(): registry routes from a pnpm yaml file (the parser only)
@@ -105,6 +108,10 @@ No subprocess: `check`, and `update`'s discovery, read the manifests, `node_modu
 - pnpm: a workspace writes catalog rows to pnpm-workspace.yaml and the rest to their own package.json, runs `install --no-frozen-lockfile` if anything was written, then `update -r <in-range names>`. A single-package project with catalogs keeps its own branch (both rewrites, `install --no-frozen-lockfile`, `update <names>`). `--no-frozen-lockfile` because with `CI` set pnpm makes a plain `install` frozen and refuses the lockfile the rewrite made stale (#98); bun and yarn v1 don't freeze under `CI`
 - bun: a workspace without catalogs writes each manifest, then `update <names> --filter *`. With catalogs it writes catalog entries (`updateBunCatalogs`) and the rest per manifest, runs `install` if anything was written, then `update <in-range names> --filter *`. A single-package project always takes the plain path
 - A manager may leave a row where it was (npm dedupes a member's `dayjs` onto the root's pin, pnpm keeps root `ms` at its lockfile version); the post-apply check reads each row's installed version member-first and reports `not applied by <pm> (installed …)`
+
+### Cooldown fallbacks (`src/managers/pin.ts`, #147)
+
+A fallback moves below the version the manager picks when asked by name, so `applyPinned` runs before `apply` (which then gets `names` without those packages, and is skipped when nothing else moves): write the exact version into each row's manifest or catalog (`SaveStyle.pin`), `pinning.install`, put every touched file back byte for byte, write past-the-range rows to the version as a beyond-range row is written, `relock` if the adapter has one, then `install` again. npm 11.19.1, pnpm 12.14.0 and bun 1.4.4 keep the locked version when the range comes back; yarn 1.22.22 and 4.12.0 key `yarn.lock` by spec and resolve the restored range again to the newest, so the yarn adapter relocks with `rewriteYarnV1Lock` / `rewriteBerryLock` (`yarn/lockfile.ts`, shared with the integration harness). Verified end to end on all five, 2026-10-27, with each frozen install passing after. The restored range is the one written, so pnpm and bun don't raise its floor as their `update` would
 
 ### Yarn apply (`src/managers/yarn/index.ts`)
 
