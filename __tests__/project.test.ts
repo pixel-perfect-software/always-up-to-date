@@ -98,10 +98,19 @@ describe('openProject', () => {
       expect(cacheOption('1')).toBeUndefined()
     })
 
-    it('takes exactly 1 for AUTD_NO_CACHE', () => {
-      expect(cacheOption('true')).toEqual({})
-      expect(cacheOption('0')).toEqual({})
-    })
+    it.each(['1', 'true', 'TRUE', 'yes', ' on ', '2'])(
+      'is off with AUTD_NO_CACHE=%j',
+      (value) => {
+        expect(cacheOption(value)).toBeUndefined()
+      },
+    )
+
+    it.each(['0', 'false', 'False', ' 0 ', ''])(
+      'stays on with AUTD_NO_CACHE=%j',
+      (value) => {
+        expect(cacheOption(value)).toEqual({})
+      },
+    )
   })
 
   describe('registry config', () => {

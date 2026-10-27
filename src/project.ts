@@ -6,6 +6,17 @@ import logger from '@/utils/logger'
 import { managerRegistryConfig, processSources } from '@/utils/npmrcLoader'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
 
+/** `AUTD_NO_CACHE`: anything set except `0` and `false` turns the cache off. */
+const cacheDisabledBy = (value: string | undefined): boolean => {
+  const setting = value?.trim().toLowerCase()
+  return (
+    setting !== undefined &&
+    setting !== '' &&
+    setting !== '0' &&
+    setting !== 'false'
+  )
+}
+
 /** One command run's project, loaded once: where it is, its config, its manager. */
 export interface Project {
   cwd: string
@@ -36,7 +47,8 @@ export const openProject = (
     // Called on the session's first use, so opening a project reads no files.
     registry: createRegistrySession(cwd, {
       depsDev: config.depsDev,
-      cache: cache && process.env.AUTD_NO_CACHE !== '1' ? {} : undefined,
+      cache:
+        cache && !cacheDisabledBy(process.env.AUTD_NO_CACHE) ? {} : undefined,
       loadConfig: (dir) =>
         managerRegistryConfig(adapter, dir, processSources()),
     }),

@@ -3,8 +3,9 @@ import fs from 'fs'
 import path from 'path'
 import zlib from 'zlib'
 import type { RegistryVersion } from '@/types'
+import { isRecord } from './isRecord'
 import logger from './logger'
-import type { NpmrcSources } from './npmrcLoader'
+import { type NpmrcSources, nonEmpty } from './npmrcLoader'
 import type { ParsedPackument } from './registryDocuments'
 import { parseCacheControl } from './registryRequest'
 
@@ -30,12 +31,17 @@ export interface CacheValues {
 export interface CachedEntry<K extends CacheKind> {
   value: CacheValues[K]
   etag?: string
+  /** The `Cache-Control` and authentication of the response that was stored, for a 304 that restates neither. */
+  cacheControl?: string
+  authenticated?: boolean
   fresh: boolean
 }
 
 export interface ResponseMeta {
   cacheControl?: string
   etag?: string
+  /** Seconds the answer already aged on its way (`Age`). */
+  age?: number
   authenticated: boolean
 }
 
@@ -85,12 +91,6 @@ const CACHEDIR_TAG = [
 
 const KINDS = Object.keys(TTL_SECONDS) as CacheKind[]
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const nonEmpty = (value: string | undefined): string | undefined =>
-  value ? value : undefined
-
 /**
  * Where the cache lives: `AUTD_CACHE_DIR` (against `cwd`), else the
  * platform's cache folder. Undefined when there is no home to anchor it.
@@ -124,10 +124,13 @@ export const endpointKey = (url: string): string => {
 }
 
 /**
- * Seconds an answer may be served without asking again. 0 means only after
- * the registry confirms it with a 304, so it needs an ETag; undefined means
- * don't store it. An authenticated or private answer is served unasked only
- * if it is the same for everyone (RFC 9111 §3.5).
+ * Seconds an answer may be served without asking again, counted from now. 0
+ * means only after the registry confirms it with a 304, so it needs an ETag;
+ * undefined means don't store it. What the origin has already aged (`Age`)
+ * comes off, so the bound stays the TTL from the origin. An authenticated
+ * answer is served unasked only if `sameForEveryone` (deps.dev lists the
+ * package): a registry's `public` says nothing about who else may see what
+ * this credential was shown. An explicit `private` always revalidates.
  */
 export const freshFor = (
   kind: CacheKind,
@@ -138,15 +141,16 @@ export const freshFor = (
   if (directives.noStore) return undefined
   const revalidateOnly = meta.etag ? 0 : undefined
   if (
-    (meta.authenticated || directives.isPrivate) &&
-    !(directives.isPublic || sameForEveryone)
+    directives.isPrivate ||
+    (meta.authenticated && !sameForEveryone) ||
+    directives.noCache ||
+    directives.maxAge === 0
   )
     return revalidateOnly
-  if (directives.noCache || directives.maxAge === 0) return revalidateOnly
-  return Math.min(
-    TTL_SECONDS[kind],
-    directives.maxAge ?? Number.POSITIVE_INFINITY,
-  )
+  const seconds =
+    Math.min(TTL_SECONDS[kind], directives.maxAge ?? Number.POSITIVE_INFINITY) -
+    Math.max(0, meta.age ?? 0)
+  return seconds > 0 ? seconds : revalidateOnly
 }
 
 const isVersion = (value: unknown): boolean =>
@@ -195,12 +199,13 @@ export const createRegistryCache = (options: {
   let grew = false
   let closed = false
 
+  // The key names the file and is repeated inside it, so no endpoint (whose
+  // path can hold a token) is ever written.
+  const keyFor = (endpoint: string, name: string): string =>
+    crypto.createHash('sha256').update(`${endpoint}\n${name}`).digest('hex')
+
   const fileFor = (kind: CacheKind, endpoint: string, name: string): string =>
-    path.join(
-      root,
-      kind,
-      `${crypto.createHash('sha256').update(`${endpoint}\n${name}`).digest('hex')}.json.gz`,
-    )
+    path.join(root, kind, `${keyFor(endpoint, name)}.json.gz`)
 
   const touch = (file: string): void => {
     const seconds = now() / 1000
@@ -223,13 +228,17 @@ export const createRegistryCache = (options: {
       !isRecord(entry) ||
       entry.schema !== SCHEMA ||
       entry.kind !== kind ||
-      entry.endpoint !== endpoint ||
+      entry.key !== keyFor(endpoint, name) ||
       entry.name !== name ||
       typeof entry.storedAt !== 'number' ||
       typeof entry.ttl !== 'number' ||
       !Number.isFinite(entry.storedAt) ||
       !Number.isFinite(entry.ttl) ||
       (entry.etag !== undefined && typeof entry.etag !== 'string') ||
+      (entry.cacheControl !== undefined &&
+        typeof entry.cacheControl !== 'string') ||
+      (entry.authenticated !== undefined &&
+        typeof entry.authenticated !== 'boolean') ||
       !validValue(kind, entry.value)
     )
       return undefined
@@ -242,6 +251,12 @@ export const createRegistryCache = (options: {
     return {
       value: entry.value as CacheValues[K],
       ...(entry.etag === undefined ? {} : { etag: entry.etag }),
+      ...(entry.cacheControl === undefined
+        ? {}
+        : { cacheControl: entry.cacheControl }),
+      ...(entry.authenticated === undefined
+        ? {}
+        : { authenticated: entry.authenticated }),
       fresh: age >= 0 && age < entry.ttl * 1000,
     }
   }
@@ -297,7 +312,9 @@ export const createRegistryCache = (options: {
     if (tagged) return
     tagged = true
     try {
-      fs.writeFileSync(path.join(dir, 'CACHEDIR.TAG'), CACHEDIR_TAG, {
+      // Inside v1/, which the cache owns: `dir` may be a project or a home
+      // folder (AUTD_CACHE_DIR), and a tag there would hide it from backups.
+      fs.writeFileSync(path.join(root, 'CACHEDIR.TAG'), CACHEDIR_TAG, {
         flag: 'wx',
         mode: 0o600,
       })
@@ -342,11 +359,15 @@ export const createRegistryCache = (options: {
           JSON.stringify({
             schema: SCHEMA,
             kind,
-            endpoint: key,
+            key: keyFor(key, name),
             name,
             storedAt,
             ttl,
             ...(meta.etag === undefined ? {} : { etag: meta.etag }),
+            ...(meta.cacheControl === undefined
+              ? {}
+              : { cacheControl: meta.cacheControl }),
+            authenticated: meta.authenticated,
             value,
           }),
         )

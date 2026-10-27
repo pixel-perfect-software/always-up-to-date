@@ -24,12 +24,16 @@ export type RegistryResponse =
       body: unknown
       etag?: string
       cacheControl?: string
+      /** Seconds the answer already aged in caches on its way (`Age`). */
+      age?: number
       authenticated: boolean
     }
   | {
       notModified: true
       etag?: string
       cacheControl?: string
+      /** Seconds the answer already aged in caches on its way (`Age`). */
+      age?: number
       authenticated: boolean
     }
 
@@ -100,11 +104,28 @@ export class RegistryRequestError extends Error {
 
 const MAX_REDIRECTS = 5
 
+/** `Age` is a count of seconds; anything else is ignored. */
+const ageOf = (value: string | undefined): number | undefined =>
+  value !== undefined && /^\d{1,10}$/.test(value.trim())
+    ? Number(value.trim())
+    : undefined
+
 const USER_AGENT = `always-up-to-date/${packageJson.version} node/${process.version} ${process.platform} ${process.arch}`
 
 type Outcome = { authenticated: boolean } & (
-  | { kind: 'json'; value: unknown; etag?: string; cacheControl?: string }
-  | { kind: 'not-modified'; etag?: string; cacheControl?: string }
+  | {
+      kind: 'json'
+      value: unknown
+      etag?: string
+      cacheControl?: string
+      age?: number
+    }
+  | {
+      kind: 'not-modified'
+      etag?: string
+      cacheControl?: string
+      age?: number
+    }
   | { kind: 'redirect'; location: string }
   | { kind: 'status'; status: number; message: string; retryAfter?: string }
 )
@@ -289,9 +310,10 @@ export const createRegistryClient = (
       stats.responses++
       const etag = usableEtag(headerValue(response.headers.etag))
       const cacheControl = headerValue(response.headers['cache-control'])
+      const age = ageOf(headerValue(response.headers.age))
       if (status === 304 && ifNoneMatch) {
         response.resume()
-        return { kind: 'not-modified', etag, cacheControl, authenticated }
+        return { kind: 'not-modified', etag, cacheControl, age, authenticated }
       }
       if (status >= 200 && status < 300) {
         const { body, received } = await readBody(response)
@@ -303,6 +325,7 @@ export const createRegistryClient = (
             value: JSON.parse(body.toString('utf8')),
             etag,
             cacheControl,
+            age,
             authenticated,
           }
         } catch {
@@ -379,6 +402,7 @@ export const createRegistryClient = (
           body: outcome.value,
           etag: outcome.etag,
           cacheControl: outcome.cacheControl,
+          age: outcome.age,
           authenticated,
         }
       }
@@ -388,6 +412,7 @@ export const createRegistryClient = (
           notModified: true,
           etag: outcome.etag,
           cacheControl: outcome.cacheControl,
+          age: outcome.age,
           authenticated,
         }
       }

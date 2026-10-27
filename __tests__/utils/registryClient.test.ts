@@ -844,6 +844,23 @@ describe('registry client', () => {
       })
     })
 
+    it.each([
+      ['120', 120],
+      [' 7 ', 7],
+      ['abc', undefined],
+      ['-5', undefined],
+      ['1.5', undefined],
+    ])('reads Age %j as %j', async (age, expected) => {
+      const server = await registry(
+        replies({ '/pkg': { body, headers: { age } } }),
+      )
+      const response = await clientFor(configFrom('')).getResponse(
+        `${server.url}pkg`,
+        server.url,
+      )
+      expect(response).toMatchObject({ age: expected })
+    })
+
     it('leaves them out when the registry sends none', async () => {
       const server = await registry(replies({ '/pkg': { body } }))
       const response = await clientFor(configFrom('')).getResponse(

@@ -1240,8 +1240,8 @@ describe('registry reader', () => {
         expect(asked().registry).toEqual(['/ms'])
       })
 
-      it('serves a public answer without asking', async () => {
-        const { run, asked } = await cached(
+      it('asks again even when the registry says public: that says nothing about who else may see it', async () => {
+        const { registry, run, asked } = await cached(
           {
             registry: conditional(
               {
@@ -1259,7 +1259,8 @@ describe('registry reader', () => {
         clock += 10 * SECOND
         await run().reader.lookup('ms')
 
-        expect(asked().registry).toEqual([])
+        expect(asked().registry).toEqual(['/ms'])
+        expect(registry.requests).toEqual([])
       })
     })
 
@@ -1283,6 +1284,135 @@ describe('registry reader', () => {
         await run().reader.lookup('ms')
 
         expect(filesIn('packument')).toEqual([])
+        expect(asked().registry).toEqual(['/ms'])
+      })
+
+      /** 200 with `first`'s headers; a 304 carrying only `notModified`'s. */
+      const validating =
+        (
+          first: Record<string, string>,
+          notModified: Record<string, string> = {},
+        ): Handler =>
+        (req, res) => {
+          const headers = req.headers['if-none-match']
+            ? notModified
+            : { ...first }
+          res.statusCode = req.headers['if-none-match'] ? 304 : 200
+          res.setHeader('etag', 'W/"v"')
+          res.setHeader('content-type', 'application/json')
+          for (const [name, value] of Object.entries(headers)) {
+            res.setHeader(name, value)
+          }
+          res.end(
+            req.headers['if-none-match']
+              ? undefined
+              : registryBody('ms.packument'),
+          )
+        }
+
+      it('keeps no-cache through a 304 that does not repeat it', async () => {
+        const { run, asked } = await cached(
+          { registry: validating({ 'cache-control': 'no-cache' }) },
+          { depsDev: false },
+        )
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual(['/ms'])
+
+        clock += SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual(['/ms'])
+      })
+
+      it('keeps a short max-age through a 304 that does not repeat it', async () => {
+        const { run, asked } = await cached(
+          { registry: validating({ 'cache-control': 'max-age=60' }) },
+          { depsDev: false },
+        )
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += 61 * SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual(['/ms'])
+
+        clock += 59 * SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual([])
+
+        clock += 2 * SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual(['/ms'])
+      })
+
+      it("takes a 304's own Cache-Control over the stored one", async () => {
+        const { run, asked } = await cached(
+          {
+            registry: validating(
+              { 'cache-control': 'max-age=60' },
+              { 'cache-control': 'max-age=200' },
+            ),
+          },
+          { depsDev: false },
+        )
+        await run().reader.lookup('ms')
+        clock += 61 * SECOND
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += 199 * SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual([])
+      })
+
+      it('counts Age against the freshness', async () => {
+        const { run, asked } = await cached(
+          {
+            registry: replies({
+              '/ms': {
+                ...packument('ms.packument'),
+                headers: { 'cache-control': 'public, max-age=300', age: '100' },
+              },
+            }),
+          },
+          { depsDev: false },
+        )
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += 199 * SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual([])
+
+        clock += 2 * SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual(['/ms'])
+      })
+
+      it("counts a 304's Age, not the stored one", async () => {
+        const { run, asked } = await cached(
+          {
+            registry: validating(
+              { 'cache-control': 'public, max-age=300', age: '250' },
+              { age: '100' },
+            ),
+          },
+          { depsDev: false },
+        )
+        await run().reader.lookup('ms')
+        clock += 51 * SECOND
+        await run().reader.lookup('ms')
+        asked()
+
+        clock += 199 * SECOND
+        await run().reader.lookup('ms')
+        expect(asked().registry).toEqual([])
+
+        clock += 2 * SECOND
+        await run().reader.lookup('ms')
         expect(asked().registry).toEqual(['/ms'])
       })
 

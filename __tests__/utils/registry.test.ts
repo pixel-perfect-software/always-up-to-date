@@ -435,6 +435,18 @@ describe('registry session', () => {
       expect(server.requests).toEqual([])
     })
 
+    it('writes nothing when close() ran while the reader was still loading', async () => {
+      const server = await msServer()
+      const session = sessionWith(server, { dir })
+
+      const pending = session.lookup('ms')
+      session.close()
+      await pending
+
+      expect(fs.existsSync(dir)).toBe(false)
+      expect(debugLines()).toEqual([])
+    })
+
     it('hands its folder to the reader: a second session asks nobody', async () => {
       const server = await msServer()
       const first = sessionWith(server, { dir })

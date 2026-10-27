@@ -174,10 +174,10 @@ autd keeps what it learns from the registries (each package's latest version and
 - `$XDG_CACHE_HOME` if it is an absolute path, else `~/.cache`, on Linux and other Unixes
 - `%LOCALAPPDATA%` on Windows
 
-It holds derived version lists only, never a registry document, a header or anything about your credentials. Latest versions are kept for 5 minutes and deps.dev lists for an hour; a registry's own `Cache-Control` can shorten that. A stale package document is checked with the registry (`If-None-Match`) rather than downloaded again. A private registry's answer is reused without asking only if it marks it `public`; otherwise autd asks the registry each time. The folder stays under 32 MiB, dropping the least recently used entries.
+It holds derived version lists only, never a registry document, a header or anything about your credentials. Latest versions are kept for 5 minutes and deps.dev lists for an hour; a registry's own `Cache-Control` can shorten that. A stale package document is checked with the registry (`If-None-Match`) rather than downloaded again. An answer from a registry you authenticate to is reused without asking only when the package is also public on deps.dev; otherwise autd asks the registry each time (a cheap `304` when nothing changed). The folder stays under 32 MiB, dropping the least recently used entries.
 
-- `--no-cache` on `check` or `update`, or `AUTD_NO_CACHE=1`, reads and writes nothing.
-- `AUTD_CACHE_DIR=<path>` puts the folder somewhere else.
+- `--no-cache` on `check` or `update`, or `AUTD_NO_CACHE` set to anything but empty, `0` or `false` (`1` and `true` both work), reads and writes nothing.
+- `AUTD_CACHE_DIR=<path>` puts the folder somewhere else; autd only writes inside its `v1/` subfolder.
 - Deleting the folder is always safe.
 
 ## 🩺 Troubleshooting

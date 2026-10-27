@@ -241,13 +241,49 @@ describe('freshFor', () => {
     ).toBeUndefined()
   })
 
-  it('serves an authenticated answer unasked when public', () => {
+  it('does not let public make an authenticated answer reusable (a private registry may say it too)', () => {
+    const meta = {
+      authenticated: true,
+      cacheControl: 'public, max-age=300',
+    }
+    expect(freshFor('packument', meta)).toBeUndefined()
+    expect(freshFor('packument', { ...meta, etag })).toBe(0)
+  })
+
+  it('keeps an unauthenticated public answer for the default', () => {
     expect(
       freshFor('packument', {
-        authenticated: true,
+        authenticated: false,
         cacheControl: 'public, max-age=300',
       }),
     ).toBe(300)
+  })
+
+  it('revalidates private even when the same for everyone', () => {
+    expect(
+      freshFor(
+        'dist-tags',
+        { authenticated: true, cacheControl: 'private', etag },
+        true,
+      ),
+    ).toBe(0)
+    expect(
+      freshFor(
+        'dist-tags',
+        { authenticated: true, cacheControl: 'private' },
+        true,
+      ),
+    ).toBeUndefined()
+  })
+
+  it('takes Age off the freshness, and revalidates when it is used up', () => {
+    expect(freshFor('packument', { ...plain, age: 100 })).toBe(200)
+    expect(
+      freshFor('packument', { ...plain, cacheControl: 'max-age=60', age: 45 }),
+    ).toBe(15)
+    expect(freshFor('packument', { ...plain, age: 300 })).toBeUndefined()
+    expect(freshFor('packument', { ...plain, age: 9999, etag })).toBe(0)
+    expect(freshFor('packument', { ...plain, age: 0 })).toBe(300)
   })
 
   it('serves an authenticated answer unasked when the same for everyone', () => {
@@ -306,7 +342,12 @@ describe('round trips', () => {
       expect(cache.put(kind, endpoint, 'pkg', value as never, PUBLIC)).toBe(
         true,
       )
-      expect(cache.get(kind, endpoint, 'pkg')).toEqual({ value, fresh: true })
+      expect(cache.get(kind, endpoint, 'pkg')).toEqual({
+        value,
+        cacheControl: PUBLIC.cacheControl,
+        authenticated: false,
+        fresh: true,
+      })
     },
   )
 
@@ -357,6 +398,8 @@ describe('round trips', () => {
     expect(cache.get('packument', REGISTRY, 'pkg')).toEqual({
       value: { versions: versions('1.0.0') },
       etag: 'W/"v1"',
+      cacheControl: PUBLIC.cacheControl,
+      authenticated: false,
       fresh: false,
     })
   })
@@ -375,6 +418,7 @@ describe('round trips', () => {
     expect(cache.get('packument', REGISTRY, 'pkg')).toEqual({
       value: { versions: [] },
       etag: '"e"',
+      authenticated: true,
       fresh: false,
     })
   })
@@ -510,9 +554,21 @@ describe('unreadable entries are misses', () => {
       },
     ],
     [
-      'a mismatched endpoint',
+      'a mismatched key (another registry)',
       (entry: Record<string, unknown>) => {
-        entry.endpoint = 'https://other.example/'
+        entry.key = 'f'.repeat(64)
+      },
+    ],
+    [
+      'a non-string cacheControl',
+      (entry: Record<string, unknown>) => {
+        entry.cacheControl = 5
+      },
+    ],
+    [
+      'a non-boolean authenticated',
+      (entry: Record<string, unknown>) => {
+        entry.authenticated = 'yes'
       },
     ],
     [
@@ -671,10 +727,64 @@ describe('credentials', () => {
         )
         .toString(),
     )
-    expect(entry.endpoint).toBe('https://host.example/path/')
+    expect(entry.endpoint).toBeUndefined()
     expect(
       cache.get('packument', 'https://host.example/path/', 'pkg'),
     ).toBeDefined()
+  })
+})
+
+describe('a token in the registry path', () => {
+  it('is in no file, no key, no name and no debug line', () => {
+    const cache = open()
+    const registry = 'https://npm-proxy.fury.io/PATHTOKEN123/acme/'
+    cache.put(
+      'packument',
+      registry,
+      'pkg',
+      { latest: '1.0.0', versions: versions('1.0.0') },
+      { authenticated: true, etag: '"e"' },
+    )
+    cache.put(
+      'dist-tags',
+      registry,
+      'pkg',
+      { latest: '1.0.0' },
+      { authenticated: true },
+      { sameForEveryone: true },
+    )
+    const files = walk(cache.dir)
+    expect(files.length).toBeGreaterThan(2)
+    for (const file of files) {
+      const text = file.endsWith('.gz')
+        ? zlib.gunzipSync(fs.readFileSync(file)).toString()
+        : fs.readFileSync(file, 'utf8')
+      expect(text).not.toContain('PATHTOKEN123')
+      expect(text).not.toContain('fury.io')
+      expect(file).not.toContain('PATHTOKEN123')
+    }
+    expect(cache.get('packument', registry, 'pkg')?.etag).toBe('"e"')
+    expect(
+      cache.get('packument', 'https://npm-proxy.fury.io/OTHER/acme/', 'pkg'),
+    ).toBeUndefined()
+    for (const [line] of jest.mocked(logger.debug).mock.calls)
+      expect(String(line)).not.toContain('PATHTOKEN123')
+  })
+
+  it('prints no endpoint when a write fails', () => {
+    const blocked = path.join(tmp, 'file')
+    fs.writeFileSync(blocked, 'in the way')
+    const cache = open({ dir: blocked })
+    cache.put(
+      'dist-tags',
+      'https://npm-proxy.fury.io/PATHTOKEN123/acme/',
+      'pkg',
+      { latest: '1.0.0' },
+      PUBLIC,
+    )
+    const lines = jest.mocked(logger.debug).mock.calls.map(([l]) => String(l))
+    expect(lines.length).toBeGreaterThan(0)
+    for (const line of lines) expect(line).not.toContain('PATHTOKEN123')
   })
 })
 
@@ -960,10 +1070,10 @@ describe('pruning', () => {
     cache.close()
   })
 
-  it('writes CACHEDIR.TAG once', () => {
+  it('writes CACHEDIR.TAG once, inside v1/', () => {
     const cache = open()
     cache.put('dist-tags', REGISTRY, 'a', { latest: '1.0.0' }, PUBLIC)
-    const tag = path.join(cache.dir, 'CACHEDIR.TAG')
+    const tag = path.join(cache.dir, 'v1', 'CACHEDIR.TAG')
     expect(fs.readFileSync(tag, 'utf8')).toMatch(
       /^Signature: 8a477f597d28d172789f06886806bc55\n/,
     )
@@ -971,6 +1081,16 @@ describe('pruning', () => {
     cache.put('dist-tags', REGISTRY, 'b', { latest: '1.0.0' }, PUBLIC)
     open().put('dist-tags', REGISTRY, 'c', { latest: '1.0.0' }, PUBLIC)
     expect(fs.readFileSync(tag, 'utf8')).toBe('mine')
+  })
+
+  it('never tags the folder the user named', () => {
+    const named = path.join(tmp, 'project')
+    fs.mkdirSync(named)
+    fs.writeFileSync(path.join(named, 'package.json'), '{}')
+    const cache = open({ dir: named })
+    cache.put('dist-tags', REGISTRY, 'a', { latest: '1.0.0' }, PUBLIC)
+    cache.close()
+    expect(names(named)).toEqual(['package.json', 'v1'])
   })
 })
 

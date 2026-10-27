@@ -71,8 +71,8 @@ export const createRegistrySession = (
   let clientRequest: Promise<RegistryClient> | undefined
   let created: RegistryClient | undefined
   let reader: Promise<RegistryReader> | undefined
-  let readerMade: RegistryReader | undefined
   let diskCache: RegistryCache | undefined
+  let readerStats: RegistryReader['stats'] | undefined
   let closed = false
   // The in-flight request is cached, not its result: a workspace asks for the
   // same package once per manifest, at the same time.
@@ -125,34 +125,39 @@ export const createRegistrySession = (
       import('./registryReader'),
       options.cache ? import('./registryCache') : undefined,
     ]).then(([{ createRegistryReader }, cacheModule]) => {
-      const dir =
-        options.cache?.dir ?? cacheModule?.cacheDirectory(cwd, processSources())
-      if (cacheModule && options.cache && dir) {
-        diskCache = cacheModule.createRegistryCache({
-          dir,
-          ...(options.cache.now ? { now: options.cache.now } : {}),
-          ...(options.cache.maxBytes === undefined
-            ? {}
-            : { maxBytes: options.cache.maxBytes }),
-        })
-      } else if (cacheModule) {
-        logger.debug('registry cache: no folder to keep it in; not caching')
+      // A session closed while the imports were pending has already pruned
+      // and logged: a cache made now would never be closed, so it writes nothing.
+      if (cacheModule && options.cache && !closed) {
+        const dir =
+          options.cache.dir ?? cacheModule.cacheDirectory(cwd, processSources())
+        if (dir) {
+          diskCache = cacheModule.createRegistryCache({
+            dir,
+            ...(options.cache.now ? { now: options.cache.now } : {}),
+            ...(options.cache.maxBytes === undefined
+              ? {}
+              : { maxBytes: options.cache.maxBytes }),
+          })
+        } else {
+          logger.debug('registry cache: no folder to keep it in; not caching')
+        }
       }
-      readerMade = createRegistryReader({
+      const made = createRegistryReader({
         registryConfig: registryConfig(),
         client,
         depsDev: options.depsDev ?? true,
         endpoints: options.endpoints,
         cache: diskCache,
       })
-      return readerMade
+      readerStats = made.stats
+      return made
     })
     return reader
   }
 
   const describeRun = (cache: RegistryCache): string => {
     const stats = cache.stats()
-    const { notModified = 0, fetched = 0 } = readerMade?.stats() ?? {}
+    const { notModified = 0, fetched = 0 } = readerStats?.() ?? {}
     const hosts = Object.entries(created?.stats() ?? {}).map(
       ([host, { responses }]) => `${host} ${responses}`,
     )

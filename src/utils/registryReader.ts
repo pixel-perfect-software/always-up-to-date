@@ -65,6 +65,12 @@ type Failed = {
 type Fetched = { ok: true; response: RegistryResponse } | Failed
 
 /** A parsed answer, from a body or (after a 304) from the entry that was revalidated. */
+const lists = (
+  versions: readonly RegistryVersion[],
+  version: string | undefined,
+): version is string =>
+  version !== undefined && versions.some((v) => v.version === version)
+
 type Revalidated<V> =
   | { ok: true; value: V | undefined; meta: ResponseMeta; notModified: boolean }
   | Failed
@@ -164,7 +170,14 @@ export const createRegistryReader = ({
     url: string,
     base: string,
     accept: string,
-    hit: { value: V; etag?: string } | undefined,
+    hit:
+      | {
+          value: V
+          etag?: string
+          cacheControl?: string
+          authenticated?: boolean
+        }
+      | undefined,
     parse: (body: unknown) => V | undefined,
     extra: Parameters<typeof get>[3] = {},
   ): Promise<Revalidated<V>> => {
@@ -174,20 +187,27 @@ export const createRegistryReader = ({
     })
     if (!fetched.ok) return fetched
     const { response } = fetched
-    const etag = response.etag ?? (response.notModified ? hit?.etag : undefined)
-    const meta: ResponseMeta = {
-      authenticated: response.authenticated,
-      ...(response.cacheControl === undefined
-        ? {}
-        : { cacheControl: response.cacheControl }),
-      ...(etag === undefined ? {} : { etag }),
-    }
     if (response.notModified) {
       if (!hit) {
         return { ok: false, message: `${url} answered 304 to a plain request` }
       }
       counts.notModified++
+      // RFC 9111 §4.3.4: what the 304 restates replaces what was stored. A
+      // 304 that is silent about Cache-Control keeps the stored one, so a
+      // no-cache or short-lived entry does not turn into a default-TTL one.
+      const meta: ResponseMeta = {
+        authenticated: response.authenticated || hit.authenticated === true,
+        cacheControl: response.cacheControl ?? hit.cacheControl,
+        etag: response.etag ?? hit.etag,
+        age: response.age,
+      }
       return { ok: true, value: hit.value, meta, notModified: true }
+    }
+    const meta: ResponseMeta = {
+      authenticated: response.authenticated,
+      cacheControl: response.cacheControl,
+      etag: response.etag,
+      age: response.age,
     }
     counts.fetched++
     return { ok: true, value: parse(response.body), meta, notModified: false }
@@ -265,9 +285,6 @@ export const createRegistryReader = ({
     return fetched.value
   }
 
-  const lists = (packument: ParsedPackument, version: string): boolean =>
-    packument.versions.some((v) => v.version === version)
-
   const packumentLookup = async (
     name: string,
     registry: string,
@@ -280,7 +297,8 @@ export const createRegistryReader = ({
       hit: { fresh: boolean; value: ParsedPackument } | undefined,
     ) =>
       hit?.fresh &&
-      (expectedLatest === undefined || lists(hit.value, expectedLatest))
+      (expectedLatest === undefined ||
+        lists(hit.value.versions, expectedLatest))
     const abbreviatedHit = cache?.get('packument', registry, name)
     let fullHit: CachedEntry<'packument-full'> | undefined
     let fullRead = false
@@ -349,12 +367,10 @@ export const createRegistryReader = ({
     if (versions.length === 0) {
       return fail(name, 'not-found', `${name} has no published versions`)
     }
-    const listed = (version: string | undefined): version is string =>
-      version !== undefined && versions.some((v) => v.version === version)
     const stable = versions.filter((v) => semver.prerelease(v.version) === null)
-    const latest = listed(expectedLatest)
+    const latest = lists(versions, expectedLatest)
       ? expectedLatest
-      : listed(packument.latest)
+      : lists(versions, packument.latest)
         ? packument.latest
         : (stable.at(-1) ?? versions[versions.length - 1])?.version
     if (latest === undefined) {
@@ -369,14 +385,9 @@ export const createRegistryReader = ({
     depsDevHit: CachedEntry<'deps.dev'> | undefined,
   ): Promise<PackageLookup> => {
     const tagsHit = cache?.get('dist-tags', registry, name)
-    const [tags, firstVersions] = await Promise.all([
+    const [fetchedTags, firstVersions] = await Promise.all([
       tagsHit?.fresh
-        ? Promise.resolve<Revalidated<{ latest: string }>>({
-            ok: true,
-            value: tagsHit.value,
-            meta: { authenticated: false },
-            notModified: true,
-          })
+        ? undefined
         : revalidate(
             distTagsUrl(name, registry),
             registry,
@@ -391,20 +402,30 @@ export const createRegistryReader = ({
         ? Promise.resolve(depsDevHit.value)
         : depsDevVersions(name, depsDevHit),
     ])
-    if (!tags.ok && tags.status === 404) {
+    if (fetchedTags && !fetchedTags.ok && fetchedTags.status === 404) {
       return fail(
         name,
         'not-found',
         `${name} is not in ${new URL(registry).host}`,
       )
     }
-    const latest = tags.ok ? tags.value?.latest : undefined
-    // deps.dev indexes only public packages: if it lists the name, its
-    // dist-tags are the same for everyone, whoever asked.
-    if (tags.ok && tags.value && tagsHit?.fresh !== true) {
-      cache?.put('dist-tags', registry, name, tags.value, tags.meta, {
-        sameForEveryone: firstVersions !== undefined,
-      })
+    let latest: string | undefined
+    if (fetchedTags === undefined) {
+      latest = tagsHit?.value.latest
+    } else if (fetchedTags.ok && fetchedTags.value) {
+      latest = fetchedTags.value.latest
+      // deps.dev indexes only public packages: if it lists the name, its
+      // dist-tags are the same for everyone, whoever asked.
+      cache?.put(
+        'dist-tags',
+        registry,
+        name,
+        fetchedTags.value,
+        fetchedTags.meta,
+        {
+          sameForEveryone: firstVersions !== undefined,
+        },
+      )
     }
     if (latest === undefined) {
       logger.debug(`No dist-tags latest for ${name}; reading its packument`)
@@ -413,14 +434,10 @@ export const createRegistryReader = ({
     let versions = firstVersions
     // A fresh deps.dev entry can be older than the release dist-tags names:
     // ask deps.dev once more before reading a whole packument.
-    if (
-      depsDevHit?.fresh &&
-      versions &&
-      !versions.some((v) => v.version === latest)
-    ) {
+    if (depsDevHit?.fresh && versions && !lists(versions, latest)) {
       versions = await depsDevVersions(name)
     }
-    if (versions?.some((v) => v.version === latest)) {
+    if (versions && lists(versions, latest)) {
       return found(name, latest, versions, 'deps.dev')
     }
     logger.debug(
