@@ -3,6 +3,28 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-10-27 — 3.2.0: cooldown moves a package to the newest version past it, and pnpm's leftover packages no longer hold updates
+
+When the newest version a package could move to is too fresh for `cooldown`, the package now moves to the newest version that is old enough, and is held only when there is none. Before, it stayed where it was, so a package that publishes more often than the cooldown never moved. In pnpm projects, a package pnpm has removed but not yet deleted from `node_modules/.pnpm` no longer holds updates with its peer ranges.
+
+### Changed
+
+- Cooldown falls back to the newest version between the installed one and the held one that is past cooldown for its own update type and not deprecated. The report names the version it skipped: `4.0.101 → 4.0.102  within range; 4.0.103 released 1d ago, needs 2d` ([#147](https://github.com/pixel-perfect-software/always-up-to-date/issues/147)). The range in package.json is kept: autd installs the exact version, then puts the range back and installs again; on yarn it also records the range against that version in `yarn.lock`. Verified on npm 11.19.1, pnpm 12.14.0, bun 1.4.4, yarn 1.22.22 and yarn 4.12.0.
+- The published package pins its runtime dependencies to exact versions: `@inquirer/prompts` 8.7.5, `colorette` 2.0.20, `commander` 15.0.0 and `semver` 7.8.5. 3.1.0 used `^` ranges.
+
+### Fixed
+
+- In pnpm projects, the peer check reads only packages that `node_modules/.pnpm/lock.yaml` lists. pnpm keeps a removed package in `.pnpm` for up to 7 days (`modules-cache-max-age`), and its peer ranges used to hold updates: `storybook` 10.6.3 → 10.6.5 was held by `@storybook/addon-jest@9.1.12`, which no manifest listed ([#146](https://github.com/pixel-perfect-software/always-up-to-date/issues/146)).
+- The README no longer says a failed cooldown lookup lets the update through; since 3.1.0, it holds the version ([#147](https://github.com/pixel-perfect-software/always-up-to-date/issues/147)).
+
+### Known issues
+
+- yarn 2+ still runs the manager to find outdated packages ([#107](https://github.com/pixel-perfect-software/always-up-to-date/issues/107)). With PnP, installed peer ranges aren't read, so no update is held for a peer conflict.
+- Run from inside a workspace member, autd finds no package manager ([#123](https://github.com/pixel-perfect-software/always-up-to-date/issues/123)).
+- yarn v1's `always-auth`, its bare `_authToken`, and a member's own `.npmrc` during its upgrade are still read differently from yarn ([#126](https://github.com/pixel-perfect-software/always-up-to-date/issues/126), [#127](https://github.com/pixel-perfect-software/always-up-to-date/issues/127)).
+- Cooldown still reads full registry documents for its dates, uncached ([#47](https://github.com/pixel-perfect-software/always-up-to-date/issues/47)).
+- A cooldown fallback for a yarn `npm:` alias fails `update` with an `apply` error naming `yarn.lock`. For a range with a gap, such as `^1 || ^3`, the fallback can pick a version the range excludes ([#147](https://github.com/pixel-perfect-software/always-up-to-date/issues/147)).
+
 ## 2026-10-27 — 3.1.0: one report that names every hold, and a cooldown that fresh releases can't slip past
 
 `check`, `update --dry-run` and `update` print one report. Every outdated package appears once, under what happened to it and why: held by a rule, past its range and the `beyondRange` level that would move it, held by cooldown, or left in place by the package manager. Before, a package held by a rule or by its range showed up only in the first list, and others were printed twice. Cooldown now holds a version whose publish date it can't find, instead of letting it through. `--json` output is unchanged.
