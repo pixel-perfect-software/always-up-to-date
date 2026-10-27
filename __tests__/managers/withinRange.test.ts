@@ -37,7 +37,14 @@ const NPM_UPDATE_APPLIES = {
 const benchDependencies = (project: 'ranges' | 'pinned') =>
   JSON.parse(
     fs.readFileSync(
-      path.join(__dirname, '..', '..', 'bench', project, 'package.fixture.json'),
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        'bench',
+        project,
+        'package.fixture.json',
+      ),
       'utf8',
     ),
   ).dependencies as Record<string, string>
