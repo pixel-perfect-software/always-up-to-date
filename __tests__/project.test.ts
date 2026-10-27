@@ -81,8 +81,32 @@ describe('openProject', () => {
     }
 
     it('is not built by openProject, only by the session on first use', () => {
-      const hook = jest.spyOn(pnpm, 'registryConfig')
+      const layers = jest.spyOn(pnpm, 'npmrcLayers')
       const loadConfigForSession = openWith('pnpm')
+      expect(layers).not.toHaveBeenCalled()
+
+      layers.mockReturnValue([])
+      expect(loadConfigForSession('/project')).toEqual(registryDefaults)
+      expect(layers).toHaveBeenCalledTimes(1)
+      expect(layers).toHaveBeenCalledWith(
+        '/project',
+        expect.objectContaining({ env: process.env }),
+      )
+    })
+
+    it("uses npm's layers for a manager without npmrcLayers", () => {
+      const loadConfigForSession = openWith('npm')
+      expect(loadConfigForSession('/nonexistent-autd-project')).toEqual(
+        expect.objectContaining({ strictSSL: true }),
+      )
+    })
+
+    it('hands registryConfig the merged view as its fourth argument, and builds nothing in openProject', () => {
+      const hook = jest.spyOn(bun, 'registryConfig')
+      jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+      jest.mocked(detectPackageManager).mockReturnValue('bun')
+      openProject('/project')
+      const options = jest.mocked(createRegistrySession).mock.calls[0][1]
       expect(hook).not.toHaveBeenCalled()
 
       const adjusted = {
@@ -90,19 +114,15 @@ describe('openProject', () => {
         registry: 'http://adjusted.test/',
       }
       hook.mockReturnValue(adjusted)
-      expect(loadConfigForSession('/project')).toBe(adjusted)
-      expect(hook).toHaveBeenCalledTimes(1)
+      expect(options?.loadConfig?.('/nonexistent-autd-project')).toBe(adjusted)
       expect(hook).toHaveBeenCalledWith(
-        '/project',
+        '/nonexistent-autd-project',
         expect.objectContaining({ registry: expect.any(String) }),
         expect.objectContaining({ env: process.env }),
-      )
-    })
-
-    it('uses the .npmrc view as is for a manager without the hook', () => {
-      const loadConfigForSession = openWith('npm')
-      expect(loadConfigForSession('/nonexistent-autd-project')).toEqual(
-        expect.objectContaining({ strictSSL: true }),
+        expect.objectContaining({
+          values: expect.any(Object),
+          origin: expect.any(Function),
+        }),
       )
     })
   })

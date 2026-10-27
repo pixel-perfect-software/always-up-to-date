@@ -1,10 +1,9 @@
 jest.mock('@/utils/logger')
 
 import {
-  applyPnpmRegistrySettings,
   pnpmRegistrySettings,
+  substitutePnpm,
 } from '@/managers/pnpm/registries'
-import type { RegistryConfig } from '@/types'
 
 const A = 'http://127.0.0.1:4001/'
 const B = 'http://127.0.0.1:4002/'
@@ -123,31 +122,29 @@ describe('pnpmRegistrySettings', () => {
   })
 })
 
-describe('applyPnpmRegistrySettings', () => {
-  const base: RegistryConfig = {
-    registry: 'https://registry.npmjs.org/',
-    scopedRegistries: { '@acme': A, '@keep': A },
-    credentials: { '//127.0.0.1:4002/': { authToken: 'T' } },
-    strictSSL: true,
-    proxy: {},
-    fetchRetries: 2,
-    fetchTimeout: 300_000,
-    maxSockets: 15,
-  }
-
-  it('puts the yaml over the .npmrc view per key and keeps its credentials', () => {
-    const config = applyPnpmRegistrySettings(
-      base,
-      `registry: ${B}\nregistries:\n  "@acme": ${B}\n`,
+describe('pnpmRegistrySettings with env (a global file)', () => {
+  it('expands ${VAR} and ${VAR:-default} in the values', () => {
+    const settings = pnpmRegistrySettings(
+      'registry: ${HOST}\nregistries:\n  "@acme": ${UNSET:-http://127.0.0.1:4002/}\n',
+      { env: { HOST: A } },
     )
-    expect(config).toEqual({
-      ...base,
-      registry: B,
-      scopedRegistries: { '@acme': B, '@keep': A },
-    })
+    expect(settings).toEqual({ registry: A, scopes: { '@acme': B } })
   })
 
-  it('returns the .npmrc view when the yaml routes nothing', () => {
-    expect(applyPnpmRegistrySettings(base, 'saveExact: true\n')).toEqual(base)
+  it('keeps ignoring ${…} in a project file, which is read without env', () => {
+    expect(pnpmRegistrySettings('registry: ${HOST}\n').registry).toBeUndefined()
+  })
+})
+
+describe('substitutePnpm', () => {
+  it('expands ${VAR}, uses the default of ${VAR:-default} when unset or empty, and turns an unset ${VAR} into an empty string', () => {
+    const env = { SET: 'v', EMPTY: '' }
+    expect(substitutePnpm('${SET}', env)).toBe('v')
+    expect(substitutePnpm('${UNSET:-d}', env)).toBe('d')
+    expect(substitutePnpm('${SET:-d}', env)).toBe('v')
+    // pnpm 12.15.0 and 12.14.0 took the default for a set but empty variable (p34e, p34f).
+    expect(substitutePnpm('${EMPTY:-d}', env)).toBe('d')
+    expect(substitutePnpm('${EMPTY}', env)).toBe('')
+    expect(substitutePnpm('a${UNSET}b', env)).toBe('ab')
   })
 })

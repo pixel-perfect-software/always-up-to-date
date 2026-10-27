@@ -3,7 +3,12 @@ import { adapterFor, type ManagerAdapter } from '@/managers'
 import type { AlwaysUpToDateConfig, SupportedPackageManager } from '@/types'
 import { loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
-import { loadRegistryConfig, processSources } from '@/utils/npmrcLoader'
+import {
+  mergeNpmrcLayers,
+  npmNpmrcLayers,
+  processSources,
+  registryConfigFrom,
+} from '@/utils/npmrcLoader'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
 
 /** One command run's project, loaded once: where it is, its config, its manager. */
@@ -37,12 +42,13 @@ export const openProject = (
       depsDev: config.depsDev,
       loadConfig: (dir) => {
         const sources = processSources()
-        const fromNpmrc = loadRegistryConfig(
-          dir,
-          sources,
-          adapter.projectRoot?.(dir),
+        const npmrc = mergeNpmrcLayers(
+          (adapter.npmrcLayers ?? npmNpmrcLayers)(dir, sources),
         )
-        return adapter.registryConfig?.(dir, fromNpmrc, sources) ?? fromNpmrc
+        const fromNpmrc = registryConfigFrom(npmrc.values, dir, sources)
+        return (
+          adapter.registryConfig?.(dir, fromNpmrc, sources, npmrc) ?? fromNpmrc
+        )
       },
     }),
   }

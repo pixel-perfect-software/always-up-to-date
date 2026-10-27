@@ -13,8 +13,8 @@ All four package managers are implemented with workspace support. Yarn is one ad
   - `ownDiscovery?(cwd)`: yarn berry only, until #107: returns `(run, workspace) => Discovery` when the project can't be read natively, else undefined. Every other project is discovered by `discoverFromRegistry` (`src/discovery.ts`; see "Native discovery" below). A `Discovery` is `{ kind: 'single', outdated: Record<string, PackageInfo> }` in a single-package project, `{ kind: 'workspace', entries: OutdatedEntry[] }` (one entry per package per owning manifest) in a workspace, keyed by the manifest key
   - `apply(run, cwd, plan, workspace)`: writes the specs the manager does not write itself, then runs its update commands. `plan` is `{ names, withinRange, beyondRange, manifests }`; the first three are unions across manifests, `manifests` is the same split per manifest (`ManifestPlan[]`, root first), which a workspace apply reads
   - `installed?(run, cwd, rows)`: optional. The versions installed after apply, keyed by `rowKey`, for a manager whose installs can't be read from node_modules. The pipeline uses it instead of `readInstalledVersions` when present; yarn implements it (berry: `yarn info -A --json`, since PnP has no node_modules; v1: the node_modules reader)
-  - `projectRoot?(cwd)`: optional. Where the manager's project `.npmrc` lives when `package.json` `workspaces` doesn't say (pnpm: the nearest `pnpm-workspace.yaml`). From a workspace member, pnpm and bun read the workspace root's settings files, not the member's
-  - `registryConfig?(cwd, fromNpmrc, sources)`: optional. The run's `RegistryConfig` for this manager, adjusting the `.npmrc` view where the manager reads registries elsewhere: pnpm (`pnpm/registries.ts`, pnpm-workspace.yaml), yarn v1 (`yarn/yarnrc.ts`, .yarnrc; berry keeps the `.npmrc` view) and bun (`bun/bunfig.ts`, bunfig.toml and the registry/token variables). Precedence in `src/utils/CLAUDE.md`
+  - `npmrcLayers?(cwd, sources)`: optional. The `.npmrc` layers this manager reads, highest first (`NpmrcLayer[]`); npm's when absent. pnpm builds its own (`pnpm/npmrc.ts`). From a workspace member, pnpm and bun read the workspace root's settings files, not the member's
+  - `registryConfig?(cwd, fromNpmrc, sources, npmrc)`: optional. The run's `RegistryConfig` for this manager, adjusting the merged `.npmrc` view (`npmrc`) where the manager reads registries elsewhere: yarn v1 (`yarn/yarnrc.ts`, .yarnrc; berry keeps the `.npmrc` view) and bun (`bun/bunfig.ts`, bunfig.toml and the registry/token variables). Precedence in `src/utils/CLAUDE.md`
   - `saveStyle(cwd)`: exact or prefix for specs that can't keep their shape, read from where the manager's current version keeps it
   - `overrides(cwd)`: packages pinned by an override field the manager enforces
 - Adapters never log progress, group output, run the policy or catch failures: the pipeline does. `run` is bound to the step, so a failure is already a `StepError`
@@ -31,7 +31,8 @@ managers/
   yarn/yarnrc.ts       # parseYarnrc(), yarnrcRoutes(), yarnRegistryConfig(): registry routes from yarn v1's .yarnrc
   yarn/berry.ts        # berry: parseBerryInfo, parseBerryRegistry, discoverBerry, applyBerry, installedBerry
   pnpm/index.ts        # pnpm adapter
-  pnpm/registries.ts   # pnpmRegistrySettings(yaml), applyPnpmRegistrySettings(): registry routes from pnpm-workspace.yaml
+  pnpm/npmrc.ts        # pnpmNpmrcLayers(), PNPM_ENV, pnpmConfigDir(), pnpmProjectRoot(): pnpm 12's .npmrc layers
+  pnpm/registries.ts   # pnpmRegistrySettings(yaml, { env }?), substitutePnpm(): registry routes from a pnpm yaml file (the parser only)
   bun/index.ts         # bun adapter
   bun/bunfig.ts        # bunfigExact(), parseBunfigRegistries(), bunRegistryConfig(): registry routes and credentials from bunfig.toml
 ```
