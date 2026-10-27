@@ -3,6 +3,29 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-10-27 — 3.1.0: one report that names every hold, and a cooldown that fresh releases can't slip past
+
+`check`, `update --dry-run` and `update` print one report. Every outdated package appears once, under what happened to it and why: held by a rule, past its range and the `beyondRange` level that would move it, held by cooldown, or left in place by the package manager. Before, a package held by a rule or by its range showed up only in the first list, and others were printed twice. Cooldown now holds a version whose publish date it can't find, instead of letting it through. `--json` output is unchanged.
+
+### Changed
+- One report for `check`, `update --dry-run`, interactive mode and `update`, grouped by outcome ([#138](https://github.com/pixel-perfect-software/always-up-to-date/issues/138)):
+  - **Outcomes:** would update or updated (within or past its range), left in place by the manager, held by cooldown, past the range in package.json (naming the `beyondRange` level that would move it), held by a rule, an override, a peer conflict, or with another manifest.
+  - **Workspace rows:** one row per package and move. One or two manifests are listed by path, and three or more are counted.
+  - **Summary:** one line at the end counts each outcome.
+  - **`update`** prints the report once, after the package manager has run, with what it installed.
+  - **Removed:** the grouping by `@scope`, and the `[ignored]` / `[allowed]` tags of the deprecated allow and deny lists, which are rules now.
+- A pnpm project whose `pnpm-workspace.yaml` lists only `"."` no longer prints a workspace line or `(root)` on every row. A real workspace prints its manifest and catalog counts, and the catalog names moved to `debug` ([#138](https://github.com/pixel-perfect-software/always-up-to-date/issues/138)).
+
+### Fixed
+- Cooldown takes a version's publish date from deps.dev when the registry document lacks it, and holds a version whose date is still unknown as `cooldown: release date unknown`. Before, a proxy or mirror that lags behind the registry hid the freshest releases from cooldown, and those went straight through ([#139](https://github.com/pixel-perfect-software/always-up-to-date/issues/139)). On 2026-10-27, motion 14.7.1, 4 hours old, passed a 2-day cooldown.
+- In pnpm projects, `fetchTimeout` and `fetchRetries` are read from `pnpm-workspace.yaml`, the global `config.yaml` and `pnpm_config_*`, as pnpm 12 reads them. They're ignored in `.npmrc`, `auth.ini` and `~/.npmrc`, where pnpm ignores them too ([#125](https://github.com/pixel-perfect-software/always-up-to-date/issues/125)).
+
+### Known issues
+- yarn 2+ still runs the manager to find outdated packages ([#107](https://github.com/pixel-perfect-software/always-up-to-date/issues/107)). With PnP, installed peer ranges aren't read, so no update is held for a peer conflict.
+- Run from inside a workspace member, autd finds no package manager ([#123](https://github.com/pixel-perfect-software/always-up-to-date/issues/123)).
+- yarn v1's `always-auth`, its bare `_authToken`, and a member's own `.npmrc` during its upgrade are still read differently from yarn ([#126](https://github.com/pixel-perfect-software/always-up-to-date/issues/126), [#127](https://github.com/pixel-perfect-software/always-up-to-date/issues/127)).
+- Cooldown still reads full registry documents for its dates, uncached ([#47](https://github.com/pixel-perfect-software/always-up-to-date/issues/47)).
+
 ## 2026-10-27 — 3.0.0: outdated packages found without the package manager, a registry cache, and each manager's own registry settings
 
 **Breaking:** `check` no longer runs the package manager's `outdated` for npm, pnpm, yarn v1 and bun. It reads the manifests, `node_modules` and the registry itself. As a result:
