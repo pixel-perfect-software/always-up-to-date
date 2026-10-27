@@ -30,13 +30,14 @@ const NPM_UPDATE_APPLIES = {
   zod: '3.25.76',
 }
 
-// The benchmark projects' manifests (bench/pinned: every dependency an exact
-// pin; bench/ranges: 12 of them on ^ or ~). Installs sit at the pinned
+// The benchmark projects' manifests, committed as package.fixture.json
+// (bench/pinned: every dependency an exact pin; bench/ranges: 12 of them on
+// ^ or ~). Installs sit at the pinned
 // versions, which are the ranges' minimums.
 const benchDependencies = (project: 'ranges' | 'pinned') =>
   JSON.parse(
     fs.readFileSync(
-      path.join(__dirname, '..', '..', 'bench', project, 'package.json'),
+      path.join(__dirname, '..', '..', 'bench', project, 'package.fixture.json'),
       'utf8',
     ),
   ).dependencies as Record<string, string>

@@ -134,6 +134,23 @@ const SKIPPED_BY_COPY = new Set([
 export const copyRepo = (repo: string): string =>
   copyProject(path.join(TEST_REPOS, repo), repo)
 
+/**
+ * The name the fixtures' manifests are committed under. GitHub's dependency
+ * graph reads every package.json in the repository, so fixtures pinned to old
+ * versions on purpose raised Dependabot alerts; a copy renames them back.
+ */
+export const FIXTURE_MANIFEST = 'package.fixture.json'
+
+const restoreManifests = (dir: string): void => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) restoreManifests(full)
+    else if (entry.name === FIXTURE_MANIFEST) {
+      fs.renameSync(full, path.join(dir, 'package.json'))
+    }
+  }
+}
+
 /** A copy of any project directory in the temp directory, as copyRepo makes one. */
 export const copyProject = (source: string, label: string): string => {
   const dir = fs.realpathSync.native(
@@ -146,6 +163,7 @@ export const copyProject = (source: string, label: string): string => {
       return !SKIPPED_BY_COPY.has(name) && !name.startsWith('.pnp.')
     },
   })
+  restoreManifests(dir)
   // asdf and mise pick a tool's version by directory: outside this repository
   // the copy would run the user's global bun or pnpm, not .tool-versions'.
   const toolVersions = path.join(REPO_ROOT, '.tool-versions')
