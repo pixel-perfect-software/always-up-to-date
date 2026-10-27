@@ -1,5 +1,4 @@
 import logger from '@/utils/logger'
-import { isRegistryUrl } from '@/utils/npmrcLoader'
 import { unquote, yamlValue } from '@/utils/saveStyle'
 
 /** What pnpm-workspace.yaml routes: the default registry and per-scope registries. */
@@ -7,6 +6,12 @@ export interface PnpmRegistrySettings {
   registry?: string
   /** '@scope' → registry URL */
   scopes: Record<string, string>
+  /**
+   * How the file spells the setting behind a layer key (`registry`,
+   * `@acme:registry`), for an error: `registries."@acme"`. A URL-keyed entry
+   * is named by its scope, never by its URL, which may carry a token.
+   */
+  labels: Record<string, string>
 }
 
 const withoutComment = (value: string): string =>
@@ -125,8 +130,12 @@ export const substitutePnpm = (text: string, env: NodeJS.ProcessEnv): string =>
   )
 
 /**
- * A URL pnpm would use. Without `env` a value holding `${…}` is ignored (a
- * project file's); with it the reference is expanded first (a global file's).
+ * The value pnpm would take for a route. Without `env` a value holding `${…}`
+ * is ignored (a project file's, p33), so the next source decides. A value
+ * that is no usable URL is kept, not dropped: pnpm fails the install on it
+ * (ERR_PNPM_RESOLVING_NPM_RESOLVER_NETWORK_ERROR, verified on 12.15.0,
+ * 2026-10-27), and so does an unset `${VAR}` that expanded to nothing in a
+ * global file. `registryConfigFrom` records it as unusable.
  */
 const usable = (
   raw: string,
@@ -135,13 +144,8 @@ const usable = (
   env?: NodeJS.ProcessEnv,
 ): string | undefined => {
   const url = env ? substitutePnpm(raw, env) : raw
-  if (url === '') return undefined
   if (url.includes('${')) {
     logger.debug(`Ignoring ${where} in ${file}: holds \${…}`)
-    return undefined
-  }
-  if (!isRegistryUrl(url)) {
-    logger.debug(`Ignoring ${where} in ${file}: not an http(s) URL`)
     return undefined
   }
   return url
@@ -169,7 +173,9 @@ export const pnpmRegistrySettings = (
   }: { env?: NodeJS.ProcessEnv; file?: string } = {},
 ): PnpmRegistrySettings => {
   const scopes: Record<string, string> = {}
+  const labels: Record<string, string> = {}
   let fromRegistries: string | undefined
+  let defaultLabel = 'registry'
 
   for (const entry of registryEntries(yaml)) {
     const scalar = entry.value !== '' && !entry.value.startsWith('{')
@@ -180,25 +186,36 @@ export const pnpmRegistrySettings = (
         file,
         env,
       )
-      if (!url) continue
-      if (entry.key === 'default') fromRegistries = url
-      else if (/^@.+/.test(entry.key)) scopes[entry.key] = url
+      if (url === undefined) continue
+      if (entry.key === 'default') {
+        fromRegistries = url
+        defaultLabel = 'registries.default'
+      } else if (/^@.+/.test(entry.key)) {
+        scopes[entry.key] = url
+        labels[`${entry.key}:registry`] = `registries."${entry.key}"`
+      }
       continue
     }
 
     const ecosystem = ecosystemOf(entry)
     if (ecosystem !== undefined && ecosystem !== 'npm') continue
     const url = usable(entry.key, `registries entry ${entry.key}`, file, env)
-    if (!url) continue
+    if (url === undefined) continue
     for (const scope of scopesOf(entry)) {
-      if (scope === '@') fromRegistries = url
-      else if (/^@.+/.test(scope)) scopes[scope] = url
+      if (scope === '@') {
+        fromRegistries = url
+        defaultLabel = 'registries (a URL-keyed entry for the default)'
+      } else if (/^@.+/.test(scope)) {
+        scopes[scope] = url
+        labels[`${scope}:registry`] =
+          `registries (a URL-keyed entry for "${scope}")`
+      }
     }
   }
 
   const topLevel = yamlValue(yaml, 'registry')
-  return {
-    registry: usable(topLevel ?? '', 'registry', file, env) ?? fromRegistries,
-    scopes,
-  }
+  const fromTop =
+    topLevel === undefined ? undefined : usable(topLevel, 'registry', file, env)
+  labels.registry = fromTop === undefined ? defaultLabel : 'registry'
+  return { registry: fromTop ?? fromRegistries, scopes, labels }
 }

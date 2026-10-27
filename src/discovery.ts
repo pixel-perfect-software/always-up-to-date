@@ -20,6 +20,7 @@ import {
 } from '@/utils/installed'
 import logger from '@/utils/logger'
 import type { RegistrySession } from '@/utils/registry'
+import { unusableText } from '@/utils/registryRequest'
 import { wantedVersion } from '@/utils/wanted'
 import { byPath } from '@/utils/workspaceRows'
 
@@ -28,7 +29,7 @@ export interface RegistryDiscoveryInput {
   /** Names the install command in the "nothing installed" message. */
   manager: SupportedPackageManager
   workspace: Workspace
-  registry: Pick<RegistrySession, 'lookup'>
+  registry: Pick<RegistrySession, 'lookup' | 'unusableRoute'>
   /**
    * Fail with the install command when no node_modules exists. Default true;
    * a reader that doesn't need node_modules (a lockfile reader, #107) turns
@@ -141,6 +142,17 @@ export const discoverFromRegistry = async ({
 
   const started = Date.now()
   const names = [...new Set(active.map((dependency) => dependency.name))].sort()
+  // The manager fails on a package routed to a registry value it cannot use;
+  // asking another registry instead would answer for a different install.
+  for (const name of names) {
+    const bad = registry.unusableRoute(name)
+    if (bad) {
+      throw new StepError(
+        'discover',
+        `${manager} can't use ${unusableText(bad)}; fix or remove it. autd needs it to look up ${name}.`,
+      )
+    }
+  }
   const lookups = names.map((name) => registry.lookup(name))
 
   const results = await Promise.all(lookups)

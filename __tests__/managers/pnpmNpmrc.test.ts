@@ -67,7 +67,7 @@ describe('pnpm .npmrc layers', () => {
       platform,
     )
     const view = mergeNpmrcLayers(pnpmNpmrcLayers(cwd, sources))
-    return registryConfigFrom(view.values, cwd, sources)
+    return registryConfigFrom(view, cwd, sources)
   }
 
   /** Where a package goes and the Authorization it gets, as the client would send. */
@@ -236,7 +236,7 @@ describe('pnpm .npmrc layers', () => {
       const view = mergeNpmrcLayers(pnpmNpmrcLayers(project(), sources))
       expect(view.values.userconfig).toBeUndefined()
       expect(
-        unscoped(registryConfigFrom(view.values, project(), sources)).server,
+        unscoped(registryConfigFrom(view, project(), sources)).server,
       ).toBe(BH)
     })
 

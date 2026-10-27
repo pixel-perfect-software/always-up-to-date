@@ -8,6 +8,7 @@ import type { RegistryConfig } from '@/types'
 import { type Npmrc, parseNpmrc } from '@/utils/npmrc'
 import {
   loadRegistryConfig,
+  mergeNpmrcLayers,
   type NpmrcSources,
   registryConfigFrom,
 } from '@/utils/npmrcLoader'
@@ -63,7 +64,13 @@ describe('registry client', () => {
     env: NodeJS.ProcessEnv = {},
   ): RegistryConfig =>
     registryConfigFrom(
-      typeof npmrc === 'string' ? parseNpmrc(npmrc, env) : npmrc,
+      mergeNpmrcLayers([
+        {
+          kind: 'file',
+          file: path.join(tmp, 'proj', '.npmrc'),
+          values: typeof npmrc === 'string' ? parseNpmrc(npmrc, env) : npmrc,
+        },
+      ]),
       path.join(tmp, 'proj'),
       sourcesFor(env),
     )

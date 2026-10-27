@@ -125,11 +125,35 @@ export type ProxySettings = {
   NO_PROXY?: string
 }
 
+/**
+ * A registry value the manager cannot use (a URL that does not parse, one
+ * that is not http(s), one still holding a variable, an empty one). The
+ * manager fails when it resolves a package routed there, so autd does too
+ * instead of asking another registry. `value` is already shown the way
+ * `describeUrl` shows a registry: no userinfo, query or secret path.
+ */
+export interface UnusableRegistry {
+  /** The setting: `registry`, `@acme:registry`, `install.scopes."@acme"`. */
+  key: string
+  value: string
+  /** The file that sets it, or the environment. */
+  source: string
+  reason: string
+}
+
+export interface UnusableRegistries {
+  registry?: UnusableRegistry
+  /** '@scope' → its unusable value */
+  scopes: Record<string, UnusableRegistry>
+}
+
 export interface RegistryConfig {
   /** Default https://registry.npmjs.org/ */
   registry: string
   /** '@scope' → registry URL */
   scopedRegistries: Record<string, string>
+  /** Routes the manager cannot use; absent when there are none. A scope here is not in `scopedRegistries`. */
+  unusable?: UnusableRegistries
   /** '//host[:port]/path/' (as written) → its credentials */
   credentials: Record<string, RegistryCredentials>
   /** cafile (if readable), else ca / ca[]; undefined means Node's default store */

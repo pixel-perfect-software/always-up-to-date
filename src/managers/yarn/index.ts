@@ -61,6 +61,9 @@ const yarn: ManagerAdapter = {
     return berry ? npmNpmrcLayers(cwd, sources) : yarnNpmrcLayers(cwd, sources)
   },
 
+  // yarn ignores an empty registry or scope route.
+  emptyRegistry: { registry: false, scopes: false },
+
   registryConfig: (cwd, fromNpmrc, sources, npmrc) =>
     (berryLoads.get(cwd) ?? isYarnBerry(cwd))
       ? fromNpmrc

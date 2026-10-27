@@ -54,6 +54,7 @@ export const fakeRegistry = (
   }
   return {
     registryConfig: unexpected,
+    unusableRoute: () => undefined,
     client: unexpected,
     releaseTimes: unexpected,
     lookup: unexpected,

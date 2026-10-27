@@ -12,6 +12,8 @@ import type {
   ProxySettings,
   RegistryConfig,
   RegistryCredentials,
+  UnusableRegistries,
+  UnusableRegistry,
 } from '@/types'
 import logger from './logger'
 import {
@@ -21,6 +23,7 @@ import {
   type Substitute,
   substituteEnv,
 } from './npmrc'
+import { describeUnusable } from './registryRequest'
 
 /** What the loader reads from the machine, injectable for tests. */
 export interface NpmrcSources {
@@ -53,8 +56,13 @@ const boolValue = (value: unknown): boolean | undefined => {
 
 /** One source of .npmrc settings; a missing or unreadable file is an empty layer. */
 export type NpmrcLayer =
-  | { kind: 'env'; values: Npmrc }
-  | { kind: 'file'; file: string; values: Npmrc }
+  | { kind: 'env'; values: Npmrc; labels?: Record<string, string> }
+  | {
+      kind: 'file'
+      file: string
+      values: Npmrc
+      labels?: Record<string, string>
+    }
 
 /** The merged settings, and the layer that set each key. */
 export interface NpmrcView {
@@ -88,6 +96,7 @@ export const NPM_ENV: EnvRule = {
 /** The variables `rule` reads as one layer; empty values are skipped. */
 export const envLayer = (env: NodeJS.ProcessEnv, rule: EnvRule): NpmrcLayer => {
   const values: Npmrc = Object.create(null)
+  const labels: Record<string, string> = Object.create(null)
   const ranks = new Map<string, number>()
   for (const [name, value] of Object.entries(env)) {
     if (!value) continue
@@ -99,8 +108,9 @@ export const envLayer = (env: NodeJS.ProcessEnv, rule: EnvRule): NpmrcLayer => {
     if (rank < (ranks.get(key) ?? rank)) continue
     ranks.set(key, rank)
     values[key] = rule.substitute ? rule.substitute(value, env) : value
+    labels[key] = name
   }
-  return { kind: 'env', values }
+  return { kind: 'env', values, labels }
 }
 
 /** A key or value (or array element) still holding a `${…}` reference. */
@@ -444,41 +454,133 @@ export const isRegistryUrl = (value: string): boolean => {
   }
 }
 
-/** The registry-facing view of merged .npmrc settings, with npm's defaults. */
+/** Why a manager cannot use `value` as a registry, or undefined when it can. */
+export const registryProblem = (value: string): string | undefined => {
+  if (value.trim() === '') return 'it is empty'
+  // Checked before the parse: `https://${REGISTRY_HOST}/` parses, to a host
+  // named `${registry_host}` (npm 11.19.1 fails on it with ENOTFOUND).
+  if (value.includes('${')) return 'it still holds an unexpanded ${…}'
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return 'it is not a valid URL'
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    return 'it is not an http(s) URL'
+  }
+  if (url.hostname.includes('$')) {
+    return 'its host still holds an unexpanded $NAME'
+  }
+  return undefined
+}
+
+/**
+ * A setting the manager cannot use, as `RegistryConfig.unusable` keeps it:
+ * the value is only ever shown through `describeUnusable`.
+ */
+export const unusableEntry = ({
+  key,
+  value,
+  source,
+  reason,
+}: UnusableRegistry): UnusableRegistry => ({
+  key,
+  value: describeUnusable(value),
+  source,
+  reason,
+})
+
+/** `config` with `unusable` as its unusable routes, or none when it holds none. */
+export const withUnusable = (
+  config: RegistryConfig,
+  unusable: UnusableRegistries,
+): RegistryConfig => {
+  const { unusable: _replaced, ...rest } = config
+  return unusable.registry || Object.keys(unusable.scopes).length > 0
+    ? { ...rest, unusable }
+    : rest
+}
+
+/** Where `key` was set and what that source calls it: the file or the environment, and e.g. the variable's name. */
+export const layerOrigin = (
+  layer: NpmrcLayer | undefined,
+  key: string,
+): { source: string; key: string } => ({
+  source: layer?.kind === 'file' ? layer.file : 'the environment',
+  key: layer?.labels?.[key] ?? key,
+})
+
+/**
+ * Whether an empty registry value fails the manager's run (verified
+ * 2026-10-27: npm 11.19.1 fails on an empty `registry` and ignores an empty
+ * scope; pnpm 12.15.0 fails on both; yarn 1.22.22 and bun 1.4.4 ignore both).
+ */
+export interface EmptyRegistryPolicy {
+  registry: boolean
+  scopes: boolean
+}
+
+export const NPM_EMPTY_REGISTRY: EmptyRegistryPolicy = {
+  registry: true,
+  scopes: false,
+}
+
+/**
+ * The registry-facing view of merged .npmrc settings, with npm's defaults. A
+ * value the manager cannot use is recorded in `unusable` (named through the
+ * view's `origin`), not replaced: see `UnusableRegistry`.
+ */
 export const registryConfigFrom = (
-  npmrc: Npmrc,
+  npmrc: NpmrcView,
   cwd: string,
   sources: NpmrcSources,
+  empty: EmptyRegistryPolicy = NPM_EMPTY_REGISTRY,
 ): RegistryConfig => {
+  const values = npmrc.values
+  const unusable: UnusableRegistries = { scopes: {} }
+  const reject = (
+    key: string,
+    value: string,
+    reason: string,
+  ): UnusableRegistry =>
+    unusableEntry({ ...layerOrigin(npmrc.origin(key), key), value, reason })
+
   const scopedRegistries: Record<string, string> = {}
-  for (const [key, value] of Object.entries(npmrc)) {
+  for (const [key, value] of Object.entries(values)) {
     if (typeof value !== 'string' || !/^@[^:]+:registry$/.test(key)) continue
     const scope = key.slice(0, key.indexOf(':'))
-    if (isRegistryUrl(value)) scopedRegistries[scope] = value
-    else logger.debug(`Ignoring ${key}: not an http(s) URL`)
+    const problem = registryProblem(value)
+    if (problem === undefined) scopedRegistries[scope] = value
+    else if (value.trim() === '' && !empty.scopes) {
+      logger.debug(`Ignoring ${key}: empty`)
+    } else unusable.scopes[scope] = reject(key, value, problem)
   }
 
-  const configured = npmrc.registry
+  const configured = values.registry
   let registry = DEFAULT_REGISTRY
   if (typeof configured === 'string') {
-    if (isRegistryUrl(configured)) registry = configured
-    else
-      logger.debug(
-        `Ignoring registry: not an http(s) URL; using ${DEFAULT_REGISTRY}`,
-      )
+    const problem = registryProblem(configured)
+    if (problem === undefined) registry = configured
+    else if (configured.trim() === '' && !empty.registry) {
+      logger.debug(`Ignoring registry: empty; using ${DEFAULT_REGISTRY}`)
+    } else unusable.registry = reject('registry', configured, problem)
   }
 
-  return {
-    registry,
-    scopedRegistries,
-    credentials: credentialsFrom(npmrc, cwd),
-    ca: caFrom(npmrc, cwd, sources),
-    strictSSL: boolValue(npmrc['strict-ssl']) ?? true,
-    proxy: proxyFrom(npmrc, sources.env),
-    fetchRetries: integerAtLeast(npmrc['fetch-retries'], 0, 2),
-    fetchTimeout: timeoutFrom(npmrc['fetch-timeout']),
-    maxSockets: integerAtLeast(npmrc.maxsockets, 1, 15),
-  }
+  return withUnusable(
+    {
+      registry,
+      scopedRegistries,
+      credentials: credentialsFrom(values, cwd),
+      ca: caFrom(values, cwd, sources),
+      strictSSL: boolValue(values['strict-ssl']) ?? true,
+      proxy: proxyFrom(values, sources.env),
+      fetchRetries: integerAtLeast(values['fetch-retries'], 0, 2),
+      fetchTimeout: timeoutFrom(values['fetch-timeout']),
+      maxSockets: integerAtLeast(values.maxsockets, 1, 15),
+    },
+    unusable,
+  )
 }
 
 /**
@@ -489,7 +591,10 @@ export const registryConfigFrom = (
 export const loadRegistryConfig = (
   cwd: string,
   sources: NpmrcSources = processSources(),
-): RegistryConfig => registryConfigFrom(loadNpmrc(cwd, sources), cwd, sources)
+): RegistryConfig => {
+  const view = mergeNpmrcLayers(npmNpmrcLayers(cwd, sources))
+  return registryConfigFrom(view, cwd, sources)
+}
 
 /**
  * The run's registry config for a manager: the merge of its `.npmrc` layers
@@ -497,13 +602,21 @@ export const loadRegistryConfig = (
  * One place for the session's wiring, so tests exercise the real thing.
  */
 export const managerRegistryConfig = (
-  adapter: Pick<ManagerAdapter, 'npmrcLayers' | 'registryConfig'>,
+  adapter: Pick<
+    ManagerAdapter,
+    'npmrcLayers' | 'registryConfig' | 'emptyRegistry'
+  >,
   dir: string,
   sources: NpmrcSources,
 ): RegistryConfig => {
   const npmrc = mergeNpmrcLayers(
     (adapter.npmrcLayers ?? npmNpmrcLayers)(dir, sources),
   )
-  const fromNpmrc = registryConfigFrom(npmrc.values, dir, sources)
+  const fromNpmrc = registryConfigFrom(
+    npmrc,
+    dir,
+    sources,
+    adapter.emptyRegistry,
+  )
   return adapter.registryConfig?.(dir, fromNpmrc, sources, npmrc) ?? fromNpmrc
 }

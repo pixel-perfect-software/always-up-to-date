@@ -99,14 +99,14 @@ const NPM_CREDENTIALS_ENV: EnvRule = {
 
 const routeLayer = (
   file: string,
-  { registry, scopes }: PnpmRegistrySettings,
+  { registry, scopes, labels }: PnpmRegistrySettings,
 ): NpmrcLayer => {
   const values: Npmrc = Object.create(null)
   if (registry !== undefined) values.registry = registry
   for (const [scope, url] of Object.entries(scopes)) {
     values[`${scope}:registry`] = url
   }
-  return { kind: 'file', file, values }
+  return { kind: 'file', file, values, labels }
 }
 
 /**

@@ -29,6 +29,9 @@ const bun: ManagerAdapter = {
 
   npmrcLayers: bunNpmrcLayers,
 
+  // bun ignores an empty registry or scope route.
+  emptyRegistry: { registry: false, scopes: false },
+
   registryConfig: bunRegistryConfig,
 
   apply: async (

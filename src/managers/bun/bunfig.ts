@@ -1,12 +1,18 @@
 import path from 'path'
 
-import type { RegistryConfig, RegistryCredentials } from '@/types'
+import type {
+  RegistryConfig,
+  RegistryCredentials,
+  UnusableRegistry,
+} from '@/types'
 import logger from '@/utils/logger'
 import {
   findNpmProjectRoot,
-  isRegistryUrl,
   type NpmrcSources,
   nonEmpty,
+  registryProblem,
+  unusableEntry,
+  withUnusable,
 } from '@/utils/npmrcLoader'
 import {
   DEFAULT_ENDPOINTS,
@@ -167,6 +173,8 @@ const readBunfigRegistries = (content: string): BunfigRegistries => {
 interface Route {
   url: string
   credentials?: RegistryCredentials
+  /** Why bun cannot use `url` (it fails the install on it); no credentials then. */
+  problem?: string
 }
 
 const base64 = (value: string): string =>
@@ -209,23 +217,16 @@ const routeFrom = (
   where: string,
 ): Route | undefined => {
   const entry = typeof value === 'string' ? { url: value } : value
-  if (!entry.url) return undefined
+  if (!entry.url?.trim()) return undefined
   // bun fails the install on a `$` in a registry URL (InvalidURL).
-  if (entry.url.includes('$')) {
-    logger.debug(`Ignoring ${where} in bunfig.toml: a variable in a URL`)
-    return undefined
+  const problem = entry.url.includes('$')
+    ? 'it holds a `$` that bun does not expand in bunfig.toml'
+    : registryProblem(entry.url)
+  if (problem) {
+    logger.debug(`${where} in bunfig.toml is unusable: ${problem}`)
+    return { url: entry.url, problem }
   }
-  let url: URL
-  try {
-    url = new URL(entry.url)
-  } catch {
-    logger.debug(`Ignoring ${where} in bunfig.toml: not a URL`)
-    return undefined
-  }
-  if (!isRegistryUrl(entry.url)) {
-    logger.debug(`Ignoring ${where} in bunfig.toml: not an http(s) URL`)
-    return undefined
-  }
+  const url = new URL(entry.url)
 
   const credentials: RegistryCredentials = {}
   if (url.username && url.password) {
@@ -308,14 +309,59 @@ export const bunRegistryConfig = (
     env,
   )
 
-  const fromEnv = [
-    env.BUN_CONFIG_REGISTRY,
-    env.NPM_CONFIG_REGISTRY,
-    env.npm_config_registry,
-  ].find((value) => value && isRegistryUrl(value))
-  const route = fromEnv ? undefined : (project.registry ?? global.registry)
+  const projectFile = path.join(findNpmProjectRoot(cwd), 'bunfig.toml')
+  const globalFile = globalBunfig(sources)
+  const reject = (
+    key: string,
+    route: Route,
+    source: string,
+  ): UnusableRegistry =>
+    unusableEntry({
+      key,
+      value: route.url,
+      source,
+      reason: route.problem ?? 'it is not usable',
+    })
 
-  const registry = fromEnv ?? route?.url ?? base.registry
+  const envName = [
+    'BUN_CONFIG_REGISTRY',
+    'NPM_CONFIG_REGISTRY',
+    'npm_config_registry',
+  ].find((name) => env[name]?.trim())
+  const fromEnv: Route | undefined = envName
+    ? {
+        url: env[envName] ?? '',
+        problem: registryProblem(env[envName] ?? ''),
+      }
+    : undefined
+  const winner: { route: Route; key: string; source: string } | undefined =
+    fromEnv && envName
+      ? { route: fromEnv, key: envName, source: 'the environment' }
+      : project.registry
+        ? {
+            route: project.registry,
+            key: 'install.registry',
+            source: projectFile,
+          }
+        : global.registry
+          ? {
+              route: global.registry,
+              key: 'install.registry',
+              source: globalFile,
+            }
+          : undefined
+  const route = winner?.route.problem ? undefined : winner?.route
+  const unusable = {
+    registry: base.unusable?.registry,
+    scopes: { ...base.unusable?.scopes },
+  }
+  if (winner) {
+    unusable.registry = winner.route.problem
+      ? reject(winner.key, winner.route, winner.source)
+      : undefined
+  }
+
+  const registry = route?.url ?? base.registry
   const credentials = { ...base.credentials }
   const token = nonEmpty(env.BUN_CONFIG_TOKEN) ?? nonEmpty(env.NPM_CONFIG_TOKEN)
   // A token with no registry configured is not sent to a public registry.
@@ -328,10 +374,26 @@ export const bunRegistryConfig = (
   if (defaultCredentials) credentials[defaultPrefix] = defaultCredentials
 
   const scopedRegistries = { ...base.scopedRegistries }
-  for (const [scope, scoped] of Object.entries({
-    ...global.scopes,
-    ...project.scopes,
-  })) {
+  const routed = new Map<string, { route: Route; source: string }>()
+  for (const [file, routes] of [
+    [globalFile, global.scopes],
+    [projectFile, project.scopes],
+  ] as const) {
+    for (const [scope, found] of Object.entries(routes)) {
+      routed.set(scope, { route: found, source: file })
+    }
+  }
+  for (const [scope, { route: scoped, source }] of routed) {
+    if (scoped.problem) {
+      delete scopedRegistries[scope]
+      unusable.scopes[scope] = reject(
+        `install.scopes."${scope}"`,
+        scoped,
+        source,
+      )
+      continue
+    }
+    delete unusable.scopes[scope]
     scopedRegistries[scope] = scoped.url
     if (!scoped.credentials) continue
     // A credential is stored per URL prefix, as .npmrc does, so a scope on the
@@ -346,5 +408,8 @@ export const bunRegistryConfig = (
     credentials[prefix] = scoped.credentials
   }
 
-  return { ...base, registry, scopedRegistries, credentials }
+  return withUnusable(
+    { ...base, registry, scopedRegistries, credentials },
+    unusable,
+  )
 }

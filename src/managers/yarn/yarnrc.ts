@@ -1,15 +1,18 @@
 import path from 'path'
 
-import type { RegistryConfig } from '@/types'
+import type { RegistryConfig, UnusableRegistries } from '@/types'
 import { ancestorFiles } from '@/utils/ancestors'
 import {
-  isRegistryUrl,
+  layerOrigin,
   type NpmrcSources,
   type NpmrcView,
+  registryProblem,
+  unusableEntry,
+  withUnusable,
 } from '@/utils/npmrcLoader'
 import { readTextFile } from '@/utils/saveStyle'
 
-/** What one .yarnrc routes. */
+/** What one .yarnrc routes, as written. */
 export interface YarnrcRoutes {
   /** `registry "…"`: an ordinary setting, below .npmrc. */
   registry?: string
@@ -115,34 +118,26 @@ export const parseYarnrc = (text: string): Record<string, string> => {
   return entries
 }
 
-/** The registry routes in one .yarnrc. A value that is not an http(s) URL is skipped. */
+/** The registry values in one .yarnrc as written, usable or not. */
 export const yarnrcRoutes = (text: string): YarnrcRoutes => {
   const entries = parseYarnrc(text)
-  const url = (key: string): string | undefined =>
-    entries[key] !== undefined && isRegistryUrl(entries[key])
-      ? entries[key]
-      : undefined
-
   const scopes: Record<string, string> = {}
   for (const key of Object.keys(entries)) {
     const scope = /^(@[^:]+):registry$/.exec(key)?.[1]
-    const value = url(key)
-    if (scope && value) scopes[scope] = value
+    if (scope) scopes[scope] = entries[key]
   }
   return {
-    registry: url('registry'),
-    flagRegistry: url('--registry'),
-    upgradeRegistry: url('--upgrade.registry'),
+    registry: entries.registry,
+    flagRegistry: entries['--registry'],
+    upgradeRegistry: entries['--upgrade.registry'],
     scopes,
   }
 }
 
-const firstDefined = <T>(values: (T | undefined)[]): T | undefined =>
-  values.find((value) => value !== undefined)
-
 /**
- * A registry URL from the variable `name`, matched as the .npmrc layers match
- * `npm_config_*`: any case, empty values skipped, the last match winning.
+ * A registry value from the variable `name`, matched as the .npmrc layers
+ * match `npm_config_*`: any case, empty values skipped, the last match
+ * winning. Usable or not: yarn fails on one it cannot use.
  */
 const envRegistry = (
   env: NodeJS.ProcessEnv,
@@ -150,9 +145,9 @@ const envRegistry = (
 ): string | undefined => {
   let found: string | undefined
   for (const [key, value] of Object.entries(env)) {
-    if (value && key.toLowerCase() === name) found = value
+    if (value?.trim() && key.toLowerCase() === name) found = value
   }
-  return found !== undefined && isRegistryUrl(found) ? found : undefined
+  return found
 }
 
 /**
@@ -194,40 +189,94 @@ export const yarnRegistryConfig = (
 
   // Each file is read and parsed once, whichever list it is in.
   const cache = new Map<string, YarnrcRoutes>()
-  const route = (file: string): YarnrcRoutes => {
+  const route = (file: string): [YarnrcRoutes, string] => {
     let routes = cache.get(file)
     if (!routes) {
       routes = yarnrcRoutes(readTextFile(file))
       cache.set(file, routes)
     }
-    return routes
+    return [routes, file]
   }
 
   // yarn reads the cwd, then ~/.yarnrc, then the parents without the root.
   const ordinary = [project[0], user, ...project.slice(1, -1)].map(route)
   const flags = [user, ...project].map(route)
 
+  interface Candidate {
+    key: string
+    value: string
+    source: string
+  }
+  const fromFiles = (
+    files: [YarnrcRoutes, string][],
+    key: string,
+    pick: (routes: YarnrcRoutes) => string | undefined,
+  ): Candidate | undefined => {
+    for (const [routes, source] of files) {
+      const value = pick(routes)
+      if (value !== undefined && value.trim() !== '')
+        return { key, value, source }
+    }
+    return undefined
+  }
+
   const yarnEnv = envRegistry(env, 'yarn_registry')
   // `base` cannot say whether .npmrc set `registry` or the default stands, and
-  // a .npmrc registry ranks above a .yarnrc one; the view says which layer set it.
+  // a .npmrc registry ranks above a .yarnrc one; the view says which layer set
+  // it. An empty value counts as unset (m1: yarn goes on to .yarnrc).
   const set = npmrc.values.registry
-  const usable = typeof set === 'string' && isRegistryUrl(set)
-  const fromEnv = usable && npmrc.origin('registry')?.kind === 'env'
+  const npmrcSet =
+    typeof set === 'string' && set.trim() !== '' ? set : undefined
+  const npmrcLayer = npmrc.origin('registry')
+  const npmrcCandidate: Candidate | undefined =
+    npmrcSet === undefined
+      ? undefined
+      : { value: npmrcSet, ...layerOrigin(npmrcLayer, 'registry') }
+  const fromEnv = npmrcLayer?.kind === 'env'
 
-  const registry =
-    firstDefined(flags.map((r) => r.upgradeRegistry)) ??
-    firstDefined(flags.map((r) => r.flagRegistry)) ??
-    (fromEnv ? base.registry : undefined) ??
-    yarnEnv ??
-    (usable ? base.registry : undefined) ??
-    firstDefined(ordinary.map((r) => r.registry)) ??
-    base.registry
+  // The first source that sets the default registry wins, usable or not:
+  // yarn fails on a value it cannot use rather than asking the next source.
+  const winner =
+    fromFiles(flags, '--upgrade.registry', (r) => r.upgradeRegistry) ??
+    fromFiles(flags, '--registry', (r) => r.flagRegistry) ??
+    (fromEnv ? npmrcCandidate : undefined) ??
+    (yarnEnv === undefined
+      ? undefined
+      : { key: 'YARN_REGISTRY', value: yarnEnv, source: 'the environment' }) ??
+    (fromEnv ? undefined : npmrcCandidate) ??
+    fromFiles(ordinary, 'registry', (r) => r.registry)
 
-  const scopedRegistries: Record<string, string> = {}
-  for (const routes of [...ordinary].reverse()) {
-    Object.assign(scopedRegistries, routes.scopes)
+  const unusable: UnusableRegistries = {
+    scopes: { ...base.unusable?.scopes },
   }
-  Object.assign(scopedRegistries, base.scopedRegistries)
+  let registry = base.registry
+  if (winner) {
+    const problem = registryProblem(winner.value)
+    if (problem === undefined) registry = winner.value
+    else {
+      unusable.registry = unusableEntry({ ...winner, reason: problem })
+    }
+  }
 
-  return { ...base, registry, scopedRegistries }
+  // A scope: .npmrc or the environment (already in `base`, usable or not),
+  // else the nearest .yarnrc that names it.
+  const scopedRegistries: Record<string, string> = { ...base.scopedRegistries }
+  const fromYarnrc = new Map<string, Candidate>()
+  for (const [routes, source] of [...ordinary].reverse()) {
+    for (const [scope, value] of Object.entries(routes.scopes)) {
+      if (value.trim() !== '') {
+        fromYarnrc.set(scope, { key: `${scope}:registry`, value, source })
+      }
+    }
+  }
+  for (const [scope, found] of fromYarnrc) {
+    if (scopedRegistries[scope] || unusable.scopes[scope]) continue
+    const problem = registryProblem(found.value)
+    if (problem === undefined) scopedRegistries[scope] = found.value
+    else {
+      unusable.scopes[scope] = unusableEntry({ ...found, reason: problem })
+    }
+  }
+
+  return withUnusable({ ...base, registry, scopedRegistries }, unusable)
 }
