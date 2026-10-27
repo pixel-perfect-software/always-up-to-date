@@ -3,9 +3,8 @@ import path from 'path'
 import type { RegistryConfig } from '@/types'
 import {
   isRegistryUrl,
-  loadNpmrc,
   type NpmrcSources,
-  nonEmpty,
+  type NpmrcView,
 } from '@/utils/npmrcLoader'
 import { readTextFile } from '@/utils/saveStyle'
 
@@ -137,12 +136,12 @@ export const yarnrcRoutes = (text: string): YarnrcRoutes => {
   }
 }
 
-/** The `.yarnrc` of `cwd` and of each parent, nearest first, the filesystem root last. */
-const ancestorFiles = (cwd: string): string[] => {
+/** The file `name` of `cwd` and of each parent, nearest first, the filesystem root last. */
+export const ancestorFiles = (cwd: string, name: string): string[] => {
   const files: string[] = []
   let dir = path.resolve(cwd)
   for (;;) {
-    files.push(path.join(dir, '.yarnrc'))
+    files.push(path.join(dir, name))
     const parent = path.dirname(dir)
     if (parent === dir) return files
     dir = parent
@@ -153,7 +152,7 @@ const firstDefined = <T>(values: (T | undefined)[]): T | undefined =>
   values.find((value) => value !== undefined)
 
 /**
- * A registry URL from the variable `name`, matched as `loadNpmrc` matches
+ * A registry URL from the variable `name`, matched as the .npmrc layers match
  * `npm_config_*`: any case, empty values skipped, the last match winning.
  */
 const envRegistry = (
@@ -186,20 +185,22 @@ const envRegistry = (
  * - credentials: a .yarnrc entry (`"//host/:_authToken"`, `_authToken`) sends
  *   nothing, so they stay with .npmrc, matched to the host the request lands
  *   on.
+ * `npmrc` is the view of yarn's own .npmrc layers (`yarnNpmrcLayers`: the
+ * cwd's, `~/.npmrc`, the prefix file, then the parents'), so a member's file
+ * and a parent's are already in `base`.
  * Not read: `YARN_@SCOPE:REGISTRY` variables; for ordinary keys,
  * `${PREFIX or dirname(execPath)}/etc/yarnrc` (between `~/.yarnrc` and the
- * parents); for the flags, `/etc/yarnrc`, `/etc/yarn/config`,
- * `~/.config/yarn/config` and `~/.yarn/config` (above the project); and the
- * .npmrc files of a workspace member (autd reads the root's; yarn reads the
- * member's, then `~/.npmrc`, then the root's).
+ * parents); and for the flags, `/etc/yarnrc`, `/etc/yarn/config`,
+ * `~/.config/yarn/config` and `~/.yarn/config` (above the project).
  */
 export const yarnRegistryConfig = (
   cwd: string,
   base: RegistryConfig,
   sources: NpmrcSources,
+  npmrc: NpmrcView,
 ): RegistryConfig => {
   const { env, home } = sources
-  const project = ancestorFiles(cwd)
+  const project = ancestorFiles(cwd, '.yarnrc')
   const user = path.join(home, '.yarnrc')
 
   // Each file is read and parsed once, whichever list it is in.
@@ -217,20 +218,19 @@ export const yarnRegistryConfig = (
   const ordinary = [project[0], user, ...project.slice(1, -1)].map(route)
   const flags = [user, ...project].map(route)
 
-  const npmEnv = envRegistry(env, 'npm_config_registry')
   const yarnEnv = envRegistry(env, 'yarn_registry')
   // `base` cannot say whether .npmrc set `registry` or the default stands, and
-  // a .npmrc registry ranks above a .yarnrc one, so the layers are read again.
-  const npmrcRegistry = nonEmpty(loadNpmrc(cwd, sources).registry)
-  const npmrcHasRegistry =
-    npmrcRegistry !== undefined && isRegistryUrl(npmrcRegistry)
+  // a .npmrc registry ranks above a .yarnrc one; the view says which layer set it.
+  const set = npmrc.values.registry
+  const usable = typeof set === 'string' && isRegistryUrl(set)
+  const fromEnv = usable && npmrc.origin('registry')?.kind === 'env'
 
   const registry =
     firstDefined(flags.map((r) => r.upgradeRegistry)) ??
     firstDefined(flags.map((r) => r.flagRegistry)) ??
-    (npmEnv ? base.registry : undefined) ??
+    (fromEnv ? base.registry : undefined) ??
     yarnEnv ??
-    (npmrcHasRegistry ? base.registry : undefined) ??
+    (usable ? base.registry : undefined) ??
     firstDefined(ordinary.map((r) => r.registry)) ??
     base.registry
 

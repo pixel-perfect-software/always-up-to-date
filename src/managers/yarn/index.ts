@@ -8,11 +8,13 @@ import {
   discoverBerry,
   installedBerry,
 } from '@/managers/yarn/berry'
+import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import { StepError } from '@/stepError'
 import { logger } from '@/utils'
 import { buildUpdateDescriptors, type DescriptorField } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
+import { npmNpmrcLayers } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
 
@@ -45,9 +47,17 @@ const yarn: ManagerAdapter = {
     catalogs: {},
   }),
 
-  // berry reads .yarnrc.yml, which is not read yet (#107); v1 reads .yarnrc.
-  registryConfig: (cwd, fromNpmrc, sources) =>
-    isYarnBerry(cwd) ? fromNpmrc : yarnRegistryConfig(cwd, fromNpmrc, sources),
+  // berry reads .yarnrc.yml, which is not read yet (#107), and keeps npm's
+  // .npmrc layers; v1 has its own layers and reads .yarnrc.
+  npmrcLayers: (cwd, sources) =>
+    isYarnBerry(cwd)
+      ? npmNpmrcLayers(cwd, sources)
+      : yarnNpmrcLayers(cwd, sources),
+
+  registryConfig: (cwd, fromNpmrc, sources, npmrc) =>
+    isYarnBerry(cwd)
+      ? fromNpmrc
+      : yarnRegistryConfig(cwd, fromNpmrc, sources, npmrc),
 
   ownDiscovery: (cwd) =>
     isYarnBerry(cwd)
