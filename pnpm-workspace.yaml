@@ -8,22 +8,39 @@ allowBuilds:
   unrs-resolver: true
 
 catalog:
-  "@inquirer/prompts": ^8.7.3
-  colorette: ^2.0.20
-  commander: ^15.0.0
-  semver: ^7.8.5
-  "@biomejs/biome": ^2.5.15
-  "@swc/core": '^1.16.18'
-  "@swc/jest": "^0.2.39"
-  "@types/jest": ^30.0.0
-  "@types/node": ^26.6.5
-  "@types/semver": ^7.8.0
-  globals: ^17.13.0
-  jest: ^30.5.2
-  jest-coverage-badges: ^1.1.2
-  tsc-alias: ^1.9.7
-  typescript: ^7.0.2
+  "@inquirer/prompts": 8.7.5
+  colorette: 2.0.20
+  commander: 15.0.0
+  semver: 7.8.5
+  "@biomejs/biome": 2.6.3
+  "@swc/core": 1.16.20
+  "@swc/jest": "0.2.39"
+  "@types/jest": 30.0.0
+  "@types/node": 26.6.5
+  "@types/semver": 7.8.0
+  globals: 17.13.0
+  jest: 30.5.2
+  jest-coverage-badges: 1.1.2
+  tsc-alias: 1.9.9
+  typescript: 7.0.2
+
+minimumReleaseAgeExclude:
+  - "@inquirer/ansi@2.0.10"
+  - "@inquirer/checkbox@5.2.8"
+  - "@inquirer/confirm@6.3.5"
+  - "@inquirer/core@12.0.6"
+  - "@inquirer/editor@5.3.6"
+  - "@inquirer/expand@5.1.8"
+  - "@inquirer/external-editor@3.0.7"
+  - "@inquirer/figures@2.0.10"
+  - "@inquirer/input@5.1.9"
+  - "@inquirer/number@4.2.6"
+  - "@inquirer/password@5.2.5"
+  - "@inquirer/prompts@8.7.5"
+  - "@inquirer/rawlist@5.3.8"
+  - "@inquirer/search@4.3.6"
+  - "@inquirer/select@5.2.8"
+  - "@inquirer/type@4.2.1"
 
 overrides:
-  brace-expansion@>=2.0.0 <2.1.7: ^2.1.7
-  brace-expansion@>=4.0.0 <5.0.12: ^5.0.12
+  minimist@<0.2.4: ^0.2.4

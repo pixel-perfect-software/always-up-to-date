@@ -2,5 +2,5 @@
   "$schema": "./schema/config.schema.json",
   "debug": false,
   "silent": false,
-  "beyondRange": "none"
+  "beyondRange": "minor"
 }
