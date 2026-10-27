@@ -15,7 +15,7 @@ import {
   nonEmpty,
   npmrcFileLayer,
 } from '@/utils/npmrcLoader'
-import { readTextFile } from '@/utils/saveStyle'
+import { readTextFile, yamlValue } from '@/utils/saveStyle'
 
 /**
  * The directory pnpm reads its project settings from: the nearest one,
@@ -97,8 +97,20 @@ const NPM_CREDENTIALS_ENV: EnvRule = {
   substitute: null,
 }
 
+/**
+ * The yaml settings that are `.npmrc` keys to the registry config. pnpm 12
+ * reads them from its yaml files and `pnpm_config_*` only: in the project
+ * `.npmrc`, `auth.ini` or `~/.npmrc` they have no effect, in either spelling
+ * (verified on pnpm 12.14.0, 2026-10-27, #125).
+ */
+const YAML_FETCH_KEYS = {
+  fetchTimeout: 'fetch-timeout',
+  fetchRetries: 'fetch-retries',
+} as const
+
 const routeLayer = (
   file: string,
+  content: string,
   { registry, scopes, labels }: PnpmRegistrySettings,
 ): NpmrcLayer => {
   const values: Npmrc = Object.create(null)
@@ -106,7 +118,17 @@ const routeLayer = (
   for (const [scope, url] of Object.entries(scopes)) {
     values[`${scope}:registry`] = url
   }
+  for (const [yamlKey, key] of Object.entries(YAML_FETCH_KEYS)) {
+    const value = yamlValue(content, yamlKey)
+    if (value !== undefined) values[key] = value
+  }
   return { kind: 'file', file, values, labels }
+}
+
+/** An ini layer without the keys pnpm reads only from yaml. */
+const iniLayer = (layer: NpmrcLayer): NpmrcLayer => {
+  for (const key of Object.values(YAML_FETCH_KEYS)) delete layer.values[key]
+  return layer
 }
 
 /**
@@ -134,6 +156,8 @@ const userFile = (cwd: string, { env, home }: NpmrcSources): string => {
  * 2. `npm_config_*` credentials only (see `NPM_CREDENTIALS_ENV`)
  * 3. the project's `pnpm-workspace.yaml` routes; a `${…}` value falls through
  * 4. the global `config.yaml` routes (no credentials); `${…}` expands
+ *    (both yaml files also give `fetchTimeout` and `fetchRetries`, which the
+ *    ini files below never set: `iniLayer`)
  * 5. the project's `.npmrc`; an entry holding `${…}` is left out
  * 6. the global `auth.ini`; `${…}` expands
  * 7. the user file (`userconfig`, else `~/.npmrc`); `${…}` expands in its
@@ -156,26 +180,35 @@ export const pnpmNpmrcLayers = (
   const configDir = pnpmConfigDir(cwd, sources)
   const yamlFile = path.join(root, 'pnpm-workspace.yaml')
   const globalYaml = path.join(configDir, 'config.yaml')
+  const projectYaml = readTextFile(yamlFile)
+  const globalYamlContent = readTextFile(globalYaml)
   return [
     envLayer(env, PNPM_ENV),
     envLayer(env, NPM_CREDENTIALS_ENV),
-    routeLayer(yamlFile, pnpmRegistrySettings(readTextFile(yamlFile))),
+    routeLayer(yamlFile, projectYaml, pnpmRegistrySettings(projectYaml)),
     routeLayer(
       globalYaml,
-      pnpmRegistrySettings(readTextFile(globalYaml), {
+      globalYamlContent,
+      pnpmRegistrySettings(globalYamlContent, {
         env,
         file: 'config.yaml',
       }),
     ),
-    npmrcFileLayer(path.join(root, '.npmrc'), env, {
-      substitute: null,
-      omitReferences: true,
-    }),
-    npmrcFileLayer(path.join(configDir, 'auth.ini'), env, {
-      substitute: substitutePnpm,
-    }),
-    npmrcFileLayer(userFile(cwd, sources), env, {
-      substitute: substitutePnpm,
-    }),
+    iniLayer(
+      npmrcFileLayer(path.join(root, '.npmrc'), env, {
+        substitute: null,
+        omitReferences: true,
+      }),
+    ),
+    iniLayer(
+      npmrcFileLayer(path.join(configDir, 'auth.ini'), env, {
+        substitute: substitutePnpm,
+      }),
+    ),
+    iniLayer(
+      npmrcFileLayer(userFile(cwd, sources), env, {
+        substitute: substitutePnpm,
+      }),
+    ),
   ]
 }
