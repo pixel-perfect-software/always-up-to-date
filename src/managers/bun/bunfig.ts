@@ -339,7 +339,7 @@ export const bunRegistryConfig = (
     const prefix = nerfDart(scoped.url)
     if (defaultCredentials && prefix === defaultPrefix) {
       logger.debug(
-        `Ignoring credentials for scope ${scope} in bunfig.toml: ${prefix} already has the default registry's`,
+        `Ignoring credentials for scope ${scope} in bunfig.toml: its registry (${new URL(scoped.url).host}) shares the default registry's route, which has its own`,
       )
       continue
     }

@@ -19,6 +19,7 @@ import {
   ABBREVIATED_ACCEPT,
   DEFAULT_ENDPOINTS,
   depsDevUrl,
+  describeUrl,
   distTagsUrl,
   isPublicNpmRegistry,
   isValidPackageName,
@@ -189,7 +190,10 @@ export const createRegistryReader = ({
     const { response } = fetched
     if (response.notModified) {
       if (!hit) {
-        return { ok: false, message: `${url} answered 304 to a plain request` }
+        return {
+          ok: false,
+          message: `${describeUrl(url, base)} answered 304 to a plain request`,
+        }
       }
       counts.notModified++
       // RFC 9111 §4.3.4: what the 304 restates replaces what was stored. A

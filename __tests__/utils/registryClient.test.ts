@@ -17,8 +17,10 @@ import {
   type RegistryClientOptions,
   RegistryRequestError,
 } from '@/utils/registryClient'
+import { pathMarker } from '@/utils/registryRequest'
 import {
   conditional,
+  type Handler,
   readTls,
   registryBody,
   replies,
@@ -723,6 +725,132 @@ describe('registry client', () => {
       await expect(
         get(configFrom('fetch-timeout=100\nfetch-retries=0'), server),
       ).rejects.toMatchObject({ code: 'ETIMEDOUT' })
+    })
+  })
+
+  describe('a token in the registry path', () => {
+    const TOKEN = 'SECRET-path-token'
+
+    const failures: Array<[string, Handler, string]> = [
+      [
+        'a 404',
+        (_req, res) => {
+          res.statusCode = 404
+          res.end()
+        },
+        '404',
+      ],
+      [
+        'a 500',
+        (_req, res) => {
+          res.statusCode = 500
+          res.end()
+        },
+        '500',
+      ],
+      [
+        'invalid JSON',
+        (_req, res) => {
+          res.end('oops')
+        },
+        'not valid JSON',
+      ],
+      [
+        'a redirect to an invalid location',
+        (_req, res) => {
+          res.statusCode = 302
+          res.setHeader('location', 'http://[bad')
+          res.end()
+        },
+        'invalid location',
+      ],
+      [
+        'too many redirects',
+        (req, res) => {
+          res.statusCode = 302
+          res.setHeader('location', `${req.url}x`)
+          res.end()
+        },
+        'too many redirects',
+      ],
+      ['a timeout', never, 'timed out'],
+    ]
+
+    it.each(failures)(
+      'is not in the message of %s',
+      async (_label, handler, expected) => {
+        const server = await registry(handler)
+        const base = `${server.url}${TOKEN}/acme/`
+        const error = await clientFor(
+          configFrom('fetch-timeout=100\nfetch-retries=0'),
+        )
+          .getJson(`${base}pkg`, base)
+          .catch((e: unknown) => e)
+        expect(error).toBeInstanceOf(RegistryRequestError)
+        const { message } = error as Error
+        expect(message).toContain(expected)
+        expect(message).not.toContain(TOKEN)
+        expect(message).toContain(`http://127.0.0.1:${server.port}/…`)
+      },
+    )
+
+    it('keeps the package name in the message', async () => {
+      const server = await registry((_req, res) => {
+        res.statusCode = 404
+        res.end()
+      })
+      const base = `${server.url}${TOKEN}/acme/`
+      await expect(
+        clientFor(configFrom('')).getJson(`${base}left-pad`, base),
+      ).rejects.toThrow(
+        `GET http://127.0.0.1:${server.port}/${pathMarker(`/${TOKEN}/acme`)}/left-pad: 404`,
+      )
+    })
+
+    it('hides the path of a same-origin redirect target under a root registry', async () => {
+      const server = await registry((req, res) => {
+        if (req.url === '/pkg') {
+          res.statusCode = 302
+          res.setHeader('location', `/signed/${TOKEN}/pkg`)
+        } else {
+          res.statusCode = 404
+        }
+        res.end()
+      })
+      const error = await get(configFrom(''), server).catch((e: unknown) => e)
+      const { message } = error as Error
+      expect(message).not.toContain(TOKEN)
+      expect(message).toBe(
+        `GET http://127.0.0.1:${server.port}/…: 404 Not Found`,
+      )
+    })
+
+    it('does not change the request on the wire', async () => {
+      const server = await registry(json())
+      const base = `${server.url}${TOKEN}/acme/`
+      await clientFor(configFrom('')).getJson(`${base}pkg`, base)
+      expect(server.requests[0].url).toBe(`/${TOKEN}/acme/pkg`)
+    })
+
+    it('is not in the message of a refused redirect', async () => {
+      const target = await registry(json())
+      const server = await registry(
+        (_req, res) => {
+          res.statusCode = 302
+          res.setHeader(
+            'location',
+            `http://127.0.0.1:${target.port}/${TOKEN}/x`,
+          )
+          res.end()
+        },
+        { tls: 'server' },
+      )
+      const base = `${server.url}${TOKEN}/acme/`
+      const error = await clientFor(configFrom(`ca=${ca}`))
+        .getJson(`${base}pkg`, base)
+        .catch((e: unknown) => e)
+      expect((error as Error).message).toMatch(/refused redirect/)
+      expect((error as Error).message).not.toContain(TOKEN)
     })
   })
 
