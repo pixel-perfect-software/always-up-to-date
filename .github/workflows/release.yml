@@ -11,7 +11,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: [ "v*" ]
 
 # Actions are pinned to the commit of a release (the version is in the comment beside it), so a
 # moved or compromised tag can't change what runs; Dependabot proposes updates. Nothing here

@@ -10,19 +10,19 @@ Wire size is the compressed size on the wire. The capture machine runs an Aikido
 - `autd-no-such-package-20261026` is a 404 on registry.npmjs.org too;
 - `https://registry.yarnpkg.com/-/package/ms/dist-tags` returns a body byte-identical to `ms.dist-tags.body`.
 
-| File | Request | Status | Content type | Wire size |
-|---|---|---|---|---|
-| `ms.dist-tags.body` | `registry.npmjs.org/-/package/ms/dist-tags` | 200 | `application/json` | 109 B |
-| `types-ms.dist-tags.body` | `registry.npmjs.org/-/package/@types%2fms/dist-tags` | 200 | `application/json` | 166 B |
-| `mkdirp.dist-tags.body` | `registry.npmjs.org/-/package/mkdirp/dist-tags` | 200 | `application/json` | 35 B |
-| `ms.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/ms` | 200 | `application/json; charset=utf-8` | 589 B |
-| `types-ms.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/%40types%2Fms` | 200 | `application/json; charset=utf-8` | 398 B |
-| `mkdirp.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/mkdirp` | 200 | `application/json; charset=utf-8` | 867 B |
-| `ms.packument.body` | `registry.npmjs.org/ms`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 11206 B |
-| `types-ms.packument.body` | `registry.npmjs.org/@types%2fms`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 4299 B |
-| `mkdirp.packument.body` | `registry.npmjs.org/mkdirp`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 20272 B |
-| `types-ms.packument-full.body` | `registry.npmjs.org/@types%2fms`, `Accept: application/json` | 200 | `application/json` | 6313 B |
-| `not-found.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/autd-no-such-package-20261026` | 404 | `text/plain; charset=utf-8` | 42 B |
+| File                           | Request                                                              | Status | Content type                          | Wire size |
+| ------------------------------ | -------------------------------------------------------------------- | ------ | ------------------------------------- | --------- |
+| `ms.dist-tags.body`            | `registry.npmjs.org/-/package/ms/dist-tags`                          | 200    | `application/json`                    | 109 B     |
+| `types-ms.dist-tags.body`      | `registry.npmjs.org/-/package/@types%2fms/dist-tags`                 | 200    | `application/json`                    | 166 B     |
+| `mkdirp.dist-tags.body`        | `registry.npmjs.org/-/package/mkdirp/dist-tags`                      | 200    | `application/json`                    | 35 B      |
+| `ms.deps-dev.body`             | `api.deps.dev/v3/systems/npm/packages/ms`                            | 200    | `application/json; charset=utf-8`     | 589 B     |
+| `types-ms.deps-dev.body`       | `api.deps.dev/v3/systems/npm/packages/%40types%2Fms`                 | 200    | `application/json; charset=utf-8`     | 398 B     |
+| `mkdirp.deps-dev.body`         | `api.deps.dev/v3/systems/npm/packages/mkdirp`                        | 200    | `application/json; charset=utf-8`     | 867 B     |
+| `ms.packument.body`            | `registry.npmjs.org/ms`, abbreviated `Accept`                        | 200    | `application/vnd.npm.install-v1+json` | 11206 B   |
+| `types-ms.packument.body`      | `registry.npmjs.org/@types%2fms`, abbreviated `Accept`               | 200    | `application/vnd.npm.install-v1+json` | 4299 B    |
+| `mkdirp.packument.body`        | `registry.npmjs.org/mkdirp`, abbreviated `Accept`                    | 200    | `application/vnd.npm.install-v1+json` | 20272 B   |
+| `types-ms.packument-full.body` | `registry.npmjs.org/@types%2fms`, `Accept: application/json`         | 200    | `application/json`                    | 6313 B    |
+| `not-found.deps-dev.body`      | `api.deps.dev/v3/systems/npm/packages/autd-no-such-package-20261026` | 404    | `text/plain; charset=utf-8`           | 42 B      |
 
 ## Discovery captures (2026-10-26)
 
@@ -37,49 +37,49 @@ Captured for #106's `wanted` rule, spec and catalog tests; the same checks ran f
 
 A body over 100 KB decoded is committed as `<name>.body.gz` (`gzip -9 -n`); gunzipped it is the captured bytes. `*.gz` is `binary` in `.gitattributes`. Wire size is what curl downloaded; decoded size is the size of the body a test reads.
 
-| File | Request | Status | Content type | Wire size | Decoded size | gz |
-|---|---|---|---|---|---|---|
-| `yarn.dist-tags.body` | `registry.npmjs.org/-/package/yarn/dist-tags` | 200 | `application/json` | 79 B | 68 B | no |
-| `yarn.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/yarn` | 200 | `application/json; charset=utf-8` | 1854 B | 28036 B | no |
-| `pnpm.dist-tags.body` | `registry.npmjs.org/-/package/pnpm/dist-tags` | 200 | `application/json` | 192 B | 452 B | no |
-| `pnpm.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/pnpm` | 200 | `application/json; charset=utf-8` | 16877 B | 236694 B | yes |
-| `dayjs.dist-tags.body` | `registry.npmjs.org/-/package/dayjs/dist-tags` | 200 | `application/json` | 44 B | 44 B | no |
-| `dayjs.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/dayjs` | 200 | `application/json; charset=utf-8` | 1966 B | 22623 B | no |
-| `debug.dist-tags.body` | `registry.npmjs.org/-/package/debug/dist-tags` | 200 | `application/json` | 33 B | 33 B | no |
-| `debug.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/debug` | 200 | `application/json; charset=utf-8` | 1446 B | 15492 B | no |
-| `express.dist-tags.body` | `registry.npmjs.org/-/package/express/dist-tags` | 200 | `application/json` | 38 B | 38 B | no |
-| `express.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/express` | 200 | `application/json; charset=utf-8` | 3606 B | 56708 B | no |
-| `semver.dist-tags.body` | `registry.npmjs.org/-/package/semver/dist-tags` | 200 | `application/json` | 71 B | 54 B | no |
-| `semver.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/semver` | 200 | `application/json; charset=utf-8` | 1616 B | 19593 B | no |
-| `zod.dist-tags.body` | `registry.npmjs.org/-/package/zod/dist-tags` | 200 | `application/json` | 131 B | 145 B | no |
-| `zod.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/zod` | 200 | `application/json; charset=utf-8` | 11766 B | 177671 B | yes |
-| `axios.dist-tags.body` | `registry.npmjs.org/-/package/axios/dist-tags` | 200 | `application/json` | 89 B | 79 B | no |
-| `axios.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/axios` | 200 | `application/json; charset=utf-8` | 2357 B | 29190 B | no |
-| `lodash.dist-tags.body` | `registry.npmjs.org/-/package/lodash/dist-tags` | 200 | `application/json` | 19 B | 19 B | no |
-| `lodash.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/lodash` | 200 | `application/json; charset=utf-8` | 1598 B | 19369 B | no |
-| `next.dist-tags.body` | `registry.npmjs.org/-/package/next/dist-tags` | 200 | `application/json` | 193 B | 353 B | no |
-| `next.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/next` | 200 | `application/json; charset=utf-8` | 43531 B | 708283 B | yes |
-| `qs.dist-tags.body` | `registry.npmjs.org/-/package/qs/dist-tags` | 200 | `application/json` | 144 B | 357 B | no |
-| `qs.deps-dev.body` | `api.deps.dev/v3/systems/npm/packages/qs` | 200 | `application/json; charset=utf-8` | 2225 B | 26929 B | no |
-| `typescript.dist-tags.body` | `registry.npmjs.org/-/package/typescript/dist-tags` | 200 | `application/json` | 150 B | 179 B | no |
-| `typescript.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/typescript` | 200 | `application/json; charset=utf-8` | 37603 B | 697559 B | yes |
-| `react.dist-tags.body` | `registry.npmjs.org/-/package/react/dist-tags` | 200 | `application/json` | not recorded (chunked) | 238 B | no |
-| `react.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/react` | 200 | `application/json; charset=utf-8` | 50011 B | 563799 B | yes |
-| `react-dom.dist-tags.body` | `registry.npmjs.org/-/package/react-dom/dist-tags` | 200 | `application/json` | not recorded (chunked) | 238 B | no |
-| `react-dom.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/react-dom` | 200 | `application/json; charset=utf-8` | 49807 B | 569528 B | yes |
-| `yarn.packument.body.gz` | `registry.npmjs.org/yarn`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 49698 B | 205172 B | yes |
-| `pnpm.packument.body.gz` | `registry.npmjs.org/pnpm`, abbreviated `Accept` | 200 | `application/vnd.npm.install-v1+json` | 646327 B | 1910352 B | yes |
+| File                          | Request                                             | Status | Content type                          | Wire size              | Decoded size | gz  |
+| ----------------------------- | --------------------------------------------------- | ------ | ------------------------------------- | ---------------------- | ------------ | --- |
+| `yarn.dist-tags.body`         | `registry.npmjs.org/-/package/yarn/dist-tags`       | 200    | `application/json`                    | 79 B                   | 68 B         | no  |
+| `yarn.deps-dev.body`          | `api.deps.dev/v3/systems/npm/packages/yarn`         | 200    | `application/json; charset=utf-8`     | 1854 B                 | 28036 B      | no  |
+| `pnpm.dist-tags.body`         | `registry.npmjs.org/-/package/pnpm/dist-tags`       | 200    | `application/json`                    | 192 B                  | 452 B        | no  |
+| `pnpm.deps-dev.body.gz`       | `api.deps.dev/v3/systems/npm/packages/pnpm`         | 200    | `application/json; charset=utf-8`     | 16877 B                | 236694 B     | yes |
+| `dayjs.dist-tags.body`        | `registry.npmjs.org/-/package/dayjs/dist-tags`      | 200    | `application/json`                    | 44 B                   | 44 B         | no  |
+| `dayjs.deps-dev.body`         | `api.deps.dev/v3/systems/npm/packages/dayjs`        | 200    | `application/json; charset=utf-8`     | 1966 B                 | 22623 B      | no  |
+| `debug.dist-tags.body`        | `registry.npmjs.org/-/package/debug/dist-tags`      | 200    | `application/json`                    | 33 B                   | 33 B         | no  |
+| `debug.deps-dev.body`         | `api.deps.dev/v3/systems/npm/packages/debug`        | 200    | `application/json; charset=utf-8`     | 1446 B                 | 15492 B      | no  |
+| `express.dist-tags.body`      | `registry.npmjs.org/-/package/express/dist-tags`    | 200    | `application/json`                    | 38 B                   | 38 B         | no  |
+| `express.deps-dev.body`       | `api.deps.dev/v3/systems/npm/packages/express`      | 200    | `application/json; charset=utf-8`     | 3606 B                 | 56708 B      | no  |
+| `semver.dist-tags.body`       | `registry.npmjs.org/-/package/semver/dist-tags`     | 200    | `application/json`                    | 71 B                   | 54 B         | no  |
+| `semver.deps-dev.body`        | `api.deps.dev/v3/systems/npm/packages/semver`       | 200    | `application/json; charset=utf-8`     | 1616 B                 | 19593 B      | no  |
+| `zod.dist-tags.body`          | `registry.npmjs.org/-/package/zod/dist-tags`        | 200    | `application/json`                    | 131 B                  | 145 B        | no  |
+| `zod.deps-dev.body.gz`        | `api.deps.dev/v3/systems/npm/packages/zod`          | 200    | `application/json; charset=utf-8`     | 11766 B                | 177671 B     | yes |
+| `axios.dist-tags.body`        | `registry.npmjs.org/-/package/axios/dist-tags`      | 200    | `application/json`                    | 89 B                   | 79 B         | no  |
+| `axios.deps-dev.body`         | `api.deps.dev/v3/systems/npm/packages/axios`        | 200    | `application/json; charset=utf-8`     | 2357 B                 | 29190 B      | no  |
+| `lodash.dist-tags.body`       | `registry.npmjs.org/-/package/lodash/dist-tags`     | 200    | `application/json`                    | 19 B                   | 19 B         | no  |
+| `lodash.deps-dev.body`        | `api.deps.dev/v3/systems/npm/packages/lodash`       | 200    | `application/json; charset=utf-8`     | 1598 B                 | 19369 B      | no  |
+| `next.dist-tags.body`         | `registry.npmjs.org/-/package/next/dist-tags`       | 200    | `application/json`                    | 193 B                  | 353 B        | no  |
+| `next.deps-dev.body.gz`       | `api.deps.dev/v3/systems/npm/packages/next`         | 200    | `application/json; charset=utf-8`     | 43531 B                | 708283 B     | yes |
+| `qs.dist-tags.body`           | `registry.npmjs.org/-/package/qs/dist-tags`         | 200    | `application/json`                    | 144 B                  | 357 B        | no  |
+| `qs.deps-dev.body`            | `api.deps.dev/v3/systems/npm/packages/qs`           | 200    | `application/json; charset=utf-8`     | 2225 B                 | 26929 B      | no  |
+| `typescript.dist-tags.body`   | `registry.npmjs.org/-/package/typescript/dist-tags` | 200    | `application/json`                    | 150 B                  | 179 B        | no  |
+| `typescript.deps-dev.body.gz` | `api.deps.dev/v3/systems/npm/packages/typescript`   | 200    | `application/json; charset=utf-8`     | 37603 B                | 697559 B     | yes |
+| `react.dist-tags.body`        | `registry.npmjs.org/-/package/react/dist-tags`      | 200    | `application/json`                    | not recorded (chunked) | 238 B        | no  |
+| `react.deps-dev.body.gz`      | `api.deps.dev/v3/systems/npm/packages/react`        | 200    | `application/json; charset=utf-8`     | 50011 B                | 563799 B     | yes |
+| `react-dom.dist-tags.body`    | `registry.npmjs.org/-/package/react-dom/dist-tags`  | 200    | `application/json`                    | not recorded (chunked) | 238 B        | no  |
+| `react-dom.deps-dev.body.gz`  | `api.deps.dev/v3/systems/npm/packages/react-dom`    | 200    | `application/json; charset=utf-8`     | 49807 B                | 569528 B     | yes |
+| `yarn.packument.body.gz`      | `registry.npmjs.org/yarn`, abbreviated `Accept`     | 200    | `application/vnd.npm.install-v1+json` | 49698 B                | 205172 B     | yes |
+| `pnpm.packument.body.gz`      | `registry.npmjs.org/pnpm`, abbreviated `Accept`     | 200    | `application/vnd.npm.install-v1+json` | 646327 B               | 1910352 B    | yes |
 
 ## Cache headers (2026-10-27)
 
 Captured for #108 with `curl --compressed -D`, no credentials, no `.npmrc`, `Accept: application/json` (dist-tags, full packument, deps.dev) or the abbreviated `Accept` (packument). Header files are not kept. The Aikido TLS proxy sits in front of registry.npmjs.org on this machine and may rewrite headers; registry.npmjs.org answered through Cloudflare (`cf-cache-status: DYNAMIC` on dist-tags), and the values below are what reached curl. `ms`, `next` and `@types/ms` gave the same headers per endpoint apart from `ETag`, `Age` and `Last-Modified`.
 
-| Endpoint | `Cache-Control` | `ETag` | `Age` | `Vary` | `If-None-Match` |
-|---|---|---|---|---|---|
-| registry.npmjs.org `/-/package/<name>/dist-tags` | none | none | none | `accept-encoding` | no ETag to send; a made-up one gets 200 |
-| registry.yarnpkg.com `/-/package/ms/dist-tags` | none | none | none | `accept-encoding` | no ETag to send |
-| registry.npmjs.org `/<name>`, abbreviated | `public, max-age=300` | weak, `W/"<32 hex>"` | 42 to 132 s | `accept-encoding, accept` | the ETag of `ms` gets 304 |
-| registry.npmjs.org `/<name>`, `application/json` | `public, max-age=300` | weak, `W/"<32 hex>"` (differs from the abbreviated one) | 15 to 118 s | `accept-encoding, accept` | not tried |
-| api.deps.dev `/v3/systems/npm/packages/<name>` | `public, max-age=3600` | none | none | `Accept-Encoding` | no ETag to send |
+| Endpoint                                         | `Cache-Control`        | `ETag`                                                  | `Age`       | `Vary`                    | `If-None-Match`                         |
+| ------------------------------------------------ | ---------------------- | ------------------------------------------------------- | ----------- | ------------------------- | --------------------------------------- |
+| registry.npmjs.org `/-/package/<name>/dist-tags` | none                   | none                                                    | none        | `accept-encoding`         | no ETag to send; a made-up one gets 200 |
+| registry.yarnpkg.com `/-/package/ms/dist-tags`   | none                   | none                                                    | none        | `accept-encoding`         | no ETag to send                         |
+| registry.npmjs.org `/<name>`, abbreviated        | `public, max-age=300`  | weak, `W/"<32 hex>"`                                    | 42 to 132 s | `accept-encoding, accept` | the ETag of `ms` gets 304               |
+| registry.npmjs.org `/<name>`, `application/json` | `public, max-age=300`  | weak, `W/"<32 hex>"` (differs from the abbreviated one) | 15 to 118 s | `accept-encoding, accept` | not tried                               |
+| api.deps.dev `/v3/systems/npm/packages/<name>`   | `public, max-age=3600` | none                                                    | none        | `Accept-Encoding`         | no ETag to send                         |
 
 The dist-tags answers carry only a `__cf_bm` cookie, no validator and no freshness header, so a cache of them is TTL-only. Packuments carry both, and a conditional request is answered with 304.

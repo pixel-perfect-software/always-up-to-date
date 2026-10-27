@@ -35,6 +35,7 @@ We welcome contributions to Always Up To Date! This guide will help you get star
    ```
 
 5. **Build the project**:
+
    ```bash
    pnpm run build
    ```
@@ -168,10 +169,10 @@ rules; CI runs one job per manager.
 Use Jest with the existing patterns:
 
 ```typescript
-import { detectPackageManager } from "../detectPackageManager"
+import { detectPackageManager } from '../detectPackageManager'
 
-describe("detectPackageManager", () => {
-  it("should detect npm from package-lock.json", () => {
+describe('detectPackageManager', () => {
+  it('should detect npm from package-lock.json', () => {
     // Test implementation
   })
 })
@@ -186,10 +187,10 @@ describe("detectPackageManager", () => {
 3. Implement required methods:
 
 ```typescript
-import CommandRunner from "@/commandRunner"
+import CommandRunner from '@/commandRunner'
 
 class YarnManager extends CommandRunner {
-  public readonly packageManager: SupportedPackageManager = "yarn"
+  public readonly packageManager: SupportedPackageManager = 'yarn'
 
   checkPackageVersions = async (cwd: string): Promise<object> => {
     // Implementation
@@ -222,12 +223,12 @@ class YarnManager extends CommandRunner {
 2. Implement using Commander.js pattern:
 
 ```typescript
-import type { Command } from "commander"
+import type { Command } from 'commander'
 
 const newCommand = (program: Command) =>
   program
-    .command("new-command")
-    .description("Description of the new command")
+    .command('new-command')
+    .description('Description of the new command')
     .action(async () => {
       // Command implementation
     })

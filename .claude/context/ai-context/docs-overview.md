@@ -4,30 +4,30 @@ Documentation registry and index for the Always Up To Date project. This file ma
 
 ## 3-Tier Documentation System
 
-| Tier | Scope | Location |
-|------|-------|----------|
-| 1 - Foundational | Project-wide overview, dev commands, architecture summary | `/CLAUDE.md` |
-| 2 - Component-Level | Component purpose, patterns, integration points | `src/{component}/CLAUDE.md` |
-| 3 - Feature-Specific | Granular feature implementation details | `src/{component}/{feature}/CLAUDE.md` |
+| Tier                 | Scope                                                     | Location                              |
+| -------------------- | --------------------------------------------------------- | ------------------------------------- |
+| 1 - Foundational     | Project-wide overview, dev commands, architecture summary | `/CLAUDE.md`                          |
+| 2 - Component-Level  | Component purpose, patterns, integration points           | `src/{component}/CLAUDE.md`           |
+| 3 - Feature-Specific | Granular feature implementation details                   | `src/{component}/{feature}/CLAUDE.md` |
 
 ## Documentation Registry
 
 ### Tier 1 (Foundational)
 
-| Document | Path | Description |
-|----------|------|-------------|
-| Project Overview | `/CLAUDE.md` | Dev commands, architecture, conventions, engine requirements |
-| Documentation Index | `.claude/context/ai-context/docs-overview.md` | This file - maps all documentation |
+| Document            | Path                                          | Description                                                  |
+| ------------------- | --------------------------------------------- | ------------------------------------------------------------ |
+| Project Overview    | `/CLAUDE.md`                                  | Dev commands, architecture, conventions, engine requirements |
+| Documentation Index | `.claude/context/ai-context/docs-overview.md` | This file - maps all documentation                           |
 
 ### Tier 2 (Component-Level)
 
-| Component | Path | Description |
-|-----------|------|-------------|
-| Package Managers | `src/managers/CLAUDE.md` | Manager abstraction, CommandRunner, detection, workspace support |
-| CLI Commands | `src/commands/CLAUDE.md` | Commander.js setup, command registration, binary aliases |
-| Utilities | `src/utils/CLAUDE.md` | Config system, update logic, logging, file ops, package grouping |
-| Migrator | `src/migrator/CLAUDE.md` | Framework migration rules (stub) |
-| PR Generator | `src/prGenerator/CLAUDE.md` | Automated PR creation (stub) |
+| Component        | Path                        | Description                                                      |
+| ---------------- | --------------------------- | ---------------------------------------------------------------- |
+| Package Managers | `src/managers/CLAUDE.md`    | Manager abstraction, CommandRunner, detection, workspace support |
+| CLI Commands     | `src/commands/CLAUDE.md`    | Commander.js setup, command registration, binary aliases         |
+| Utilities        | `src/utils/CLAUDE.md`       | Config system, update logic, logging, file ops, package grouping |
+| Migrator         | `src/migrator/CLAUDE.md`    | Framework migration rules (stub)                                 |
+| PR Generator     | `src/prGenerator/CLAUDE.md` | Automated PR creation (stub)                                     |
 
 ### Tier 3 (Feature-Specific)
 

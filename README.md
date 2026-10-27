@@ -50,11 +50,11 @@ Past the range in package.json (5 packages)
 
 What happens to each kind of spec:
 
-| In package.json | Installed | Latest | `autd update` | With `"beyondRange": "major"` |
-|---|---|---|---|---|
-| `"^9.0.0"` | 9.0.0 | 15.0.0 | 9.5.0, the newest `9.x` | `"^15.0.0"` |
-| `"~4.3.1"` | 4.3.1 | 4.4.3 | 4.3.7, the newest `4.3.x` | `"~4.4.3"` |
-| `"18.2.0"` | 18.2.0 | 19.3.1 | stays on 18.2.0 | `"19.3.1"`, still exact |
+| In package.json | Installed | Latest | `autd update`             | With `"beyondRange": "major"` |
+| --------------- | --------- | ------ | ------------------------- | ----------------------------- |
+| `"^9.0.0"`      | 9.0.0     | 15.0.0 | 9.5.0, the newest `9.x`   | `"^15.0.0"`                   |
+| `"~4.3.1"`      | 4.3.1     | 4.4.3  | 4.3.7, the newest `4.3.x` | `"~4.4.3"`                    |
+| `"18.2.0"`      | 18.2.0    | 19.3.1 | stays on 18.2.0           | `"19.3.1"`, still exact       |
 
 ## ✨ Features
 
@@ -89,19 +89,19 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 
 ## ⌨️ Commands
 
-| Command | Description |
-|---------|-------------|
-| `autd check` | List outdated dependencies |
-| `autd check --json` | The same, as JSON |
-| `autd update` | Update every eligible dependency |
-| `autd update [packages...]` | Update only the named packages |
-| `autd update --dry-run` | Show where each package would move, or why it's held, without changing anything |
-| `autd update -i, --interactive` | Pick the packages to update from a checklist |
-| `autd update --json` | Print the update results as JSON (combines with `--dry-run`, not with `--interactive`) |
-| `autd check --no-cache`, `autd update --no-cache` | Ask the registries instead of using autd's cache (see [Cache](#-cache)) |
-| `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager |
-| `autd init` | Create `.always-up-to-date.json` in the current directory |
-| `autd help` | Show help |
+| Command                                                   | Description                                                                            |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `autd check`                                              | List outdated dependencies                                                             |
+| `autd check --json`                                       | The same, as JSON                                                                      |
+| `autd update`                                             | Update every eligible dependency                                                       |
+| `autd update [packages...]`                               | Update only the named packages                                                         |
+| `autd update --dry-run`                                   | Show where each package would move, or why it's held, without changing anything        |
+| `autd update -i, --interactive`                           | Pick the packages to update from a checklist                                           |
+| `autd update --json`                                      | Print the update results as JSON (combines with `--dry-run`, not with `--interactive`) |
+| `autd check --no-cache`, `autd update --no-cache`         | Ask the registries instead of using autd's cache (see [Cache](#-cache))                |
+| `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager                    |
+| `autd init`                                               | Create `.always-up-to-date.json` in the current directory                              |
+| `autd help`                                               | Show help                                                                              |
 
 ## ⚙️ Configuration
 
@@ -118,14 +118,14 @@ You only need a config file to go further than your package.json ranges. Run `au
 }
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `beyondRange` | `"none"` | How far past its range a dependency may move, to its latest version: `"none"`, `"patch"`, `"minor"` or `"major"`. Applies to exact pins too, so `"patch"` moves `"1.11.9"` to `"1.11.23"`. |
-| `rules` | `{}` | Per-package overrides (see below). |
-| `cooldown` | `0` | Skip versions published more recently than this: days (`7`), a duration (`"1 week"`, `"24h"`), or per update type (`{ "major": "30 days" }`). A version whose publish date can't be found is held too. |
-| `depsDev` | `true` | Look up versions of packages on the public npm registry (registry.npmjs.org, registry.yarnpkg.com) through [deps.dev](https://deps.dev), which is much smaller than the registry's own documents. Each such package name is sent to api.deps.dev, **including private packages published to registry.npmjs.org**; set `false` to read everything from the registry. Names from any other registry, including a scope's own, are never sent. |
-| `debug` | `false` | Print each package-manager command and its stderr. |
-| `silent` | `false` | Suppress all output. |
+| Option        | Default  | Description                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `beyondRange` | `"none"` | How far past its range a dependency may move, to its latest version: `"none"`, `"patch"`, `"minor"` or `"major"`. Applies to exact pins too, so `"patch"` moves `"1.11.9"` to `"1.11.23"`.                                                                                                                                                                                                                                                  |
+| `rules`       | `{}`     | Per-package overrides (see below).                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `cooldown`    | `0`      | Skip versions published more recently than this: days (`7`), a duration (`"1 week"`, `"24h"`), or per update type (`{ "major": "30 days" }`). A version whose publish date can't be found is held too.                                                                                                                                                                                                                                      |
+| `depsDev`     | `true`   | Look up versions of packages on the public npm registry (registry.npmjs.org, registry.yarnpkg.com) through [deps.dev](https://deps.dev), which is much smaller than the registry's own documents. Each such package name is sent to api.deps.dev, **including private packages published to registry.npmjs.org**; set `false` to read everything from the registry. Names from any other registry, including a scope's own, are never sent. |
+| `debug`       | `false`  | Print each package-manager command and its stderr.                                                                                                                                                                                                                                                                                                                                                                                          |
+| `silent`      | `false`  | Suppress all output.                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### Rules
 
@@ -142,11 +142,11 @@ You only need a config file to go further than your package.json ranges. Run `au
 }
 ```
 
-| Rule | Effect |
-|------|--------|
-| `"hold"` | Never update this package. |
-| `"followRange"` | Stay within the range, even when `beyondRange` allows more. |
-| `"latest"` | Always move to the latest version, whatever the range or step size. |
+| Rule            | Effect                                                              |
+| --------------- | ------------------------------------------------------------------- |
+| `"hold"`        | Never update this package.                                          |
+| `"followRange"` | Stay within the range, even when `beyondRange` allows more.         |
+| `"latest"`      | Always move to the latest version, whatever the range or step size. |
 
 Keys are package names or `*` globs (`"@types/*"`, `"eslint-*"`, `"*"`). An exact name beats a glob, and among globs the longest pattern wins.
 
@@ -163,12 +163,12 @@ When a dependency moves past its range, its spec keeps its decorator: `"^18.2.0"
 
 autd uses the first of these that names a manager: the `--pm` option, the `packageManager` field in package.json (`"pnpm@12.14.0"`, as Corepack reads it), `devEngines.packageManager`, then the lockfile. A lockfile from another manager than the declared one is ignored, with a warning when the declared manager has no lockfile of its own. With several lockfiles and nothing declared, autd warns and picks in the order bun, pnpm, yarn, npm.
 
-| Manager | Lockfile | Workspaces from |
-|---------|---------------|-----------------|
-| npm | `package-lock.json` | the `workspaces` field in package.json |
-| pnpm | `pnpm-lock.yaml` | the `packages` list in `pnpm-workspace.yaml`, including catalogs |
-| yarn (v1 and 2+) | `yarn.lock` | the `workspaces` field in package.json |
-| bun | `bun.lock` | the `workspaces` field in package.json, including catalogs |
+| Manager          | Lockfile            | Workspaces from                                                  |
+| ---------------- | ------------------- | ---------------------------------------------------------------- |
+| npm              | `package-lock.json` | the `workspaces` field in package.json                           |
+| pnpm             | `pnpm-lock.yaml`    | the `packages` list in `pnpm-workspace.yaml`, including catalogs |
+| yarn (v1 and 2+) | `yarn.lock`         | the `workspaces` field in package.json                           |
+| bun              | `bun.lock`          | the `workspaces` field in package.json, including catalogs       |
 
 In a workspace, autd plans each package once per manifest that declares it, and `update --json` has one row per package and manifest, each with a `workspace` (`.` is the root). A package that moves past its range is rewritten in the manifest that declares it; if that spec is a `catalog:` reference, the catalog entry is rewritten instead. A package that can move in one manifest but is held in another (a cooldown, a peer conflict, an override) is held everywhere, with the reason `held with <path> (…)`, so the manifests don't drift apart.
 
@@ -200,12 +200,12 @@ It holds derived version lists only, never a registry document, a header or anyt
 
 Old config files keep working. When both are set, `beyondRange` and `rules` win:
 
-| Old field | Same as |
-|-----------|---------|
-| `"allowMinorUpdates": true` | `"beyondRange": "minor"` |
-| `"allowMajorUpdates": true` | `"beyondRange": "major"` |
-| `"updateAllowlist": ["x"]` | `"rules": { "x": "latest" }` |
-| `"updateDenylist": ["x"]` | `"rules": { "x": "hold" }` |
+| Old field                   | Same as                      |
+| --------------------------- | ---------------------------- |
+| `"allowMinorUpdates": true` | `"beyondRange": "minor"`     |
+| `"allowMajorUpdates": true` | `"beyondRange": "major"`     |
+| `"updateAllowlist": ["x"]`  | `"rules": { "x": "latest" }` |
+| `"updateDenylist": ["x"]`   | `"rules": { "x": "hold" }`   |
 
 See [CHANGELOG.md](CHANGELOG.md) for everything in each release, and the [roadmap](docs/roadmap.md) for what's next.
 
