@@ -4,6 +4,7 @@ import {
   pnpmRegistrySettings,
   substitutePnpm,
 } from '@/managers/pnpm/registries'
+import logger from '@/utils/logger'
 
 const A = 'http://127.0.0.1:4001/'
 const B = 'http://127.0.0.1:4002/'
@@ -133,6 +134,18 @@ describe('pnpmRegistrySettings with env (a global file)', () => {
 
   it('keeps ignoring ${…} in a project file, which is read without env', () => {
     expect(pnpmRegistrySettings('registry: ${HOST}\n').registry).toBeUndefined()
+  })
+})
+
+describe('pnpmRegistrySettings debug lines', () => {
+  it('names the file whose value it ignores', () => {
+    pnpmRegistrySettings('registry: ftp://x/\n', { file: 'config.yaml' })
+    pnpmRegistrySettings('registry: ${HOST}\n')
+    const lines = jest.mocked(logger.debug).mock.calls.map(([line]) => line)
+    expect(lines).toEqual([
+      'Ignoring registry in config.yaml: not an http(s) URL',
+      'Ignoring registry in pnpm-workspace.yaml: holds ${…}',
+    ])
   })
 })
 

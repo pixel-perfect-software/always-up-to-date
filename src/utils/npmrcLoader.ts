@@ -1,6 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import type { ManagerAdapter } from '@/managers/adapter'
 import {
   matchesWorkspacePatterns,
   readManifest,
@@ -69,6 +70,11 @@ export interface EnvRule {
   key(rest: string, name: string): string | undefined
   /** Applied to values; null leaves them as written. */
   substitute: Substitute | null
+  /**
+   * Which of several variables that name the same key wins: the higher rank,
+   * and the later in `env` among equals. Without it the later one wins.
+   */
+  rank?(name: string, key: string): number
 }
 
 /** `npm_config_*` as npm reads it: any case, `//` keys as written, else `_` → `-` in lower case. */
@@ -82,12 +88,16 @@ export const NPM_ENV: EnvRule = {
 /** The variables `rule` reads as one layer; empty values are skipped. */
 export const envLayer = (env: NodeJS.ProcessEnv, rule: EnvRule): NpmrcLayer => {
   const values: Npmrc = Object.create(null)
+  const ranks = new Map<string, number>()
   for (const [name, value] of Object.entries(env)) {
     if (!value) continue
     const match = rule.prefix.exec(name)
     if (!match) continue
     const key = rule.key(name.slice(match[0].length), name)
     if (key === undefined) continue
+    const rank = rule.rank?.(name, key) ?? 0
+    if (rank < (ranks.get(key) ?? rank)) continue
+    ranks.set(key, rank)
     values[key] = rule.substitute ? rule.substitute(value, env) : value
   }
   return { kind: 'env', values }
@@ -101,14 +111,17 @@ const holdsReference = (key: string, value: NpmrcValue): boolean =>
   )
 
 /**
- * A file's settings as one layer. `substitute` defaults to npm's; null reads
- * the file without expanding, and an entry still holding `${…}` in its key
- * or value is left out, so a lower layer decides (pnpm's project files).
+ * A file's settings as one layer. `substitute` defaults to npm's; null
+ * expands nothing. With `omitReferences`, an entry whose key or value still
+ * holds `${…}` is left out, so a lower layer decides (pnpm's project files).
  */
 export const npmrcFileLayer = (
   file: string,
   env: NodeJS.ProcessEnv,
-  { substitute = substituteEnv }: { substitute?: Substitute | null } = {},
+  {
+    substitute = substituteEnv,
+    omitReferences = false,
+  }: { substitute?: Substitute | null; omitReferences?: boolean } = {},
 ): NpmrcLayer => {
   let values: Npmrc
   try {
@@ -116,7 +129,7 @@ export const npmrcFileLayer = (
   } catch {
     values = Object.create(null)
   }
-  if (substitute === null) {
+  if (omitReferences) {
     for (const [key, value] of Object.entries(values)) {
       if (holdsReference(key, value)) delete values[key]
     }
@@ -477,3 +490,20 @@ export const loadRegistryConfig = (
   cwd: string,
   sources: NpmrcSources = processSources(),
 ): RegistryConfig => registryConfigFrom(loadNpmrc(cwd, sources), cwd, sources)
+
+/**
+ * The run's registry config for a manager: the merge of its `.npmrc` layers
+ * (`npmrcLayers`, else npm's), then the manager's own `registryConfig` hook.
+ * One place for the session's wiring, so tests exercise the real thing.
+ */
+export const managerRegistryConfig = (
+  adapter: Pick<ManagerAdapter, 'npmrcLayers' | 'registryConfig'>,
+  dir: string,
+  sources: NpmrcSources,
+): RegistryConfig => {
+  const npmrc = mergeNpmrcLayers(
+    (adapter.npmrcLayers ?? npmNpmrcLayers)(dir, sources),
+  )
+  const fromNpmrc = registryConfigFrom(npmrc.values, dir, sources)
+  return adapter.registryConfig?.(dir, fromNpmrc, sources, npmrc) ?? fromNpmrc
+}

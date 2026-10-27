@@ -1,10 +1,12 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import type { RegistryConfig } from '@/types'
 import {
   type EnvRule,
   envLayer,
   loadNpmrc,
+  managerRegistryConfig,
   mergeNpmrcLayers,
   NPM_ENV,
   type NpmrcLayer,
@@ -118,6 +120,30 @@ describe('npmrc layers', () => {
       ).toBe('set')
     })
 
+    it('lets the higher rank win whatever the order, and the later variable among equals', () => {
+      const ranked: EnvRule = {
+        ...rule,
+        key: (rest) => rest,
+        rank: (name) => (name.endsWith('_hi') ? 1 : 0),
+      }
+      const win = (vars: NodeJS.ProcessEnv) =>
+        envLayer(vars, ranked).values.x_hi ?? envLayer(vars, ranked).values.x
+      expect(win({ app_x_hi: 'hi', app_x: 'lo' })).toBe('hi')
+      const hiFirst = envLayer(
+        { app_a: '1', app_a2: '2' },
+        {
+          ...ranked,
+          key: () => 'k',
+          rank: (name) => (name === 'app_a' ? 1 : 0),
+        },
+      )
+      expect(hiFirst.values.k).toBe('1')
+      const tie = (vars: NodeJS.ProcessEnv) =>
+        envLayer(vars, { ...ranked, key: () => 'k' }).values.k
+      expect(tie({ app_a: '1', app_b: '2' })).toBe('2')
+      expect(tie({ app_b: '2', app_a: '1' })).toBe('1')
+    })
+
     it('reads npm_config_* as npm does', () => {
       const layer = envLayer(
         { NPM_CONFIG_FETCH_TIMEOUT: '5', 'npm_config_//h/:_authToken': 't' },
@@ -159,16 +185,25 @@ describe('npmrc layers', () => {
       expect({ ...layer.values }).toEqual({ a: 'sub' })
     })
 
-    it('leaves out an entry holding ${…} in its value or key when substitute is null', () => {
+    it('expands nothing with substitute null, keeping entries that hold ${…} as written', () => {
+      write(at('f'), 'keep=1\nvalue=${X}\n')
+      expect({
+        ...npmrcFileLayer(at('f'), { X: 'v' }, { substitute: null }).values,
+      }).toEqual({ keep: '1', value: '${X}' })
+    })
+
+    it('leaves out an entry holding ${…} in its value, key or an array element with omitReferences', () => {
       write(
         at('f'),
         'keep=1\nvalue=${X}\n//h:${X}/:_authToken=t\nlist[]=a\nlist[]=${X}\n',
       )
       expect({
-        ...npmrcFileLayer(at('f'), { X: 'v' }, { substitute: null }).values,
-      }).toEqual({
-        keep: '1',
-      })
+        ...npmrcFileLayer(
+          at('f'),
+          { X: 'v' },
+          { substitute: null, omitReferences: true },
+        ).values,
+      }).toEqual({ keep: '1' })
     })
   })
 
@@ -221,6 +256,38 @@ describe('npmrc layers', () => {
       })
       expect({ ...layers[1].values }).toEqual({})
       expect({ ...layers[2].values }).toEqual({ k: '1' })
+    })
+  })
+
+  describe('managerRegistryConfig', () => {
+    it("builds from the adapter's layers and hands the hook the config and the merged view", () => {
+      const hook = jest.fn(
+        (_cwd, config: RegistryConfig) =>
+          ({ ...config, maxSockets: 7 }) satisfies RegistryConfig,
+      )
+      const config = managerRegistryConfig(
+        {
+          npmrcLayers: () => [env({ registry: 'http://own.test/' })],
+          registryConfig: hook,
+        },
+        at('proj'),
+        sourcesFor(),
+      )
+      expect(config.registry).toBe('http://own.test/')
+      expect(config.maxSockets).toBe(7)
+      expect(hook).toHaveBeenCalledWith(
+        at('proj'),
+        expect.objectContaining({ registry: 'http://own.test/' }),
+        expect.objectContaining({ platform: process.platform }),
+        expect.objectContaining({ origin: expect.any(Function) }),
+      )
+    })
+
+    it("uses npm's layers and no adjustment for an adapter with neither hook", () => {
+      write(at('proj', '.npmrc'), 'registry=http://npm.test/')
+      expect(managerRegistryConfig({}, at('proj'), sourcesFor()).registry).toBe(
+        'http://npm.test/',
+      )
     })
   })
 })

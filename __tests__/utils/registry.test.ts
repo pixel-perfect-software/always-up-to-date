@@ -8,12 +8,7 @@ import type { ManagerAdapter } from '@/managers/adapter'
 import bun from '@/managers/bun'
 import pnpm from '@/managers/pnpm'
 import type { RegistryConfig } from '@/types'
-import {
-  mergeNpmrcLayers,
-  type NpmrcSources,
-  npmNpmrcLayers,
-  registryConfigFrom,
-} from '@/utils/npmrcLoader'
+import { managerRegistryConfig, type NpmrcSources } from '@/utils/npmrcLoader'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
 import type { RegistryClient } from '@/utils/registryClient'
 import {
@@ -410,14 +405,7 @@ describe('registry session', () => {
       const session = createRegistrySession(tmp, {
         depsDev: false,
         loadConfig: (dir) => {
-          const npmrc = mergeNpmrcLayers(
-            (adapter.npmrcLayers ?? npmNpmrcLayers)(dir, sources()),
-          )
-          const fromNpmrc = registryConfigFrom(npmrc.values, dir, sources())
-          return (
-            adapter.registryConfig?.(dir, fromNpmrc, sources(), npmrc) ??
-            fromNpmrc
-          )
+          return managerRegistryConfig(adapter, dir, sources())
         },
       })
       sessions.push(session)

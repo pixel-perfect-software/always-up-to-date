@@ -221,6 +221,95 @@ describe('pnpm .npmrc layers', () => {
       expect(unscoped(config).auth).toBeUndefined()
     })
 
+    it('ra: userconfig is used raw, ${VAR} and ~ are not expanded, and the env layer does not carry it', () => {
+      write(at('proj', '.npmrc'), '')
+      write(home('alt.npmrc'), `registry=${B}\n`)
+      const raw = (name: string) =>
+        configFor({ env: { [name]: '${ALT_DIR}/alt.npmrc', ALT_DIR: home() } })
+      expect(unscoped(raw('pnpm_config_userconfig')).server).toBe(NPMJS)
+      expect(unscoped(raw('npm_config_userconfig')).server).toBe(NPMJS)
+
+      const sources = sourcesFor({
+        pnpm_config_userconfig: home('alt.npmrc'),
+        npm_config_userconfig: home('alt.npmrc'),
+      })
+      const view = mergeNpmrcLayers(pnpmNpmrcLayers(project(), sources))
+      expect(view.values.userconfig).toBeUndefined()
+      expect(
+        unscoped(registryConfigFrom(view.values, project(), sources)).server,
+      ).toBe(BH)
+    })
+
+    it('rb: with both casings set, PNPM_CONFIG_* wins a key whatever the environment order', () => {
+      const win = (env: NodeJS.ProcessEnv) =>
+        unscoped(configFor({ env })).server
+      expect(win({ pnpm_config_registry: A, PNPM_CONFIG_REGISTRY: B })).toBe(BH)
+      expect(win({ PNPM_CONFIG_REGISTRY: B, pnpm_config_registry: A })).toBe(BH)
+    })
+
+    it('rb: two casings of one // credential tie, and the later in the environment wins, as in pnpm', () => {
+      write(at('proj', '.npmrc'), `registry=${B}\n`)
+      const key = `//${BH}/:_authToken`
+      const auth = (env: NodeJS.ProcessEnv) => unscoped(configFor({ env })).auth
+      expect(
+        auth({ [`pnpm_config_${key}`]: 'L', [`PNPM_CONFIG_${key}`]: 'U' }),
+      ).toBe('Bearer U')
+      expect(
+        auth({ [`PNPM_CONFIG_${key}`]: 'U', [`pnpm_config_${key}`]: 'L' }),
+      ).toBe('Bearer L')
+      expect(
+        auth({ [`npm_config_${key}`]: 'L', [`NPM_CONFIG_${key}`]: 'U' }),
+      ).toBe('Bearer U')
+      expect(
+        auth({ [`NPM_CONFIG_${key}`]: 'U', [`npm_config_${key}`]: 'L' }),
+      ).toBe('Bearer L')
+    })
+
+    it('rb: with both casings of userconfig set, the lower-case name wins whatever the environment order', () => {
+      write(at('proj', '.npmrc'), '')
+      write(home('a1.npmrc'), `registry=${A}\n`)
+      write(home('a2.npmrc'), `registry=${B}\n`)
+      const win = (lower: string, upper: string, upperFirst: boolean) => {
+        const pair: [string, string][] = [
+          [lower, home('a1.npmrc')],
+          [upper, home('a2.npmrc')],
+        ]
+        const env = Object.fromEntries(upperFirst ? pair.reverse() : pair)
+        return unscoped(configFor({ env })).server
+      }
+      for (const upperFirst of [false, true]) {
+        expect(
+          win('pnpm_config_userconfig', 'PNPM_CONFIG_USERCONFIG', upperFirst),
+        ).toBe('127.0.0.1:4001')
+        expect(
+          win('npm_config_userconfig', 'NPM_CONFIG_USERCONFIG', upperFirst),
+        ).toBe('127.0.0.1:4001')
+      }
+    })
+
+    it('rc: a // credential is read under a prefix in any case, other keys only in the two exact cases', () => {
+      write(at('proj', '.npmrc'), `registry=${B}\n`)
+      const key = `//${BH}/:_authToken`
+      expect(
+        unscoped(configFor({ env: { [`Npm_Config_${key}`]: 'T' } })).auth,
+      ).toBe('Bearer T')
+      expect(
+        unscoped(configFor({ env: { [`Pnpm_Config_${key}`]: 'T' } })).auth,
+      ).toBe('Bearer T')
+
+      write(at('proj', '.npmrc'), `registry=${A}\n`)
+      write(home('alt.npmrc'), `registry=${B}\n`)
+      expect(
+        unscoped(configFor({ env: { Pnpm_Config_registry: B } })).server,
+      ).toBe('127.0.0.1:4001')
+      write(at('proj', '.npmrc'), '')
+      expect(
+        unscoped(
+          configFor({ env: { Npm_Config_userconfig: home('alt.npmrc') } }),
+        ).server,
+      ).toBe(NPMJS)
+    })
+
     it('p23: no other npm_config_* key is read', () => {
       const config = configFor({
         env: {
@@ -369,6 +458,12 @@ describe('pnpm .npmrc layers', () => {
       write(home('.npmrc'), token('U'))
       write(global('auth.ini'), token('${UNSET}'))
       expect(unscoped(configFor()).auth).toBeUndefined()
+    })
+
+    it('p35: an emptied token falls back to a shorter same-host prefix, as npm does for an empty token, where pnpm sends an empty Bearer', () => {
+      write(at('proj', '.npmrc'), `registry=http://${BH}/npm/\n${token('S')}`)
+      write(global('auth.ini'), `//${BH}/npm/:_authToken=\${UNSET}\n`)
+      expect(unscoped(configFor())).toEqual({ server: BH, auth: 'Bearer S' })
     })
 
     it('p36: a token expands in auth.ini and in ~/.npmrc, and a key does too', () => {
