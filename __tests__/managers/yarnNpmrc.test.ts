@@ -47,7 +47,11 @@ describe('yarn v1 .npmrc layers', () => {
   const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources => ({
     env,
     home: home(),
-    execPath: at('prefix', 'bin', 'node'),
+    // node.exe sits in the prefix on Windows, in <prefix>/bin elsewhere.
+    execPath:
+      process.platform === 'win32'
+        ? at('prefix', 'node.exe')
+        : at('prefix', 'bin', 'node'),
     platform: process.platform,
   })
 

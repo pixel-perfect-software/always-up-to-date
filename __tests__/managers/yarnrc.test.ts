@@ -137,7 +137,11 @@ describe('yarnRegistryConfig', () => {
     env,
     home: at('home'),
     // A temp prefix, so the real Node install's etc/npmrc cannot leak in.
-    execPath: at('prefix', 'bin', 'node'),
+    // node.exe sits in the prefix on Windows, in <prefix>/bin elsewhere.
+    execPath:
+      process.platform === 'win32'
+        ? at('prefix', 'node.exe')
+        : at('prefix', 'bin', 'node'),
     platform: process.platform,
   })
   /** yarn's view, as the session builds it: its own .npmrc layers, then the hook. */
