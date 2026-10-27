@@ -1,7 +1,8 @@
 import type { PackageLookup, RegistryConfig } from '@/types'
 import { isRecord } from './isRecord'
 import logger from './logger'
-import { loadRegistryConfig } from './npmrcLoader'
+import { loadRegistryConfig, processSources } from './npmrcLoader'
+import type { RegistryCache } from './registryCache'
 import type { RegistryClient, RegistryClientOptions } from './registryClient'
 import type { RegistryReader } from './registryReader'
 import {
@@ -31,7 +32,11 @@ export interface RegistrySession {
    * caller decides what a failed lookup means.
    */
   lookup(name: string): Promise<PackageLookup>
-  /** Destroys the client's agents. Safe to call twice, or when no client was made. */
+  /**
+   * Prunes the cache when this run grew it, logs one debug line about the
+   * run, and destroys the client's agents. Safe to call twice, or when
+   * nothing was made.
+   */
   close(): void
 }
 
@@ -44,6 +49,11 @@ export interface RegistrySessionOptions {
   clientOptions?: RegistryClientOptions
   /** Test seam: the public registries and deps.dev's URL. */
   endpoints?: RegistryEndpoints
+  /**
+   * Keep derived registry answers on disk (`dir` defaults to the platform's
+   * cache folder). None when undefined: tests, `--no-cache`, `AUTD_NO_CACHE=1`.
+   */
+  cache?: { dir?: string; now?: () => number; maxBytes?: number }
 }
 
 /**
@@ -61,6 +71,9 @@ export const createRegistrySession = (
   let clientRequest: Promise<RegistryClient> | undefined
   let created: RegistryClient | undefined
   let reader: Promise<RegistryReader> | undefined
+  let diskCache: RegistryCache | undefined
+  let readerStats: RegistryReader['stats'] | undefined
+  let closed = false
   // The in-flight request is cached, not its result: a workspace asks for the
   // same package once per manifest, at the same time.
   const releaseTimeCache = new Map<string, Promise<Record<string, string>>>()
@@ -106,18 +119,49 @@ export const createRegistrySession = (
     }
   }
 
-  // The reader loads with the first lookup, not with the CLI.
+  // The reader (and the cache, if asked for) load with the first lookup, not with the CLI.
   const readerOnce = (): Promise<RegistryReader> => {
-    reader ??= Promise.all([import('./registryReader'), client()]).then(
-      ([{ createRegistryReader }, registryClient]) =>
-        createRegistryReader({
-          registryConfig: registryConfig(),
-          client: registryClient,
-          depsDev: options.depsDev ?? true,
-          endpoints: options.endpoints,
-        }),
-    )
+    reader ??= Promise.all([
+      import('./registryReader'),
+      options.cache ? import('./registryCache') : undefined,
+    ]).then(([{ createRegistryReader }, cacheModule]) => {
+      // A session closed while the imports were pending has already pruned
+      // and logged: a cache made now would never be closed, so it writes nothing.
+      if (cacheModule && options.cache && !closed) {
+        const dir =
+          options.cache.dir ?? cacheModule.cacheDirectory(cwd, processSources())
+        if (dir) {
+          diskCache = cacheModule.createRegistryCache({
+            dir,
+            ...(options.cache.now ? { now: options.cache.now } : {}),
+            ...(options.cache.maxBytes === undefined
+              ? {}
+              : { maxBytes: options.cache.maxBytes }),
+          })
+        } else {
+          logger.debug('registry cache: no folder to keep it in; not caching')
+        }
+      }
+      const made = createRegistryReader({
+        registryConfig: registryConfig(),
+        client,
+        depsDev: options.depsDev ?? true,
+        endpoints: options.endpoints,
+        cache: diskCache,
+      })
+      readerStats = made.stats
+      return made
+    })
     return reader
+  }
+
+  const describeRun = (cache: RegistryCache): string => {
+    const stats = cache.stats()
+    const { notModified = 0, fetched = 0 } = readerStats?.() ?? {}
+    const hosts = Object.entries(created?.stats() ?? {}).map(
+      ([host, { responses }]) => `${host} ${responses}`,
+    )
+    return `registry cache ${cache.dir}: ${stats.fresh} fresh, ${notModified} revalidated, ${fetched} fetched, ${stats.written} written, ${stats.pruned} pruned; requests: ${hosts.length > 0 ? hosts.join(', ') : 'none'}`
   }
 
   return {
@@ -133,6 +177,13 @@ export const createRegistrySession = (
       return request
     },
     close: () => {
+      if (!closed) {
+        closed = true
+        if (diskCache) {
+          diskCache.close()
+          logger.debug(describeRun(diskCache))
+        }
+      }
       created?.destroy()
       // A client still loading is destroyed as soon as it exists.
       void clientRequest?.then(

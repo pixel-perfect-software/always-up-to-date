@@ -138,6 +138,50 @@ export const retryDelay = (
   return Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS)
 }
 
+export interface CacheDirectives {
+  /** Seconds; the smallest `max-age` when the header repeats it. */
+  maxAge?: number
+  noStore: boolean
+  noCache: boolean
+  isPublic: boolean
+  isPrivate: boolean
+}
+
+/**
+ * The directives of a `Cache-Control` header that autd acts on. Names are
+ * case-insensitive; `max-age` is a non-negative integer, quoted or not, and
+ * anything else is ignored.
+ */
+export const parseCacheControl = (
+  header: string | undefined,
+): CacheDirectives => {
+  const directives: CacheDirectives = {
+    noStore: false,
+    noCache: false,
+    isPublic: false,
+    isPrivate: false,
+  }
+  for (const part of (header ?? '').split(',')) {
+    const [rawName = '', ...rest] = part.split('=')
+    const name = rawName.trim().toLowerCase()
+    if (name === 'no-store') directives.noStore = true
+    else if (name === 'no-cache') directives.noCache = true
+    else if (name === 'public') directives.isPublic = true
+    else if (name === 'private') directives.isPrivate = true
+    else if (name === 'max-age') {
+      const value = rest
+        .join('=')
+        .trim()
+        .replace(/^"(.*)"$/, '$1')
+      if (/^\d+$/.test(value)) {
+        const seconds = Number(value)
+        directives.maxAge = Math.min(directives.maxAge ?? seconds, seconds)
+      }
+    }
+  }
+  return directives
+}
+
 /** Sent for packuments: npm's install-time document, which omits most fields. */
 export const ABBREVIATED_ACCEPT =
   'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*'

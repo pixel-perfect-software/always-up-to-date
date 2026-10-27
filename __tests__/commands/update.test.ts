@@ -11,6 +11,10 @@ jest.mock('@/pipeline', () => ({
   update: jest.fn(),
 }))
 
+jest.mock('@/project', () => {
+  const actual = jest.requireActual<typeof import('@/project')>('@/project')
+  return { ...actual, openProject: jest.fn(actual.openProject) }
+})
 jest.mock('@/utils/logger')
 jest.mock('@/utils/config')
 jest.mock('@inquirer/prompts', () => ({
@@ -23,6 +27,7 @@ import detectPackageManager from '@/detectPackageManager'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import { check, plan, update } from '@/pipeline'
+import { openProject } from '@/project'
 import logger from '@/utils/logger'
 
 const mockDetectPackageManager = jest.mocked(detectPackageManager)
@@ -44,6 +49,17 @@ describe('update command', () => {
     program = new Command()
     program.exitOverride()
     updateCommand(program)
+  })
+
+  it('asks openProject for the cache, and --no-cache turns it off', async () => {
+    mockUpdatePackages.mockResolvedValue([])
+
+    await program.parseAsync(['node', 'test', 'update'])
+    await program.parseAsync(['node', 'test', 'update', '--no-cache'])
+
+    expect(
+      jest.mocked(openProject).mock.calls.map(([, o]) => o?.cache),
+    ).toEqual([true, false])
   })
 
   it('registers the update command', () => {

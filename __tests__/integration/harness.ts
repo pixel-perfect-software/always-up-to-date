@@ -5,6 +5,7 @@ import semver from 'semver'
 import { stripVTControlCharacters } from 'util'
 import { toPosix } from '@/managers/workspaces'
 import { runProcess } from '@/utils/runProcess'
+import { type ProxyRecord, startProxy } from '../fixtures/registry'
 import {
   type RangedDependency,
   rewriteBerryLock,
@@ -74,7 +75,8 @@ export const selectedManagers = (
  * `~/.bunfig.toml`) is not isolated. pnpm gets a store of its own in the temp
  * directory (pnpm 12 reads `pnpm_config_store_dir`, not `npm_config_store_dir`):
  * its installs would otherwise fill the global store, which CI may save in its
- * cache.
+ * cache. autd gets a cache folder of its own in it too (`AUTD_CACHE_DIR`), and
+ * the test setup's `AUTD_NO_CACHE` is dropped so the matrix runs with the cache on.
  */
 export const managerEnv = (manager: Manager): (() => void) => {
   const saved = { ...process.env }
@@ -88,7 +90,9 @@ export const managerEnv = (manager: Manager): (() => void) => {
   }
   delete process.env.PNPM_SCRIPT_SRC_DIR
   delete process.env.INIT_CWD
+  delete process.env.AUTD_NO_CACHE
   Object.assign(process.env, {
+    AUTD_CACHE_DIR: path.join(scratch, 'autd-cache'),
     COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
     COREPACK_ENABLE_AUTO_PIN: '0',
     YARN_ENABLE_TELEMETRY: '0',
@@ -501,6 +505,35 @@ export const runCliWithoutManagers = async (
     if (original === undefined) delete process.env[key]
     else process.env[key] = original
     fs.rmSync(empty, { recursive: true, force: true })
+  }
+}
+
+/**
+ * `runCliWithoutManagers` with every registry request sent through a proxy
+ * that records it, for the call: `seen` empty proves the run asked nobody. A
+ * `NO_PROXY` (found case-insensitively) would let requests bypass it.
+ */
+export const runCliThroughTripwire = async (
+  cwd: string,
+  args: string[],
+): Promise<{ output: unknown; seen: ProxyRecord[] }> => {
+  const proxy = await startProxy()
+  const saved = { ...process.env }
+  for (const key of Object.keys(process.env)) {
+    if (/^(https?|no)_proxy$/i.test(key)) delete process.env[key]
+  }
+  Object.assign(process.env, {
+    HTTPS_PROXY: proxy.url,
+    HTTP_PROXY: proxy.url,
+    https_proxy: proxy.url,
+    http_proxy: proxy.url,
+  })
+  try {
+    return { output: await runCliWithoutManagers(cwd, args), seen: proxy.seen }
+  } finally {
+    for (const key of Object.keys(process.env)) delete process.env[key]
+    Object.assign(process.env, saved)
+    await proxy.close()
   }
 }
 

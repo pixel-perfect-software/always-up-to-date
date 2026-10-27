@@ -44,16 +44,28 @@ export const runsFrom = (
  * Berry keeps no registry metadata cache (`yarn npm info` is as slow with its
  * global folder full), so its cold and warm times differ only by noise.
  *
- * autd has no cache of its own yet. When it gets one (#108), the cold prepare
- * must empty the folder autd uses on each platform (`~/Library/Caches/…` on
- * macOS, where `XDG_CACHE_HOME` has no effect), or the override variable #108
- * adds, pointed into `root` through `env`: add it to `env` and `dirs` here.
+ * autd's own cache (#108) lives in `<root>/<target>-autd`, through
+ * `AUTD_CACHE_DIR`, so cold empties it and the developer's folder
+ * (`~/Library/Caches/…` on macOS, where `XDG_CACHE_HOME` has no effect) is
+ * never touched.
  */
 export const coldCaches = (
   target: Target,
   root: string,
 ): { env: Record<string, string>; dirs: string[] } => {
   const dir = path.join(root, target)
+  const autd = path.join(root, `${target}-autd`)
+  const withAutd = (cold: { env: Record<string, string>; dirs: string[] }) => ({
+    env: { ...cold.env, AUTD_CACHE_DIR: autd },
+    dirs: [...cold.dirs, autd],
+  })
+  return withAutd(managerCaches(target, dir))
+}
+
+const managerCaches = (
+  target: Target,
+  dir: string,
+): { env: Record<string, string>; dirs: string[] } => {
   switch (managerOf(target)) {
     case 'npm':
       return { env: { npm_config_cache: dir }, dirs: [dir] }

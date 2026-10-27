@@ -44,13 +44,16 @@ export const parseDepsDevPackage = (
   return versions.sort(byVersion)
 }
 
+export interface ParsedPackument {
+  latest?: string
+  versions: RegistryVersion[]
+}
+
 /**
  * The versions and `dist-tags.latest` of an abbreviated or full packument.
  * npm treats an empty `deprecated` string as not deprecated.
  */
-export const parsePackument = (
-  body: unknown,
-): { latest?: string; versions: RegistryVersion[] } | undefined => {
+export const parsePackument = (body: unknown): ParsedPackument | undefined => {
   if (!isRecord(body) || !isRecord(body.versions)) return undefined
   const time = isRecord(body.time) ? body.time : {}
   const versions: RegistryVersion[] = []

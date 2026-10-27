@@ -3,7 +3,7 @@ import { check } from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import type { SupportedPackageManager } from '@/types'
 import logger from '@/utils/logger'
-import { pmOption } from './options'
+import { noCacheOption, pmOption } from './options'
 import reportFailure from './reportFailure'
 
 const workingDir = process.cwd()
@@ -11,6 +11,7 @@ const workingDir = process.cwd()
 interface CheckOptions {
   json?: boolean
   pm?: SupportedPackageManager
+  cache?: boolean
 }
 
 /**
@@ -24,12 +25,16 @@ const checkCommand = (program: Command) =>
     .description('Check the dependencies of the project.')
     .option('--json', 'Output results as JSON')
     .addOption(pmOption())
+    .addOption(noCacheOption())
     .action(async (options: CheckOptions) => {
       if (options.json) logger.setJsonOutput(true)
 
       let project: Project | undefined
       try {
-        project = openProject(workingDir, { pm: options.pm })
+        project = openProject(workingDir, {
+          pm: options.pm,
+          cache: options.cache,
+        })
 
         const result = await check(project)
         if (options.json) console.log(JSON.stringify(result, null, 2))

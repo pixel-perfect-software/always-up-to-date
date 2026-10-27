@@ -70,6 +70,49 @@ describe('openProject', () => {
     })
   })
 
+  describe('the registry cache', () => {
+    const cacheOption = (env: string | undefined, options = {}) => {
+      jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+      jest.mocked(detectPackageManager).mockReturnValue('npm')
+      const saved = process.env.AUTD_NO_CACHE
+      if (env === undefined) delete process.env.AUTD_NO_CACHE
+      else process.env.AUTD_NO_CACHE = env
+      try {
+        openProject('/project', options)
+      } finally {
+        if (saved === undefined) delete process.env.AUTD_NO_CACHE
+        else process.env.AUTD_NO_CACHE = saved
+      }
+      return jest.mocked(createRegistrySession).mock.calls[0][1]?.cache
+    }
+
+    it('is on by default', () => {
+      expect(cacheOption(undefined)).toEqual({})
+    })
+
+    it('is off with cache: false (--no-cache)', () => {
+      expect(cacheOption(undefined, { cache: false })).toBeUndefined()
+    })
+
+    it('is off with AUTD_NO_CACHE=1', () => {
+      expect(cacheOption('1')).toBeUndefined()
+    })
+
+    it.each(['1', 'true', 'TRUE', 'yes', ' on ', '2'])(
+      'is off with AUTD_NO_CACHE=%j',
+      (value) => {
+        expect(cacheOption(value)).toBeUndefined()
+      },
+    )
+
+    it.each(['0', 'false', 'False', ' 0 ', ''])(
+      'stays on with AUTD_NO_CACHE=%j',
+      (value) => {
+        expect(cacheOption(value)).toEqual({})
+      },
+    )
+  })
+
   describe('registry config', () => {
     const openWith = (pm: 'pnpm' | 'npm') => {
       jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })

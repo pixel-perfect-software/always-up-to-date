@@ -92,6 +92,7 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 | `autd update --dry-run` | Show where each package would move, or why it's held, without changing anything |
 | `autd update -i, --interactive` | Pick the packages to update from a checklist |
 | `autd update --json` | Print the update results as JSON (combines with `--dry-run`, not with `--interactive`) |
+| `autd check --no-cache`, `autd update --no-cache` | Ask the registries instead of using autd's cache (see [Cache](#-cache)) |
 | `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager |
 | `autd init` | Create `.always-up-to-date.json` in the current directory |
 | `autd help` | Show help |
@@ -164,6 +165,20 @@ autd uses the first of these that names a manager: the `--pm` option, the `packa
 | bun | `bun.lock` | the `workspaces` field in package.json, including catalogs |
 
 In a workspace, autd plans each package once per manifest that declares it, and `update --json` has one row per package and manifest, each with a `workspace` (`.` is the root). A package that moves past its range is rewritten in the manifest that declares it; if that spec is a `catalog:` reference, the catalog entry is rewritten instead. A package that can move in one manifest but is held in another (a cooldown, a peer conflict, an override) is held everywhere, with the reason `held with <path> (…)`, so the manifests don't drift apart.
+
+## 🗄️ Cache
+
+autd keeps what it learns from the registries (each package's latest version and the list of its versions) so a second `check` within five minutes asks nobody. The folder is `ca.pixel-perfect.alwaysuptodate` in:
+
+- `~/Library/Caches/` on macOS
+- `$XDG_CACHE_HOME` if it is an absolute path, else `~/.cache`, on Linux and other Unixes
+- `%LOCALAPPDATA%` on Windows
+
+It holds derived version lists only, never a registry document, a header or anything about your credentials. Latest versions are kept for 5 minutes and deps.dev lists for an hour; a registry's own `Cache-Control` can shorten that. A stale package document is checked with the registry (`If-None-Match`) rather than downloaded again. An answer from a registry you authenticate to is reused without asking only when the package is also public on deps.dev; otherwise autd asks the registry each time (a cheap `304` when nothing changed). The folder stays under 32 MiB, dropping the least recently used entries.
+
+- `--no-cache` on `check` or `update`, or `AUTD_NO_CACHE` set to anything but empty, `0` or `false` (`1` and `true` both work), reads and writes nothing.
+- `AUTD_CACHE_DIR=<path>` puts the folder somewhere else; autd only writes inside its `v1/` subfolder.
+- Deleting the folder is always safe.
 
 ## 🩺 Troubleshooting
 

@@ -57,22 +57,33 @@ describe('coldCaches', () => {
 
   it('points each manager at the folder it empties', () => {
     expect(coldCaches('npm', root)).toEqual({
-      env: { npm_config_cache: at('npm') },
-      dirs: [at('npm')],
+      env: { npm_config_cache: at('npm'), AUTD_CACHE_DIR: at('npm-autd') },
+      dirs: [at('npm'), at('npm-autd')],
     })
-    expect(coldCaches('pnpm', root).env).toEqual({
+    expect(coldCaches('pnpm', root).env).toMatchObject({
       npm_config_cache_dir: at('pnpm'),
       pnpm_config_cache_dir: at('pnpm'),
     })
-    expect(coldCaches('yarn', root).env).toEqual({
+    expect(coldCaches('yarn', root).env).toMatchObject({
       YARN_CACHE_FOLDER: at('yarn'),
     })
-    expect(coldCaches('berry-nm', root).env).toEqual({
+    expect(coldCaches('berry-nm', root).env).toMatchObject({
       YARN_GLOBAL_FOLDER: at('berry-nm'),
     })
-    expect(coldCaches('bun', root).env).toEqual({
+    expect(coldCaches('bun', root).env).toMatchObject({
       BUN_INSTALL_CACHE_DIR: at('bun'),
     })
+  })
+
+  it("empties autd's own cache, in a folder per target under the root", () => {
+    const folders = TARGETS.map((target) => {
+      const { env, dirs } = coldCaches(target, root)
+      expect(dirs).toContain(env.AUTD_CACHE_DIR)
+      expect(env.AUTD_CACHE_DIR?.startsWith(root)).toBe(true)
+      return env.AUTD_CACHE_DIR
+    })
+
+    expect(new Set(folders).size).toBe(TARGETS.length)
   })
 })
 

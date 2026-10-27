@@ -7,6 +7,10 @@ jest.mock('@/detectPackageManager', () => ({
 
 jest.mock('@/pipeline', () => ({ check: jest.fn() }))
 
+jest.mock('@/project', () => {
+  const actual = jest.requireActual<typeof import('@/project')>('@/project')
+  return { ...actual, openProject: jest.fn(actual.openProject) }
+})
 jest.mock('@/utils/logger')
 jest.mock('@/utils/config')
 
@@ -15,6 +19,7 @@ import detectPackageManager from '@/detectPackageManager'
 import npm from '@/managers/npm'
 import yarn from '@/managers/yarn'
 import { check } from '@/pipeline'
+import { openProject } from '@/project'
 
 const mockCheckPackageVersions = jest.mocked(check)
 
@@ -26,6 +31,17 @@ describe('check command', () => {
     program.exitOverride()
     checkCommand(program)
     mockCheckPackageVersions.mockReset()
+  })
+
+  it('asks openProject for the cache, and --no-cache turns it off', async () => {
+    mockCheckPackageVersions.mockResolvedValue({})
+
+    await program.parseAsync(['node', 'test', 'check'])
+    await program.parseAsync(['node', 'test', 'check', '--no-cache'])
+
+    expect(
+      jest.mocked(openProject).mock.calls.map(([, o]) => o?.cache),
+    ).toEqual([true, false])
   })
 
   it('registers the check command', () => {
