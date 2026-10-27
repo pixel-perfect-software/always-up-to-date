@@ -58,7 +58,7 @@ describe.each([
     // The default fake registry throws on any lookup, so none ran.
     expect(mockedRunProcess).toHaveBeenCalledTimes(1)
     expect(mockedRunProcess).toHaveBeenCalledWith(pm, [...applyArgs], { cwd })
-    expect(logger.outdatedHeader).not.toHaveBeenCalled()
+    expect(logger.starting).not.toHaveBeenCalled()
     expect(results).toEqual([
       expect.objectContaining({ name: 'dayjs', updated: true }),
     ])

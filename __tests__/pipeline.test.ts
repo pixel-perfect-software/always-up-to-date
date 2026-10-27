@@ -23,6 +23,7 @@ jest.mock('@/utils', () => ({
 
 import { runProcess } from '@/utils'
 import { loadConfig } from '@/utils/config'
+import logger from '@/utils/logger'
 
 // Keep the developer's own npm configuration out of every case.
 let npmConfigDir: string
@@ -128,6 +129,10 @@ describe('pipeline', () => {
         target: '4.3.7',
       })
       expect(results.find((r) => r.name === 'express')?.updated).toBe(false)
+
+      // One report, after apply, carrying every row: nothing is listed twice (#138).
+      expect(logger.report).toHaveBeenCalledTimes(1)
+      expect(logger.report).toHaveBeenCalledWith(results, 'npm', 'applied')
     })
   })
 

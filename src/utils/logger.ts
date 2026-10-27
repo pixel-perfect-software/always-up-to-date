@@ -1,9 +1,8 @@
 import { blue, bold, cyan, gray, green, red, yellow } from 'colorette'
-import type SemVer from 'semver'
 import type { AlwaysUpToDateConfig, UpdateResult } from '@/types'
 import { formatAgeDays } from './duration'
 import { scrub } from './redaction'
-import { toSkippedRow } from './rows'
+import { groupResults, type Outcome, type ReportRow } from './report'
 import { workspaceLabel } from './workspaceRows'
 
 export const pluralize = (
@@ -12,52 +11,85 @@ export const pluralize = (
   plural?: string,
 ): string => `${count} ${count === 1 ? singular : (plural ?? `${singular}s`)}`
 
-export interface OutdatedRow {
-  name: string
-  /** Workspace projects only: the manifest's directory ('.' is the root). */
-  workspace?: string
-  current: string
-  latest: string
-  releaseAge?: number
-  note?: string
-}
-
-export interface SkippedRow extends OutdatedRow {
-  updateType: SemVer.ReleaseType | null
-  reason?: string
-}
-
 /** The config fields the logger reads. */
 export type LoggerConfig = Partial<
-  Pick<
-    AlwaysUpToDateConfig,
-    'debug' | 'silent' | 'updateAllowlist' | 'updateDenylist'
-  >
+  Pick<AlwaysUpToDateConfig, 'debug' | 'silent'>
 >
 
-/** The deprecated allow/deny lists, shown as tags and a legend. */
-interface TagLists {
-  allowlist: string[]
-  denylist: string[]
+/** Before apply (`check`, `--dry-run`, interactive) or after it. */
+export type ReportPhase = 'plan' | 'applied'
+
+/** Each section's heading and its summary wording, and the heading's color. */
+const SECTIONS: Record<
+  Outcome,
+  {
+    heading: (phase: ReportPhase, manager: string) => string
+    summary: (phase: ReportPhase, manager: string) => string
+    color: (text: string) => string
+  }
+> = {
+  update: {
+    heading: (phase) => (phase === 'plan' ? 'Would update' : 'Updated'),
+    summary: (phase) => (phase === 'plan' ? 'to update' : 'updated'),
+    color: green,
+  },
+  'not-applied': {
+    heading: (_, manager) => `Left in place by ${manager}`,
+    summary: (_, manager) => `left in place by ${manager}`,
+    color: yellow,
+  },
+  cooldown: {
+    heading: () => 'Held by cooldown',
+    summary: () => 'held by cooldown',
+    color: cyan,
+  },
+  range: {
+    heading: () => 'Past the range in package.json',
+    summary: () => 'past the range',
+    color: cyan,
+  },
+  rule: {
+    heading: () => 'Held by a rule',
+    summary: () => 'held by a rule',
+    color: cyan,
+  },
+  override: {
+    heading: () => 'Held by an override',
+    summary: () => 'held by an override',
+    color: cyan,
+  },
+  peer: {
+    heading: () => 'Held by a peer conflict',
+    summary: () => 'held by a peer conflict',
+    color: cyan,
+  },
+  together: {
+    heading: () => 'Held with another manifest',
+    summary: () => 'held with another manifest',
+    color: cyan,
+  },
+  other: {
+    heading: () => 'Not updated',
+    summary: () => 'not updated',
+    color: yellow,
+  },
 }
+
+/** The manifests a row covers: one or two by path, else a count. */
+const whereOf = (workspaces: string[]): string =>
+  workspaces.length <= 2
+    ? workspaces.map(workspaceLabel).join(', ')
+    : `${workspaces.length} manifests`
 
 class Logger {
   private quiet = false
   private debugEnabled = false
   private jsonOutput = false
-  private tags: TagLists = { allowlist: [], denylist: [] }
 
-  /**
-   * Applies the loaded config. Until it is called, debug is off, output is
-   * not quiet and no allow/deny tags show.
-   */
+  /** Applies the loaded config. Until it is called, debug is off and output is not quiet. */
   configure(config: LoggerConfig): void {
     this.quiet = config.silent ?? false
     this.debugEnabled = config.debug ?? false
-    this.tags = {
-      allowlist: config.updateAllowlist ?? [],
-      denylist: config.updateDenylist ?? [],
-    }
   }
 
   setQuiet(quiet: boolean): void {
@@ -109,10 +141,14 @@ class Logger {
     if (this.debugEnabled) this.diagnostic(`${gray('$')} ${gray(command)}`)
   }
 
-  workspace(manager: string): void {
-    if (!this.muted) {
-      console.log(`${blue('🏢')} ${blue(`Detected ${manager} workspace.`)}`)
-    }
+  /** A workspace of more than one manifest; the catalog names are a debug line. */
+  workspace(manager: string, manifests: number, catalogs: number): void {
+    if (this.muted) return
+    const parts = [pluralize(manifests, 'manifest')]
+    if (catalogs > 0) parts.push(pluralize(catalogs, 'catalog'))
+    console.log(
+      `${blue('🏢')} ${blue(`${manager} workspace: ${parts.join(', ')}`)}`,
+    )
   }
 
   allUpToDate(): void {
@@ -121,71 +157,59 @@ class Logger {
     }
   }
 
-  /**
-   * Header above the outdated-packages list. Only emits the
-   * allow/deny legend when those lists are actually populated.
-   */
-  outdatedHeader(): void {
+  updatingHeader(manager: string, packages: number): void {
     if (this.muted) return
-    console.log(`\n${yellow('📈')} ${bold('Outdated packages found')}`)
-
-    const hasDeny = this.tags.denylist.length > 0
-    const hasAllow = this.tags.allowlist.length > 0
-    if (!hasDeny && !hasAllow) return
-
-    if (hasDeny) {
-      console.log(gray(`   ${red('Ignored')}  in updateDenylist`))
-    }
-    if (hasAllow) {
-      console.log(gray(`   ${green('Allowed')}  in updateAllowlist`))
-    }
+    console.log(
+      `\n${blue('🔄')} ${bold(`Updating ${pluralize(packages, 'package')} with ${manager}`)}`,
+    )
   }
 
-  packageGroupHeader(groupName: string): void {
+  /**
+   * Every candidate once, under what happened to it (or will), with its
+   * reason, then one summary line. Rows that share a move and a reason across
+   * manifests are one row; the manifest column is left out when every row is
+   * the root's.
+   */
+  report(results: UpdateResult[], manager: string, phase: ReportPhase): void {
     if (this.muted) return
-    const displayName =
-      groupName === 'unscoped' ? 'Other packages' : `${groupName} packages`
-    console.log(`\n${cyan('🏷️')}  ${bold(cyan(displayName))}`)
-  }
-
-  /**
-   * Print a column-aligned block of outdated packages.
-   * Pads name and current-version columns based on the widest entry.
-   */
-  printOutdatedRows(rows: OutdatedRow[]): void {
-    if (this.muted || rows.length === 0) return
-    const widths = computeWidths(rows)
-    for (const row of rows) {
-      console.log(formatRow(row, widths, row.note, this.tags))
+    const sections = groupResults(results)
+    const ages = new Map(
+      results
+        .filter((r) => r.updated && r.releaseAge !== undefined)
+        .map((r) => [r.name, r.releaseAge as number]),
+    )
+    const rows = sections.flatMap((section) => section.rows)
+    const showWhere = rows.some(
+      (row) => row.workspaces.length > 1 || (row.workspaces[0] ?? '.') !== '.',
+    )
+    const widths = {
+      name: Math.max(0, ...rows.map((r) => r.name.length)),
+      where: showWhere
+        ? Math.max(...rows.map((r) => whereOf(r.workspaces).length))
+        : 0,
+      current: Math.max(0, ...rows.map((r) => r.current.length)),
+      to: Math.max(0, ...rows.map((r) => r.to.length)),
     }
-  }
-
-  updatingHeader(manager: string): void {
-    if (this.muted) return
-    console.log(`\n${blue('🔄')} ${bold(`Updating packages with ${manager}`)}`)
-  }
-
-  /**
-   * Print a column-aligned block of packages being updated.
-   */
-  printUpdatingRows(rows: OutdatedRow[]): void {
-    if (this.muted || rows.length === 0) return
-    const widths = computeWidths(rows)
-    for (const row of rows) {
-      console.log(formatRow(row, widths, row.note, this.tags))
+    for (const section of sections) {
+      const { heading, color } = SECTIONS[section.outcome]
+      console.log(
+        `\n${bold(color(heading(phase, manager)))} ${gray(`(${pluralize(section.packages, 'package')})`)}`,
+      )
+      for (const row of section.rows) {
+        const age =
+          section.outcome === 'update' ? ages.get(row.name) : undefined
+        console.log(formatRow(row, widths, age))
+      }
     }
-  }
-
-  /**
-   * Print a column-aligned block of skipped packages with reason.
-   */
-  printSkippedRows(rows: SkippedRow[]): void {
-    if (this.muted || rows.length === 0) return
-    const widths = computeWidths(rows)
-    for (const row of rows) {
-      const note = row.reason ?? `${row.updateType} update skipped`
-      console.log(formatRow(row, widths, note, this.tags))
-    }
+    const counts = sections.map(
+      (section) =>
+        `${section.packages} ${SECTIONS[section.outcome].summary(phase, manager)}`,
+    )
+    if (counts.length === 0) return
+    const moving = sections.some((section) => section.outcome === 'update')
+    console.log(
+      `\n${moving ? '' : bold('Nothing to update: ')}${counts.join(gray(' · '))}`,
+    )
   }
 
   starting(operation: string, manager: string): void {
@@ -200,103 +224,33 @@ class Logger {
   debug(message: string): void {
     if (this.debugEnabled) this.diagnostic(gray(`  ${message}`))
   }
-
-  /**
-   * Multi-line scannable notice for the case where outdated packages exist
-   * but the config skipped them all. Header + indented body lines.
-   */
-  noPackagesToUpdate(body: string[] | string): void {
-    if (this.muted) return
-    const lines = Array.isArray(body) ? body : [body]
-    console.log(`\n${yellow('🤔')} ${bold('No packages to update')}`)
-    for (const line of lines) {
-      console.log(`   ${gray(line)}`)
-    }
-  }
-
-  /**
-   * Packages the manager was asked to move but left in place (`not applied
-   * by …` rows from `checkApplied`). No-op when every package moved.
-   */
-  notAppliedSummary(results: UpdateResult[], manager: string): void {
-    if (this.muted) return
-    const declined = results
-      .filter((r) => !r.updated && r.reason?.startsWith('not applied by '))
-      .map(toSkippedRow)
-    if (declined.length === 0) return
-    console.log(
-      `\n${yellow('⚠️')} ${bold(`${pluralize(declined.length, 'package')} left in place by ${manager}`)}`,
-    )
-    this.printSkippedRows(declined)
-  }
-
-  /**
-   * Summarise packages held back by the cooldown gate.
-   * No-op when nothing is gated.
-   */
-  cooldownSummary(results: UpdateResult[]): void {
-    if (this.muted) return
-    const gated = results
-      .filter((r) => !r.updated && r.reason?.startsWith('cooldown:'))
-      .map(toSkippedRow)
-    if (gated.length === 0) return
-    console.log(
-      `\n${blue('⏰')} ${bold(`${pluralize(gated.length, 'package')} held by cooldown`)}`,
-    )
-    this.printSkippedRows(gated)
-  }
 }
 
 interface ColumnWidths {
   name: number
-  /** 0 when no row carries a workspace, which leaves the column out. */
-  workspace: number
+  /** 0 leaves the manifest column out. */
+  where: number
   current: number
-  latest: number
+  to: number
 }
 
-const computeWidths = (rows: OutdatedRow[]): ColumnWidths => ({
-  name: Math.max(...rows.map((r) => r.name.length)),
-  workspace: Math.max(
-    ...rows.map((r) =>
-      r.workspace === undefined ? 0 : workspaceLabel(r.workspace).length,
-    ),
-  ),
-  current: Math.max(...rows.map((r) => r.current.length)),
-  latest: Math.max(...rows.map((r) => r.latest.length)),
-})
-
 const formatRow = (
-  row: OutdatedRow,
+  row: ReportRow,
   widths: ColumnWidths,
-  trailingNote: string | undefined,
-  tags: TagLists,
+  releaseAge: number | undefined,
 ): string => {
   const name = bold(row.name.padEnd(widths.name))
-  const current = red(row.current.padEnd(widths.current))
-  const latest = green(row.latest.padEnd(widths.latest))
-  const arrow = gray('→')
-  const workspace =
-    widths.workspace > 0
-      ? `  ${gray(workspaceLabel(row.workspace ?? '.').padEnd(widths.workspace))}`
+  const where =
+    widths.where > 0
+      ? `  ${gray(whereOf(row.workspaces).padEnd(widths.where))}`
       : ''
-  let line = `  ${name}${workspace}  ${current} ${arrow} ${latest}`
-
-  const tail: string[] = []
-  if (row.releaseAge !== undefined) {
-    tail.push(`released ${formatAgeDays(row.releaseAge)} ago`)
-  }
-  if (trailingNote) tail.push(trailingNote)
-  if (tail.length > 0) line += `  ${gray(`(${tail.join(' · ')})`)}`
-
-  // Indicate allow/deny decoration as a tag on the right
-  if (tags.denylist.includes(row.name)) {
-    line += `  ${red('[ignored]')}`
-  } else if (tags.allowlist.includes(row.name)) {
-    line += `  ${green('[allowed]')}`
-  }
-
-  return line
+  const current = red(row.current.padEnd(widths.current))
+  const to = green(row.to.padEnd(widths.to))
+  const tail = [row.note]
+  if (releaseAge !== undefined)
+    tail.push(`released ${formatAgeDays(releaseAge)} ago`)
+  const note = tail.filter(Boolean).join(' · ')
+  return `  ${name}${where}  ${current} ${gray('→')} ${to}${note ? `  ${gray(note)}` : ''}`.trimEnd()
 }
 
 const logger = new Logger()

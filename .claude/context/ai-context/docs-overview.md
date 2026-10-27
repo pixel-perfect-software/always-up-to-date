@@ -112,7 +112,7 @@ __tests__/
     duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests; readPnpmCatalogs / readBunCatalogs and their agreement with the pnpm writer
     filterPackages.test.ts  # Package filtering, targeting, cooldown integration
-    logger.test.ts          # Logger output, configure(), quiet and JSON output modes
+    logger.test.ts          # Logger output, configure(), quiet and JSON output modes; report(): every row once under its outcome, merged manifests, summary line (#138)
     npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
     npmrcLayers.test.ts     # mergeNpmrcLayers (per key, origin), envLayer rules, npmrcFileLayer (substitute null leaves out ${…}), npmNpmrcLayers order and merge
     npmrcLoader.test.ts     # Layering (global, user, project, npm_config_*), workspace root, RegistryConfig, on temp dirs
@@ -123,7 +123,6 @@ __tests__/
     registryCache.test.ts   # The store: cacheDirectory per platform, endpointKey, freshFor, round trips, misses, atomic writes across processes, pruning, fails open, modes
     registryDocuments.test.ts # dist-tags, deps.dev and packument parsers on the fixtures; the sources agree; malformed input
     limiter.test.ts         # createLimiter: peak, FIFO, rejection frees the slot
-    packageGrouper.test.ts  # Package grouping tests
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping
     overrides.test.ts       # Which override keys pin a package, per manager's current version
@@ -134,7 +133,6 @@ __tests__/
     wanted.test.ts          # wantedVersion on the yarn and pnpm captures, each on deps.dev and on the packument
     dependencySpecs.test.ts # classifySpec table; readDeclaredDependencies on temp dirs (field order, peers, catalogs, members, unreadable manifest)
     aliasSpec.test.ts       # parseAlias / parseBareAlias (`npm:` specs) and isRecord
-    rows.test.ts            # Display rows: the in-range note is left out when wanted fell back to current
 ```
 
 ## Tech Stack

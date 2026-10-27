@@ -16,7 +16,7 @@ import {
 
 jest.mock('@/utils/logger')
 
-const mockedPrintRows = jest.mocked(logger.printOutdatedRows)
+const mockedReport = jest.mocked(logger.report)
 
 // When the workspace fixtures were captured, so no version drifts with the registry.
 const AS_OF = '2026-10-23T16:38:12-03:00'
@@ -94,7 +94,7 @@ describe.each(ADAPTERS)(
     it('prints one row per manifest, each carrying its workspace', async () => {
       await check(projectFor(adapter, cwd, {}, evidenceRegistry()))
 
-      const rows = mockedPrintRows.mock.calls.flatMap(([printed]) => printed)
+      const rows = mockedReport.mock.calls.flatMap(([results]) => results)
       expect(
         rows.map((row) => [row.name, row.workspace, row.current]).sort(),
       ).toEqual([

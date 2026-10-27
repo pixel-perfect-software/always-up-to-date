@@ -114,9 +114,8 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - Discovery reads every manifest (root and members) itself, so it needs no workspace flags and no subprocess. The flags (`-r` for pnpm, `--filter *` for bun) belong to apply's update commands only
 - Apply writes the manifest that owns each beyond-range row (`updatePackageJson` per manifest; a `catalog:` spec writes the catalog instead). npm, pnpm and bun run one workspace-wide update command; yarn v1 runs `workspace <name> upgrade` per member, then `install`; yarn berry (2+, same adapter, `src/managers/yarn/berry.ts`) has no `outdated` and, until #107, still discovers through the manager (`ownDiscovery`): from `yarn info -A --json` plus `yarn npm info`, writes beyond-range specs itself, then `install` and `up -R <in-range names>`
 
-**Package Grouping**
-- `src/utils/packageGrouper.ts` groups packages by scope (@org/package) for organized output
-- Improves readability when checking many outdated packages
+**Report** (#138)
+- `check`, `update --dry-run`, interactive and `update` print one report (`logger.report(results, manager, phase)`): each planned row once, under its outcome (`groupResults` in `src/utils/report.ts`: would update / updated, left in place, held by cooldown, past the range with the `beyondRange` level that would move it, held by a rule, an override, a peer conflict, with another manifest), rows sharing a move and reason across manifests merged, then one summary line. `update` prints it after apply only (`phase: 'applied'`); before apply only `Updating N packages with <pm>`. A workspace of one manifest prints no workspace line or manifest column. `--json` output is unchanged; `check --json` doesn't plan
 
 ### Future Components (In Development)
 

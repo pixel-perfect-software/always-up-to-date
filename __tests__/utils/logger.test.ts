@@ -1,9 +1,39 @@
-import { bold, gray, green, red } from 'colorette'
 import { stripVTControlCharacters } from 'util'
 import type { UpdateResult } from '@/types'
 import logger, { pluralize } from '@/utils/logger'
 
 const originalLog = Object.getPrototypeOf(console).log
+
+/** A row the plan moves, within its range unless `target` differs from `wanted`. */
+const moved = (
+  name: string,
+  fields: Partial<UpdateResult> = {},
+): UpdateResult => ({
+  name,
+  current: '1.0.0',
+  wanted: '1.0.1',
+  latest: '1.0.1',
+  target: '1.0.1',
+  updateType: 'patch',
+  updated: true,
+  ...fields,
+})
+
+/** A row the plan holds, with the reason the policy gave. */
+const held = (
+  name: string,
+  reason: string,
+  fields: Partial<UpdateResult> = {},
+): UpdateResult => ({
+  name,
+  current: '1.0.0',
+  wanted: '1.0.0',
+  latest: '2.0.0',
+  updateType: 'major',
+  updated: false,
+  reason,
+  ...fields,
+})
 
 describe('Logger', () => {
   let logSpy: jest.SpyInstance
@@ -38,10 +68,7 @@ describe('Logger', () => {
     it('keeps progress output off stdout', () => {
       logger.starting('Checking dependencies', 'npm')
       logger.info('hello')
-      logger.outdatedHeader()
-      logger.printOutdatedRows([
-        { name: 'a', current: '1.0.0', latest: '1.0.1' },
-      ])
+      logger.report([moved('a')], 'npm', 'plan')
       logger.allUpToDate()
 
       expect(logSpy).not.toHaveBeenCalled()
@@ -91,9 +118,11 @@ describe('Logger', () => {
       expect(logSpy).not.toHaveBeenCalled()
     })
 
-    it('workspace logs manager name', () => {
-      logger.workspace('PNPM')
-      expect(logSpy.mock.calls[0][0]).toContain('PNPM')
+    it('workspace names the manager, the manifests and the catalogs', () => {
+      logger.workspace('pnpm', 10, 20)
+      expect(stripVTControlCharacters(logSpy.mock.calls[0][0])).toContain(
+        'pnpm workspace: 10 manifests, 20 catalogs',
+      )
     })
 
     it('allUpToDate logs success message', () => {
@@ -101,25 +130,11 @@ describe('Logger', () => {
       expect(logSpy.mock.calls[0][0]).toContain('up to date')
     })
 
-    it('outdatedHeader logs header without legend when allow/deny lists are empty', () => {
-      logger.outdatedHeader()
-      expect(logSpy).toHaveBeenCalledTimes(1)
-      expect(logSpy.mock.calls[0][0]).toContain('Outdated packages found')
-    })
-
-    it('packageGroupHeader shows group name', () => {
-      logger.packageGroupHeader('@babel')
-      expect(logSpy.mock.calls[0][0]).toContain('@babel packages')
-    })
-
-    it('packageGroupHeader shows "Other packages" for unscoped', () => {
-      logger.packageGroupHeader('unscoped')
-      expect(logSpy.mock.calls[0][0]).toContain('Other packages')
-    })
-
-    it('updatingHeader includes the manager name', () => {
-      logger.updatingHeader('npm')
-      expect(logSpy.mock.calls[0][0]).toContain('npm')
+    it('updatingHeader names the package count and the manager', () => {
+      logger.updatingHeader('npm', 4)
+      expect(stripVTControlCharacters(logSpy.mock.calls[0][0])).toContain(
+        'Updating 4 packages with npm',
+      )
     })
 
     it('starting logs operation and manager', () => {
@@ -168,296 +183,147 @@ describe('Logger', () => {
       expect(logSpy).toHaveBeenCalledTimes(1)
       expect(logSpy.mock.calls[0][0]).toContain('hello')
     })
-
-    it('shows the legend and tags for the allow and deny lists', () => {
-      logger.configure({ updateAllowlist: ['a'], updateDenylist: ['b'] })
-
-      logger.outdatedHeader()
-      logger.printOutdatedRows([
-        { name: 'a', current: '1.0.0', latest: '1.0.1' },
-        { name: 'b', current: '1.0.0', latest: '1.0.1' },
-        { name: 'c', current: '1.0.0', latest: '1.0.1' },
-      ])
-
-      // CI colors the output (colorette turns colors on there), so names
-      // sit inside escape codes unless they are stripped.
-      const lines = logSpy.mock.calls.map(([line]) =>
-        stripVTControlCharacters(line as string),
-      )
-      expect(lines.some((l) => l.includes('in updateDenylist'))).toBe(true)
-      expect(lines.some((l) => l.includes('in updateAllowlist'))).toBe(true)
-      expect(
-        lines.find((l) => l.includes('1.0.0') && l.includes('a')),
-      ).toContain('[allowed]')
-      expect(lines.find((l) => l.includes('  b'))).toContain('[ignored]')
-      expect(lines.find((l) => l.includes('  c'))).not.toMatch(
-        /\[(allowed|ignored)\]/,
-      )
-    })
   })
 
-  describe('printOutdatedRows', () => {
-    it('adds a workspace column when rows carry a workspace', () => {
-      logger.printOutdatedRows([
-        { name: 'ms', workspace: '.', current: '2.1.1', latest: '2.1.3' },
-        {
-          name: 'ms',
-          workspace: 'packages/a',
-          current: '2.1.2',
-          latest: '2.1.3',
-        },
-      ])
+  describe('report', () => {
+    const printed = () =>
+      logSpy.mock.calls.map(([line]) => stripVTControlCharacters(line))
 
-      const lines = logSpy.mock.calls.map(([line]) => line as string)
-      expect(lines[0]).toContain('(root)')
-      expect(lines[1]).toContain('packages/a')
-      // Both versions start in the same column.
-      expect(lines[0].indexOf('2.1.1')).toBe(lines[1].indexOf('2.1.2'))
-    })
-
-    it('prints rows without a workspace exactly as before', () => {
-      logger.printOutdatedRows([
-        { name: 'react', current: '18.0.0', latest: '19.0.0' },
-      ])
-
-      expect(logSpy.mock.calls[0][0]).not.toContain('(root)')
-      expect(logSpy.mock.calls[0][0]).toBe(
-        `  ${bold('react')}  ${red('18.0.0')} ${gray('→')} ${green('19.0.0')}`,
-      )
-    })
-
-    it('renders one line per row with name + versions', () => {
-      logger.printOutdatedRows([
-        { name: 'react', current: '18.0.0', latest: '19.0.0' },
-        { name: 'semver', current: '7.5.0', latest: '7.7.4' },
-      ])
-      expect(logSpy).toHaveBeenCalledTimes(2)
-      expect(logSpy.mock.calls[0][0]).toContain('react')
-      expect(logSpy.mock.calls[0][0]).toContain('19.0.0')
-      expect(logSpy.mock.calls[1][0]).toContain('semver')
-    })
-
-    it('appends release age when provided', () => {
-      logger.printOutdatedRows([
-        { name: 'react', current: '18.0.0', latest: '19.0.0', releaseAge: 12 },
-      ])
-      expect(logSpy.mock.calls[0][0]).toContain('released 12d ago')
-    })
-
-    it('does not mention release when omitted', () => {
-      logger.printOutdatedRows([
-        { name: 'react', current: '18.0.0', latest: '19.0.0' },
-      ])
-      expect(logSpy.mock.calls[0][0]).not.toContain('released')
-    })
-
-    it('is a no-op for an empty list', () => {
-      logger.printOutdatedRows([])
-      expect(logSpy).not.toHaveBeenCalled()
-    })
-
-    it('left-pads name and current columns to align across rows', () => {
-      logger.printOutdatedRows([
-        { name: 'a', current: '1.0.0', latest: '2.0.0' },
-        { name: 'looong', current: '11.22.33', latest: '11.22.34' },
-      ])
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: Allow here to strip ANSI color codes for testing alignment
-      const stripAnsi = (s: string) => s.replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
-      expect(stripAnsi(logSpy.mock.calls[0][0])).toMatch(/a\s{6}\s+1\.0\.0\s+→/)
-      expect(stripAnsi(logSpy.mock.calls[1][0])).toMatch(/looong\s+11\.22\.33/)
-    })
-  })
-
-  describe('printSkippedRows', () => {
-    it('uses default note when no reason is provided', () => {
-      logger.printSkippedRows([
-        {
-          name: 'react',
-          current: '18.0.0',
-          latest: '19.0.0',
-          updateType: 'major',
-        },
-      ])
-      expect(logSpy.mock.calls[0][0]).toContain('major update skipped')
-    })
-
-    it('prefers explicit reason over default', () => {
-      logger.printSkippedRows([
-        {
-          name: 'react',
-          current: '18.0.0',
-          latest: '19.0.0',
-          updateType: 'major',
-          reason: 'cooldown: released 3d ago, requires 30d',
-        },
-      ])
-      const out = logSpy.mock.calls[0][0]
-      expect(out).toContain('cooldown: released 3d ago')
-      expect(out).not.toContain('major update skipped')
-    })
-  })
-
-  describe('noPackagesToUpdate', () => {
-    it('renders header + indented body lines', () => {
-      logger.noPackagesToUpdate(['First sentence.', 'Second sentence.'])
-      expect(logSpy).toHaveBeenCalledTimes(3)
-      expect(logSpy.mock.calls[0][0]).toContain('No packages to update')
-      expect(logSpy.mock.calls[1][0]).toContain('First sentence.')
-      expect(logSpy.mock.calls[2][0]).toContain('Second sentence.')
-    })
-
-    it('accepts a single string as well', () => {
-      logger.noPackagesToUpdate('Solo message.')
-      expect(logSpy).toHaveBeenCalledTimes(2)
-      expect(logSpy.mock.calls[1][0]).toContain('Solo message.')
-    })
-  })
-
-  describe('cooldownSummary', () => {
-    const makeResult = (overrides: Partial<UpdateResult>): UpdateResult => ({
-      name: 'foo',
-      current: '1.0.0',
-      wanted: '1.0.0',
-      latest: '1.0.1',
-      updateType: 'patch',
-      updated: false,
-      ...overrides,
-    })
-
-    it('is a no-op when nothing is gated by cooldown', () => {
-      logger.cooldownSummary([
-        makeResult({ updated: true }),
-        makeResult({
-          updated: false,
-          reason: 'skipped by config',
-        }),
-      ])
-      expect(logSpy).not.toHaveBeenCalled()
-    })
-
-    it('prints header and rows when cooldown gated packages exist', () => {
-      logger.cooldownSummary([
-        makeResult({
-          name: 'react',
-          current: '18.0.0',
-          latest: '19.0.0',
-          updateType: 'major',
-          reason: 'cooldown: released 3d ago, requires 30d',
-        }),
-      ])
-      expect(logSpy).toHaveBeenCalledTimes(2)
-      expect(logSpy.mock.calls[0][0]).toContain('held by cooldown')
-      expect(logSpy.mock.calls[1][0]).toContain('react')
-      expect(logSpy.mock.calls[1][0]).toContain('cooldown: released 3d ago')
-    })
-  })
-
-  describe('workspace rows in the update summaries', () => {
-    const base: UpdateResult = {
-      name: 'ms',
-      current: '2.1.1',
-      wanted: '2.1.3',
-      latest: '2.1.3',
-      updateType: 'patch',
-      updated: false,
-    }
-
-    it('shows the manifest in the skipped block', () => {
-      logger.printSkippedRows([
-        {
-          name: 'ms',
-          workspace: 'packages/a',
-          current: '2.1.2',
-          latest: '2.1.3',
-          updateType: 'patch',
-          reason: 'patch beyond the range',
-        },
-      ])
-      expect(logSpy.mock.calls[0][0]).toContain('packages/a')
-    })
-
-    it('shows the manifest in the updating block', () => {
-      logger.printUpdatingRows([
-        { name: 'ms', workspace: '.', current: '2.1.1', latest: '2.1.3' },
-      ])
-      expect(logSpy.mock.calls[0][0]).toContain('(root)')
-    })
-
-    it('shows the manifest in the left-in-place and cooldown blocks', () => {
-      logger.notAppliedSummary(
+    it('prints every candidate once, under its outcome, then one summary line (#138)', () => {
+      // The shape of the 2026-10-27 run in #138: a 2-day cooldown,
+      // beyondRange "minor", rules hold prisma and zod.
+      logger.report(
         [
-          {
-            ...base,
+          held('@types/node', 'major beyond the range', {
             workspace: '.',
-            reason: 'not applied by npm (installed 2.1.1)',
-          },
+            current: '25.9.9',
+            latest: '26.6.5',
+          }),
+          held('@types/node', 'major beyond the range', {
+            workspace: 'apps/web',
+            current: '25.9.9',
+            latest: '26.6.5',
+          }),
+          held('prisma', 'held by rule', {
+            workspace: 'apps/web',
+            current: '7.10.1',
+            latest: '8.0.0-rc.27',
+          }),
+          held('vercel', 'cooldown: released 14h ago, requires 2d', {
+            workspace: '.',
+            current: '65.2.0',
+            latest: '65.4.0',
+            updateType: 'minor',
+          }),
+          moved('motion', {
+            workspace: 'apps/web',
+            current: '14.6.0',
+            wanted: '14.7.1',
+            target: '14.7.1',
+            latest: '14.7.1',
+            releaseAge: 3,
+          }),
         ],
-        'npm',
+        'pnpm',
+        'plan',
       )
-      logger.cooldownSummary([
-        {
-          ...base,
-          workspace: 'packages/b',
-          reason: 'cooldown: released 3d ago, requires 30d',
-        },
+
+      expect(printed()).toEqual([
+        '\nWould update (1 package)',
+        '  motion       apps/web          14.6.0 → 14.7.1       within range · released 3d ago',
+        '\nHeld by cooldown (1 package)',
+        '  vercel       (root)            65.2.0 → 65.4.0       released 14h ago, needs 2d',
+        '\nPast the range in package.json (1 package)',
+        '  @types/node  (root), apps/web  25.9.9 → 26.6.5       major; "beyondRange": "major" would move it',
+        '\nHeld by a rule (1 package)',
+        '  prisma       apps/web          7.10.1 → 8.0.0-rc.27  rule "hold"',
+        '\n1 to update · 1 held by cooldown · 1 past the range · 1 held by a rule',
       ])
-
-      expect(logSpy.mock.calls[1][0]).toContain('(root)')
-      expect(logSpy.mock.calls[3][0]).toContain('packages/b')
-    })
-  })
-
-  describe('notAppliedSummary', () => {
-    const makeResult = (overrides: Partial<UpdateResult>): UpdateResult => ({
-      name: 'ms',
-      current: '2.1.1',
-      wanted: '2.1.3',
-      latest: '2.1.3',
-      updateType: 'patch',
-      updated: false,
-      ...overrides,
-    })
-    const notApplied = makeResult({
-      reason: 'not applied by npm (installed 2.1.1)',
     })
 
-    it('prints header and row for a package the manager left in place', () => {
-      logger.notAppliedSummary([notApplied], 'npm')
-      expect(logSpy).toHaveBeenCalledTimes(2)
-      expect(logSpy.mock.calls[0][0]).toContain(
-        '1 package left in place by npm',
-      )
-      expect(logSpy.mock.calls[1][0]).toContain('ms')
-      expect(logSpy.mock.calls[1][0]).toContain(
-        'not applied by npm (installed 2.1.1)',
-      )
-    })
-
-    it('is a no-op when every package moved or was held for another reason', () => {
-      logger.notAppliedSummary(
+    it('names what the manager left in place after apply, and what moved', () => {
+      logger.report(
         [
-          makeResult({ updated: true }),
-          makeResult({ reason: 'cooldown: released 3d ago, requires 30d' }),
+          moved('ms'),
+          held('debug', 'not applied by pnpm (installed 4.3.1)', {
+            current: '4.3.1',
+            latest: '4.4.3',
+            target: '4.4.3',
+          }),
+        ],
+        'pnpm',
+        'applied',
+      )
+
+      expect(printed()).toEqual([
+        '\nUpdated (1 package)',
+        '  ms     1.0.0 → 1.0.1  within range',
+        '\nLeft in place by pnpm (1 package)',
+        '  debug  4.3.1 → 4.4.3  installed 4.3.1',
+        '\n1 updated · 1 left in place by pnpm',
+      ])
+    })
+
+    it('says when nothing moves, and leaves untargeted rows out', () => {
+      logger.report(
+        [held('a', 'held by rule'), held('b', 'not targeted')],
+        'npm',
+        'plan',
+      )
+
+      expect(printed()).toEqual([
+        '\nHeld by a rule (1 package)',
+        '  a  1.0.0 → 2.0.0  rule "hold"',
+        '\nNothing to update: 1 held by a rule',
+      ])
+    })
+
+    it('leaves the manifest column out when every row is the root', () => {
+      logger.report([moved('a', { workspace: '.' })], 'pnpm', 'plan')
+      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1  within range')
+    })
+
+    it('counts three or more manifests instead of listing them', () => {
+      logger.report(
+        ['.', 'a', 'b'].map((workspace) =>
+          held('x', 'held by rule', { workspace }),
+        ),
+        'pnpm',
+        'plan',
+      )
+      expect(printed()[1]).toContain('3 manifests')
+    })
+
+    it('marks a move past the range and keeps the peer warning', () => {
+      logger.report(
+        [
+          moved('react', {
+            wanted: '1.0.0',
+            target: '2.0.0',
+            latest: '2.0.0',
+            warning: 'peer conflict: react-dom@18.3.1 needs react ^18.3.1',
+          }),
         ],
         'npm',
+        'plan',
       )
-      expect(logSpy).not.toHaveBeenCalled()
+      expect(printed()[1]).toContain(
+        'past its range; peer conflict: react-dom@18.3.1 needs react ^18.3.1',
+      )
     })
 
-    it('prints nothing when quiet', () => {
-      logger.setQuiet(true)
-      logger.notAppliedSummary([notApplied], 'npm')
-      expect(logSpy).not.toHaveBeenCalled()
-    })
-
-    it('prints nothing in JSON mode', () => {
-      logger.setJsonOutput(true)
-      try {
-        logger.notAppliedSummary([notApplied], 'npm')
-        expect(logSpy).not.toHaveBeenCalled()
-      } finally {
-        logger.setJsonOutput(false)
-      }
+    it.each([
+      ['controlled by overrides (^1.0.0)', 'Held by an override'],
+      [
+        'peer conflict: react-dom@18.3.1 needs react ^18.3.1',
+        'Held by a peer conflict',
+      ],
+      ['held with packages/a (held by rule)', 'Held with another manifest'],
+      ['outside the range (rule followRange)', 'Held by a rule'],
+      ['invalid version (current x, latest y)', 'Not updated'],
+    ])('files %s under "%s"', (reason, heading) => {
+      logger.report([held('p', reason)], 'npm', 'plan')
+      expect(printed()[0]).toBe(`\n${heading} (1 package)`)
     })
   })
 
@@ -469,21 +335,8 @@ describe('Logger', () => {
       logger.warn('x')
       logger.error('x')
       logger.allUpToDate()
-      logger.outdatedHeader()
-      logger.packageGroupHeader('@x')
-      logger.printOutdatedRows([
-        { name: 'p', current: '1.0.0', latest: '1.0.1' },
-      ])
-      logger.printSkippedRows([
-        {
-          name: 'p',
-          current: '1.0.0',
-          latest: '1.0.1',
-          updateType: 'major',
-        },
-      ])
-      logger.noPackagesToUpdate('msg')
-      logger.cooldownSummary([])
+      logger.report([moved('p'), held('q', 'held by rule')], 'npm', 'plan')
+      logger.updatingHeader('npm', 1)
       logger.starting('op', 'npm')
       logger.clean('msg')
       logger.debug('dbg')

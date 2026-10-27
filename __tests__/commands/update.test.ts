@@ -6,7 +6,7 @@ jest.mock('@/detectPackageManager', () => ({
 }))
 
 jest.mock('@/pipeline', () => ({
-  check: jest.fn(),
+  findOutdated: jest.fn(),
   plan: jest.fn(),
   update: jest.fn(),
 }))
@@ -26,7 +26,7 @@ import updateCommand from '@/commands/update'
 import detectPackageManager from '@/detectPackageManager'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
-import { check, plan, update } from '@/pipeline'
+import { findOutdated, plan, update } from '@/pipeline'
 import { openProject } from '@/project'
 import logger from '@/utils/logger'
 
@@ -35,7 +35,7 @@ const mockPlan = jest.mocked(plan)
 const mockCheckbox = jest.mocked(checkbox)
 
 const mockUpdatePackages = jest.mocked(update)
-const mockCheckPackageVersions = jest.mocked(check)
+const mockCheckPackageVersions = jest.mocked(findOutdated)
 
 describe('update command', () => {
   let program: Command
@@ -278,9 +278,11 @@ describe('update command', () => {
 
       await program.parseAsync(['node', 'test', 'update', '--dry-run'])
 
-      expect(logger.printSkippedRows).toHaveBeenCalledWith([
-        expect.objectContaining({ name: 'ms', workspace: 'packages/a' }),
-      ])
+      expect(logger.report).toHaveBeenCalledWith(
+        [expect.objectContaining({ name: 'ms', workspace: 'packages/a' })],
+        expect.any(String),
+        'plan',
+      )
     })
   })
 })
