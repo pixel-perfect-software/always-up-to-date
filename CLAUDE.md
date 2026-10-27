@@ -9,11 +9,13 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 ## Development Commands
 
 ### Build and Type Checking
+
 - `pnpm run build` - Compile TypeScript and resolve path aliases (requires both `tsc` and `tsc-alias`)
 - `pnpm run check-types` - Type check without emitting files
 - `pnpm run clean` - Remove the dist directory
 
 ### Testing
+
 - `pnpm test` - Run all tests (silent mode)
 - `pnpm run test:coverage` - Run tests with coverage report
 - `pnpm run test:integration` - The integration matrix: builds, then runs the built CLI against real npm, pnpm, yarn v1, yarn berry and bun on temp copies of `testRepos/`. Needs network access and the managers on PATH (yarn through Corepack: `corepack enable yarn`). Outside `pnpm test` and coverage. `AUTD_INTEGRATION_PM=npm,bun` selects managers (an unknown name fails fast); `AUTD_INTEGRATION_KEEP=1` keeps the temp copies and prints their paths. CI runs it per manager on ubuntu-latest and windows-latest
@@ -22,16 +24,19 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 - Single test: `pnpm test -- __tests__/path/to/test.test.ts`
 
 ### Code Quality
+
 - `pnpm run format-and-lint` - Check formatting and linting with Biome
 - `pnpm run format-and-lint:fix` - Auto-fix formatting and linting issues with Biome
 
 ### Local Development
+
 - `pnpm run init` - Initialize config in the current directory
 - `pnpm run check-deps` - Check for outdated dependencies
 - `pnpm run update-deps` - Update dependencies
 - After building, the CLI can be tested locally with: `node dist/index.js <command>`
 
 ### Releasing
+
 - `/ship:release <major|minor|patch>` bumps `version` in `package.json` and adds the version's `CHANGELOG.md` entry (`## <date> — <version>: <headline>`) in a `Release <version>` PR
 - Once that merges, pushing a `v<version>` tag on `main` runs `.github/workflows/release.yml`. It checks that the tag matches `package.json`, sits on `main` and has a `CHANGELOG.md` entry, runs the gates, publishes with `pnpm publish`, and creates the GitHub release with that entry as its notes. pnpm, not npm: it writes the `catalog:` ranges as real versions in the published manifest
 - npm authenticates the publish through trusted publishing (OIDC); no token is stored in the repository. The workflow is registered as the package's trusted publisher on npmjs.com, so renaming `release.yml` breaks publishing until that setting is updated
