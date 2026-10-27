@@ -38,14 +38,14 @@ A port to Rust or Go is re-evaluated only at the M6 gate.
 Measured 2026-10-22 on a 40-dependency benchmark project with all 40 outdated,
 Node 24, macOS, warm runs.
 
-| Path | Direct `<pm> outdated` | `autd check` |
-|---|---|---|
-| npm | 0.84 s | 0.92 s |
-| pnpm | 1.03 s | 0.97 s |
-| yarn v1 | 2.59 s | 2.71 s, and reports nothing (see defects) |
-| bun | 0.02 s | 0.14 s |
-| Native prototype, dist-tags endpoint | 0.6 s cold, 5 KB total | n/a |
-| Cooldown on today | adds 2.3 s and ~67 MB | no disk cache |
+| Path                                 | Direct `<pm> outdated` | `autd check`                              |
+| ------------------------------------ | ---------------------- | ----------------------------------------- |
+| npm                                  | 0.84 s                 | 0.92 s                                    |
+| pnpm                                 | 1.03 s                 | 0.97 s                                    |
+| yarn v1                              | 2.59 s                 | 2.71 s, and reports nothing (see defects) |
+| bun                                  | 0.02 s                 | 0.14 s                                    |
+| Native prototype, dist-tags endpoint | 0.6 s cold, 5 KB total | n/a                                       |
+| Cooldown on today                    | adds 2.3 s and ~67 MB  | no disk cache                             |
 
 Startup: bare Node 30 ms, autd 102 ms, of which 48 ms is eager-loading the registry
 client and its 171 modules. Bundled to one file: 89 ms. Bun-compiled binary after
@@ -59,15 +59,14 @@ an earlier npm `outdated` capture: every dependency pinned to its old exact vers
 Bun has since moved to 1.4.4: warm 0.17 s, cold 22.5 s ± 7.5 over 2 runs. Registry traffic on this machine passes through an endpoint TLS proxy
 (Aikido), so absolute network times are indicative. "Cold" empties the manager's own cache.
 
-| Manager | `autd check`, warm | `autd check`, cold | Peak memory |
-|---|---|---|---|
-| npm 11.19.1 | 0.92 s | 1.53 s | 347 MB |
-| pnpm 12.14.0 | 0.25 s | 1.88 s | 85 MB |
-| yarn 1.22.22 | 2.65 s | 3.17 s | 756 MB |
-| bun 1.4.0 | 0.16 s | 14.8 s | 89 MB |
-| yarn 4.12.0 (berry, node-modules linker) | 8.5 s | 9.5 s | 802 MB |
-| yarn 4.12.0 (berry, PnP, yarn's default) | 9.4 s | 10.1 s | 793 MB |
-
+| Manager                                  | `autd check`, warm | `autd check`, cold | Peak memory |
+| ---------------------------------------- | ------------------ | ------------------ | ----------- |
+| npm 11.19.1                              | 0.92 s             | 1.53 s             | 347 MB      |
+| pnpm 12.14.0                             | 0.25 s             | 1.88 s             | 85 MB       |
+| yarn 1.22.22                             | 2.65 s             | 3.17 s             | 756 MB      |
+| bun 1.4.0                                | 0.16 s             | 14.8 s             | 89 MB       |
+| yarn 4.12.0 (berry, node-modules linker) | 8.5 s              | 9.5 s              | 802 MB      |
+| yarn 4.12.0 (berry, PnP, yarn's default) | 9.4 s              | 10.1 s             | 793 MB      |
 - The yarn, bun and berry memory figures, berry's cold times and the PnP row come from the first
   `pnpm run bench` (hyperfine, 5 warm and 3 cold runs). Berry keeps no registry metadata cache
   (its global folder holds only package zips), so its cold and warm times differ only by noise.
@@ -213,12 +212,12 @@ Goal: prove the pipeline is ecosystem-agnostic, then decide about a port with da
 
 Run hyperfine against the benchmark project on every pull request and fail above budget:
 
-| Metric | Budget |
-|---|---|
-| `check`, cold cache, any manager | under 1 s |
-| `check`, warm cache | under 0.3 s |
-| Startup (`--version`) | under 25 ms over bare `node -e 0` on the same runner |
-| Cooldown overhead, cold | under 0.5 s |
+| Metric                           | Budget                                               |
+| -------------------------------- | ---------------------------------------------------- |
+| `check`, cold cache, any manager | under 1 s                                            |
+| `check`, warm cache              | under 0.3 s                                          |
+| Startup (`--version`)            | under 25 ms over bare `node -e 0` on the same runner |
+| Cooldown overhead, cold          | under 0.5 s                                          |
 
 The startup budget was "under 60 ms" until 2026-10-26. Bare Node alone measured 30 ms on
 2026-10-22 and 39 to 41 ms on 2026-10-26 on the same machine, so an absolute number measured
@@ -226,36 +225,36 @@ the runner more than autd.
 
 ## Defects found during the analysis
 
-| Defect | Milestone | Issue |
-|---|---|---|
-| Exact pins rewritten to caret ranges (`decorator \|\| '^'` in files.ts) | M0 | #35 |
-| `wanted` discarded by all four parsers | M1 | #43 |
-| yarn v1 broken on Node 24: stderr warning treated as failure | M0 | #36 |
-| `yarn update` is not a yarn command | M0 | #37 |
-| Shell `exec` with 1 MB output cap; names interpolated into a shell string | M0 | #38 |
-| Interactive mode runs `outdated` twice | M0 | #39 |
-| `update --json` prints 48 logger lines before the JSON | M0 | #40 |
-| Coverage ignores every `index.ts`, 787 of 2500 lines incl. all managers | M0 | #41 |
-| CI never runs Biome and never runs on pull requests | M0 | #42 |
-| No test exercises real manager output; testRepos lack lockfiles | M2 | #44 |
-| Node 24 floor imposed only by npm-registry-fetch and ini | M3 | #46 |
-| Cooldown fetches full packuments, unbounded concurrency, no cache | M3 | #47 |
-| Config loaded at module import time in updateChecker, ignores cwd | M2 | #45 |
-| pnpm workspace rows that share a version get one owner's `wanted` | M3 | #95 |
+| Defect                                                                    | Milestone | Issue |
+| ------------------------------------------------------------------------- | --------- | ----- |
+| Exact pins rewritten to caret ranges (`decorator \|\| '^'` in files.ts)   | M0        | #35   |
+| `wanted` discarded by all four parsers                                    | M1        | #43   |
+| yarn v1 broken on Node 24: stderr warning treated as failure              | M0        | #36   |
+| `yarn update` is not a yarn command                                       | M0        | #37   |
+| Shell `exec` with 1 MB output cap; names interpolated into a shell string | M0        | #38   |
+| Interactive mode runs `outdated` twice                                    | M0        | #39   |
+| `update --json` prints 48 logger lines before the JSON                    | M0        | #40   |
+| Coverage ignores every `index.ts`, 787 of 2500 lines incl. all managers   | M0        | #41   |
+| CI never runs Biome and never runs on pull requests                       | M0        | #42   |
+| No test exercises real manager output; testRepos lack lockfiles           | M2        | #44   |
+| Node 24 floor imposed only by npm-registry-fetch and ini                  | M3        | #46   |
+| Cooldown fetches full packuments, unbounded concurrency, no cache         | M3        | #47   |
+| Config loaded at module import time in updateChecker, ignores cwd         | M2        | #45   |
+| pnpm workspace rows that share a version get one owner's `wanted`         | M3        | #95   |
 
 ## M3 issues
 
 Filed 2026-10-26, in pick-up order.
 
-| Gap or defect | Milestone | Issue |
-|---|---|---|
-| The benchmark the perf gates measure is not in the repository | M3 | #103 |
-| Node >=24 floor and the npm-registry-fetch / ini client (`node:https` replacement) | M3 | #46 |
-| Cooldown ignores scoped registries, `strict-ssl` and `cafile` (2.1.0 bug, fixed by #46) | M3 | #104 |
-| No registry reader of its own: `latest`, versions, deprecation, publish times | M3 | #105 |
-| `check` runs `<pm> outdated`: native discovery for npm, pnpm, yarn v1, bun | M3 | #106 |
-| Discovery without `node_modules`: installed versions from the lockfile (berry, npm) | M3 | #107 |
-| Registry lookups repeat on every run: cache under `ca.pixel-perfect.alwaysuptodate` | M3 | #108 |
-| Cooldown fetches full packuments, unbounded concurrency, no cache | M3 | #47 |
-| Startup loads the whole CLI: bundle to one file | M3 | #109 |
-| Perf budgets are not enforced in CI | M3 | #110 |
+| Gap or defect                                                                           | Milestone | Issue |
+| --------------------------------------------------------------------------------------- | --------- | ----- |
+| The benchmark the perf gates measure is not in the repository                           | M3        | #103  |
+| Node >=24 floor and the npm-registry-fetch / ini client (`node:https` replacement)      | M3        | #46   |
+| Cooldown ignores scoped registries, `strict-ssl` and `cafile` (2.1.0 bug, fixed by #46) | M3        | #104  |
+| No registry reader of its own: `latest`, versions, deprecation, publish times           | M3        | #105  |
+| `check` runs `<pm> outdated`: native discovery for npm, pnpm, yarn v1, bun              | M3        | #106  |
+| Discovery without `node_modules`: installed versions from the lockfile (berry, npm)     | M3        | #107  |
+| Registry lookups repeat on every run: cache under `ca.pixel-perfect.alwaysuptodate`     | M3        | #108  |
+| Cooldown fetches full packuments, unbounded concurrency, no cache                       | M3        | #47   |
+| Startup loads the whole CLI: bundle to one file                                         | M3        | #109  |
+| Perf budgets are not enforced in CI                                                     | M3        | #110  |

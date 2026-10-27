@@ -2,7 +2,7 @@ name: Security
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
 
 # Actions are pinned to the commit of a release (version in the comment), as in release.yml;
 # Dependabot proposes updates. Tool versions come from .tool-versions, as they do locally.

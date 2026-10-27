@@ -1,12 +1,15 @@
 # Utilities - Component Context
 
 ## Purpose
+
 Shared utilities for configuration management, update logic, registry/cooldown handling, logging, file operations, and package grouping.
 
 ## Current Status: Stable
+
 Core utilities fully implemented. Central barrel export via `index.ts`.
 
 ## Component-Specific Development Guidelines
+
 - All exports consolidated through `src/utils/index.ts` barrel file
 - `runProcess(file, args, { cwd })` is the only way to start a subprocess: `execFile` with no shell and `maxBuffer: Infinity`. On Windows, where npm/pnpm/yarn are `.cmd` shims Node only starts through cmd.exe, it runs `buildWindowsCommand()` through the shell, double-quoting arguments that contain cmd.exe operators (the windows-latest CI jobs cover it: the `.cmd` shim test in runProcess.test.ts, realSubprocess.test.ts through `npm.cmd`, and the integration matrix against real npm, pnpm, yarn and bun on Windows)
 - `runProcess` passes `env: process.env` explicitly; under Jest the sandbox env otherwise never reaches the child, so PATH-shim tests depend on it
@@ -14,6 +17,7 @@ Core utilities fully implemented. Central barrel export via `index.ts`.
 - Cooldown's network path (`releaseTimes`, npmrcLoader) never throws: a transient error is an empty time map. The cooldown gate then holds the target as `release date unknown` (#139), since the freshest releases are the ones a lagging mirror lacks. The reader (`lookup`) does not: it reports each failure per package as `{ ok: false, kind, reason }` and the consumer decides. Don't "fix" it to return an empty or partial result, which would turn an outage into "no versions"
 
 ## Major Subsystem Organization
+
 ```
 utils/
   index.ts            # Barrel: re-exports runProcess, config, cooldown, duration, logger, filterPackages, npmrcLoader, registry, updateChecker, files
@@ -51,6 +55,7 @@ utils/
 ## Architectural Patterns
 
 ### Configuration (`config.ts`)
+
 - Config file: `.always-up-to-date.json` in project root
 - `loadConfig(workingDir?)` reads JSON, merges with `DEFAULT_CONFIG`. Only `openProject` (`src/project.ts`) calls it for a command run; everything else takes the loaded config as a parameter
 - `saveJsonConfig(config, filePath)` writes formatted JSON; `autd init` writes `INITIAL_CONFIG` (`beyondRange`, `rules`, `cooldown`, `debug`, `silent`), never the deprecated fields
@@ -60,26 +65,30 @@ utils/
 - `cooldown` accepts: number (days), duration string (`'1 week'`, `'24h'`), or per-update-type object `{ patch, minor, major }` whose values are themselves numbers or duration strings
 
 ### Update Policy (`updateChecker.ts`)
+
 `updateChecker(info, policy)` is pure: it returns `{ target }` (where the package moves) or `{ reason }` (why it is held). `filterPackages` builds the policy per run with `policyFromConfig(config)`.
 1. Invalid semver: held (`invalid version …`)
 2. Rule `hold`: held. Rule `latest`: target `latest`, any step size
 3. Default: stay within the manifest range. Target is `wanted` (the highest version the range allows) when it is ahead of `current`; an exact pin has `wanted == current`, so it is held (`patch beyond the range`, etc.)
 4. `beyondRange` (`none` | `patch` | `minor` | `major`) lets a package move past its range to `latest` when the step `current → latest` is at most that size. It applies to exact pins too. Rule `followRange` opts a package out
+
 - `policyFromConfig()`: `beyondRange` if set, else the deprecated `allowMajorUpdates` → `major` / `allowMinorUpdates` → `minor` / `none`. `ruleFor(name)`: exact key in `rules`, then the longest matching `*` glob, then the deprecated lists (`updateAllowlist` → `latest`, `updateDenylist` → `hold`). `*` is the only wildcard
 - `stepLevel()` folds pre-release diffs into patch/minor/major
 
 ### Cooldown (`cooldown.ts` + `duration.ts`)
+
 - `cooldown.ts` is gate logic: normalize the user's config to `{ patch, minor, major }` days, decide if a release is too fresh given its update type and timestamp
 - `duration.ts` is the generic time/format layer: `parseDuration` accepts numbers, bare numeric strings, and `<n><unit>` (s/min/h/d/w/mo/y) — fails to 0 so callers can fail open
 - `evaluateCooldown` returns `{ gated, ageDays, requiredDays }` — gating is a soft signal, callers decide what to do
 - Cooldown gating judges the chosen `target` version, not `latest`, and only runs for packages with a target, so held packages never trigger network calls
 
 ### Registry / .npmrc (`npmrc.ts`, `npmrcLoader.ts`, `registryRequest.ts`, `registryClient.ts`, `registry.ts`)
+
 - `parseNpmrc(text, env, substitute?)` is ini 7's decode (quoting, `;`/`#` cuts, `key[]` arrays, parsing stops at the first `[section]`, `__proto__` skipped) plus a `Substitute` on keys and values, npm's by default (an unset `${VAR}` stays literal, `${VAR?}` is empty, `\${VAR}` is escaped); null leaves them as written
 - A manager's `.npmrc` view is a list of `NpmrcLayer`s, highest first (`{ kind: 'env' | 'file', values }`), which `mergeNpmrcLayers` merges per key: the first layer that sets a key wins, whatever its type, and `view.origin(key)` names that layer. `envLayer(env, rule)` reads variables by an `EnvRule` (`prefix`, `key(rest, name)` where undefined skips the variable, `substitute`; empty values skipped); `npmrcFileLayer(file, env, { substitute, omitReferences })` reads a file; `substitute: null` expands nothing, and `omitReferences` leaves out an entry whose key or value still holds `${…}`, so a lower layer decides. An `EnvRule`'s optional `rank(name, key)` picks among variables naming the same key (higher wins, later in `env` among equals). `managerRegistryConfig(adapter, dir, sources)` is the session's wiring: the merge of the adapter's layers, `registryConfigFrom`, then the `registryConfig?` hook. `NpmrcSources` (env, home, execPath, platform) is injectable for tests; a layer never throws, an unreadable file is empty
 - `npmNpmrcLayers(cwd, sources)` is npm's list: `npm_config_*` env (any case, `_` → `-`), project, user (`~/.npmrc`), global (`<prefix>/etc/npmrc`), builtin. The project file is the `.npmrc` of the npm project root: from a workspace member, the root's. `loadNpmrc` is its merge
 - `registryConfigFrom(npmrc, cwd, sources)` builds `RegistryConfig` (registry, `scopedRegistries`, `credentials` by `//host[:port]/path/` prefix, `ca`, `strictSSL`, `proxy`, `fetchRetries`, `fetchTimeout`, `maxSockets`). Unscoped `_authToken` and `always-auth` are ignored, as npm 9+ does
-- An unusable registry value (a URL that does not parse, a non-http(s) one, one holding `${…}` or, in its host, a `$`, an empty one; npm 11.19.1 fails on `https://${UNSET}/` with ENOTFOUND) is not skipped where the manager fails on it. `registryConfigFrom(view, cwd, sources, empty?)` (the `NpmrcView`, so each value is named by its layer; a layer's optional `labels` give the key as the source spells it: the variable, `registries."@acme"`) leaves it out of `registry` / `scopedRegistries` and records it in `RegistryConfig.unusable` (`registry`, `scopes`: `{ key, value, source, reason }`, the value shown by `describeUnusable`: `<scheme>://<host>/` with a path behind `pathMarker`, userinfo and query never shown; a value with no scheme and host is `(value not shown)` unless it is only `${NAME}` references). `unusableRouteFor(name, config)` gives the one a package is routed through (its scope's, else the default's, unless a usable scope route covers it); the session itself refuses such a package (`releaseTimes` returns `{}` with a debug line and sends nothing; `lookup` answers `invalid`), and `discoverFromRegistry` asks `session.unusableRoute(name)` first and throws a `discover` `StepError` (`<pm> can't use <key> \`<value>\` from <file>; fix or remove it`) instead of asking another registry. Only the winning value counts: a bad value a higher layer shadows is not an error. Verified 2026-10-27 (npm 11.19.1, pnpm 12.15.0, yarn 1.22.22, bun 1.4.4, each with `install`): all four fail on an unparseable URL, text, `ftp://…` and an unset `${VAR}` as the default or a scope route (a scope route only when a package of that scope is resolved), in `.npmrc`, the environment and the manager's own file (bunfig.toml, pnpm yaml, `.yarnrc`). The exception is pnpm, which skips a `${…}` in a project file (`.npmrc`, `pnpm-workspace.yaml`) and falls through, as autd does; a `${VAR}` that pnpm's global files expand to nothing is an empty value, which pnpm fails on. Empty values differ and are the adapter's `emptyRegistry`: npm fails on an empty default and skips an empty scope, pnpm fails on both, yarn and bun skip both. Not mirrored: yarn also fails the whole run on an unset `${VAR}` in a shadowed `.npmrc` registry line
+- An unusable registry value (a URL that does not parse, a non-http(s) one, one holding `${…}` or, in its host, a `$`, an empty one; npm 11.19.1 fails on `https://${UNSET}/` with ENOTFOUND) is not skipped where the manager fails on it. `registryConfigFrom(view, cwd, sources, empty?)` (the `NpmrcView`, so each value is named by its layer; a layer's optional `labels` give the key as the source spells it: the variable, `registries."@acme"`) leaves it out of `registry` / `scopedRegistries` and records it in `RegistryConfig.unusable` (`registry`, `scopes`: `{ key, value, source, reason }`, the value shown by `describeUnusable`: `<scheme>://<host>/` with a path behind `pathMarker`, userinfo and query never shown; a value with no scheme and host is `(value not shown)` unless it is only `${NAME}` references). `unusableRouteFor(name, config)` gives the one a package is routed through (its scope's, else the default's, unless a usable scope route covers it); the session itself refuses such a package (`releaseTimes` returns `{}` with a debug line and sends nothing; `lookup` answers `invalid`), and `discoverFromRegistry` asks `session.unusableRoute(name)` first and throws a `discover` `StepError` (`<pm> can't use <key> \`<value>\` from <file>; fix or remove it`) instead of asking another registry. Only the winning value counts: a bad value a higher layer shadows is not an error. Verified 2026-10-27 (npm 11.19.1, pnpm 12.15.0, yarn 1.22.22, bun 1.4.4, each with `install`): all four fail on an unparseable URL, text, `ftp://…`and an unset`${VAR}`as the default or a scope route (a scope route only when a package of that scope is resolved), in`.npmrc`, the environment and the manager's own file (bunfig.toml, pnpm yaml, `.yarnrc`). The exception is pnpm, which skips a `${…}` in a project file (`.npmrc`, `pnpm-workspace.yaml`) and falls through, as autd does; a `${VAR}`that pnpm's global files expand to nothing is an empty value, which pnpm fails on. Empty values differ and are the adapter's`emptyRegistry`: npm fails on an empty default and skips an empty scope, pnpm fails on both, yarn and bun skip both. Not mirrored: yarn also fails the whole run on an unset `${VAR}`in a shadowed`.npmrc` registry line
 - `session.releaseTimes(name)` (from `createRegistrySession(cwd)`) picks the registry by scope, GETs the full packument (corgi format strips `time`) through `registryClient`, and maps `time` to `Record<version, ISO>`. The run's lookups fill a version the packument lacks (deps.dev's `publishedAt`; the packument's own time wins where both have one). Any failure → empty map (cached) and a debug line; the cooldown gate holds a target with no known time (#139)
 - The client sends credentials only to the longest `.npmrc` prefix that matches the request URL, and recomputes them on each redirect. Retries cover 408, 420, 429, 5xx, ECONNRESET, ECONNREFUSED and ETIMEDOUT with a short capped backoff; a `Retry-After` over 1 s stops retrying
 - `registry.ts` imports `registryClient` with `await import()` on the first request, so nothing heavy loads at startup; keep top-level imports there to types, `registryRequest`, `npmrcLoader` and `logger`
@@ -119,7 +128,7 @@ utils/
     3. the user file: `npm_config_userconfig` (any case) resolved against cwd, with no `~` expansion and a missing file meaning no user file; else `~/.npmrc`
     4. `${PREFIX, else the running node's prefix}/etc/npmrc`
     5. each parent directory's `.npmrc`, nearest first, not the filesystem root
-    - A parent's `.npmrc` beats a project `.yarnrc` (the `.yarnrc` is only consulted when no `.npmrc` sets the key). `${VAR}` expands in file *values* only, never in keys (`//${HOST}/:_authToken` never matches a host; b1). yarn's rule: the name is everything up to `}`, so `${TOKEN?}` names a variable `TOKEN?` and fails the run whether `TOKEN` is set or not; a reference behind an odd run of backslashes is kept as written, backslash included (`\${X}` stays `\${X}`, c1, c4). autd keeps an unresolvable reference literal, and a credential still holding `${…}` is dropped, so `${TOKEN?}` sends no credential (c2, c3). yarn aborts on an unset variable in any `.npmrc` it reads, autd keeps the literal and a credential still holding `${…}` is dropped
+    - A parent's `.npmrc` beats a project `.yarnrc` (the `.yarnrc` is only consulted when no `.npmrc` sets the key). `${VAR}` expands in file _values_ only, never in keys (`//${HOST}/:_authToken` never matches a host; b1). yarn's rule: the name is everything up to `}`, so `${TOKEN?}` names a variable `TOKEN?` and fails the run whether `TOKEN` is set or not; a reference behind an odd run of backslashes is kept as written, backslash included (`\${X}` stays `\${X}`, c1, c4). autd keeps an unresolvable reference literal, and a credential still holding `${…}` is dropped, so `${TOKEN?}` sends no credential (c2, c3). yarn aborts on an unset variable in any `.npmrc` it reads, autd keeps the literal and a credential still holding `${…}` is dropped
     - Limitation: Homebrew's yarn wrapper forces `PREFIX=/opt/homebrew`, so Homebrew yarn reads `/opt/homebrew/etc/npmrc` whatever `PREFIX` is; autd reads `$PREFIX/etc/npmrc` or the node prefix's, so they differ unless autd runs with the same `PREFIX`. Corepack and `npm i -g` yarn honor `PREFIX`. `DESTDIR` (yarn joins it to the default prefix on Unix) is not read, and a different Node between yarn and autd gives a different default prefix
     - `berry` or v1 is decided from `cwd`'s own package.json (`isYarnBerry`), so a berry workspace member is taken for v1 (#123); the choice is made once per load, in `npmrcLayers`, and `registryConfig` follows it
   - yarn v1 `.yarnrc` (`managers/yarn/yarnrc.ts`; berry keeps the `.npmrc` view; verified on yarn 1.22.22, 2026-10-26, with `yarn install` / `yarn upgrade` and `yarn config get`): default registry `--upgrade.registry` in a `.yarnrc` (`yarn upgrade` only; other commands' `--<cmd>.registry` are ignored) > `--registry` > `npm_config_registry` > `YARN_REGISTRY` > `.npmrc` `registry` > `.yarnrc` `registry`; a scope `npm_config_@scope:registry` / `.npmrc` > `.yarnrc` `"@scope:registry"`, and any scope beats every default, the flags included. Among `.yarnrc` files an ordinary key is read from the cwd (a workspace member when run from one), then `~/.yarnrc`, then the parent directories nearest first, not the filesystem root; the flags take `~/.yarnrc` first, then cwd and parents, the root's file included. Variables are matched like `npm_config_*`: any case, empty skipped, last wins. A `.yarnrc` carries no credentials (`"//host/:_authToken"` sends nothing), so those stay with `.npmrc`. Syntax is yarn's lockfile grammar: keys with `@` or `:` and URL values must be double-quoted; `#` comments, CRLF and a BOM are fine; an even-indented line ends the file for yarn (keys before it count); an odd indent, a tab outside a comment, single quotes, an unquoted URL, or a YAML-style file (`registry: https://…`) make yarn fall back to YAML, and autd reads the file as empty
@@ -131,6 +140,7 @@ utils/
   - bunfig.toml forms above
 
 ### Manifest Specs (`files.ts`)
+
 - Every writer builds the new spec with `nextVersionSpec()`: a single comparator (`^1.2.3`, `~1.2.3`, `1.2.3`) keeps its decorator, so an exact pin stays exact; an `npm:` alias keeps the alias and rewrites the spec inside it; a spec that can't keep its shape (`1.x`, `*`, `>=1 <2`, `^1 || ^2`) is written in the project's save style; git, file and URL specs are left alone
 - Each adapter's `saveStyle(cwd)` reads that style where its manager's current version keeps it: npm `.npmrc` `save-exact` / `save-prefix`; pnpm `pnpm-workspace.yaml` `saveExact` / `savePrefix` (not `.npmrc`); yarn berry `.yarnrc.yml` `defaultSemverRangePrefix` (`''` = exact); bun `bunfig.toml` `[install] exact` or `.npmrc` `save-exact` (no prefix setting). Default `^`. Managers read it only when they write a beyond-range spec
 - `catalog:` and `workspace:` references are never rewritten
@@ -140,9 +150,11 @@ utils/
 - `buildUpdateDescriptors()` applies the same rule to produce `name@spec` for managers that write the manifest themselves (yarn), reading `dependencies`, then `devDependencies`, then `optionalDependencies`
 
 ### Report (`report.ts`, `logger.report`)
+
 `outcomeOf(result)` files each `UpdateResult` by its `reason` prefix (`not applied by`, `cooldown:`, `… beyond the range`, `held by rule` / `(rule followRange)`, `controlled by`, `peer conflict:`, `held with`; `not targeted` rows are left out). `groupResults` merges rows that share name, versions and note across manifests, sorts by name then root first, and orders sections update → left in place → cooldown → past the range → rule → override → peer → held with → other. A new hold reason needs its prefix here, or it lands under "Not updated".
 
 ### Package Filtering (`filterPackages.ts`)
+
 - Async. Signature: `filterPackages(outdated, { config, registry, targetPackages?, cwd?, now?, overrides? })`; `registry` is `Pick<RegistrySession, 'releaseTimes'>`, the project's session; `config` is the project's loaded config, never loaded inside
 - Runs `updateChecker` on every outdated package with the policy for `cwd`
 - When cooldown is enabled (`cooldown > 0` for any update type), fetches release times from the registry for packages with a target and applies the gate
@@ -154,6 +166,7 @@ utils/
 - Used by the pipeline's `plan` (update, dry-run, and interactive mode)
 
 ## Integration Points
+
 - `src/commandRunner.ts` uses `runProcess` and `logger`
 - `src/pipeline.ts` uses `filterPackages`, `logger`, `groupAndSortPackages`, `computeReleaseAges`; adapters use `files.ts`, `overrides.ts`, `saveStyle.ts`, `npmrcLoader.ts`
 - `npmrcLoader.ts` uses `@/managers/workspaces` to find the npm project root (no cycle: `workspaces.ts` imports only the logger and `StepError`)
