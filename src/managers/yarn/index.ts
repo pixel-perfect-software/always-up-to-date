@@ -38,6 +38,9 @@ const MEMBER_FIELD_FLAGS: [DescriptorField, string[]][] = [
   ['optionalDependencies', ['-O']],
 ]
 
+/** Whether the last `npmrcLayers` load for a directory took berry's path. */
+const berryLoads = new Map<string, boolean>()
+
 const yarn: ManagerAdapter = {
   name: 'yarn',
   lockfile: 'yarn.lock',
@@ -48,14 +51,18 @@ const yarn: ManagerAdapter = {
   }),
 
   // berry reads .yarnrc.yml, which is not read yet (#107), and keeps npm's
-  // .npmrc layers; v1 has its own layers and reads .yarnrc.
-  npmrcLayers: (cwd, sources) =>
-    isYarnBerry(cwd)
-      ? npmNpmrcLayers(cwd, sources)
-      : yarnNpmrcLayers(cwd, sources),
+  // .npmrc layers; v1 has its own layers and reads .yarnrc. `isYarnBerry`
+  // looks at `cwd`'s own package.json, so a berry workspace member is taken
+  // for v1 (#123). The choice is made once per load, in `npmrcLayers`, and
+  // `registryConfig` follows it.
+  npmrcLayers: (cwd, sources) => {
+    const berry = isYarnBerry(cwd)
+    berryLoads.set(cwd, berry)
+    return berry ? npmNpmrcLayers(cwd, sources) : yarnNpmrcLayers(cwd, sources)
+  },
 
   registryConfig: (cwd, fromNpmrc, sources, npmrc) =>
-    isYarnBerry(cwd)
+    (berryLoads.get(cwd) ?? isYarnBerry(cwd))
       ? fromNpmrc
       : yarnRegistryConfig(cwd, fromNpmrc, sources, npmrc),
 

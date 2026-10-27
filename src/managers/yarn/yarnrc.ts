@@ -1,6 +1,7 @@
 import path from 'path'
 
 import type { RegistryConfig } from '@/types'
+import { ancestorFiles } from '@/utils/ancestors'
 import {
   isRegistryUrl,
   type NpmrcSources,
@@ -133,18 +134,6 @@ export const yarnrcRoutes = (text: string): YarnrcRoutes => {
     flagRegistry: url('--registry'),
     upgradeRegistry: url('--upgrade.registry'),
     scopes,
-  }
-}
-
-/** The file `name` of `cwd` and of each parent, nearest first, the filesystem root last. */
-export const ancestorFiles = (cwd: string, name: string): string[] => {
-  const files: string[] = []
-  let dir = path.resolve(cwd)
-  for (;;) {
-    files.push(path.join(dir, name))
-    const parent = path.dirname(dir)
-    if (parent === dir) return files
-    dir = parent
   }
 }
 

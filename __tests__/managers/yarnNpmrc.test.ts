@@ -276,6 +276,79 @@ describe('yarn v1 .npmrc layers', () => {
     })
   })
 
+  describe('empty environment values (a1-a2c, 2026-10-27)', () => {
+    it('a1: an empty NPM_CONFIG_REGISTRY hides the .npmrc registry', () => {
+      write(path.join(root(), '.npmrc'), `registry=${B}\n`)
+      for (const name of ['NPM_CONFIG_REGISTRY', 'npm_config_registry']) {
+        const config = configFor(root(), { [name]: '' })
+        expect(registryFor('left-pad', config)).not.toContain(BH)
+      }
+    })
+
+    it('a1c: ... and the default falls to the .yarnrc registry', () => {
+      write(path.join(root(), '.npmrc'), `registry=${B}\n`)
+      write(path.join(root(), '.yarnrc'), `registry "${A}"\n`)
+      const config = configFor(root(), { NPM_CONFIG_REGISTRY: '' })
+      expect(registryFor('left-pad', config)).toBe(A)
+    })
+
+    it('a2: an empty scope variable unroutes the .npmrc scope', () => {
+      write(path.join(root(), '.npmrc'), `@acme:registry=${B}\n`)
+      const env = { 'npm_config_@acme:registry': '' }
+      expect(scoped(configFor(root(), env)).server).toBe(NPMJS)
+    })
+
+    it('a2c: ... leaving a .yarnrc scope to route it', () => {
+      write(path.join(root(), '.npmrc'), `@acme:registry=${B}\n`)
+      write(path.join(root(), '.yarnrc'), `"@acme:registry" "${A}"\n`)
+      const env = { 'npm_config_@acme:registry': '' }
+      expect(scoped(configFor(root(), env)).server).toBe(AH)
+    })
+  })
+
+  describe('variables in files (b1, c1-c4)', () => {
+    const tokenKey = `//${BH}/:_authToken`
+    const tokenValue = (env: NodeJS.ProcessEnv = {}) =>
+      mergeNpmrcLayers(yarnNpmrcLayers(root(), sourcesFor(env))).values[
+        tokenKey
+      ]
+
+    it('b1: a variable in a key is not expanded', () => {
+      write(
+        path.join(root(), '.npmrc'),
+        '@acme:registry=' + B + '\n//${REG_HOST}/:_authToken=T\n',
+      )
+      expect(scoped(configFor(root(), { REG_HOST: BH }))).toEqual({
+        server: BH,
+        auth: undefined,
+      })
+    })
+
+    it('c1: an escaped reference is kept as written, backslash included', () => {
+      write(path.join(root(), '.npmrc'), `${tokenKey}=\\\${NOT_A_VAR}\n`)
+      expect(tokenValue()).toBe('\\${NOT_A_VAR}')
+      expect(tokenValue({ NOT_A_VAR: 'x' })).toBe('\\${NOT_A_VAR}')
+    })
+
+    it('c4: an escaped backslash leaves one, which then escapes the reference', () => {
+      write(path.join(root(), '.npmrc'), `${tokenKey}=\\\\\${TOKEN}\n`)
+      expect(tokenValue({ TOKEN: 'ENVTOK' })).toBe('\\${TOKEN}')
+    })
+
+    it('c2, c3: ${TOKEN?} names a variable called "TOKEN?", set or not: yarn throws, no credential is sent', () => {
+      write(
+        path.join(root(), '.npmrc'),
+        `@acme:registry=${B}\n${tokenKey}=\${TOKEN?}\n`,
+      )
+      for (const env of [{ TOKEN: 'ENVTOK' }, {}]) {
+        expect(scoped(configFor(root(), env))).toEqual({
+          server: BH,
+          auth: undefined,
+        })
+      }
+    })
+  })
+
   describe('the filesystem root', () => {
     it('does not read /.npmrc', () => {
       // The project's own root: on Windows the temp dir and the checkout can
@@ -301,6 +374,20 @@ describe('yarn v1 .npmrc layers', () => {
   })
 
   describe('berry', () => {
+    it('decides berry or v1 once per load: registryConfig follows npmrcLayers', () => {
+      const sources = sourcesFor()
+      const route = (cwd: string) => {
+        const layers = yarn.npmrcLayers?.(cwd, sources) ?? []
+        const view = mergeNpmrcLayers(layers)
+        const base = registryConfigFrom(view.values, cwd, sources)
+        return yarn.registryConfig?.(cwd, base, sources, view)?.registry
+      }
+      write(path.join(root(), '.yarnrc'), `registry "${A}"\n`)
+      expect(route(root())).toBe(A)
+      write(path.join(root(), '.yarnrc.yml'), 'nodeLinker: node-modules\n')
+      expect(route(root())).toBe('https://registry.npmjs.org/')
+    })
+
     it('keeps npm layers', () => {
       write(path.join(root(), '.yarnrc.yml'), 'nodeLinker: node-modules\n')
       const sources = sourcesFor()
