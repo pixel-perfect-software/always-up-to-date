@@ -510,7 +510,7 @@ describe('filterPackages', () => {
       expect(results[0].reason).toBe('major beyond the range')
     })
 
-    it('fails open when registry returns no time for the version', async () => {
+    it('holds a version the registry gives no time for (#139)', async () => {
       const filter = loadFilterWithConfig(
         { cooldown: 7 },
         { releaseTimes: { foo: {} } },
@@ -523,7 +523,11 @@ describe('filterPackages', () => {
         { now: NOW },
       )
 
-      expect(results[0].updated).toBe(true)
+      expect(results[0]).toMatchObject({
+        updated: false,
+        target: undefined,
+        reason: 'cooldown: release date unknown, requires 7d',
+      })
     })
   })
 

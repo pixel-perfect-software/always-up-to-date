@@ -58,6 +58,8 @@ export interface CooldownEvaluation {
   gated: boolean
   ageDays: number | undefined
   requiredDays: number
+  /** Gated because the version's publish time is unknown. */
+  unknown?: true
 }
 
 export const evaluateCooldown = (
@@ -70,12 +72,11 @@ export const evaluateCooldown = (
   if (requiredDays <= 0) {
     return { gated: false, ageDays: undefined, requiredDays: 0 }
   }
-  if (!releaseTimeIso) {
-    return { gated: false, ageDays: undefined, requiredDays }
-  }
-  const releasedAt = Date.parse(releaseTimeIso)
+  // A version with no known publish time is held: the freshest releases are
+  // the ones a lagging mirror lacks (#139).
+  const releasedAt = releaseTimeIso ? Date.parse(releaseTimeIso) : Number.NaN
   if (Number.isNaN(releasedAt)) {
-    return { gated: false, ageDays: undefined, requiredDays }
+    return { gated: true, ageDays: undefined, requiredDays, unknown: true }
   }
   const ageDays = (now - releasedAt) / MS_PER_DAY
   return {
