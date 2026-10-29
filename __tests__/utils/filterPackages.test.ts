@@ -552,7 +552,7 @@ describe('filterPackages', () => {
             latest: '4.0.103',
           },
         ]),
-        { now: NOW },
+        { now: NOW, declaredRange: () => '^4.0.101' },
       )
 
       expect(results[0]).toMatchObject({
@@ -592,7 +592,7 @@ describe('filterPackages', () => {
         makeOutdated([
           { name: 'foo', current: '1.0.0', wanted: '1.0.4', latest: '1.0.4' },
         ]),
-        { now: NOW },
+        { now: NOW, declaredRange: () => '^1.0.0' },
       )
 
       expect(result).toMatchObject({ updated: true, target: '1.0.1' })
@@ -616,7 +616,7 @@ describe('filterPackages', () => {
         makeOutdated([
           { name: 'foo', current: '1.0.0', wanted: '1.2.0', latest: '1.2.0' },
         ]),
-        { now: NOW },
+        { now: NOW, declaredRange: () => '^1.0.0' },
       )
 
       expect(result).toMatchObject({
@@ -648,6 +648,88 @@ describe('filterPackages', () => {
       })
       expect(filter.split(results).pinned).toEqual([
         { path: '.', name: 'foo', version: '2.0.0', beyondRange: true },
+      ])
+    })
+
+    it('falls back only to a version the declared range allows, below wanted (#151)', async () => {
+      // `^0.7.1 || ^2.1.3` skips 1.x, 2.0.x and 2.1.0-2.1.2. Pinned to 2.1.2
+      // and given its range back, the manager would install 2.1.3.
+      const filter = loadFilterWithConfig(
+        { cooldown: 2200 },
+        {
+          releaseTimes: {
+            ms: {
+              '0.7.2': daysAgo(3656),
+              '0.7.3': daysAgo(3521),
+              '1.0.0': daysAgo(3510),
+              '2.0.0': daysAgo(3453),
+              '2.1.2': daysAgo(2702),
+              '2.1.3': daysAgo(2151),
+            },
+          },
+        },
+      )
+
+      const results = await filter(
+        makeOutdated([
+          { name: 'ms', current: '0.7.1', wanted: '2.1.3', latest: '2.1.3' },
+        ]),
+        { now: NOW, declaredRange: () => '^0.7.1 || ^2.1.3' },
+      )
+
+      expect(results[0]).toMatchObject({
+        updated: true,
+        target: '0.7.3',
+        updateType: 'patch',
+        reason: 'cooldown: 2.1.3 released 2151d ago, requires 2200d',
+      })
+    })
+
+    it('holds an in-range target when the declared range is unknown (#151)', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 2 },
+        {
+          releaseTimes: {
+            foo: { '1.0.1': daysAgo(10), '1.0.2': daysAgo(1) },
+          },
+        },
+      )
+
+      const [result] = await filter(
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.2', latest: '1.0.2' },
+        ]),
+        { now: NOW, declaredRange: () => undefined },
+      )
+
+      expect(result).toMatchObject({
+        updated: false,
+        target: undefined,
+        reason: 'cooldown: released 1d ago, requires 2d',
+      })
+    })
+
+    it('asks for the range of the row that falls back, by its manifest key and workspace (#151)', async () => {
+      const declaredRange = jest.fn(() => '^1.0.0')
+      const filter = loadFilterWithConfig(
+        { cooldown: 2 },
+        {
+          releaseTimes: {
+            foo: { '1.0.1': daysAgo(10), '1.0.2': daysAgo(1) },
+          },
+        },
+      )
+
+      await filter(
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.2', latest: '1.0.2' },
+          { name: 'bar', current: '1.0.0', wanted: '1.0.0', latest: '1.0.0' },
+        ]),
+        { now: NOW, declaredRange },
+      )
+
+      expect(declaredRange.mock.calls).toEqual([
+        [{ name: 'foo', workspace: undefined }],
       ])
     })
 
@@ -851,7 +933,11 @@ describe('filterPackages', () => {
         },
       )
 
-      const results = await filter(together(), { now: NOW })
+      const results = await filter(together(), {
+        now: NOW,
+        declaredRange: ({ workspace }) =>
+          workspace === '.' ? '~1.10.0' : '^1.0.0',
+      })
 
       expect(results.map((r) => [r.updated, r.target])).toEqual([
         [true, '1.10.8'],

@@ -31,6 +31,15 @@ interface FilterPackagesOptions {
   now?: number
   /** Packages pinned by an override the manager enforces; without it no package is held for one. */
   overrides?: Record<string, ControllingOverride>
+  /**
+   * The range a row's manifest declares for it, by manifest key; asked only
+   * for a target the cooldown holds. Without it, a fallback never lands below
+   * `wanted` (#151).
+   */
+  declaredRange?: (row: {
+    name: string
+    workspace?: string
+  }) => string | undefined
 }
 
 /**
@@ -128,12 +137,16 @@ const holdTogether = (results: UpdateResult[]): UpdateResult[] => {
  * The newest version between `current` and a target the cooldown held that
  * is past cooldown for its own step and not deprecated (#147), so a package
  * that publishes more often than the cooldown still moves. It is below the
- * target, so the policy allows it: a step no larger, and for an in-range
- * target, inside the range (between `current` and `wanted`). A pre-release
- * only when the target is one.
+ * target, so the policy allows a step no larger. Below `wanted` it must also
+ * satisfy `range`, the one the manifest declares: `applyPinned` puts that
+ * range back after the pin, and the manager keeps the version only if the
+ * range allows it, which a range with a gap (`^1 || ^3`) need not (#151).
+ * With no range known, nothing below `wanted` qualifies. A pre-release only
+ * when the target is one.
  */
 const cooledOffVersion = (
-  { current, target }: UpdateResult,
+  { current, wanted, target }: UpdateResult,
+  range: string | undefined,
   times: Record<string, string>,
   deprecated: Set<string>,
   cooldown: CooldownConfig | undefined,
@@ -150,7 +163,11 @@ const cooledOffVersion = (
         semver.gt(version, current) &&
         semver.lt(version, target) &&
         (preRelease || semver.prerelease(version) === null) &&
-        !deprecated.has(version),
+        !deprecated.has(version) &&
+        // At `wanted` the manager installs it by name; past it, the spec is
+        // rewritten to it.
+        ((semver.valid(wanted) !== null && semver.gte(version, wanted)) ||
+          (range !== undefined && semver.satisfies(version, range))),
     )
     .sort(semver.rcompare)
   for (const version of candidates) {
@@ -197,6 +214,7 @@ const filterPackages = async (
     registry,
     now,
     overrides: controlled = {},
+    declaredRange,
   } = options
   const policy = policyFromConfig(config)
   const cooldownActive = isCooldownEnabled(config.cooldown)
@@ -303,6 +321,7 @@ const filterPackages = async (
             )} ago, requires ${evaluation.requiredDays}d`
         const fallback = cooledOffVersion(
           result,
+          declaredRange?.({ name: result.name, workspace: result.workspace }),
           releaseTimes,
           await deprecatedVersions(registry, result.name),
           config.cooldown,
@@ -333,6 +352,24 @@ const filterPackages = async (
 }
 
 /**
+ * Packages with a cooldown fallback (#147): a moving row whose target is
+ * neither `wanted` nor `latest`. `splitUpdates` pins every moving row of
+ * them, and `checkApplied` wants each installed at exactly its target.
+ */
+export const pinnedPackages = (results: UpdateResult[]): Set<string> =>
+  new Set(
+    results
+      .filter(
+        (r) =>
+          r.updated &&
+          r.target &&
+          r.target !== r.wanted &&
+          r.target !== r.latest,
+      )
+      .map((r) => r.name),
+  )
+
+/**
  * Splits the updates the policy chose. `withinRange` packages go to the
  * manager by name, which installs the highest version the range allows.
  * `beyondRange` maps each package moving past its range to its new version,
@@ -359,17 +396,7 @@ export const splitUpdates = (
   const byManifest = new Map<string, ManifestPlan>()
   const pinned: PinnedRow[] = []
 
-  const pinnedNames = new Set(
-    results
-      .filter(
-        (r) =>
-          r.updated &&
-          r.target &&
-          r.target !== r.wanted &&
-          r.target !== r.latest,
-      )
-      .map((r) => r.name),
-  )
+  const pinnedNames = pinnedPackages(results)
 
   for (const { name, workspace = '.', updated, target, wanted } of results) {
     if (!updated || !target) continue

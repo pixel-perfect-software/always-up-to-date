@@ -6,6 +6,7 @@ import type { Project } from '@/project'
 import type { PipelineStep } from '@/stepError'
 import type { PackageInfo, UpdateResult } from '@/types'
 import { filterPackages, logger, splitUpdates } from '@/utils'
+import { type Catalogs, declaredRange } from '@/utils/dependencySpecs'
 import { checkApplied, readInstalledVersions } from '@/utils/installed'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 
@@ -101,14 +102,21 @@ export const plan = (
   { adapter, cwd, config, registry }: Project,
   outdated: Record<string, PackageInfo>,
   targetPackages?: string[],
-): Promise<UpdateResult[]> =>
-  filterPackages(outdated, {
+): Promise<UpdateResult[]> => {
+  // Read only when the cooldown holds a target, once.
+  let catalogs: Catalogs | undefined
+  return filterPackages(outdated, {
     config,
     targetPackages,
     cwd,
     registry,
     overrides: adapter.overrides(cwd),
+    declaredRange: ({ name, workspace = '.' }) => {
+      catalogs ??= adapter.readWorkspace(cwd).catalogs
+      return declaredRange(cwd, workspace, name, catalogs)
+    },
   })
+}
 
 /**
  * discover → plan → apply → report. `discovered` is a `check` result the

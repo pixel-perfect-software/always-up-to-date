@@ -3,6 +3,7 @@ import path from 'path'
 import semver from 'semver'
 import type { UpdateResult } from '@/types'
 import { DEPENDENCY_FIELDS } from './dependencySpecs'
+import { pinnedPackages } from './filterPackages'
 
 const readJson = (file: string): Record<string, unknown> | undefined => {
   try {
@@ -127,22 +128,27 @@ export const readInstalledVersions = (
  * owns apply and can leave a package in place while exiting 0 (`npm update
  * ms` keeps a hoisted ms that another dependency pins exactly), so a row
  * whose installed version is below its target is no longer `updated`, and
- * its reason says what is installed. A row with no installed version to
- * check keeps what the plan said.
+ * its reason says what is installed. A package with a cooldown fallback
+ * must be installed at exactly its target: a newer version is one the
+ * cooldown held (#151). A row with no installed version to check keeps what
+ * the plan said.
  */
 export const checkApplied = (
   results: UpdateResult[],
   installed: Record<string, string>,
   manager: string,
-): UpdateResult[] =>
-  results.map((result) => {
+): UpdateResult[] => {
+  const pinned = pinnedPackages(results)
+  return results.map((result) => {
     const version = installed[rowKey(result)]
     if (!result.updated || !result.target || version === undefined) {
       return result
     }
-    if (!semver.valid(version) || semver.gte(version, result.target)) {
-      return result
-    }
+    if (!semver.valid(version)) return result
+    const applied = pinned.has(result.name)
+      ? semver.eq(version, result.target)
+      : semver.gte(version, result.target)
+    if (applied) return result
     return {
       ...result,
       target: undefined,
@@ -150,3 +156,4 @@ export const checkApplied = (
       reason: `not applied by ${manager} (installed ${version})`,
     }
   })
+}

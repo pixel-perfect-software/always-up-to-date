@@ -70,7 +70,7 @@ __tests__/
   project.test.ts           # openProject: config loaded once, logger configured before detection
   discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95
   projectRegistry.test.ts   # Real openProject on temp workspaces: a pnpm or bun member reads the workspace root's registry files; a pnpm member with its own yaml is its own root; a yarn v1 .yarnrc routes the default and a scope (#120) and a berry project's is ignored
-  pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows
+  pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows; a cooldown fallback within the range package.json declares (#151)
   singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON (registry captures as of the capture date plus a written node_modules), identical for all four managers; reviewed once for #106: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   commands/
@@ -112,7 +112,7 @@ __tests__/
     cooldown.test.ts        # Normalize/evaluate cooldown gate
     duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests; readPnpmCatalogs / readBunCatalogs and their agreement with the pnpm writer
-    filterPackages.test.ts  # Package filtering, targeting, cooldown integration, cooldown fallbacks and pinned rows (#147)
+    filterPackages.test.ts  # Package filtering, targeting, cooldown integration, cooldown fallbacks and pinned rows (#147), a fallback only within the declared range (#151)
     logger.test.ts          # Logger output, configure(), quiet and JSON output modes; report(): every row once under its outcome, merged manifests, summary line (#138)
     npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
     npmrcLayers.test.ts     # mergeNpmrcLayers (per key, origin), envLayer rules, npmrcFileLayer (substitute null leaves out ${…}), npmNpmrcLayers order and merge
@@ -130,9 +130,9 @@ __tests__/
     peers.test.ts           # Installed peer ranges from hoisted node_modules and the pnpm store; an orphan `.pnpm/lock.yaml` no longer lists is skipped (#146)
     saveStyle.test.ts       # Where each manager keeps save-exact / save-prefix
     workspaceRows.test.ts   # foldWorkspaceEntries ordering and top-level choice
-    installed.test.ts       # Installed root-dependency versions (hoisted, scoped, alias, pnpm symlink); readInstalledPackages linked detection (junction to a member, pnpm store link, link outside the project); checkApplied
+    installed.test.ts       # Installed root-dependency versions (hoisted, scoped, alias, pnpm symlink); readInstalledPackages linked detection (junction to a member, pnpm store link, link outside the project); checkApplied, a cooldown fallback installed exactly (#151)
     wanted.test.ts          # wantedVersion on the yarn and pnpm captures, each on deps.dev and on the packument
-    dependencySpecs.test.ts # classifySpec table; readDeclaredDependencies on temp dirs (field order, peers, catalogs, members, unreadable manifest)
+    dependencySpecs.test.ts # classifySpec table; readDeclaredDependencies on temp dirs (field order, peers, catalogs, members, unreadable manifest); declaredRange (#151)
     aliasSpec.test.ts       # parseAlias / parseBareAlias (`npm:` specs) and isRecord
 ```
 

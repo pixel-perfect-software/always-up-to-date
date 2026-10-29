@@ -200,6 +200,39 @@ describe('checkApplied', () => {
     expect(checkApplied(rows, { ms: '2.2.0' }, 'npm')).toEqual(rows)
   })
 
+  it('turns a cooldown fallback installed above its version into not applied (#151)', () => {
+    // 2.1.2 is a fallback (neither wanted nor latest): 2.1.3 is the version
+    // the cooldown held.
+    const fallback = row({ current: '0.7.1', target: '2.1.2' })
+    expect(checkApplied([fallback], { ms: '2.1.3' }, 'npm')).toEqual([
+      row({
+        current: '0.7.1',
+        target: undefined,
+        updated: false,
+        reason: 'not applied by npm (installed 2.1.3)',
+      }),
+    ])
+  })
+
+  it('holds every row of a package with a fallback to its exact version (#151)', () => {
+    // The root's target is its own wanted, but applyPinned pins it with the
+    // member's fallback, so it too must be installed exactly.
+    const rows = [
+      row({ workspace: '.', wanted: '2.1.2', target: '2.1.2' }),
+      row({ workspace: 'packages/a', target: '2.1.2' }),
+    ]
+    expect(
+      checkApplied(
+        rows,
+        { '.:ms': '2.1.3', 'packages/a:ms': '2.1.2' },
+        'npm',
+      ).map((r) => [r.updated, r.reason]),
+    ).toEqual([
+      [false, 'not applied by npm (installed 2.1.3)'],
+      [true, undefined],
+    ])
+  })
+
   it('keeps a row with no installed version to check', () => {
     const rows = [row()]
     expect(checkApplied(rows, {}, 'npm')).toEqual(rows)

@@ -7,6 +7,7 @@ import {
   classifySpec,
   DEPENDENCY_FIELDS,
   DISCOVERED_FIELDS,
+  declaredRange,
   readDeclaredDependencies,
 } from '@/utils/dependencySpecs'
 import logger from '@/utils/logger'
@@ -282,6 +283,68 @@ describe('readDeclaredDependencies', () => {
     expect(() =>
       readDeclaredDependencies(cwd, { manifests: root, catalogs: {} }),
     ).toThrow(StepError)
+  })
+})
+
+describe('declaredRange', () => {
+  let cwd: string
+
+  const write = (file: string, content: object) => {
+    fs.mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true })
+    fs.writeFileSync(path.join(cwd, file), JSON.stringify(content))
+  }
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-range-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('reads the range as discovery does: first field, catalog, alias (#151)', () => {
+    write('package.json', {
+      dependencies: {
+        ms: '^0.7.1 || ^2.1.3',
+        react: 'catalog:',
+        dj: 'npm:dayjs@^1.11.9',
+      },
+      devDependencies: { ms: '2.0.0', eslint: 'catalog:tools' },
+      peerDependencies: { semver: '^7.0.0' },
+    })
+    const range = (key: string) => declaredRange(cwd, '.', key, catalogs)
+
+    expect(range('ms')).toBe('^0.7.1 || ^2.1.3')
+    expect(range('react')).toBe('^18.0.0')
+    expect(range('eslint')).toBe('~9.1.0')
+    expect(range('dj')).toBe('^1.11.9')
+    // Discovery doesn't read a peer-only key.
+    expect(range('semver')).toBeUndefined()
+    expect(range('express')).toBeUndefined()
+  })
+
+  it("reads a member's own manifest", () => {
+    write('package.json', { dependencies: { ms: '~2.1.1' } })
+    write('packages/a/package.json', { dependencies: { ms: '2.1.2' } })
+
+    expect(declaredRange(cwd, 'packages/a', 'ms', {})).toBe('2.1.2')
+  })
+
+  it('has no range for the latest tag or a spec discovery skips', () => {
+    write('package.json', {
+      dependencies: {
+        typescript: 'catalog:tools',
+        left: 'npm:left-pad',
+        local: 'file:../local',
+        next: 'canary',
+      },
+    })
+    const range = (key: string) => declaredRange(cwd, '.', key, catalogs)
+
+    expect(range('typescript')).toBeUndefined()
+    expect(range('left')).toBeUndefined()
+    expect(range('local')).toBeUndefined()
+    expect(range('next')).toBeUndefined()
   })
 })
 
