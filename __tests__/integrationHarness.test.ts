@@ -275,6 +275,22 @@ describe('rewriteYarnV1Lock', () => {
     expect(out).toContain('"@scope/pkg@1.0.0", "@scope/pkg@>=1.0.0 <2":\n')
   })
 
+  it('adds the range to an npm: alias locked under its target (#152)', () => {
+    // yarn 1.22.22 locks `"m": "npm:ms@2.1.2"` as `"m@npm:ms@2.1.2":`.
+    const aliasLock = [
+      '# yarn lockfile v1',
+      '',
+      '',
+      '"m@npm:ms@2.1.2":',
+      '  version "2.1.2"',
+      '',
+    ].join('\n')
+    const out = rewriteYarnV1Lock(aliasLock, [
+      dep('m', 'npm:ms@^2.0.0', '2.1.2', { workspace: '.' }),
+    ])
+    expect(out).toContain('"m@npm:ms@2.1.2", "m@npm:ms@^2.0.0":\n')
+  })
+
   it('throws naming the lockfile and the key when none lists the version', () => {
     expect(() =>
       rewriteYarnV1Lock(lock, [
@@ -314,6 +330,36 @@ describe('rewriteBerryLock', () => {
     expect(out).toContain('"chalk@npm:4.0.0, chalk@npm:^4.0.0":\n')
     expect(out).toContain('    chalk: "npm:^4.0.0"\n')
     expect(out).toContain('    ms: "npm:2.1.2"\n')
+  })
+
+  it('adds the range to an npm: alias locked under its target, and moves its workspace entry (#152)', () => {
+    // yarn 4.12.0 locks `"m": "npm:ms@2.1.2"` as `"m@npm:ms@2.1.2":`, and
+    // the workspace entry lists `m: "npm:ms@2.1.2"`.
+    const aliasLock = [
+      '__metadata:',
+      '  version: 8',
+      '  cacheKey: 10c0',
+      '',
+      '"alias@workspace:.":',
+      '  version: 0.0.0-use.local',
+      '  resolution: "alias@workspace:."',
+      '  dependencies:',
+      '    m: "npm:ms@2.1.2"',
+      '  languageName: unknown',
+      '  linkType: soft',
+      '',
+      '"m@npm:ms@2.1.2":',
+      '  version: 2.1.2',
+      '  resolution: "ms@npm:2.1.2"',
+      '  languageName: node',
+      '  linkType: hard',
+      '',
+    ].join('\n')
+    const out = rewriteBerryLock(aliasLock, [
+      dep('m', 'npm:ms@^2.0.0', '2.1.2', { workspace: '.' }),
+    ])
+    expect(out).toContain('"m@npm:ms@2.1.2, m@npm:ms@^2.0.0":\n')
+    expect(out).toContain('    m: "npm:ms@^2.0.0"\n')
   })
 
   it('throws naming the lockfile and the key when no key lists the version', () => {
