@@ -7,7 +7,7 @@ import {
   classifySpec,
   DEPENDENCY_FIELDS,
   DISCOVERED_FIELDS,
-  declaredRange,
+  declaredDependency,
   readDeclaredDependencies,
 } from '@/utils/dependencySpecs'
 import logger from '@/utils/logger'
@@ -286,23 +286,27 @@ describe('readDeclaredDependencies', () => {
   })
 })
 
-describe('declaredRange', () => {
+describe('declaredDependency', () => {
   let cwd: string
 
   const write = (file: string, content: object) => {
     fs.mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true })
     fs.writeFileSync(path.join(cwd, file), JSON.stringify(content))
   }
+  const declared = (key: string) => {
+    const found = declaredDependency(cwd, '.', key, catalogs)
+    return found && [found.name, found.field, found.spec]
+  }
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-range-'))
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-declared-one-'))
   })
 
   afterEach(() => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('reads the range as discovery does: first field, catalog, alias (#151)', () => {
+  it('reads a key as discovery does: first field, catalog, alias by its target (#151, #152)', () => {
     write('package.json', {
       dependencies: {
         ms: '^0.7.1 || ^2.1.3',
@@ -312,25 +316,46 @@ describe('declaredRange', () => {
       devDependencies: { ms: '2.0.0', eslint: 'catalog:tools' },
       peerDependencies: { semver: '^7.0.0' },
     })
-    const range = (key: string) => declaredRange(cwd, '.', key, catalogs)
 
-    expect(range('ms')).toBe('^0.7.1 || ^2.1.3')
-    expect(range('react')).toBe('^18.0.0')
-    expect(range('eslint')).toBe('~9.1.0')
-    expect(range('dj')).toBe('^1.11.9')
+    expect(declared('ms')).toEqual([
+      'ms',
+      'dependencies',
+      { range: '^0.7.1 || ^2.1.3' },
+    ])
+    expect(declared('react')).toEqual([
+      'react',
+      'dependencies',
+      { range: '^18.0.0' },
+    ])
+    expect(declared('eslint')).toEqual([
+      'eslint',
+      'devDependencies',
+      { range: '~9.1.0' },
+    ])
+    expect(declared('dj')).toEqual([
+      'dayjs',
+      'dependencies',
+      { range: '^1.11.9' },
+    ])
     // Discovery doesn't read a peer-only key.
-    expect(range('semver')).toBeUndefined()
-    expect(range('express')).toBeUndefined()
+    expect(declared('semver')).toBeUndefined()
+    expect(declared('express')).toBeUndefined()
   })
 
   it("reads a member's own manifest", () => {
     write('package.json', { dependencies: { ms: '~2.1.1' } })
     write('packages/a/package.json', { dependencies: { ms: '2.1.2' } })
 
-    expect(declaredRange(cwd, 'packages/a', 'ms', {})).toBe('2.1.2')
+    expect(declaredDependency(cwd, 'packages/a', 'ms', {})).toEqual({
+      workspace: 'packages/a',
+      key: 'ms',
+      name: 'ms',
+      field: 'dependencies',
+      spec: { range: '2.1.2' },
+    })
   })
 
-  it('has no range for the latest tag or a spec discovery skips', () => {
+  it('gives the latest tag as one, and nothing for a spec discovery skips', () => {
     write('package.json', {
       dependencies: {
         typescript: 'catalog:tools',
@@ -339,12 +364,19 @@ describe('declaredRange', () => {
         next: 'canary',
       },
     })
-    const range = (key: string) => declaredRange(cwd, '.', key, catalogs)
 
-    expect(range('typescript')).toBeUndefined()
-    expect(range('left')).toBeUndefined()
-    expect(range('local')).toBeUndefined()
-    expect(range('next')).toBeUndefined()
+    expect(declared('typescript')).toEqual([
+      'typescript',
+      'dependencies',
+      { tag: 'latest' },
+    ])
+    expect(declared('left')).toEqual([
+      'left-pad',
+      'dependencies',
+      { tag: 'latest' },
+    ])
+    expect(declared('local')).toBeUndefined()
+    expect(declared('next')).toBeUndefined()
   })
 })
 

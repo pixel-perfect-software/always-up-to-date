@@ -6,7 +6,7 @@ import type { Project } from '@/project'
 import type { PipelineStep } from '@/stepError'
 import type { PackageInfo, UpdateResult } from '@/types'
 import { filterPackages, logger, splitUpdates } from '@/utils'
-import { type Catalogs, declaredRange } from '@/utils/dependencySpecs'
+import { type Catalogs, declaredDependency } from '@/utils/dependencySpecs'
 import { checkApplied, readInstalledVersions } from '@/utils/installed'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 
@@ -103,7 +103,7 @@ export const plan = (
   outdated: Record<string, PackageInfo>,
   targetPackages?: string[],
 ): Promise<UpdateResult[]> => {
-  // Read only when the cooldown holds a target, once.
+  // Read only when the cooldown checks a target, once.
   let catalogs: Catalogs | undefined
   return filterPackages(outdated, {
     config,
@@ -111,9 +111,9 @@ export const plan = (
     cwd,
     registry,
     overrides: adapter.overrides(cwd),
-    declaredRange: ({ name, workspace = '.' }) => {
+    declared: ({ name, workspace = '.' }) => {
       catalogs ??= adapter.readWorkspace(cwd).catalogs
-      return declaredRange(cwd, workspace, name, catalogs)
+      return declaredDependency(cwd, workspace, name, catalogs)
     },
   })
 }
