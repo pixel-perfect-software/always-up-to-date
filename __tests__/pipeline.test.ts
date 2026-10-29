@@ -137,6 +137,38 @@ describe('pipeline', () => {
 
       expect(result).toMatchObject({ updated: true, target: '0.7.3' })
     })
+
+    it("looks an npm: alias's dates up by its target (#152)", async () => {
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({ dependencies: { m: 'npm:ms@^2.0.0' } }),
+      )
+      const asked = new Set<string>()
+      const aliasRegistry = fakeRegistry({
+        releaseTimes: async (name) => {
+          asked.add(name)
+          return name === 'ms' ? times : {}
+        },
+        lookup: async (name) => {
+          asked.add(name)
+          return registry.lookup(name)
+        },
+      })
+
+      const [result] = await plan(
+        projectFor(npm, cwd, { cooldown: 2200 }, aliasRegistry),
+        {
+          m: { name: 'm', current: '2.0.0', wanted: '2.1.3', latest: '2.1.3' },
+        },
+      )
+
+      expect(result).toMatchObject({
+        name: 'm',
+        updated: true,
+        target: '2.1.2',
+      })
+      expect([...asked]).toEqual(['ms'])
+    })
   })
 
   describe('a package the manager leaves in place', () => {

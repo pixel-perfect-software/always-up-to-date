@@ -8,6 +8,7 @@ import type {
   UpdateResult,
 } from '@/types'
 import { evaluateCooldown, isCooldownEnabled } from './cooldown'
+import type { DeclaredDependency } from './dependencySpecs'
 import { formatAgeDays } from './duration'
 import type { ControllingOverride } from './overrides'
 import { type PeerRequirement, readInstalledPeers } from './peers'
@@ -32,14 +33,16 @@ interface FilterPackagesOptions {
   /** Packages pinned by an override the manager enforces; without it no package is held for one. */
   overrides?: Record<string, ControllingOverride>
   /**
-   * The range a row's manifest declares for it, by manifest key; asked only
-   * for a target the cooldown holds. Without it, a fallback never lands below
-   * `wanted` (#151).
+   * What a row's manifest declares for it, by manifest key; asked for each
+   * target the cooldown checks. Its `name` is what the gate looks up, an
+   * alias's target (#152); its range is what a fallback below `wanted` must
+   * satisfy (#151). Without it, the row's own name is looked up and no
+   * fallback lands below `wanted`.
    */
-  declaredRange?: (row: {
+  declared?: (row: {
     name: string
     workspace?: string
-  }) => string | undefined
+  }) => Pick<DeclaredDependency, 'name' | 'spec'> | undefined
 }
 
 /**
@@ -214,7 +217,7 @@ const filterPackages = async (
     registry,
     now,
     overrides: controlled = {},
-    declaredRange,
+    declared,
   } = options
   const policy = policyFromConfig(config)
   const cooldownActive = isCooldownEnabled(config.cooldown)
@@ -304,7 +307,13 @@ const filterPackages = async (
     results.map(async (result) => {
       if (!result.updated || !result.target) return result
 
-      const releaseTimes = await registry.releaseTimes(result.name)
+      const dependency = declared?.({
+        name: result.name,
+        workspace: result.workspace,
+      })
+      // A row is keyed by its manifest key; an alias's dates are its target's.
+      const name = dependency?.name ?? result.name
+      const releaseTimes = await registry.releaseTimes(name)
       const releaseTime = releaseTimes[result.target]
       const evaluation = evaluateCooldown(
         releaseTime,
@@ -321,9 +330,11 @@ const filterPackages = async (
             )} ago, requires ${evaluation.requiredDays}d`
         const fallback = cooledOffVersion(
           result,
-          declaredRange?.({ name: result.name, workspace: result.workspace }),
+          dependency && 'range' in dependency.spec
+            ? dependency.spec.range
+            : undefined,
           releaseTimes,
-          await deprecatedVersions(registry, result.name),
+          await deprecatedVersions(registry, name),
           config.cooldown,
           now,
         )

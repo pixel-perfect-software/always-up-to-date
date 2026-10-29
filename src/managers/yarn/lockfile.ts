@@ -8,6 +8,8 @@
  * with the manifest.
  */
 
+import { parseAlias } from '@/utils/aliasSpec'
+
 /** A spec whose range should resolve to a version locked under another spec. */
 export interface RangedDependency {
   /** The manifest's directory relative to the root, POSIX separators ('.' = root). */
@@ -15,7 +17,7 @@ export interface RangedDependency {
   /** A catalog entry instead of a manifest dependency: 'default' or the catalog's name. */
   catalog?: string
   name: string
-  /** The range as written in the repo, e.g. `^4.0.0`. */
+  /** The range as written in the repo, e.g. `^4.0.0`, or an alias's `npm:ms@^2.0.0`. */
   range: string
   /** The version locked under another spec (the harness: `semver.minVersion(range)`). */
   installed: string
@@ -34,6 +36,20 @@ export const manifestEntries = (
 ): RangedDependency[] => ranged.filter((dep) => dep.catalog === undefined)
 
 const unquote = (text: string): string => text.replace(/^"(.*)"$/, '$1')
+
+/**
+ * The spec the installed version is locked under: the version, or for an
+ * alias its target and the version (`npm:ms@2.1.2`), which yarn 1.22.22 and
+ * 4.12.0 both write as `m@npm:ms@2.1.2` (#152).
+ */
+const lockedSpec = ({ range, installed }: RangedDependency): string => {
+  const alias = parseAlias(range)
+  return alias ? `npm:${alias.name}@${installed}` : installed
+}
+
+/** A spec as berry's lockfile writes it: `npm:` before a range; an alias already has it. */
+const berrySpec = (spec: string): string =>
+  spec.startsWith('npm:') ? spec : `npm:${spec}`
 
 /**
  * A yarn v1 key as yarn 1.22.22 writes it (`shouldWrapKey` and `maybeWrap`
@@ -68,7 +84,7 @@ export const rewriteYarnV1Lock = (
     const keys = match[1].split(', ').map(unquote)
     const added: string[] = []
     for (const dep of wanted) {
-      if (!keys.includes(`${dep.name}@${dep.installed}`)) continue
+      if (!keys.includes(`${dep.name}@${lockedSpec(dep)}`)) continue
       done.add(dep)
       const key = `${dep.name}@${dep.range}`
       if (!keys.includes(key) && !added.includes(key)) added.push(key)
@@ -80,7 +96,7 @@ export const rewriteYarnV1Lock = (
 
   for (const dep of wanted) {
     if (!done.has(dep)) {
-      throw new Error(`yarn.lock: no key for ${dep.name}@${dep.installed}`)
+      throw new Error(`yarn.lock: no key for ${dep.name}@${lockedSpec(dep)}`)
     }
   }
   return out.join(eol)
@@ -114,9 +130,11 @@ export const rewriteBerryLock = (
       const items = key[1].split(', ')
       const added: string[] = []
       for (const dep of wanted) {
-        if (!items.includes(`${dep.name}@npm:${dep.installed}`)) continue
+        if (!items.includes(`${dep.name}@${berrySpec(lockedSpec(dep))}`)) {
+          continue
+        }
         keyDone.add(`${dep.name}@${dep.installed}`)
-        const item = `${dep.name}@npm:${dep.range}`
+        const item = `${dep.name}@${berrySpec(dep.range)}`
         if (!items.includes(item) && !added.includes(item)) added.push(item)
       }
       return added.length === 0
@@ -128,18 +146,20 @@ export const rewriteBerryLock = (
     for (const dep of wanted) {
       if (dep.workspace !== workspace) continue
       const spec = new RegExp(
-        `^(\\s+"?${escapeRegExp(dep.name)}"?: )"npm:${escapeRegExp(dep.installed)}"$`,
+        `^(\\s+"?${escapeRegExp(dep.name)}"?: )"${escapeRegExp(berrySpec(lockedSpec(dep)))}"$`,
       ).exec(line)
       if (!spec) continue
       specDone.add(dep)
-      return `${spec[1]}"npm:${dep.range}"`
+      return `${spec[1]}"${berrySpec(dep.range)}"`
     }
     return line
   })
 
   for (const dep of wanted) {
     if (!keyDone.has(`${dep.name}@${dep.installed}`)) {
-      throw new Error(`yarn.lock: no key for ${dep.name}@npm:${dep.installed}`)
+      throw new Error(
+        `yarn.lock: no key for ${dep.name}@${berrySpec(lockedSpec(dep))}`,
+      )
     }
     if (!specDone.has(dep)) {
       throw new Error(

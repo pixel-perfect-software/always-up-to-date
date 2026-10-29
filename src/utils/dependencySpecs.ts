@@ -148,17 +148,17 @@ const readManifestFile = (
 }
 
 /**
- * The range a manifest declares for `key`, read as discovery reads it: the
- * first of `DISCOVERED_FIELDS` that holds it, a `catalog:` reference
- * resolved, an alias's own range. Undefined when the spec has no range (the
- * `latest` tag, a spec discovery skips) or the manifest doesn't declare it.
+ * The registry dependency a manifest declares under `key`, read as discovery
+ * reads it: the first of `DISCOVERED_FIELDS` that holds it, a `catalog:`
+ * reference resolved, an alias looked up by its target. Undefined when the
+ * manifest doesn't declare it or discovery skips its spec.
  */
-export const declaredRange = (
+export const declaredDependency = (
   cwd: string,
   workspace: string,
   key: string,
   catalogs: Catalogs,
-): string | undefined => {
+): DeclaredDependency | undefined => {
   const manifest = readManifestFile(cwd, workspace)
   for (const field of DISCOVERED_FIELDS) {
     const entries = manifest[field]
@@ -166,8 +166,8 @@ export const declaredRange = (
     const spec = (entries as Record<string, unknown>)[key]
     if (typeof spec !== 'string') continue
     const classified = classifySpec(key, spec, catalogs)
-    return classified.kind === 'registry' && 'range' in classified.spec
-      ? classified.spec.range
+    return classified.kind === 'registry'
+      ? { workspace, key, name: classified.name, field, spec: classified.spec }
       : undefined
   }
   return undefined
