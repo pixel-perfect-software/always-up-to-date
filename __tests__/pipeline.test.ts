@@ -2,9 +2,10 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import npm from '@/managers/npm'
-import { check, update } from '@/pipeline'
+import { check, plan, update } from '@/pipeline'
 import {
   capturedRegistry,
+  fakeRegistry,
   installPackages,
   isolateNpmConfig,
   projectFor,
@@ -88,6 +89,86 @@ describe('pipeline', () => {
 
     expect(held.find((r) => r.name === 'dayjs')?.updated).toBe(false)
     expect(moved.find((r) => r.name === 'dayjs')?.updated).toBe(true)
+  })
+
+  describe('a cooldown fallback (#151)', () => {
+    // Publish times of ms, relative to the run: plan reads the real clock.
+    const DAY = 24 * 60 * 60 * 1000
+    const daysAgo = (days: number) =>
+      new Date(Date.now() - days * DAY).toISOString()
+    const times: Record<string, string> = {
+      '0.7.3': daysAgo(3521),
+      '2.1.2': daysAgo(2702),
+      '2.1.3': daysAgo(2151),
+    }
+    const registry = fakeRegistry({
+      releaseTimes: async () => times,
+      lookup: async (name) => ({
+        ok: true,
+        package: {
+          name,
+          latest: '2.1.3',
+          source: 'packument',
+          versions: Object.keys(times).map((version) => ({
+            version,
+            deprecated: false,
+          })),
+        },
+      }),
+    })
+
+    it('falls back within the range package.json declares', async () => {
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({ dependencies: { ms: '^0.7.1 || ^2.1.3' } }),
+      )
+
+      const [result] = await plan(
+        projectFor(npm, cwd, { cooldown: 2200 }, registry),
+        {
+          ms: {
+            name: 'ms',
+            current: '0.7.1',
+            wanted: '2.1.3',
+            latest: '2.1.3',
+          },
+        },
+      )
+
+      expect(result).toMatchObject({ updated: true, target: '0.7.3' })
+    })
+
+    it("looks an npm: alias's dates up by its target (#152)", async () => {
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({ dependencies: { m: 'npm:ms@^2.0.0' } }),
+      )
+      const asked = new Set<string>()
+      const aliasRegistry = fakeRegistry({
+        releaseTimes: async (name) => {
+          asked.add(name)
+          return name === 'ms' ? times : {}
+        },
+        lookup: async (name) => {
+          asked.add(name)
+          return registry.lookup(name)
+        },
+      })
+
+      const [result] = await plan(
+        projectFor(npm, cwd, { cooldown: 2200 }, aliasRegistry),
+        {
+          m: { name: 'm', current: '2.0.0', wanted: '2.1.3', latest: '2.1.3' },
+        },
+      )
+
+      expect(result).toMatchObject({
+        name: 'm',
+        updated: true,
+        target: '2.1.2',
+      })
+      expect([...asked]).toEqual(['ms'])
+    })
   })
 
   describe('a package the manager leaves in place', () => {

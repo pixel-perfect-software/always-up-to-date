@@ -148,6 +148,32 @@ const readManifestFile = (
 }
 
 /**
+ * The registry dependency a manifest declares under `key`, read as discovery
+ * reads it: the first of `DISCOVERED_FIELDS` that holds it, a `catalog:`
+ * reference resolved, an alias looked up by its target. Undefined when the
+ * manifest doesn't declare it or discovery skips its spec.
+ */
+export const declaredDependency = (
+  cwd: string,
+  workspace: string,
+  key: string,
+  catalogs: Catalogs,
+): DeclaredDependency | undefined => {
+  const manifest = readManifestFile(cwd, workspace)
+  for (const field of DISCOVERED_FIELDS) {
+    const entries = manifest[field]
+    if (typeof entries !== 'object' || entries === null) continue
+    const spec = (entries as Record<string, unknown>)[key]
+    if (typeof spec !== 'string') continue
+    const classified = classifySpec(key, spec, catalogs)
+    return classified.kind === 'registry'
+      ? { workspace, key, name: classified.name, field, spec: classified.spec }
+      : undefined
+  }
+  return undefined
+}
+
+/**
  * The registry dependencies every manifest declares: the root first, then the
  * members, as `manifests` lists them; per manifest the fields of
  * `DISCOVERED_FIELDS` in order, and a name in several fields is read from the
