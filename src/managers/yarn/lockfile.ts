@@ -36,6 +36,20 @@ export const manifestEntries = (
 const unquote = (text: string): string => text.replace(/^"(.*)"$/, '$1')
 
 /**
+ * A yarn v1 key as yarn 1.22.22 writes it (`shouldWrapKey` and `maybeWrap`
+ * in its lockfile stringifier): JSON-quoted when it starts with `true`,
+ * `false` or anything but a letter, or holds whitespace, `:`, `\`, `"`, `,`,
+ * `[` or `]`. A bare `ms@^1 || ^3` reads back as another pattern, so yarn
+ * resolves the range again (#151).
+ */
+const quoteV1Key = (key: string): string =>
+  /^(true|false)/.test(key) ||
+  /[:\s\\",[\]]/.test(key) ||
+  !/^[a-zA-Z]/.test(key)
+    ? JSON.stringify(key)
+    : key
+
+/**
  * yarn v1: the key line that lists `name@<installed>` gains `name@<range>`:
  * `chalk@4.0.0:` becomes `chalk@4.0.0, chalk@^4.0.0:`.
  */
@@ -61,9 +75,7 @@ export const rewriteYarnV1Lock = (
     }
     if (added.length === 0) return line
 
-    const quote = (key: string): string =>
-      key.startsWith('@') ? `"${key}"` : key
-    return `${[...keys, ...added].sort().map(quote).join(', ')}:`
+    return `${[...keys, ...added].sort().map(quoteV1Key).join(', ')}:`
   })
 
   for (const dep of wanted) {

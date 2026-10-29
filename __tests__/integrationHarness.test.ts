@@ -264,6 +264,17 @@ describe('rewriteYarnV1Lock', () => {
     expect(out).toContain('"@scope/pkg@1.0.0", "@scope/pkg@^1.0.0":\n')
   })
 
+  it('quotes a key the way yarn 1.22.22 does: a range with spaces (#151)', () => {
+    // yarn reads a bare `ms@^0.7.1 || ^2.1.3` key back as another pattern,
+    // resolves the range again and installs its newest version.
+    const out = rewriteYarnV1Lock(lock, [
+      dep('chalk', '^4.0.0 || ^6.0.0', '4.0.0', { workspace: '.' }),
+      dep('@scope/pkg', '>=1.0.0 <2', '1.0.0', { workspace: '.' }),
+    ])
+    expect(out).toContain('chalk@4.0.0, "chalk@^4.0.0 || ^6.0.0":\n')
+    expect(out).toContain('"@scope/pkg@1.0.0", "@scope/pkg@>=1.0.0 <2":\n')
+  })
+
   it('throws naming the lockfile and the key when none lists the version', () => {
     expect(() =>
       rewriteYarnV1Lock(lock, [
