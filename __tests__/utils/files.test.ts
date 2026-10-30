@@ -78,7 +78,7 @@ describe('updatePackageJson', () => {
     expect(written.devDependencies.typescript).toBe('~5.5.0')
   })
 
-  it('keeps an exact pin exact in every dependency field', async () => {
+  it('keeps an exact pin exact in every field it writes', async () => {
     const packageJson = {
       dependencies: { react: '18.0.0' },
       devDependencies: { react: '18.0.0' },
@@ -96,7 +96,7 @@ describe('updatePackageJson', () => {
     expect(written.dependencies.react).toBe('19.0.0')
     expect(written.devDependencies.react).toBe('19.0.0')
     expect(written.optionalDependencies.react).toBe('19.0.0')
-    expect(written.peerDependencies.react).toBe('19.0.0')
+    expect(written.peerDependencies.react).toBe('18.0.0')
   })
 
   it('skips workspace references', async () => {
@@ -129,7 +129,7 @@ describe('updatePackageJson', () => {
     expect(written.dependencies.react).toBe('catalog:default')
   })
 
-  it('updates across all dependency types', async () => {
+  it('updates every dependency field but peerDependencies', async () => {
     const packageJson = {
       dependencies: { react: '^18.0.0' },
       devDependencies: { react: '^18.0.0' },
@@ -147,7 +147,26 @@ describe('updatePackageJson', () => {
     expect(written.dependencies.react).toBe('^19.0.0')
     expect(written.devDependencies.react).toBe('^19.0.0')
     expect(written.optionalDependencies.react).toBe('^19.0.0')
-    expect(written.peerDependencies.react).toBe('^19.0.0')
+    expect(written.peerDependencies.react).toBe('^18.0.0')
+  })
+
+  // #155: the peer range is the package's contract with its consumers, so
+  // moving the dev copy must not narrow it.
+  it("keeps the package's own peer range when it moves a dev dependency", async () => {
+    const packageJson = {
+      peerDependencies: { react: '^18.0.0' },
+      devDependencies: { react: '^18.2.0' },
+    }
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(packageJson))
+    mockedFs.writeFileSync.mockImplementation(() => undefined)
+
+    await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
+
+    const written = JSON.parse(
+      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+    )
+    expect(written.devDependencies.react).toBe('^19.0.0')
+    expect(written.peerDependencies.react).toBe('^18.0.0')
   })
 
   describe('specs that cannot keep their shape', () => {

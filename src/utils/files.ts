@@ -102,7 +102,12 @@ const formatLike = (original: string, data: unknown): string => {
   return /\r?\n$/.test(original) ? `${body}${eol}` : body
 }
 
-/** Moves each named entry to its new version, keeping its decorator. */
+/**
+ * Moves each named entry to its new version, keeping its decorator, in
+ * `dependencies`, `optionalDependencies` and `devDependencies`. A
+ * `peerDependencies` range is never written: it is the package's contract
+ * with its consumers, and narrowing it would drop them (#155).
+ */
 export const updatePackageJson = async (
   cwd: string,
   versions: Record<string, string>,
@@ -136,18 +141,6 @@ export const updatePackageJson = async (
           style,
         )
         packageJson.optionalDependencies[packageName] = newVersion
-      }
-    }
-
-    if (packageJson?.peerDependencies?.[packageName]) {
-      const currentVersion = packageJson.peerDependencies[packageName]
-      if (!isWorkspaceReference(currentVersion)) {
-        const newVersion = nextVersionSpec(
-          currentVersion,
-          versions[packageName],
-          style,
-        )
-        packageJson.peerDependencies[packageName] = newVersion
       }
     }
 
