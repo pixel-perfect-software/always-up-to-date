@@ -1,4 +1,5 @@
 import fs from 'fs'
+import path from 'path'
 import {
   ConfigError,
   configFileFor,
@@ -206,8 +207,8 @@ describe('saveJsonConfig', () => {
 })
 
 describe('a member run: the working directory, else the fallback', () => {
-  const own = '/root/packages/a/.always-up-to-date.json'
-  const fallback = '/root/.always-up-to-date.json'
+  const own = path.join('/root/packages/a', '.always-up-to-date.json')
+  const fallback = path.join('/root', '.always-up-to-date.json')
   const existing = (...files: string[]) =>
     mockedCheckIfFileExists.mockImplementation((file) => files.includes(file))
   const files = (contents: Record<string, object | string>) =>

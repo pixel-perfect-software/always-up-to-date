@@ -8,6 +8,7 @@ jest.mock('@/utils/registry', () => ({
   createRegistrySession: jest.fn(),
 }))
 
+import path from 'path'
 import detectPackageManager from '@/detectPackageManager'
 import bun from '@/managers/bun'
 import pnpm from '@/managers/pnpm'
@@ -17,6 +18,9 @@ import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
 import { createRegistrySession } from '@/utils/registry'
 import { fakeRegistry } from './fixtures'
+
+// openProject resolves its directory: `D:\project` on Windows.
+const cwd = path.resolve('/project')
 
 const registryDefaults: RegistryConfig = {
   registry: 'https://registry.npmjs.org/',
@@ -41,21 +45,21 @@ describe('openProject', () => {
     const session = fakeRegistry()
     jest.mocked(createRegistrySession).mockReturnValue(session)
 
-    const project = openProject('/project')
+    const project = openProject(cwd)
 
     expect(project).toEqual({
-      root: '/project',
+      root: cwd,
       config,
       adapter: pnpm,
       registry: session,
     })
-    expect(createRegistrySession).toHaveBeenCalledWith('/project', {
+    expect(createRegistrySession).toHaveBeenCalledWith(cwd, {
       depsDev: true,
       loadConfig: expect.any(Function),
     })
-    expect(detectPackageManager).toHaveBeenCalledWith('/project', undefined, {
-      from: '/project',
-      cwd: '/project',
+    expect(detectPackageManager).toHaveBeenCalledWith(cwd, undefined, {
+      from: cwd,
+      cwd: cwd,
     })
   })
 
@@ -65,9 +69,9 @@ describe('openProject', () => {
       .mockReturnValue({ ...DEFAULT_CONFIG, depsDev: false })
     jest.mocked(detectPackageManager).mockReturnValue('npm')
 
-    openProject('/project')
+    openProject(cwd)
 
-    expect(createRegistrySession).toHaveBeenCalledWith('/project', {
+    expect(createRegistrySession).toHaveBeenCalledWith(cwd, {
       depsDev: false,
       loadConfig: expect.any(Function),
     })
@@ -81,7 +85,7 @@ describe('openProject', () => {
       if (env === undefined) delete process.env.AUTD_NO_CACHE
       else process.env.AUTD_NO_CACHE = env
       try {
-        openProject('/project', options)
+        openProject(cwd, options)
       } finally {
         if (saved === undefined) delete process.env.AUTD_NO_CACHE
         else process.env.AUTD_NO_CACHE = saved
@@ -120,7 +124,7 @@ describe('openProject', () => {
     const openWith = (pm: 'pnpm' | 'npm') => {
       jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
       jest.mocked(detectPackageManager).mockReturnValue(pm)
-      openProject('/project')
+      openProject(cwd)
       const options = jest.mocked(createRegistrySession).mock.calls[0][1]
       if (!options?.loadConfig) throw new Error('no loadConfig seam')
       return options.loadConfig
@@ -132,10 +136,10 @@ describe('openProject', () => {
       expect(layers).not.toHaveBeenCalled()
 
       layers.mockReturnValue([])
-      expect(loadConfigForSession('/project')).toEqual(registryDefaults)
+      expect(loadConfigForSession(cwd)).toEqual(registryDefaults)
       expect(layers).toHaveBeenCalledTimes(1)
       expect(layers).toHaveBeenCalledWith(
-        '/project',
+        cwd,
         expect.objectContaining({ env: process.env }),
       )
     })
@@ -151,7 +155,7 @@ describe('openProject', () => {
       const hook = jest.spyOn(bun, 'registryConfig')
       jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
       jest.mocked(detectPackageManager).mockReturnValue('bun')
-      openProject('/project')
+      openProject(cwd)
       const options = jest.mocked(createRegistrySession).mock.calls[0][1]
       expect(hook).not.toHaveBeenCalled()
 
@@ -177,10 +181,10 @@ describe('openProject', () => {
     jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
     jest.mocked(detectPackageManager).mockReturnValue('bun')
 
-    expect(openProject('/project', { pm: 'bun' }).adapter).toBe(bun)
-    expect(detectPackageManager).toHaveBeenCalledWith('/project', 'bun', {
-      from: '/project',
-      cwd: '/project',
+    expect(openProject(cwd, { pm: 'bun' }).adapter).toBe(bun)
+    expect(detectPackageManager).toHaveBeenCalledWith(cwd, 'bun', {
+      from: cwd,
+      cwd: cwd,
     })
   })
 
@@ -189,10 +193,10 @@ describe('openProject', () => {
     jest.mocked(loadConfig).mockReturnValue(config)
     jest.mocked(detectPackageManager).mockReturnValue('npm')
 
-    openProject('/project')
+    openProject(cwd)
 
     expect(loadConfig).toHaveBeenCalledTimes(1)
-    expect(loadConfig).toHaveBeenCalledWith('/project', '/project')
+    expect(loadConfig).toHaveBeenCalledWith(cwd, cwd)
     expect(logger.configure).toHaveBeenCalledWith(config)
   })
 
@@ -202,7 +206,7 @@ describe('openProject', () => {
       throw new Error('No package manager detected in the current directory.')
     })
 
-    expect(() => openProject('/project')).toThrow('No package manager')
+    expect(() => openProject(cwd)).toThrow('No package manager')
     expect(logger.configure).toHaveBeenCalledTimes(1)
     expect(
       jest.mocked(logger.configure).mock.invocationCallOrder[0],
@@ -216,7 +220,7 @@ describe('openProject', () => {
       throw new Error('Failed to load JSON config')
     })
 
-    expect(() => openProject('/project')).toThrow('Failed to load JSON config')
+    expect(() => openProject(cwd)).toThrow('Failed to load JSON config')
     expect(logger.configure).not.toHaveBeenCalled()
     expect(detectPackageManager).not.toHaveBeenCalled()
   })
