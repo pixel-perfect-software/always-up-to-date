@@ -125,6 +125,13 @@ describe('Logger', () => {
       )
     })
 
+    it('memberRun names the manager, the member and its place among the manifests', () => {
+      logger.memberRun('npm', 'packages/a', 3)
+      expect(stripVTControlCharacters(logSpy.mock.calls[0][0])).toContain(
+        'npm workspace member packages/a (1 of 3 manifests)',
+      )
+    })
+
     it('allUpToDate logs success message', () => {
       logger.allUpToDate()
       expect(logSpy.mock.calls[0][0]).toContain('up to date')
@@ -280,6 +287,13 @@ describe('Logger', () => {
 
     it('leaves the manifest column out when every row is the root', () => {
       logger.report([moved('a', { workspace: '.' })], 'pnpm', 'plan')
+      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1  within range')
+    })
+
+    it('leaves the manifest column out of a member run (#123)', () => {
+      logger.report([moved('a', { workspace: 'packages/a' })], 'npm', 'plan', {
+        member: 'packages/a',
+      })
       expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1  within range')
     })
 

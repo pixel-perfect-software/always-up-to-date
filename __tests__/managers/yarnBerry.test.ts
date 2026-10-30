@@ -2,7 +2,11 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import yarn from '@/managers/yarn'
-import { parseBerryInfo, parseBerryRegistry } from '@/managers/yarn/berry'
+import {
+  discoverBerry,
+  parseBerryInfo,
+  parseBerryRegistry,
+} from '@/managers/yarn/berry'
 import { check, update } from '@/pipeline'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 import {
@@ -140,6 +144,74 @@ describe('parseBerryInfo', () => {
 
     expect(root.dependencies.find((d) => d.name === 'chalk')).toMatchObject({
       current: '4.0.0',
+    })
+  })
+})
+
+describe('discoverBerry from a member (#123)', () => {
+  const run = (info: string, registry: string) =>
+    jest.fn(async (args: string[]) => (args[0] === 'info' ? info : registry))
+
+  it.each([
+    [
+      'yarn/berry-info-workspace-from-member.stdout',
+      'packages/a',
+      ['chalk', 'ms'],
+    ],
+  ])("keeps the member's workspace of %s", async (info, member, names) => {
+    const runYarn = run(
+      readFixture(info),
+      readFixture('yarn/berry-npm-info-chalk-ms.stdout'),
+    )
+
+    const discovery = await discoverBerry(runYarn, true, {
+      path: member,
+      name: '@autd/a',
+    })
+
+    expect(discovery.kind).toBe('workspace')
+    const entries = discovery.kind === 'workspace' ? discovery.entries : []
+    expect(entries.map((entry) => [entry.name, entry.workspace])).toEqual(
+      names.map((name) => [name, member]),
+    )
+    // The registry is asked for the member's packages alone.
+    expect(runYarn.mock.calls[1][0].slice(0, 4)).toEqual([
+      'npm',
+      'info',
+      'chalk',
+      'ms',
+    ])
+  })
+
+  it('filters the existing workspace capture to one member', async () => {
+    const discovery = await discoverBerry(
+      run(
+        readFixture('yarn/berry-workspace-info.stdout'),
+        readFixture('yarn/berry-workspace-npm-info.stdout'),
+      ),
+      true,
+      { path: 'packages/b', name: '@ws/b' },
+    )
+
+    expect(
+      discovery.kind === 'workspace' &&
+        discovery.entries.map((entry) => [entry.name, entry.workspace]),
+    ).toEqual([
+      ['dayjs', 'packages/b'],
+      ['debug', 'packages/b'],
+    ])
+  })
+
+  it('fails when yarn lists no workspace at the member', async () => {
+    await expect(
+      discoverBerry(
+        run(readFixture('yarn/berry-workspace-info.stdout'), ''),
+        true,
+        { path: 'tools/x' },
+      ),
+    ).rejects.toMatchObject({
+      step: 'discover',
+      message: 'yarn info -A --json listed no workspace at tools/x',
     })
   })
 })

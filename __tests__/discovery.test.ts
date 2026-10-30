@@ -134,6 +134,87 @@ describe('discoverFromRegistry', () => {
     ])
   })
 
+  describe('from a workspace member (#123)', () => {
+    const member = { path: 'packages/b', name: '@ws/b' }
+    const discoverMember = (
+      registry: ReturnType<typeof capturedRegistry>,
+      path = member,
+    ) =>
+      discoverFromRegistry({
+        cwd,
+        manager: 'npm',
+        workspace: { ...npm.readWorkspace(cwd), member: path },
+        registry,
+      })
+
+    it("lists only the member's rows, and looks up only its packages", async () => {
+      writeWorkspaceProject(cwd)
+      installPackages(cwd, '.', {
+        dayjs: '1.11.9',
+        ms: '2.1.1',
+        debug: '4.3.1',
+      })
+      installPackages(cwd, 'packages/a', { ms: '2.1.2' })
+      // capturedRegistry throws for a name it was not told to expect: ms is
+      // declared by the root and packages/a, not by packages/b.
+      const registry = capturedRegistry(['dayjs', 'debug'], { asOf: AS_OF })
+      const lookup = jest.fn(registry.lookup)
+
+      const discovery = await discoverMember({ ...registry, lookup })
+
+      expect(
+        discovery.kind === 'workspace' &&
+          discovery.entries.map((entry) => [entry.name, entry.workspace]),
+      ).toEqual([
+        ['dayjs', 'packages/b'],
+        ['debug', 'packages/b'],
+      ])
+      expect(lookup.mock.calls.map(([name]) => name).sort()).toEqual([
+        'dayjs',
+        'debug',
+      ])
+    })
+
+    it('still skips a dependency named like a sibling member', async () => {
+      writeWorkspaceProject(cwd)
+      writeJson('packages/b/package.json', {
+        name: '@ws/b',
+        version: '1.0.0',
+        dependencies: { '@ws/a': '^1.0.0', dayjs: '^1.11.9' },
+      })
+      installPackages(cwd, '.', { dayjs: '1.11.9' })
+
+      const discovery = await discoverMember(
+        capturedRegistry(['dayjs'], { asOf: AS_OF }),
+      )
+
+      expect(
+        discovery.kind === 'workspace' &&
+          discovery.entries.map((entry) => entry.name),
+      ).toEqual(['dayjs'])
+    })
+
+    it('accepts the hoisted root node_modules as the install', async () => {
+      writeWorkspaceProject(cwd)
+      installPackages(cwd, '.', { dayjs: '1.11.9', debug: '4.3.1' })
+
+      await expect(
+        discoverMember(capturedRegistry(['dayjs', 'debug'], { asOf: AS_OF })),
+      ).resolves.toMatchObject({ kind: 'workspace' })
+    })
+
+    it('names the member when nothing is installed', async () => {
+      writeWorkspaceProject(cwd)
+
+      await expect(
+        discoverMember(capturedRegistry([], { asOf: AS_OF })),
+      ).rejects.toMatchObject({
+        step: 'discover',
+        message: expect.stringContaining('(for packages/b)'),
+      })
+    })
+  })
+
   it('asks the registry once per unique name', async () => {
     writeWorkspaceProject(cwd)
     installPackages(cwd, '.', { dayjs: '1.11.9', ms: '2.1.1', debug: '4.3.1' })

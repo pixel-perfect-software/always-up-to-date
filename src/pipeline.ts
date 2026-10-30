@@ -18,15 +18,28 @@ const runFor =
   (args, options) =>
     runner.runStep(step, adapter.name, args, cwd, options)
 
-const readWorkspace = (adapter: ManagerAdapter, cwd: string): Workspace => {
-  const workspace = adapter.readWorkspace(cwd)
+/**
+ * The project's workspace, with the member a member run (#123) is scoped to.
+ * Discovery reads only that manifest.
+ */
+const workspaceOf = ({ adapter, root, member }: Project): Workspace => ({
+  ...adapter.readWorkspace(root),
+  member,
+})
+
+const announceWorkspace = (adapter: ManagerAdapter, workspace: Workspace) => {
   const catalogs = Object.keys(workspace.catalogs)
-  // A pnpm workspace listing only "." is one package: nothing to announce.
-  if (workspace.isWorkspace && workspace.manifests.length > 1) {
+  if (workspace.member) {
+    logger.memberRun(
+      adapter.name,
+      workspace.member.path,
+      workspace.manifests.length,
+    )
+  } else if (workspace.isWorkspace && workspace.manifests.length > 1) {
+    // A pnpm workspace listing only "." is one package: nothing to announce.
     logger.workspace(adapter.name, workspace.manifests.length, catalogs.length)
   }
   if (catalogs.length > 0) logger.debug(`catalogs: ${catalogs.join(', ')}`)
-  return workspace
 }
 
 /**
@@ -36,25 +49,17 @@ const readWorkspace = (adapter: ManagerAdapter, cwd: string): Workspace => {
  * node_modules and the registry, with no manager subprocess; yarn berry
  * alone discovers through the manager.
  */
-const discover = async ({
-  adapter,
-  root,
-  member,
-  registry,
-}: Project): Promise<{
+const discover = async (
+  project: Project,
+): Promise<{
   outdated: Record<string, PackageInfo>
   workspace: Workspace
 }> => {
+  const { adapter, root, registry } = project
   logger.starting('Checking dependencies', adapter.name)
 
-  // Until the member-scoped discovery lands (#123).
-  if (member) {
-    throw new StepError(
-      'discover',
-      `member runs are not wired yet (#123): run autd from ${root}`,
-    )
-  }
-  const workspace = readWorkspace(adapter, root)
+  const workspace = workspaceOf(project)
+  announceWorkspace(adapter, workspace)
   if (workspace.isWorkspace) {
     logger.debug(
       `Manifests: ${workspace.manifests.map((manifest) => manifest.path).join(', ')}`,
@@ -97,7 +102,9 @@ export const check = async (
 ): Promise<Record<string, PackageInfo>> => {
   const found = await findOutdated(project)
   if (report && Object.keys(found).length > 0) {
-    logger.report(await plan(project, found), project.adapter.name, 'plan')
+    logger.report(await plan(project, found), project.adapter.name, 'plan', {
+      member: project.member?.path,
+    })
   }
   return found
 }
@@ -140,10 +147,11 @@ export const update = async (
     discovered?: Record<string, PackageInfo>
   } = {},
 ): Promise<UpdateResult[]> => {
-  const { adapter, root } = project
+  const { adapter, root, member } = project
   const { outdated, workspace } = discovered
-    ? { outdated: discovered, workspace: adapter.readWorkspace(root) }
+    ? { outdated: discovered, workspace: workspaceOf(project) }
     : await discover(project)
+  const where = { member: member?.path }
 
   // discover already printed allUpToDate.
   if (Object.keys(outdated).length === 0) return []
@@ -154,11 +162,19 @@ export const update = async (
   const moving = names.length + new Set(pinned.map((row) => row.name)).size
 
   if (moving === 0) {
-    logger.report(results, adapter.name, 'plan')
+    logger.report(results, adapter.name, 'plan', where)
     return results
   }
 
   logger.updatingHeader(adapter.name, moving)
+
+  // Until the member-scoped apply lands (#123).
+  if (member) {
+    throw new StepError(
+      'apply',
+      `updating from a workspace member is not wired yet (#123): run autd from ${root}`,
+    )
+  }
 
   // Cooldown fallbacks first: the apply below asks for the rest by name, and
   // leaves the versions they pinned where the lockfile has them.
@@ -183,6 +199,6 @@ export const update = async (
       : readInstalledVersions(root, moved),
     adapter.name,
   )
-  logger.report(applied, adapter.name, 'applied')
+  logger.report(applied, adapter.name, 'applied', where)
   return applied
 }

@@ -92,7 +92,8 @@ const yarn: ManagerAdapter = {
 
   ownDiscovery: (cwd) =>
     isYarnBerry(cwd)
-      ? (run, { isWorkspace }) => discoverBerry(run, isWorkspace)
+      ? (run, { isWorkspace, member }) =>
+          discoverBerry(run, isWorkspace, member)
       : undefined,
 
   apply: async (
