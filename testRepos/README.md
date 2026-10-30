@@ -30,6 +30,10 @@ Frozen maxima: chalk 4.1.2, commander 11.1.0, debug 4.3.7, kleur 3.0.3, ms 2.1.3
 package appears in at most two manifests, never at the same installed version. `dayjs` is
 an exact pin at the root only, and `ms` is `~2.1.1` at the root beside `2.1.2` in `@autd/a`.
 
+## Member runs
+
+For the `workspace` and `catalogs` layouts the suite also runs the CLI from `packages/a`, from `packages/a/src` and from `packages/b` of a fresh copy: `check --json` and `update --dry-run --json` cover that member only, `update --json` is refused with every manifest and lockfile unchanged. `packages/a` gets its own `.always-up-to-date.json` (`beyondRange: patch`); `packages/b` uses the root's. After the root `update --json`, the manager's frozen install must still pass.
+
 ## Running
 
 ```sh

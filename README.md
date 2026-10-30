@@ -107,7 +107,7 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 ## ⚙️ Configuration
 
 You only need a config file to go further than your package.json ranges. Run `autd init` to create
-`.always-up-to-date.json` in your project root:
+`.always-up-to-date.json` in your project root (from a workspace member, its own file if it has one, else the workspace root's):
 
 ```json
 {
@@ -173,6 +173,12 @@ autd uses the first of these that names a manager: the `--pm` option, the `packa
 
 In a workspace, autd plans each package once per manifest that declares it, and `update --json` has one row per package and manifest, each with a `workspace` (`.` is the root). A package that moves past its range is rewritten in the manifest that declares it; if that spec is a `catalog:` reference, the catalog entry is rewritten instead. A package that can move in one manifest but is held in another (a cooldown, a peer conflict, an override) is held everywhere, with the reason `held with <path> (…)`, so the manifests don't drift apart.
 
+### Running from a workspace member
+
+Run `check` or `update --dry-run` from a member's directory (or any directory inside it) and autd covers that member's manifest only. It finds the workspace root that lists the member, so the manager is detected as it would be at the root, and `check --json` lists only that member's packages. The config is the member's own `.always-up-to-date.json` if it has one, else the workspace root's; the two are not merged. A pnpm directory with its own `pnpm-workspace.yaml`, or one no workspace lists, is a project of its own. Yarn 2+ refuses a directory its root doesn't list, and so does autd.
+
+`update` is refused from a member. Every manager writes one lockfile for all workspaces and can move other workspaces' copies of a package, so an update is never limited to one member. Run `autd update` in the workspace root; `autd update --dry-run` in the member previews that member's updates.
+
 ## 🗄️ Cache
 
 autd keeps what it learns from the registries (each package's latest version and the list of its versions) so a second `check` within five minutes asks nobody. The folder is `ca.pixel-perfect.alwaysuptodate` in:
@@ -191,7 +197,7 @@ It holds derived version lists only, never a registry document, a header or anyt
 
 - **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)` or `peer conflict: …`. After `autd update`, a package your manager was asked to move but left where it was is listed under "left in place by …" and reported with `"updated": false` and `not applied by npm (installed …)`. npm does this to a package another dependency pins exactly, and to a workspace member's copy it dedupes onto the root's. In a workspace, `held with <path> (…)` means the same package is held in that manifest, so its other manifests wait for it.
 - **`check` or `update` exits 1.** The message names the step that failed (`detect`, `discover` or `apply`) and says whether package.json was already written. Set `"debug": true` to see each package-manager command and its stderr.
-- **"No package manager detected".** package.json declares no manager and there's no lockfile in the current directory. Set `"packageManager"`, pass `--pm`, or run your package manager's install first.
+- **"No package manager detected".** package.json declares no manager and there's no lockfile in the current directory (from a workspace member: in the member's package.json or between it and the workspace root, nor a lockfile in the workspace root). Set `"packageManager"`, pass `--pm`, or run your package manager's install first.
 - **`cooldown` holds a package with `release date unknown`.** autd couldn't read that version's publish time from the registry. It reads `.npmrc` the way npm does: registries and scoped registries, per-registry auth, `ca` / `cafile` / `strict-ssl`, `https-proxy` / `proxy` / `noproxy`, `fetch-retries`, `fetch-timeout` and `maxsockets`. SOCKS proxies aren't supported. Set `"debug": true` to see the request that failed.
 - **The wrong package manager runs.** A leftover lockfile decided it. Set `"packageManager"` in package.json or pass `--pm`; with `"debug": true`, autd logs which lockfiles it ignored.
 

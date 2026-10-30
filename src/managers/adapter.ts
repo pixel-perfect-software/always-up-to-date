@@ -40,7 +40,7 @@ export interface Workspace {
    */
   manifests: WorkspaceManifest[]
   /**
-   * A member run (#123): the one manifest discovery reads and apply moves.
+   * A member run (#123): the one manifest discovery reads.
    * Set by the pipeline from `Project.member`; `readWorkspace` never sets it.
    */
   member?: WorkspaceManifest

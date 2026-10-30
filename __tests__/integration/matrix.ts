@@ -1,11 +1,16 @@
+import fs from 'fs'
+import path from 'path'
 import {
   type CheckRecord,
   expectedCheck,
+  expectedMemberCheck,
+  expectedMemberPlan,
   expectedPlan,
   expectedUpdate,
   floorsFor,
   isWorkspaceLayout,
   type Layout,
+  type Member,
   type PlanRow,
   raiseFloors,
   rewritesCatalogRanges,
@@ -14,6 +19,7 @@ import {
 import {
   assertBuilt,
   cleanup,
+  frozenInstall,
   LAYOUTS,
   type Manager,
   managerEnv,
@@ -21,9 +27,11 @@ import {
   readCatalogs,
   readDependencies,
   runCli,
+  runCliExpectingFailure,
   runCliThroughTripwire,
   runCliWithoutManagers,
   selectedManagers,
+  snapshotFiles,
 } from './harness'
 
 type Maps = Record<string, Record<string, string>>
@@ -186,6 +194,11 @@ export const runMatrix = (manager: Manager): void => {
           )
         })
 
+        // The manager's own check that the lockfile still agrees with the manifests.
+        it('a frozen install passes after the update', async () => {
+          await frozenInstall(manager, cwd)
+        })
+
         it('check --json afterwards lists no moved package below its target and keeps the pins', async () => {
           const record = (await runCli(cwd, ['check', '--json'])) as Record<
             string,
@@ -224,6 +237,114 @@ export const runMatrix = (manager: Manager): void => {
             ).toBe('2.1.2')
           }
         })
+      })
+    }
+  })
+}
+
+/**
+ * Runs from a workspace member (#123), on a fresh copy of each workspace
+ * layout. `check` and `update --dry-run` stay scoped to the member, and every
+ * writing `update` is refused, with nothing run and no file touched.
+ */
+export const runMemberMatrix = (manager: Manager): void => {
+  const run = selectedManagers().includes(manager) ? describe : describe.skip
+
+  run(`${manager} member runs`, () => {
+    let restoreEnv: (() => void) | undefined
+
+    beforeAll(() => {
+      assertBuilt()
+      restoreEnv = managerEnv(manager)
+    })
+    afterAll(() => restoreEnv?.())
+
+    for (const layout of LAYOUTS[manager] as readonly Layout[]) {
+      if (!isWorkspaceLayout(layout)) continue
+
+      describe(`${manager}-${layout}`, () => {
+        let cwd = ''
+        let before: Record<string, string>
+        const dir = (member: string) => path.join(cwd, ...member.split('/'))
+        // Berry still discovers through `yarn info` (#107).
+        const check = manager === 'berry' ? runCli : runCliWithoutManagers
+
+        beforeAll(async () => {
+          ;({ cwd } = await prepareRepo(`${manager}-${layout}`))
+          // packages/a has a config of its own; packages/b falls back to the root's (none).
+          fs.writeFileSync(
+            path.join(dir('packages/a'), '.always-up-to-date.json'),
+            '{"beyondRange":"patch"}\n',
+          )
+          fs.mkdirSync(path.join(dir('packages/a'), 'src'))
+          before = snapshotFiles(cwd)
+        })
+        afterAll(() => {
+          if (cwd) cleanup(cwd)
+        })
+
+        it.each(['packages/a', 'packages/a/src'])(
+          'check --json from %s lists packages/a only',
+          async (from) => {
+            expect(
+              projectCheck(await check(dir(from), ['check', '--json']), layout),
+            ).toEqual(expectedMemberCheck(layout, 'packages/a'))
+          },
+        )
+
+        it('check --json from packages/b lists commander, debug and kleur', async () => {
+          const record = projectCheck(
+            await check(dir('packages/b'), ['check', '--json']),
+            layout,
+          )
+          expect(record).toEqual(expectedMemberCheck(layout, 'packages/b'))
+          expect(Object.keys(record)).toEqual(['commander', 'debug', 'kleur'])
+        })
+
+        if (manager === 'berry') {
+          it('check --json --pm yarn from packages/a takes the same path', async () => {
+            expect(
+              projectCheck(
+                await runCli(dir('packages/a'), [
+                  'check',
+                  '--json',
+                  '--pm',
+                  'yarn',
+                ]),
+                layout,
+              ),
+            ).toEqual(expectedMemberCheck(layout, 'packages/a'))
+          })
+        }
+
+        it.each(['packages/a', 'packages/b'] as Member[])(
+          'update --dry-run --json from %s plans that member and writes nothing',
+          async (member) => {
+            expect(
+              projectRows(
+                await runCli(dir(member), ['update', '--dry-run', '--json']),
+              ),
+            ).toEqual(expectedMemberPlan(layout, member))
+            expect(snapshotFiles(cwd)).toEqual(before)
+          },
+        )
+
+        it.each(['packages/a', 'packages/a/src', 'packages/b'])(
+          'update --json from %s is refused and writes nothing',
+          async (from) => {
+            const output = (await runCliExpectingFailure(dir(from), [
+              'update',
+              '--json',
+            ])) as {
+              error: { step: string; message: string; manifestWritten: boolean }
+            }
+
+            expect(output.error.step).toBe('apply')
+            expect(output.error.manifestWritten).toBe(false)
+            expect(output.error.message).toContain(`run autd update in ${cwd}`)
+            expect(snapshotFiles(cwd)).toEqual(before)
+          },
+        )
       })
     }
   })

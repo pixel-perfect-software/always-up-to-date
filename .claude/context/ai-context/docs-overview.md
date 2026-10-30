@@ -41,7 +41,8 @@ src/
   cli.ts                    # Commander.js program setup, registers commands
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
   commandRunner.ts          # runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
-  project.ts                # openProject(cwd, { pm? }): loads the config once, configures the logger, detects the manager → Project (with a lazy registry session)
+  project.ts                # openProject(cwd, { pm? }): locates the workspace root, loads the config once (the member's own file, else the root's), configures the logger, detects the manager → Project { root, member?, config, adapter, registry } (with a lazy registry session)
+  projectLocation.ts        # locate(cwd): the nearest package.json's directory and the workspace root that lists it (package.json `workspaces` or pnpm-workspace.yaml), before a manager is known (#123)
   discovery.ts              # discoverFromRegistry(): native discovery for npm, pnpm, yarn v1, bun (manifests, node_modules, registry reader)
   pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter
   detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles
@@ -62,12 +63,15 @@ testRepos/                  # Integration fixtures, <manager>-<layout> (README.m
 bench/                      # pnpm run bench: pinned/ and ranges/ (the 40-dependency benchmark manifests), run.ts (copy, install, hyperfine, table), targets.ts (selection, cold caches), report.ts (hyperfine JSON parsing, table), register.cjs (swc loader for run.ts)
 jest.integration.config.ts  # Jest config for the integration matrix (not part of pnpm test)
 __tests__/
-  integration/              # pnpm run test:integration: harness.ts (copy, pin to minimum, install, run the CLI), lockfiles.ts (yarn v1/berry/bun rewriters), expectations.ts (derived values, per-manager overrides), matrix.ts, <manager>.test.ts
+  integration/              # pnpm run test:integration: harness.ts (copy, pin to minimum, install, run the CLI, frozenInstall, snapshotFiles, runCliExpectingFailure), lockfiles.ts (yarn v1/berry/bun rewriters), expectations.ts (derived values, expectedMemberCheck / expectedMemberPlan, per-manager overrides), matrix.ts (runMatrix, runMemberMatrix), <manager>.test.ts
   bench/                    # report.test.ts (hyperfine 2 JSON parsing, formatting, table), targets.test.ts (selection, cold caches)
   setup.ts                  # Global test setup (console suppression, AUTD_NO_CACHE=1)
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
   project.test.ts           # openProject: config loaded once, logger configured before detection
+  projectLocation.test.ts   # locate(): the root that lists a member, a directory inside one, a negated pattern, pnpm's own yaml, no package.json (#123)
+  projectMember.test.ts     # Real openProject from a member on temp workspaces: root and member, the config fallback, berry's detect refusal, the update refusal, an own-project directory and pnpm's own yaml (#123)
+  memberRun.test.ts         # per adapter: check and plan from a member read that manifest only, the member header, and update is refused before discovery, any lookup or subprocess, with every manifest keeping its bytes (#123)
   discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95
   projectRegistry.test.ts   # Real openProject on temp workspaces: a pnpm or bun member reads the workspace root's registry files; a pnpm member with its own yaml is its own root; a yarn v1 .yarnrc routes the default and a scope (#120) and a berry project's is ignored
   pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows; a cooldown fallback within the range package.json declares (#151) and an alias looked up by its target (#152)
@@ -107,6 +111,7 @@ __tests__/
     workspaces.test.ts      # Member map: workspace patterns, negations, skips
     workspaceDiscovery.test.ts  # Workspace check on all four managers (native) returns one record; unnamed roots
     workspaceApply.test.ts  # Workspace apply per manager: commands, member manifest writes, catalog routing
+    projectRoot.test.ts     # projectRoot on temp dirs: the npm/bun rule, pnpm's yaml (own yaml, catalog-only root), berry's yarn.lock root and its refusal, isYarnBerry from a member (#123)
   utils/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants, strict depsDev)
     cooldown.test.ts        # Normalize/evaluate cooldown gate
