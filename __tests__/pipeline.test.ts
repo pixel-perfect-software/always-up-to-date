@@ -70,7 +70,6 @@ describe('pipeline', () => {
     expect(loadConfig).not.toHaveBeenCalled()
   })
 
-  // Phase 2 of #123 only: member-scoped discovery replaces this guard.
   it('plans with the config the project carries', async () => {
     const registry = registryFor('dayjs')
     // The manager moves dayjs to its target, so the post-apply check agrees.

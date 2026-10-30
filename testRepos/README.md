@@ -7,7 +7,8 @@ Fixtures for the integration matrix (`pnpm run test:integration`). Each director
 The suite never runs in these directories. It copies one into the OS temp directory,
 installs its dependencies at the lowest version each range allows, restores the ranges,
 and runs the built CLI (`dist/index.js`) against the copy. So the checkout stays clean and
-the copy sits outside this repository's own pnpm workspace, Biome and git.
+the copy sits outside this repository's own pnpm workspace, Biome and git. After autd's
+`update --json` on the copy, the manager's frozen install must still pass.
 
 Each manifest is committed as `package.fixture.json`, and the copy renames it to
 `package.json` (`copyProject` in `__tests__/integration/harness.ts`; `bench/` uses the
@@ -32,7 +33,7 @@ an exact pin at the root only, and `ms` is `~2.1.1` at the root beside `2.1.2` i
 
 ## Member runs
 
-For the `workspace` and `catalogs` layouts the suite also runs the CLI from `packages/a`, from `packages/a/src` and from `packages/b` of a fresh copy: `check --json` and `update --dry-run --json` cover that member only, `update --json` is refused with every manifest and lockfile unchanged. `packages/a` gets its own `.always-up-to-date.json` (`beyondRange: patch`); `packages/b` uses the root's. After the root `update --json`, the manager's frozen install must still pass.
+For the `workspace` and `catalogs` layouts the suite also runs the CLI from members of a fresh copy: `check --json` from `packages/a`, `packages/a/src` and `packages/b`, and `update --dry-run --json` from `packages/a` and `packages/b`, cover that member only; `update --json` from all three is refused with every manifest and lockfile unchanged. `packages/a` gets its own `.always-up-to-date.json` (`beyondRange: patch`); `packages/b` has none, and neither has the root.
 
 ## Running
 
