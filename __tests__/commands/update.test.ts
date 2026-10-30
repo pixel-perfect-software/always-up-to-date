@@ -8,6 +8,7 @@ jest.mock('@/detectPackageManager', () => ({
 jest.mock('@/pipeline', () => ({
   findOutdated: jest.fn(),
   plan: jest.fn(),
+  refuseMemberApply: jest.fn(),
   update: jest.fn(),
 }))
 
@@ -26,8 +27,9 @@ import updateCommand from '@/commands/update'
 import detectPackageManager from '@/detectPackageManager'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
-import { findOutdated, plan, update } from '@/pipeline'
+import { findOutdated, plan, refuseMemberApply, update } from '@/pipeline'
 import { openProject } from '@/project'
+import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
 
 const mockDetectPackageManager = jest.mocked(detectPackageManager)
@@ -296,6 +298,19 @@ describe('update command', () => {
         'plan',
         { member: 'packages/a' },
       )
+    })
+
+    it('refuses -i from a member before discovering or prompting (#123)', async () => {
+      jest.mocked(refuseMemberApply).mockImplementationOnce(() => {
+        throw new StepError('apply', 'update runs from the workspace root')
+      })
+
+      await program.parseAsync(['node', 'test', 'update', '--interactive'])
+
+      expect(process.exitCode).toBe(1)
+      expect(mockCheckPackageVersions).not.toHaveBeenCalled()
+      expect(mockCheckbox).not.toHaveBeenCalled()
+      process.exitCode = undefined
     })
 
     it('carries the workspace on the dry-run skipped rows', async () => {

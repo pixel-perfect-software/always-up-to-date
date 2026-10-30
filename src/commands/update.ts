@@ -1,5 +1,10 @@
 import { type Command, Option } from 'commander'
-import { findOutdated, plan, update as runUpdate } from '@/pipeline'
+import {
+  findOutdated,
+  plan,
+  refuseMemberApply,
+  update as runUpdate,
+} from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import type { SupportedPackageManager, UpdateResult } from '@/types'
 import { logger } from '@/utils'
@@ -125,6 +130,7 @@ const choicesByPackage = (
 }
 
 const interactiveUpdate = async (project: Project) => {
+  refuseMemberApply(project)
   const outdatedPackages = await findOutdated(project)
 
   if (Object.keys(outdatedPackages).length === 0) return

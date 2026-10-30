@@ -134,6 +134,20 @@ export const plan = (
 }
 
 /**
+ * `update` writes from the workspace root. Every manager's install rewrites
+ * the lockfile all workspaces share, and moves other workspaces' locked
+ * copies of a package, so a write from a member is never scoped to it (#123).
+ * Refuses before anything is discovered, run or asked.
+ */
+export const refuseMemberApply = ({ root, member }: Project): void => {
+  if (!member) return
+  throw new StepError(
+    'apply',
+    `update runs from the workspace root, because it writes the lockfile every workspace shares: run autd update in ${root} (autd update --dry-run previews this member's updates here)`,
+  )
+}
+
+/**
  * discover → plan → apply → report. `discovered` is a `check` result the
  * caller already has (interactive mode), so discovery does not run again.
  */
@@ -147,11 +161,11 @@ export const update = async (
     discovered?: Record<string, PackageInfo>
   } = {},
 ): Promise<UpdateResult[]> => {
-  const { adapter, root, member } = project
+  refuseMemberApply(project)
+  const { adapter, root } = project
   const { outdated, workspace } = discovered
     ? { outdated: discovered, workspace: workspaceOf(project) }
     : await discover(project)
-  const where = { member: member?.path }
 
   // discover already printed allUpToDate.
   if (Object.keys(outdated).length === 0) return []
@@ -162,19 +176,11 @@ export const update = async (
   const moving = names.length + new Set(pinned.map((row) => row.name)).size
 
   if (moving === 0) {
-    logger.report(results, adapter.name, 'plan', where)
+    logger.report(results, adapter.name, 'plan', { member: undefined })
     return results
   }
 
   logger.updatingHeader(adapter.name, moving)
-
-  // Until the member-scoped apply lands (#123).
-  if (member) {
-    throw new StepError(
-      'apply',
-      `updating from a workspace member is not wired yet (#123): run autd from ${root}`,
-    )
-  }
 
   // Cooldown fallbacks first: the apply below asks for the rest by name, and
   // leaves the versions they pinned where the lockfile has them.
@@ -199,6 +205,6 @@ export const update = async (
       : readInstalledVersions(root, moved),
     adapter.name,
   )
-  logger.report(applied, adapter.name, 'applied', where)
+  logger.report(applied, adapter.name, 'applied', { member: undefined })
   return applied
 }

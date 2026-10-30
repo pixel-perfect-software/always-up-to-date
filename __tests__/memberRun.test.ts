@@ -93,11 +93,30 @@ describe.each(ADAPTERS)('a member run with $pm', ({ adapter }) => {
     ])
   })
 
-  it('does not apply from a member until that is wired', async () => {
-    await expect(update(project())).rejects.toMatchObject({
+  it('refuses to update from a member before discovering anything', async () => {
+    const p = project()
+    const manifests = [
+      'package.json',
+      'packages/a/package.json',
+      'packages/b/package.json',
+    ]
+    const bytes = () =>
+      manifests.map((f) => fs.readFileSync(path.join(cwd, f), 'utf8'))
+    const before = bytes()
+    const lookup = jest.spyOn(p.registry, 'lookup')
+
+    await expect(update(p)).rejects.toMatchObject({
       step: 'apply',
-      message: expect.stringContaining('not wired yet (#123)'),
+      manifestWritten: false,
+      message: expect.stringContaining(`run autd update in ${cwd}`),
     })
+    await expect(
+      update(p, { targetPackages: ['dayjs'] }),
+    ).rejects.toMatchObject({ step: 'apply' })
+
+    expect(lookup).not.toHaveBeenCalled()
     expect(runProcess).not.toHaveBeenCalled()
+    expect(logger.updatingHeader).not.toHaveBeenCalled()
+    expect(bytes()).toEqual(before)
   })
 })

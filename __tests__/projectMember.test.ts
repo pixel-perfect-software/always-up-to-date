@@ -7,7 +7,8 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import pnpm from '@/managers/pnpm'
-import { openProject, runDirectory } from '@/project'
+import { refuseMemberApply } from '@/pipeline'
+import { openProject } from '@/project'
 import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
 
@@ -48,7 +49,6 @@ describe('openProject from a workspace member', () => {
     expect(project.root).toBe(tmp)
     expect(project.member).toEqual({ path: 'packages/a', name: '@ws/a' })
     expect(project.adapter.name).toBe('npm')
-    expect(runDirectory(project)).toBe(at('packages', 'a'))
   })
 
   it('gives the same from a directory inside the member', () => {
@@ -68,7 +68,6 @@ describe('openProject from a workspace member', () => {
 
     expect(project.root).toBe(tmp)
     expect(project.member).toBeUndefined()
-    expect(runDirectory(project)).toBe(tmp)
   })
 
   it("reads the member's own config over the root's, and logs the choice", () => {
@@ -110,6 +109,18 @@ describe('openProject from a workspace member', () => {
     )
   })
 
+  it('refuses update from a member, from the root it names', () => {
+    workspace({ packageManager: 'npm@11.19.1' })
+
+    expect(() => refuseMemberApply(openProject(at('packages', 'a')))).toThrow(
+      expect.objectContaining({
+        step: 'apply',
+        message: expect.stringContaining(`run autd update in ${tmp}`),
+      }),
+    )
+    expect(() => refuseMemberApply(openProject(tmp))).not.toThrow()
+  })
+
   it('is its own project for an unlisted directory with --pm npm', () => {
     workspace({ packageManager: 'npm@11.19.1' })
     write(at('tools', 'x', 'package.json'), '{"name":"x"}')
@@ -118,6 +129,7 @@ describe('openProject from a workspace member', () => {
 
     expect(project.root).toBe(at('tools', 'x'))
     expect(project.member).toBeUndefined()
+    expect(() => refuseMemberApply(project)).not.toThrow()
   })
 
   it('makes a pnpm member with its own pnpm-workspace.yaml its own root', () => {

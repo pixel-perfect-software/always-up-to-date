@@ -1,5 +1,3 @@
-import path from 'path'
-
 import detectPackageManager from '@/detectPackageManager'
 import { adapterFor, type ManagerAdapter } from '@/managers'
 import type { WorkspaceManifest } from '@/managers/adapter'
@@ -27,20 +25,13 @@ const cacheDisabledBy = (value: string | undefined): boolean => {
 export interface Project {
   /** The project root: the workspace root a member belongs to, else the directory of the nearest package.json (the cwd when there is none). */
   root: string
-  /** A run from a workspace member (#123): only its manifest is checked and moved, and the manager runs in its directory. */
+  /** A run from a workspace member (#123): only its manifest is checked; `update` refuses it and runs from `root`. */
   member?: WorkspaceManifest
   config: AlwaysUpToDateConfig
   adapter: ManagerAdapter
   /** The run's registry config and client, loaded on first use; commands close it. */
   registry: RegistrySession
 }
-
-/** The directory the manager runs in: the member's, else the project root. */
-export const runDirectory = ({
-  root,
-  member,
-}: Pick<Project, 'root' | 'member'>): string =>
-  member ? path.join(root, ...member.path.split('/')) : root
 
 /**
  * Loads the config, configures the logger from it, then detects the manager,
