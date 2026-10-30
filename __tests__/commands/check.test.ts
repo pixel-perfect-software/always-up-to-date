@@ -67,7 +67,7 @@ describe('check command', () => {
     expect(detectPackageManager).toHaveBeenCalledWith(
       expect.any(String),
       'yarn',
-      { from: expect.any(String) },
+      { from: expect.any(String), cwd: expect.any(String) },
     )
     expect(mockCheckPackageVersions).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: yarn }),

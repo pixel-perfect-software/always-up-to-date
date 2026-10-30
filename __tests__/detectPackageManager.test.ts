@@ -289,4 +289,51 @@ describe('detectPackageManager', () => {
       )
     })
   })
+
+  // Messages are read from the directory the user ran in, which can sit
+  // below the member (#123).
+  describe('from a directory inside a member', () => {
+    let member: string
+    let inside: string
+
+    beforeEach(() => {
+      member = path.join(cwd, 'packages', 'a')
+      inside = path.join(member, 'src')
+      fs.mkdirSync(inside, { recursive: true })
+      fs.writeFileSync(
+        path.join(member, 'package.json'),
+        JSON.stringify({ name: 'member' }),
+      )
+    })
+
+    it('labels the declaring file relative to the cwd', () => {
+      manifest({ packageManager: 'yarn@4.12.0' })
+
+      expect(
+        detectPackageManager(cwd, undefined, { from: member, cwd: inside }),
+      ).toBe('yarn')
+      expect(debugLines()).toEqual([
+        'Using yarn: packageManager in ../../../package.json',
+      ])
+    })
+
+    it("labels the member's own declaration relative to the cwd", () => {
+      fs.writeFileSync(
+        path.join(member, 'package.json'),
+        JSON.stringify({ name: 'member', packageManager: 'pnpm@12.14.0' }),
+      )
+
+      detectPackageManager(cwd, 'bun', { from: member, cwd: inside })
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('pnpm@12.14.0 in ../package.json.'),
+      )
+    })
+
+    it('names the searched directory when it is not the cwd', () => {
+      expect(() =>
+        detectPackageManager(member, undefined, { from: member, cwd: inside }),
+      ).toThrow(`No package manager detected in ${member}: package.json`)
+    })
+  })
 })

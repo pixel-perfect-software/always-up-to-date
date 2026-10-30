@@ -165,4 +165,39 @@ describe('openProject from a workspace member', () => {
     expect(project.root).toBe(tmp)
     expect(project.member?.path).toBe('packages/a')
   })
+
+  it("reads the npm root's config for a member that carries a stray settings-only pnpm-workspace.yaml", () => {
+    // `locate` takes the member's own yaml for a root of its own; npm's
+    // project is the root that lists it, so the config is the root's.
+    workspace({ packageManager: 'npm@11.19.1' })
+    write(at('.always-up-to-date.json'), '{"beyondRange":"minor"}')
+    write(at('packages', 'a', 'pnpm-workspace.yaml'), 'catalog:\n  ms: ^2\n')
+
+    const project = openProject(at('packages', 'a'), { pm: 'npm' })
+
+    expect(project.root).toBe(tmp)
+    expect(project.member?.path).toBe('packages/a')
+    expect(project.config.beyondRange).toBe('minor')
+  })
+
+  it('reads the config of the pnpm project that a nearer settings-only yaml makes of a member', () => {
+    // R lists apps/**, but pnpm reads only R/apps's yaml, which lists nothing.
+    write(
+      at('package.json'),
+      '{"name":"ws-root","packageManager":"pnpm@12.14.0"}',
+    )
+    write(at('pnpm-workspace.yaml'), 'packages:\n  - apps/**\n')
+    write(at('.always-up-to-date.json'), '{"beyondRange":"minor"}')
+    write(at('apps', 'pnpm-workspace.yaml'), 'catalog:\n  ms: ^2\n')
+    write(
+      at('apps', 'web', 'package.json'),
+      '{"name":"web","packageManager":"pnpm@12.14.0"}',
+    )
+
+    const project = openProject(at('apps', 'web'))
+
+    expect(project.root).toBe(at('apps', 'web'))
+    expect(project.member).toBeUndefined()
+    expect(project.config.beyondRange).toBeUndefined()
+  })
 })

@@ -6,6 +6,7 @@ import {
   pnpmRegistrySettings,
   substitutePnpm,
 } from '@/managers/pnpm/registries'
+import { pnpmProjectRoot } from '@/managers/workspaces'
 import type { Npmrc } from '@/utils/npmrc'
 import {
   type EnvRule,
@@ -16,20 +17,6 @@ import {
   npmrcFileLayer,
 } from '@/utils/npmrcLoader'
 import { readTextFile, yamlValue } from '@/utils/saveStyle'
-
-/**
- * The directory pnpm reads its project settings from: the nearest one,
- * walking up from `cwd`, that holds a pnpm-workspace.yaml. From a member that
- * is the workspace root, and its yaml and .npmrc are the only project files
- * read (verified on pnpm 12.15.0, 2026-10-26: a member's own .npmrc is
- * ignored, and a member with a yaml of its own is its own root).
- */
-export const pnpmProjectRoot = (cwd: string): string => {
-  for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return dir
-    if (path.dirname(dir) === dir) return path.resolve(cwd)
-  }
-}
 
 /**
  * pnpm's global config directory, which holds `config.yaml` and `auth.ini`.

@@ -176,7 +176,7 @@ export const update = async (
   const moving = names.length + new Set(pinned.map((row) => row.name)).size
 
   if (moving === 0) {
-    logger.report(results, adapter.name, 'plan', { member: undefined })
+    logger.report(results, adapter.name, 'plan')
     return results
   }
 
@@ -205,6 +205,6 @@ export const update = async (
       : readInstalledVersions(root, moved),
     adapter.name,
   )
-  logger.report(applied, adapter.name, 'applied', { member: undefined })
+  logger.report(applied, adapter.name, 'applied')
   return applied
 }

@@ -113,4 +113,16 @@ describe('locate', () => {
       workspaceRoot: at('empty', 'deep'),
     })
   })
+
+  it('stops at the nearest pnpm-workspace.yaml, as pnpm does, when it does not list the directory', () => {
+    manifest([])
+    write(at('pnpm-workspace.yaml'), 'packages:\n  - apps/**\n')
+    write(at('apps', 'pnpm-workspace.yaml'), 'catalog:\n  ms: ^2\n')
+    manifest(['apps', 'web'])
+
+    expect(locate(at('apps', 'web'))).toEqual({
+      dir: at('apps', 'web'),
+      workspaceRoot: at('apps', 'web'),
+    })
+  })
 })

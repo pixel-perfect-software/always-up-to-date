@@ -101,14 +101,8 @@ const dryRun = async (
   })
 }
 
-/**
- * One choice per package: a package in several manifests moves in all of
- * them. A member run covers one manifest, so its choices carry no label.
- */
-const choicesByPackage = (
-  eligible: UpdateResult[],
-  { labels = true }: { labels?: boolean } = {},
-) => {
+/** One choice per package: a package in several manifests moves in all of them. */
+const choicesByPackage = (eligible: UpdateResult[]) => {
   const byName = new Map<string, UpdateResult[]>()
   for (const result of eligible) {
     const rows = byName.get(result.name)
@@ -120,10 +114,9 @@ const choicesByPackage = (
 
   // Selecting a package moves every manifest listed, so each shows its own move.
   return [...byName].map(([name, rows]) => ({
-    name:
-      labels && rows.some((r) => r.workspace !== undefined)
-        ? `${name}: ${rows.map((r) => `${workspaceLabel(r.workspace ?? '.')} ${step(r)}`).join(', ')}`
-        : `${name}: ${step(rows[0])}`,
+    name: rows.some((r) => r.workspace !== undefined)
+      ? `${name}: ${rows.map((r) => `${workspaceLabel(r.workspace ?? '.')} ${step(r)}`).join(', ')}`
+      : `${name}: ${step(rows[0])}`,
     value: name,
     checked: true,
   }))
@@ -139,16 +132,14 @@ const interactiveUpdate = async (project: Project) => {
   const eligible = results.filter((r) => r.updated)
 
   // What is held, and why, before the checklist offers the rest.
-  logger.report(results, project.adapter.name, 'plan', {
-    member: project.member?.path,
-  })
+  logger.report(results, project.adapter.name, 'plan')
   if (eligible.length === 0) return
 
   const { checkbox } = await import('@inquirer/prompts')
 
   const selected = await checkbox({
     message: 'Select packages to update:',
-    choices: choicesByPackage(eligible, { labels: !project.member }),
+    choices: choicesByPackage(eligible),
   })
 
   if (selected.length === 0) {

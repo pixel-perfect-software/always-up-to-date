@@ -100,7 +100,7 @@ describe('update command', () => {
     expect(mockDetectPackageManager).toHaveBeenCalledWith(
       expect.any(String),
       'bun',
-      { from: expect.any(String) },
+      { from: expect.any(String), cwd: expect.any(String) },
     )
     expect(mockUpdatePackages).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: bun }),
@@ -271,33 +271,6 @@ describe('update command', () => {
           checked: true,
         },
       ])
-    })
-
-    it("offers a member run's choices without a manifest label (#123)", async () => {
-      jest.mocked(openProject).mockImplementationOnce((cwd, options) => ({
-        ...jest
-          .requireActual<typeof import('@/project')>('@/project')
-          .openProject(cwd, options),
-        member: { path: 'packages/a', name: '@ws/a' },
-      }))
-      mockCheckPackageVersions.mockResolvedValue({
-        ms: { name: 'ms', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
-      })
-      mockPlan.mockResolvedValue([row('ms', 'packages/a')])
-      mockCheckbox.mockResolvedValue(['ms'])
-      mockUpdatePackages.mockResolvedValue([])
-
-      await program.parseAsync(['node', 'test', 'update', '--interactive'])
-
-      expect(mockCheckbox.mock.calls[0][0].choices).toEqual([
-        { name: 'ms: 1.0.0 → 1.0.1 (patch)', value: 'ms', checked: true },
-      ])
-      expect(logger.report).toHaveBeenCalledWith(
-        expect.any(Array),
-        expect.any(String),
-        'plan',
-        { member: 'packages/a' },
-      )
     })
 
     it('refuses -i from a member before discovering or prompting (#123)', async () => {

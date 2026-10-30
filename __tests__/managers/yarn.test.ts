@@ -158,6 +158,49 @@ describe('update with yarn', () => {
     ])
   })
 
+  it("keeps yarn's own write of the root manifest and runs no install", async () => {
+    // The root's `upgrade` copies nothing between fields (p1-rootdev), so
+    // there is nothing to restore and no member left unlinked.
+    writeProject({
+      name: 'ws-root',
+      private: true,
+      workspaces: ['packages/*'],
+      dependencies: { ms: '~2.1.1' },
+    })
+    const file = path.join(cwd, 'package.json')
+    const byYarn = `${JSON.stringify(
+      {
+        name: 'ws-root',
+        private: true,
+        workspaces: ['packages/*'],
+        dependencies: { ms: '~2.1.3' },
+      },
+      null,
+      4,
+    )}\n`
+    mockedRunProcess.mockImplementation(async () => {
+      fs.writeFileSync(file, byYarn)
+      return { stdout: '', stderr: '' }
+    })
+
+    await update(projectFor(yarn, cwd, { rules: { ms: 'latest' } }), {
+      discovered: foldWorkspaceEntries([
+        {
+          name: 'ms',
+          workspace: '.',
+          current: '2.1.2',
+          wanted: '2.1.2',
+          latest: '2.1.3',
+        },
+      ]),
+    })
+
+    expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
+      ['upgrade', 'ms@~2.1.3'],
+    ])
+    expect(fs.readFileSync(file, 'utf8')).toBe(byYarn)
+  })
+
   it('flags the manifest as written when install fails after a beyond-range write', async () => {
     memberWithDevDependency('yarn/v1-member-upgrade-dev-latest.after.json')
     mockedRunProcess.mockImplementation(async (_pm, args) => {

@@ -3,12 +3,9 @@ import path from 'path'
 
 import {
   listsMember,
-  matchesWorkspacePatterns,
   nearestManifestDir,
-  pnpmWorkspacePatterns,
-  toPosix,
+  pnpmWorkspaceRoot,
 } from '@/managers/workspaces'
-import { readTextFile } from '@/utils/saveStyle'
 
 export interface Location {
   /** The nearest directory at or above the command's cwd with a package.json; the cwd when none has one. */
@@ -21,12 +18,6 @@ export interface Location {
   workspaceRoot: string
 }
 
-const pnpmListsMember = (root: string, dir: string): boolean =>
-  matchesWorkspacePatterns(
-    pnpmWorkspacePatterns(readTextFile(path.join(root, 'pnpm-workspace.yaml'))),
-    toPosix(path.relative(root, dir)),
-  )
-
 /**
  * Where a run from `cwd` belongs, before a manager is known (#123): the
  * member's directory and the workspace root that lists it, whichever file
@@ -38,8 +29,11 @@ export const locate = (cwd: string): Location => {
   if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) {
     return { dir, workspaceRoot: dir }
   }
+  // pnpm reads only the nearest pnpm-workspace.yaml, as `pnpmWorkspaceRoot`
+  // does: one that does not list `dir` is not walked past.
+  const pnpmRoot = pnpmWorkspaceRoot(dir)
   for (let parent = path.dirname(dir); ; parent = path.dirname(parent)) {
-    if (listsMember(parent, dir) || pnpmListsMember(parent, dir)) {
+    if (listsMember(parent, dir) || parent === pnpmRoot) {
       return { dir, workspaceRoot: parent }
     }
     if (path.dirname(parent) === parent) return { dir, workspaceRoot: dir }

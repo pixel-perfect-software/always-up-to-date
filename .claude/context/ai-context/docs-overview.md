@@ -42,7 +42,7 @@ src/
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
   commandRunner.ts          # runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
   project.ts                # openProject(cwd, { pm? }): locates the workspace root, loads the config once (the member's own file, else the root's), configures the logger, detects the manager → Project { root, member?, config, adapter, registry } (with a lazy registry session)
-  projectLocation.ts        # locate(cwd): the nearest package.json's directory and the workspace root that lists it (package.json `workspaces` or pnpm-workspace.yaml), before a manager is known (#123)
+  projectLocation.ts        # locate(cwd): the nearest package.json's directory and the workspace root that lists it (package.json `workspaces`, or the nearest pnpm-workspace.yaml when it lists it), before a manager is known (#123)
   discovery.ts              # discoverFromRegistry(): native discovery for npm, pnpm, yarn v1, bun (manifests, node_modules, registry reader)
   pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter
   detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles

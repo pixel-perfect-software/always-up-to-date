@@ -145,16 +145,15 @@ const yarn: ManagerAdapter = {
     //
     // `-D` and `-O` are not `upgrade` options in yarn 1.22.22: commander
     // takes the next descriptor as the flag's value and upgrades everything,
-    // so a field cannot be named. Without one, yarn copies a devDependency
-    // into `dependencies` (and an optionalDependency likewise). So after each
-    // command the manifest's original bytes go back, then its beyond-range
-    // specs are written as `nextVersionSpec` made them for the descriptors,
-    // and one `install` makes node_modules and yarn.lock agree with the
-    // restored manifests. Checked on yarn 1.22.22, 2026-10-29: `-O` is
+    // so a field cannot be named. Without one, a member's `upgrade` copies a
+    // devDependency into `dependencies` (and an optionalDependency likewise).
+    // So after each member command the manifest's original bytes go back, then
+    // its beyond-range specs are written as `nextVersionSpec` made them for
+    // the descriptors, and one `install` makes node_modules and yarn.lock agree
+    // with the restored manifests. Checked on yarn 1.22.22, 2026-10-29: `-O` is
     // swallowed like `-D` (p1-opt: every dependency upgraded, `ms` added to
-    // the member's dependencies); the root's `upgrade` does not copy a root
-    // devDependency into `dependencies` (p1-rootdev), so there the restore
-    // changes nothing and only the beyond-range write matters.
+    // the member's dependencies). The root's `upgrade` copies nothing
+    // (p1-rootdev), so the root keeps yarn's own write and needs no install.
     let installNeeded = false
     let written = false
     for (const m of manifests) {
@@ -174,28 +173,26 @@ const yarn: ManagerAdapter = {
       }
       if (descriptors.length === 0) continue
 
-      let command: string[]
       if (m.path === '.') {
-        command = ['upgrade', ...descriptors]
-      } else {
-        const name = members.find((w) => w.path === m.path)?.name
-        if (!name) {
-          throw new StepError(
-            'apply',
-            `${m.path}/package.json has no name, so yarn cannot upgrade it as a workspace`,
-          )
-        }
-        command = ['workspace', name, 'upgrade', ...descriptors]
-        installNeeded = true
+        await run(['upgrade', ...descriptors], { manifestWritten: written })
+        continue
       }
+
+      const name = members.find((w) => w.path === m.path)?.name
+      if (!name) {
+        throw new StepError(
+          'apply',
+          `${m.path}/package.json has no name, so yarn cannot upgrade it as a workspace`,
+        )
+      }
+      installNeeded = true
 
       const file = path.join(dir, 'package.json')
       const original = fs.readFileSync(file, 'utf8')
-      await run(command, { manifestWritten: written })
-      if (fs.readFileSync(file, 'utf8') !== original) {
-        fs.writeFileSync(file, original, 'utf8')
-        installNeeded = true
-      }
+      await run(['workspace', name, 'upgrade', ...descriptors], {
+        manifestWritten: written,
+      })
+      fs.writeFileSync(file, original, 'utf8')
       if (Object.keys(m.beyondRange).length > 0) {
         await updatePackageJson(dir, m.beyondRange, style)
         written = true

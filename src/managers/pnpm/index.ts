@@ -1,12 +1,11 @@
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
-import { pnpmNpmrcLayers, pnpmProjectRoot } from '@/managers/pnpm/npmrc'
+import { pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
 import {
-  matchesWorkspacePatterns,
   pnpmWorkspacePatterns,
+  pnpmWorkspaceRoot,
   readWorkspaceManifests,
-  toPosix,
 } from '@/managers/workspaces'
 import {
   readPnpmCatalogs,
@@ -16,6 +15,8 @@ import {
 } from '@/utils/files'
 import { overridesFromField } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
+
+export { pnpmWorkspaceRoot }
 
 const readWorkspaceYaml = (cwd: string): string =>
   readTextFile(path.join(cwd, 'pnpm-workspace.yaml'))
@@ -35,21 +36,6 @@ const readWorkspaceOverrides = (yaml: string): Record<string, string> => {
     if (entry) overrides[entry[2]] = entry[3]
   }
   return overrides
-}
-
-/**
- * pnpm's project for `dir`: the directory of the nearest pnpm-workspace.yaml
- * at or above it when that directory is `dir` or its `packages` list `dir`;
- * otherwise `dir` is its own project (verified on pnpm 12.15.0, 2026-10-26).
- */
-export const pnpmWorkspaceRoot = (dir: string): string => {
-  const start = path.resolve(dir)
-  const root = pnpmProjectRoot(start)
-  if (root === start) return start
-  const patterns = pnpmWorkspacePatterns(readWorkspaceYaml(root))
-  return matchesWorkspacePatterns(patterns, toPosix(path.relative(root, start)))
-    ? root
-    : start
 }
 
 /**

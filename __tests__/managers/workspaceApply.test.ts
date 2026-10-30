@@ -158,7 +158,9 @@ describe.each([
       )
 
       expect(commands()).toEqual(beyond)
-      const expectedRoot = writesManifests ? '1.11.23' : '1.11.9'
+      // yarn writes the root's spec itself, which the mocked command does not.
+      const expectedRoot =
+        writesManifests && pm !== 'yarn' ? '1.11.23' : '1.11.9'
       const expectedA = writesManifests ? '2.1.3' : '2.1.2'
       expect(readJson('package.json').dependencies).toEqual({
         dayjs: expectedRoot,

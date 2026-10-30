@@ -15,7 +15,7 @@ import logger from '@/utils/logger'
 
 /** Managers package.json names, and the field that names them. */
 interface Declaration {
-  /** The declaring file as seen from the run's directory: `package.json`, `../../package.json`. */
+  /** The declaring file as seen from the command's cwd: `package.json`, `../../package.json`. */
   file: string
   names: string[]
   field: 'packageManager' | 'devEngines.packageManager'
@@ -65,9 +65,13 @@ const declarationsIn = (dir: string, file: string): Declaration[] => {
  * The declarations of the nearest package.json from `from` up to `root` that
  * has any (a member's own beats the workspace root's).
  */
-const declarations = (root: string, from: string): Declaration[] => {
+const declarations = (
+  root: string,
+  from: string,
+  cwd: string,
+): Declaration[] => {
   for (const dir of ancestorDirs(from, root)) {
-    const relative = path.relative(from, dir).split(path.sep).join('/')
+    const relative = path.relative(cwd, dir).split(path.sep).join('/')
     const found = declarationsIn(
       dir,
       relative ? `${relative}/package.json` : 'package.json',
@@ -98,17 +102,18 @@ const ignoreOtherLockfiles = (
  * then npm: package-lock.json is the one most often left behind) and a
  * warning names the choice. Lockfiles are read at `root`. From a workspace
  * member (`from`, a directory below `root`), the declaration is the nearest
- * package.json's between `from` and `root`.
+ * package.json's between `from` and `root`. Messages name files and
+ * directories as seen from `cwd`, the command's directory (`from` by default).
  */
 const detectPackageManager = (
   root: string,
   pm?: SupportedPackageManager,
-  { from = root }: { from?: string } = {},
+  { from = root, cwd = from }: { from?: string; cwd?: string } = {},
 ): SupportedPackageManager => {
   const found = Object.values(adapters).filter((adapter) =>
     fs.existsSync(path.join(root, adapter.lockfile)),
   )
-  const declared = declarations(root, from)
+  const declared = declarations(root, from, cwd)
 
   if (pm) {
     const contradicted = declared.find(
@@ -156,7 +161,7 @@ const detectPackageManager = (
   if (!chosen) {
     throw new StepError(
       'detect',
-      `No package manager detected in ${from === root ? 'the current directory' : root}: package.json declares none and there is no lockfile. Pass --pm ${supportedManagers.join('|')} to choose one.`,
+      `No package manager detected in ${path.resolve(cwd) === root ? 'the current directory' : root}: package.json declares none and there is no lockfile. Pass --pm ${supportedManagers.join('|')} to choose one.`,
     )
   }
 

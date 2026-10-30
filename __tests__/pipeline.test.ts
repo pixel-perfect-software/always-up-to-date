@@ -214,9 +214,7 @@ describe('pipeline', () => {
 
       // One report, after apply, carrying every row: nothing is listed twice (#138).
       expect(logger.report).toHaveBeenCalledTimes(1)
-      expect(logger.report).toHaveBeenCalledWith(results, 'npm', 'applied', {
-        member: undefined,
-      })
+      expect(logger.report).toHaveBeenCalledWith(results, 'npm', 'applied')
     })
   })
 

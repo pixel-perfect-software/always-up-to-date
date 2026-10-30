@@ -55,6 +55,7 @@ describe('openProject', () => {
     })
     expect(detectPackageManager).toHaveBeenCalledWith('/project', undefined, {
       from: '/project',
+      cwd: '/project',
     })
   })
 
@@ -179,6 +180,7 @@ describe('openProject', () => {
     expect(openProject('/project', { pm: 'bun' }).adapter).toBe(bun)
     expect(detectPackageManager).toHaveBeenCalledWith('/project', 'bun', {
       from: '/project',
+      cwd: '/project',
     })
   })
 

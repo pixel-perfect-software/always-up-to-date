@@ -3,6 +3,7 @@ import { adapterFor, type ManagerAdapter } from '@/managers'
 import type { WorkspaceManifest } from '@/managers/adapter'
 import { memberAt } from '@/managers/workspaces'
 import { locate } from '@/projectLocation'
+import { StepError } from '@/stepError'
 import type { AlwaysUpToDateConfig, SupportedPackageManager } from '@/types'
 import { configFileFor, loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
@@ -50,15 +51,29 @@ export const openProject = (
   { pm, cache = true }: { pm?: SupportedPackageManager; cache?: boolean } = {},
 ): Project => {
   const { dir, workspaceRoot } = locate(cwd)
-  const config = loadConfig(dir, workspaceRoot)
+  let config = loadConfig(dir, workspaceRoot)
   logger.configure(config)
   const adapter = adapterFor(
-    detectPackageManager(workspaceRoot, pm, { from: dir }),
+    detectPackageManager(workspaceRoot, pm, { from: dir, cwd }),
   )
   const root = adapter.projectRoot(dir)
+  // The manager's project is not where `locate` looked (a pnpm-workspace.yaml
+  // that does not list `dir`, or one `dir` carries under npm): detect and read
+  // the config again from there, with that run's own errors.
+  if (root !== workspaceRoot) {
+    const found = detectPackageManager(root, pm, { from: dir, cwd })
+    if (found !== adapter.name) {
+      throw new StepError(
+        'detect',
+        `${adapter.name} treats ${root} as the project, but detection there finds ${found}. Pass --pm to choose one.`,
+      )
+    }
+    config = loadConfig(dir, root)
+    logger.configure(config)
+  }
   const member = root === dir ? undefined : memberAt(root, dir)
   logger.debug(
-    `config: ${configFileFor(dir, workspaceRoot) ?? 'none'}; root ${root}${member ? `; member ${member.path}` : ''}`,
+    `config: ${configFileFor(dir, root) ?? 'none'}; root ${root}${member ? `; member ${member.path}` : ''}`,
   )
   // Called on the session's first use, so opening a project reads no files.
   const registry = createRegistrySession(cwd, {
