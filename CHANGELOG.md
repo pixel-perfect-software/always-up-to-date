@@ -3,6 +3,38 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-10-30 — 3.3.0: run from a workspace member, and an update no longer rewrites your peer range
+
+autd runs from inside a workspace member. There, `check` and `update --dry-run` cover only that member, and `update` points you to the workspace root. Before, it found no package manager there. A past-the-range update no longer rewrites a matching `peerDependencies` range. yarn v1 workspaces no longer upgrade a member's every dependency, or copy a devDependency into `dependencies`. Two cooldown fallback bugs from 3.2.0 are fixed.
+
+### Added
+
+- From a workspace member, or a directory inside one, `check` and `update --dry-run` cover only that member's `package.json`, plus a `catalog:` entry it references. `check --json` keeps the workspace shape, and its `workspaces` field lists the one member ([#123](https://github.com/pixel-perfect-software/always-up-to-date/issues/123)).
+  - **The workspace root:** autd finds it the way the member's package manager does:
+    - npm, yarn v1 and bun: the nearest folder whose `workspaces` lists the member.
+    - pnpm: the nearest `pnpm-workspace.yaml`.
+    - yarn 2+: the nearest `yarn.lock`.
+  - **Detection:** it reads the root's lockfile, and the nearest `packageManager` declaration between the member and the root. `--pm yarn` in a yarn 2+ workspace now takes yarn 2+'s path, and no yarn v1 `.yarnrc` applies.
+  - **Config:** the member's own `.always-up-to-date.json`, else the root's. `autd init` writes it where it is read: the nearest `package.json`'s folder.
+
+### Changed
+
+- `update` from a workspace member is refused before anything runs. Before, a member run found no package manager unless `--pm` was passed. The message: `update runs from the workspace root, because it writes the lockfile every workspace shares: run autd update in <root> (autd update --dry-run previews this member's updates here)`. This covers plain `update`, `update <packages>` and `-i`. Every manager also moves the shared lockfile's copies of a package in the other workspaces, so a member update was never only the member's ([#123](https://github.com/pixel-perfect-software/always-up-to-date/issues/123)). The root updates as before, and so does a folder that is its own project: a pnpm member with its own `pnpm-workspace.yaml`, or a folder no `workspaces` lists.
+
+### Fixed
+
+- A past-the-range update leaves the package's own `peerDependencies` range alone, as the package managers' own update commands do. Before, a library with `react` as a peer (`^18.0.0`) and a dev dependency ended with `peerDependencies.react: "^19.3.1"` after a `beyondRange: "major"` update. That dropped its React 18 consumers, and nothing in the report said so. This happened on npm, pnpm, yarn 2+ and bun ([#155](https://github.com/pixel-perfect-software/always-up-to-date/issues/155)).
+- yarn v1 workspaces: a member's devDependency or optionalDependency update is one `workspace <name> upgrade`, with no `-D` or `-O`. yarn 1.22.22 ignores those flags on `upgrade`, so it upgraded every dependency of the member and copied the package into `dependencies`. That happened from the root too ([#123](https://github.com/pixel-perfect-software/always-up-to-date/issues/123)).
+- A cooldown fallback below `wanted` must satisfy the range `package.json` declares. With `"ms": "^0.7.1 || ^2.1.3"`, autd picked 2.1.2, which that range excludes, and the package manager then installed 2.1.3, the version the cooldown held. The report also said it had updated. Now a row with a fallback counts as applied only when installed at exactly its target ([#151](https://github.com/pixel-perfect-software/always-up-to-date/issues/151)).
+- yarn v1 lockfile keys are quoted as yarn quotes them, so a restored range with spaces, such as `"ms@^0.7.1 || ^2.1.3"`, reads back ([#151](https://github.com/pixel-perfect-software/always-up-to-date/issues/151)).
+- An `npm:` alias's cooldown reads its target's release dates. Before, `"m": "npm:ms@^2.0.0"` was judged by the registry's `m`, another package, so every move was held as `release date unknown`. On yarn, its fallback is relocked under the alias's target, so `update` no longer fails with `yarn.lock: no key for m@2.1.2` ([#152](https://github.com/pixel-perfect-software/always-up-to-date/issues/152)).
+
+### Known issues
+
+- yarn 2+ still runs the manager to find outdated packages ([#107](https://github.com/pixel-perfect-software/always-up-to-date/issues/107)). With PnP, installed peer ranges aren't read, so no update is held for a peer conflict.
+- yarn v1's `always-auth`, its bare `_authToken`, and a member's own `.npmrc` during its upgrade are still read differently from yarn ([#126](https://github.com/pixel-perfect-software/always-up-to-date/issues/126), [#127](https://github.com/pixel-perfect-software/always-up-to-date/issues/127)).
+- Cooldown still reads full registry documents for its dates, uncached ([#47](https://github.com/pixel-perfect-software/always-up-to-date/issues/47)).
+
 ## 2026-10-27 — 3.2.0: cooldown moves a package to the newest version past it, and pnpm's leftover packages no longer hold updates
 
 When the newest version a package could move to is too fresh for `cooldown`, the package now moves to the newest version that is old enough, and is held only when there is none. Before, it stayed where it was, so a package that publishes more often than the cooldown never moved. In pnpm projects, a package pnpm has removed but not yet deleted from `node_modules/.pnpm` no longer holds updates with its peer ranges.
