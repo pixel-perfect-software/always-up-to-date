@@ -3,7 +3,7 @@ import { discoverFromRegistry } from '@/discovery'
 import type { ManagerAdapter, RunManager, Workspace } from '@/managers'
 import { applyPinned } from '@/managers/pin'
 import type { Project } from '@/project'
-import type { PipelineStep } from '@/stepError'
+import { type PipelineStep, StepError } from '@/stepError'
 import type { PackageInfo, UpdateResult } from '@/types'
 import { filterPackages, logger, splitUpdates } from '@/utils'
 import { type Catalogs, declaredDependency } from '@/utils/dependencySpecs'
@@ -18,15 +18,28 @@ const runFor =
   (args, options) =>
     runner.runStep(step, adapter.name, args, cwd, options)
 
-const readWorkspace = (adapter: ManagerAdapter, cwd: string): Workspace => {
-  const workspace = adapter.readWorkspace(cwd)
+/**
+ * The project's workspace, with the member a member run (#123) is scoped to.
+ * Discovery reads only that manifest.
+ */
+const workspaceOf = ({ adapter, root, member }: Project): Workspace => ({
+  ...adapter.readWorkspace(root),
+  member,
+})
+
+const announceWorkspace = (adapter: ManagerAdapter, workspace: Workspace) => {
   const catalogs = Object.keys(workspace.catalogs)
-  // A pnpm workspace listing only "." is one package: nothing to announce.
-  if (workspace.isWorkspace && workspace.manifests.length > 1) {
+  if (workspace.member) {
+    logger.memberRun(
+      adapter.name,
+      workspace.member.path,
+      workspace.manifests.length,
+    )
+  } else if (workspace.isWorkspace && workspace.manifests.length > 1) {
+    // A pnpm workspace listing only "." is one package: nothing to announce.
     logger.workspace(adapter.name, workspace.manifests.length, catalogs.length)
   }
   if (catalogs.length > 0) logger.debug(`catalogs: ${catalogs.join(', ')}`)
-  return workspace
 }
 
 /**
@@ -36,27 +49,27 @@ const readWorkspace = (adapter: ManagerAdapter, cwd: string): Workspace => {
  * node_modules and the registry, with no manager subprocess; yarn berry
  * alone discovers through the manager.
  */
-const discover = async ({
-  adapter,
-  cwd,
-  registry,
-}: Project): Promise<{
+const discover = async (
+  project: Project,
+): Promise<{
   outdated: Record<string, PackageInfo>
   workspace: Workspace
 }> => {
+  const { adapter, root, registry } = project
   logger.starting('Checking dependencies', adapter.name)
 
-  const workspace = readWorkspace(adapter, cwd)
+  const workspace = workspaceOf(project)
+  announceWorkspace(adapter, workspace)
   if (workspace.isWorkspace) {
     logger.debug(
       `Manifests: ${workspace.manifests.map((manifest) => manifest.path).join(', ')}`,
     )
   }
-  const own = adapter.ownDiscovery?.(cwd)
+  const own = adapter.ownDiscovery?.(root)
   const discovery = own
-    ? await own(runFor(adapter, cwd, 'discover'), workspace)
+    ? await own(runFor(adapter, root, 'discover'), workspace)
     : await discoverFromRegistry({
-        cwd,
+        cwd: root,
         manager: adapter.name,
         workspace,
         registry,
@@ -89,7 +102,9 @@ export const check = async (
 ): Promise<Record<string, PackageInfo>> => {
   const found = await findOutdated(project)
   if (report && Object.keys(found).length > 0) {
-    logger.report(await plan(project, found), project.adapter.name, 'plan')
+    logger.report(await plan(project, found), project.adapter.name, 'plan', {
+      member: project.member?.path,
+    })
   }
   return found
 }
@@ -99,7 +114,7 @@ export const check = async (
  * overrides the manager enforces, installed peer ranges and the cooldown.
  */
 export const plan = (
-  { adapter, cwd, config, registry }: Project,
+  { adapter, root, config, registry }: Project,
   outdated: Record<string, PackageInfo>,
   targetPackages?: string[],
 ): Promise<UpdateResult[]> => {
@@ -108,14 +123,28 @@ export const plan = (
   return filterPackages(outdated, {
     config,
     targetPackages,
-    cwd,
+    cwd: root,
     registry,
-    overrides: adapter.overrides(cwd),
+    overrides: adapter.overrides(root),
     declared: ({ name, workspace = '.' }) => {
-      catalogs ??= adapter.readWorkspace(cwd).catalogs
-      return declaredDependency(cwd, workspace, name, catalogs)
+      catalogs ??= adapter.readWorkspace(root).catalogs
+      return declaredDependency(root, workspace, name, catalogs)
     },
   })
+}
+
+/**
+ * `update` writes from the workspace root. Every manager's install rewrites
+ * the lockfile all workspaces share, and moves other workspaces' locked
+ * copies of a package, so a write from a member is never scoped to it (#123).
+ * Refuses before anything is discovered, run or asked.
+ */
+export const refuseMemberApply = ({ root, member }: Project): void => {
+  if (!member) return
+  throw new StepError(
+    'apply',
+    `update runs from the workspace root, because it writes the lockfile every workspace shares: run autd update in ${root} (autd update --dry-run previews this member's updates here)`,
+  )
 }
 
 /**
@@ -132,9 +161,10 @@ export const update = async (
     discovered?: Record<string, PackageInfo>
   } = {},
 ): Promise<UpdateResult[]> => {
-  const { adapter, cwd } = project
+  refuseMemberApply(project)
+  const { adapter, root } = project
   const { outdated, workspace } = discovered
-    ? { outdated: discovered, workspace: adapter.readWorkspace(cwd) }
+    ? { outdated: discovered, workspace: workspaceOf(project) }
     : await discover(project)
 
   // discover already printed allUpToDate.
@@ -155,12 +185,12 @@ export const update = async (
   // Cooldown fallbacks first: the apply below asks for the rest by name, and
   // leaves the versions they pinned where the lockfile has them.
   if (pinned.length > 0) {
-    await applyPinned(runFor(adapter, cwd, 'apply'), cwd, pinned, adapter)
+    await applyPinned(runFor(adapter, root, 'apply'), root, pinned, adapter)
   }
   if (names.length > 0) {
     await adapter.apply(
-      runFor(adapter, cwd, 'apply'),
-      cwd,
+      runFor(adapter, root, 'apply'),
+      root,
       { names, withinRange, beyondRange, manifests },
       workspace,
     )
@@ -171,8 +201,8 @@ export const update = async (
   const applied = checkApplied(
     results,
     adapter.installed
-      ? await adapter.installed(runFor(adapter, cwd, 'apply'), cwd, moved)
-      : readInstalledVersions(cwd, moved),
+      ? await adapter.installed(runFor(adapter, root, 'apply'), root, moved)
+      : readInstalledVersions(root, moved),
     adapter.name,
   )
   logger.report(applied, adapter.name, 'applied')

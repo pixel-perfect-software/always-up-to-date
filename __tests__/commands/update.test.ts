@@ -8,6 +8,7 @@ jest.mock('@/detectPackageManager', () => ({
 jest.mock('@/pipeline', () => ({
   findOutdated: jest.fn(),
   plan: jest.fn(),
+  refuseMemberApply: jest.fn(),
   update: jest.fn(),
 }))
 
@@ -26,8 +27,9 @@ import updateCommand from '@/commands/update'
 import detectPackageManager from '@/detectPackageManager'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
-import { findOutdated, plan, update } from '@/pipeline'
+import { findOutdated, plan, refuseMemberApply, update } from '@/pipeline'
 import { openProject } from '@/project'
+import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
 
 const mockDetectPackageManager = jest.mocked(detectPackageManager)
@@ -71,7 +73,7 @@ describe('update command', () => {
     mockUpdatePackages.mockResolvedValue([])
     await program.parseAsync(['node', 'test', 'update'])
     expect(mockUpdatePackages).toHaveBeenCalledWith(
-      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      expect.objectContaining({ adapter: npm, root: expect.any(String) }),
       {
         targetPackages: undefined,
       },
@@ -82,7 +84,7 @@ describe('update command', () => {
     mockUpdatePackages.mockResolvedValue([])
     await program.parseAsync(['node', 'test', 'update', 'react', 'lodash'])
     expect(mockUpdatePackages).toHaveBeenCalledWith(
-      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      expect.objectContaining({ adapter: npm, root: expect.any(String) }),
       {
         targetPackages: ['react', 'lodash'],
       },
@@ -98,6 +100,7 @@ describe('update command', () => {
     expect(mockDetectPackageManager).toHaveBeenCalledWith(
       expect.any(String),
       'bun',
+      { from: expect.any(String), cwd: expect.any(String) },
     )
     expect(mockUpdatePackages).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: bun }),
@@ -229,7 +232,7 @@ describe('update command', () => {
 
     expect(mockCheckPackageVersions).toHaveBeenCalledTimes(1)
     expect(mockUpdatePackages).toHaveBeenCalledWith(
-      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      expect.objectContaining({ adapter: npm, root: expect.any(String) }),
       {
         targetPackages: ['react'],
         discovered: outdated,
@@ -270,6 +273,19 @@ describe('update command', () => {
       ])
     })
 
+    it('refuses -i from a member before discovering or prompting (#123)', async () => {
+      jest.mocked(refuseMemberApply).mockImplementationOnce(() => {
+        throw new StepError('apply', 'update runs from the workspace root')
+      })
+
+      await program.parseAsync(['node', 'test', 'update', '--interactive'])
+
+      expect(process.exitCode).toBe(1)
+      expect(mockCheckPackageVersions).not.toHaveBeenCalled()
+      expect(mockCheckbox).not.toHaveBeenCalled()
+      process.exitCode = undefined
+    })
+
     it('carries the workspace on the dry-run skipped rows', async () => {
       mockCheckPackageVersions.mockResolvedValue({
         ms: { name: 'ms', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
@@ -282,6 +298,7 @@ describe('update command', () => {
         [expect.objectContaining({ name: 'ms', workspace: 'packages/a' })],
         expect.any(String),
         'plan',
+        { member: undefined },
       )
     })
   })

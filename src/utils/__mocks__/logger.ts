@@ -5,6 +5,7 @@ const logger = {
   error: jest.fn(),
   command: jest.fn(),
   workspace: jest.fn(),
+  memberRun: jest.fn(),
   allUpToDate: jest.fn(),
   updatingHeader: jest.fn(),
   report: jest.fn(),

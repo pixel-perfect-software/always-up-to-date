@@ -1,7 +1,11 @@
 import detectPackageManager from '@/detectPackageManager'
 import { adapterFor, type ManagerAdapter } from '@/managers'
+import type { WorkspaceManifest } from '@/managers/adapter'
+import { memberAt } from '@/managers/workspaces'
+import { locate } from '@/projectLocation'
+import { StepError } from '@/stepError'
 import type { AlwaysUpToDateConfig, SupportedPackageManager } from '@/types'
-import { loadConfig } from '@/utils/config'
+import { configFileFor, loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
 import { managerRegistryConfig, processSources } from '@/utils/npmrcLoader'
 import { trackRegistries } from '@/utils/redaction'
@@ -20,7 +24,10 @@ const cacheDisabledBy = (value: string | undefined): boolean => {
 
 /** One command run's project, loaded once: where it is, its config, its manager. */
 export interface Project {
-  cwd: string
+  /** The project root: the workspace root a member belongs to, else the directory of the nearest package.json (the cwd when there is none). */
+  root: string
+  /** A run from a workspace member (#123): only its manifest is checked; `update` refuses it and runs from `root`. */
+  member?: WorkspaceManifest
   config: AlwaysUpToDateConfig
   adapter: ManagerAdapter
   /** The run's registry config and client, loaded on first use; commands close it. */
@@ -32,15 +39,42 @@ export interface Project {
  * in that order so detection can log by the config's settings. `pm` (the
  * `--pm` option) overrides detection. `cache: false` (`--no-cache`) or
  * `AUTD_NO_CACHE=1` keeps registry answers off disk. Throws `ConfigError` for a bad config
- * file.
+ * file, and a `detect` `StepError` where the manager refuses the directory.
+ *
+ * Run from a workspace member (or a directory inside one), the project is the
+ * member's workspace root and `member` says which manifest (#123). The config
+ * is the member's own file, else the workspace root's; detection reads the
+ * declarations between the member and that root and its lockfiles.
  */
 export const openProject = (
   cwd: string,
   { pm, cache = true }: { pm?: SupportedPackageManager; cache?: boolean } = {},
 ): Project => {
-  const config = loadConfig(cwd)
+  const { dir, workspaceRoot } = locate(cwd)
+  let config = loadConfig(dir, workspaceRoot)
   logger.configure(config)
-  const adapter = adapterFor(detectPackageManager(cwd, pm))
+  const adapter = adapterFor(
+    detectPackageManager(workspaceRoot, pm, { from: dir, cwd }),
+  )
+  const root = adapter.projectRoot(dir)
+  // The manager's project is not where `locate` looked (a pnpm-workspace.yaml
+  // that does not list `dir`, or one `dir` carries under npm): detect and read
+  // the config again from there, with that run's own errors.
+  if (root !== workspaceRoot) {
+    const found = detectPackageManager(root, pm, { from: dir, cwd })
+    if (found !== adapter.name) {
+      throw new StepError(
+        'detect',
+        `${adapter.name} treats ${root} as the project, but detection there finds ${found}. Pass --pm to choose one.`,
+      )
+    }
+    config = loadConfig(dir, root)
+    logger.configure(config)
+  }
+  const member = root === dir ? undefined : memberAt(root, dir)
+  logger.debug(
+    `config: ${configFileFor(dir, root) ?? 'none'}; root ${root}${member ? `; member ${member.path}` : ''}`,
+  )
   // Called on the session's first use, so opening a project reads no files.
   const registry = createRegistrySession(cwd, {
     depsDev: config.depsDev,
@@ -50,5 +84,5 @@ export const openProject = (
   })
   // A manager's own output can hold a registry URL with a token in its path.
   trackRegistries(() => registry.registryConfig())
-  return { cwd, config, adapter, registry }
+  return { root, member, config, adapter, registry }
 }

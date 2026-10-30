@@ -218,4 +218,122 @@ describe('detectPackageManager', () => {
       expect(detectPackageManager(cwd, 'bun')).toBe('bun')
     })
   })
+
+  // A workspace member's run detects at the workspace root (#123).
+  describe('from a workspace member', () => {
+    let member: string
+    const writeMember = (fields: Record<string, unknown> = {}) => {
+      fs.mkdirSync(member, { recursive: true })
+      fs.writeFileSync(
+        path.join(member, 'package.json'),
+        JSON.stringify({ name: 'member', ...fields }),
+      )
+    }
+
+    beforeEach(() => {
+      member = path.join(cwd, 'packages', 'a')
+    })
+
+    it("reads the root's packageManager", () => {
+      manifest({ packageManager: 'yarn@4.12.0' })
+      writeMember()
+
+      expect(detectPackageManager(cwd, undefined, { from: member })).toBe(
+        'yarn',
+      )
+      expect(debugLines()).toEqual([
+        'Using yarn: packageManager in ../../package.json',
+      ])
+    })
+
+    it("reads the root's lockfile", () => {
+      write('pnpm-lock.yaml')
+      writeMember()
+
+      expect(detectPackageManager(cwd, undefined, { from: member })).toBe(
+        'pnpm',
+      )
+      expect(debugLines()).toEqual(['Using pnpm: pnpm-lock.yaml'])
+    })
+
+    it("prefers the member's own declaration, labelled package.json", () => {
+      manifest({ packageManager: 'yarn@4.12.0' })
+      writeMember({ packageManager: 'pnpm@12.14.0' })
+
+      expect(detectPackageManager(cwd, undefined, { from: member })).toBe(
+        'pnpm',
+      )
+      expect(debugLines()).toEqual([
+        'Using pnpm: packageManager in package.json',
+      ])
+    })
+
+    it('names the declaring file when --pm contradicts it', () => {
+      manifest({ packageManager: 'npm@11.19.1' })
+      writeMember()
+
+      expect(detectPackageManager(cwd, 'bun', { from: member })).toBe('bun')
+      expect(logger.warn).toHaveBeenCalledWith(
+        '--pm bun overrides packageManager npm@11.19.1 in ../../package.json. With Corepack enabled, bun may refuse to run here.',
+      )
+    })
+
+    it('names the root when nothing is declared or locked', () => {
+      writeMember()
+      fs.rmSync(path.join(cwd, 'package.json'))
+
+      expect(() =>
+        detectPackageManager(cwd, undefined, { from: member }),
+      ).toThrow(
+        `No package manager detected in ${cwd}: package.json declares none`,
+      )
+    })
+  })
+
+  // Messages are read from the directory the user ran in, which can sit
+  // below the member (#123).
+  describe('from a directory inside a member', () => {
+    let member: string
+    let inside: string
+
+    beforeEach(() => {
+      member = path.join(cwd, 'packages', 'a')
+      inside = path.join(member, 'src')
+      fs.mkdirSync(inside, { recursive: true })
+      fs.writeFileSync(
+        path.join(member, 'package.json'),
+        JSON.stringify({ name: 'member' }),
+      )
+    })
+
+    it('labels the declaring file relative to the cwd', () => {
+      manifest({ packageManager: 'yarn@4.12.0' })
+
+      expect(
+        detectPackageManager(cwd, undefined, { from: member, cwd: inside }),
+      ).toBe('yarn')
+      expect(debugLines()).toEqual([
+        'Using yarn: packageManager in ../../../package.json',
+      ])
+    })
+
+    it("labels the member's own declaration relative to the cwd", () => {
+      fs.writeFileSync(
+        path.join(member, 'package.json'),
+        JSON.stringify({ name: 'member', packageManager: 'pnpm@12.14.0' }),
+      )
+
+      detectPackageManager(cwd, 'bun', { from: member, cwd: inside })
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('pnpm@12.14.0 in ../package.json.'),
+      )
+    })
+
+    it('names the searched directory when it is not the cwd', () => {
+      expect(() =>
+        detectPackageManager(member, undefined, { from: member, cwd: inside }),
+      ).toThrow(`No package manager detected in ${member}: package.json`)
+    })
+  })
 })

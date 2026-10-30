@@ -151,6 +151,14 @@ class Logger {
     )
   }
 
+  /** A run from a workspace member (#123): the one manifest it covers. */
+  memberRun(manager: string, memberPath: string, manifests: number): void {
+    if (this.muted) return
+    console.log(
+      `${blue('🏢')} ${blue(`${manager} workspace member ${memberPath} (1 of ${manifests} manifests)`)}`,
+    )
+  }
+
   allUpToDate(): void {
     if (!this.muted) {
       console.log(`\n${green('🎉')} ${green('All packages are up to date.')}`)
@@ -168,9 +176,15 @@ class Logger {
    * Every candidate once, under what happened to it (or will), with its
    * reason, then one summary line. Rows that share a move and a reason across
    * manifests are one row; the manifest column is left out when every row is
-   * the root's.
+   * the root's. A member run (#123) covers one manifest, so it has no
+   * manifest column either.
    */
-  report(results: UpdateResult[], manager: string, phase: ReportPhase): void {
+  report(
+    results: UpdateResult[],
+    manager: string,
+    phase: ReportPhase,
+    { member }: { member?: string } = {},
+  ): void {
     if (this.muted) return
     const sections = groupResults(results)
     const ages = new Map(
@@ -179,9 +193,12 @@ class Logger {
         .map((r) => [r.name, r.releaseAge as number]),
     )
     const rows = sections.flatMap((section) => section.rows)
-    const showWhere = rows.some(
-      (row) => row.workspaces.length > 1 || (row.workspaces[0] ?? '.') !== '.',
-    )
+    const showWhere =
+      member === undefined &&
+      rows.some(
+        (row) =>
+          row.workspaces.length > 1 || (row.workspaces[0] ?? '.') !== '.',
+      )
     const widths = {
       name: Math.max(0, ...rows.map((r) => r.name.length)),
       where: showWhere

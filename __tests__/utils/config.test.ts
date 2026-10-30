@@ -1,5 +1,12 @@
 import fs from 'fs'
-import { DEFAULT_CONFIG, loadConfig, saveJsonConfig } from '@/utils/config'
+import path from 'path'
+import {
+  ConfigError,
+  configFileFor,
+  DEFAULT_CONFIG,
+  loadConfig,
+  saveJsonConfig,
+} from '@/utils/config'
 import { checkIfFileExists } from '@/utils/files'
 
 jest.mock('fs')
@@ -196,5 +203,53 @@ describe('saveJsonConfig', () => {
       JSON.stringify(DEFAULT_CONFIG, null, 2),
       'utf8',
     )
+  })
+})
+
+describe('a member run: the working directory, else the fallback', () => {
+  const own = path.join('/root/packages/a', '.always-up-to-date.json')
+  const fallback = path.join('/root', '.always-up-to-date.json')
+  const existing = (...files: string[]) =>
+    mockedCheckIfFileExists.mockImplementation((file) => files.includes(file))
+  const files = (contents: Record<string, object | string>) =>
+    mockedFs.readFileSync.mockImplementation(((file: string) => {
+      const content = contents[file]
+      return typeof content === 'string' ? content : JSON.stringify(content)
+    }) as unknown as typeof fs.readFileSync)
+
+  it("uses the member's own file over the root's, with no per-key merge", () => {
+    existing(own, fallback)
+    files({
+      [own]: { debug: true },
+      [fallback]: { silent: true, debug: false },
+    })
+
+    const config = loadConfig('/root/packages/a', '/root')
+
+    expect(config.debug).toBe(true)
+    expect(config.silent).toBe(false)
+    expect(configFileFor('/root/packages/a', '/root')).toBe(own)
+  })
+
+  it("uses the root's file when the member has none", () => {
+    existing(fallback)
+    files({ [fallback]: { silent: true } })
+
+    expect(loadConfig('/root/packages/a', '/root').silent).toBe(true)
+    expect(configFileFor('/root/packages/a', '/root')).toBe(fallback)
+  })
+
+  it('uses the defaults when neither has a file', () => {
+    existing()
+
+    expect(loadConfig('/root/packages/a', '/root')).toEqual(DEFAULT_CONFIG)
+    expect(configFileFor('/root/packages/a', '/root')).toBeUndefined()
+  })
+
+  it("fails on a malformed member file rather than falling back to the root's", () => {
+    existing(own, fallback)
+    files({ [own]: '{ not json', [fallback]: { silent: true } })
+
+    expect(() => loadConfig('/root/packages/a', '/root')).toThrow(ConfigError)
   })
 })

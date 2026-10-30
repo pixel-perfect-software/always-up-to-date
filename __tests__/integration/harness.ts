@@ -457,6 +457,60 @@ export const installAtMinimum = async (
   return ranged
 }
 
+/**
+ * What a manager's frozen install runs to prove the lockfile agrees with the
+ * manifests: it fails when it doesn't. npm's `ci` is the frozen install.
+ */
+const FROZEN_INSTALL: Record<Manager, [string, string[]]> = {
+  npm: ['npm', ['ci', '--no-audit', '--no-fund', '--ignore-scripts']],
+  pnpm: ['pnpm', ['install', '--frozen-lockfile', '--ignore-scripts']],
+  yarn: [
+    'yarn',
+    ['install', '--frozen-lockfile', '--non-interactive', '--ignore-scripts'],
+  ],
+  berry: ['yarn', ['install', '--immutable']],
+  bun: ['bun', ['install', '--frozen-lockfile', '--ignore-scripts']],
+}
+
+/** Runs the manager's frozen install in `cwd`; it rejects when the lockfile disagrees with the manifests. */
+export const frozenInstall = async (
+  manager: Manager,
+  cwd: string,
+): Promise<void> => {
+  const [file, args] = FROZEN_INSTALL[manager]
+  await run(cwd, file, args)
+}
+
+const SNAPSHOT_FILES = new Set([
+  'package.json',
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+  'bun.lock',
+  'pnpm-workspace.yaml',
+  '.always-up-to-date.json',
+])
+
+/** The bytes of every manifest, lockfile, workspace yaml and config under `cwd`, by relative path. */
+export const snapshotFiles = (cwd: string): Record<string, string> => {
+  const files: Record<string, string> = {}
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name !== 'node_modules' && entry.name !== '.yarn') walk(full)
+      } else if (SNAPSHOT_FILES.has(entry.name)) {
+        files[toPosix(path.relative(cwd, full))] = fs.readFileSync(
+          full,
+          'latin1',
+        )
+      }
+    }
+  }
+  walk(cwd)
+  return files
+}
+
 /** Removes a prepared copy, unless `keepVariable` (`AUTD_INTEGRATION_KEEP` by default) is `1`, which prints its path instead. */
 export const cleanup = (
   cwd: string,
@@ -502,29 +556,54 @@ export const runCli = async (cwd: string, args: string[]): Promise<unknown> => {
   }
 }
 
-/**
- * `runCli` with no package manager on PATH: the key (found
- * case-insensitively, as `prependPath` does) points at an empty directory for
- * the call. The CLI starts from `process.execPath`, so only a manager
- * subprocess would fail.
- */
-export const runCliWithoutManagers = async (
-  cwd: string,
-  args: string[],
-): Promise<unknown> => {
+/** Runs `fn` with the PATH key (found case-insensitively, as `prependPath` does) pointing at an empty directory. */
+const withoutManagers = async <T>(fn: () => Promise<T>): Promise<T> => {
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-empty-path-'))
   const key =
     Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
   const original = process.env[key]
   process.env[key] = empty
   try {
-    return await runCli(cwd, args)
+    return await fn()
   } finally {
     if (original === undefined) delete process.env[key]
     else process.env[key] = original
     fs.rmSync(empty, { recursive: true, force: true })
   }
 }
+
+/**
+ * `runCli` with no package manager on PATH: the key points at an empty
+ * directory for the call. The CLI starts from `process.execPath`, so only a
+ * manager subprocess would fail.
+ */
+export const runCliWithoutManagers = (
+  cwd: string,
+  args: string[],
+): Promise<unknown> => withoutManagers(() => runCli(cwd, args))
+
+/**
+ * Runs the built CLI in `cwd` with no package manager on PATH and expects exit
+ * code 1: returns the JSON document it printed on stdout. A refusal that ran a
+ * manager would fail differently.
+ */
+export const runCliExpectingFailure = (
+  cwd: string,
+  args: string[],
+): Promise<unknown> =>
+  withoutManagers(async () => {
+    const command = `autd ${args.join(' ')} in ${cwd}`
+    try {
+      await runProcess(process.execPath, [CLI, ...args], { cwd })
+    } catch (error) {
+      const failure = error as { code?: unknown; stdout?: string }
+      if (failure.code !== 1) {
+        throw new Error(`${command} exited with ${String(failure.code)}`)
+      }
+      return JSON.parse(failure.stdout ?? '')
+    }
+    throw new Error(`${command} exited 0, expected 1`)
+  })
 
 /**
  * `runCliWithoutManagers` with every registry request sent through a proxy

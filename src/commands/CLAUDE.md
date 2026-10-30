@@ -19,7 +19,7 @@ Four commands implemented: `init`, `check`, `update`, `help`.
 ```
 commands/
   index.ts    # Re-exports check, help, init, update
-  init.ts     # Creates .always-up-to-date.json with INITIAL_CONFIG (beyondRange, rules, cooldown, debug, silent)
+  init.ts     # Creates .always-up-to-date.json with INITIAL_CONFIG (beyondRange, rules, cooldown, debug, silent) in the nearest package.json's directory (else the cwd), where `loadConfig` reads it
   check.ts    # Detects package manager, prints the planned report (each outdated dep under its outcome); --json prints the outdated record and doesn't plan
   update.ts   # Detects package manager, updates packages per config rules
   reportFailure.ts  # Reports a failed command once (human or JSON) and sets exit code 1
@@ -30,7 +30,7 @@ commands/
 
 ### Command Flow (check/update)
 
-1. Open the project inside the `try` with `openProject(cwd, { pm: options.pm, cache: options.cache })` (`src/project.ts`): loads the config, configures the logger, detects the manager (or takes `--pm`) and gets its adapter. A bad config or no manager fails here and goes through `reportFailure` like any other failure
+1. Open the project inside the `try` with `openProject(cwd, { pm: options.pm, cache: options.cache })` (`src/project.ts`): locates the workspace root (from a workspace member too, #123), loads the config (the member's own file, else the root's), configures the logger, detects the manager (or takes `--pm`) and gets its adapter. A bad config or no manager fails here and goes through `reportFailure` like any other failure
 2. Run the pipeline (`src/pipeline.ts`) with that project: `check(project)`, or `update(project, { targetPackages })`. Dry-run is `check` then `plan(project, outdated, targetPackages)`
 3. Close the run's registry session in `finally` (`project?.registry.close()`; `project` is declared before the `try`), so a failed run releases its connections too
 
@@ -43,12 +43,13 @@ commands/
 
 #### `check`
 
-- `--json` - Output raw JSON instead of formatted display: a `Record<name, PackageInfo>`. In a workspace project each value is `{ name, current, wanted, latest, workspaces: [{ path, current, wanted }] }`, one `workspaces` element per manifest declaring the package (root `'.'` first, then by path); top-level `current`/`wanted` repeat the root's, else the first member's. Manager pass-through fields are dropped in workspace projects. Human output adds a gray workspace column (`(root)` or the path)
+- `--json` - Output raw JSON instead of formatted display: a `Record<name, PackageInfo>`. In a workspace project each value is `{ name, current, wanted, latest, workspaces: [{ path, current, wanted }] }`, one `workspaces` element per manifest declaring the package (root `'.'` first, then by path); top-level `current`/`wanted` repeat the root's, else the first member's. Manager pass-through fields are dropped in workspace projects. Human output adds a gray workspace column (`(root)` or the path). From a workspace member the record covers that member's manifest only: its packages, `current` / `wanted` from that manifest, and the one member in `workspaces` (its path relative to the root)
 
 #### `update [packages...]`
 
 - Accepts optional variadic package names to target specific packages
-- `--dry-run` - Preview without making changes: the report `check` prints, for the targeted packages (`findOutdated`, then `plan`, then `logger.report(…, 'plan')`)
+- From a workspace member (#123) `update` that writes is refused: plain, by name and `-i` all call `refuseMemberApply(project)` (`src/pipeline.ts`), which throws an `apply` `StepError` (`manifestWritten: false`) naming the workspace root, before any discovery, registry lookup, manager subprocess or prompt. `--json` prints the usual error object. A pnpm directory with its own `pnpm-workspace.yaml` and a directory no root lists are projects of their own and update normally
+- `--dry-run` - Preview without making changes (also from a member, where it plans that member's manifest only): the report `check` prints, for the targeted packages (`findOutdated`, then `plan`, then `logger.report(…, 'plan', { member })`, `member` being the member's path from a member run)
 - `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). The checklist has one choice per package, listing its manifests in a workspace project; targeting stays by name. Discovery runs once: the checklist's `check` result is passed to `update(project, { targetPackages: selected, discovered })`
 - `--json` - Output `UpdateResult[]` as JSON (one row per package and manifest; in a workspace project each row has `workspace`, `'.'` for the root) (`[]` when nothing is outdated, including with `--dry-run`). Conflicts with `--interactive`
 

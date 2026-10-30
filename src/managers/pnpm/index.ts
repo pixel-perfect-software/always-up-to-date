@@ -2,7 +2,11 @@ import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
 import { pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
-import { readWorkspaceManifests } from '@/managers/workspaces'
+import {
+  pnpmWorkspacePatterns,
+  pnpmWorkspaceRoot,
+  readWorkspaceManifests,
+} from '@/managers/workspaces'
 import {
   readPnpmCatalogs,
   splitCatalogUpdates,
@@ -10,48 +14,12 @@ import {
   updatePNPMWorkspaceYAML,
 } from '@/utils/files'
 import { overridesFromField } from '@/utils/overrides'
-import {
-  DEFAULT_SAVE_STYLE,
-  readTextFile,
-  unquote,
-  yamlValue,
-} from '@/utils/saveStyle'
+import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
+
+export { pnpmWorkspaceRoot }
 
 const readWorkspaceYaml = (cwd: string): string =>
   readTextFile(path.join(cwd, 'pnpm-workspace.yaml'))
-
-/**
- * The `packages` patterns of pnpm-workspace.yaml, as a block list or a flow
- * list. The file also holds settings (`overrides`, `catalog`,
- * `onlyBuiltDependencies`), so single-package projects often have one; the
- * project is a workspace only when it lists at least one pattern.
- */
-const workspacePackagePatterns = (yaml: string): string[] => {
-  const lines = yaml.split(/\r?\n/)
-  const start = lines.findIndex((line) => /^packages:/.test(line))
-  if (start === -1) return []
-
-  const inline = lines[start].replace(/^packages:\s*/, '')
-  if (inline && !inline.startsWith('#')) {
-    const flow = /^\[\s*([^\s\]][^\]]*)\]?/.exec(inline)
-    if (!flow) return []
-    return flow[1]
-      .split(',')
-      .map(unquote)
-      .filter((pattern) => pattern !== '')
-  }
-
-  const patterns: string[] = []
-  for (const line of lines.slice(start + 1)) {
-    const item = /^\s*-\s*([^\s#].*)$/.exec(line)
-    if (item) {
-      patterns.push(unquote(item[1].replace(/\s+#.*$/, '')))
-    } else if (/^\S/.test(line) && !line.startsWith('#')) {
-      break
-    }
-  }
-  return patterns
-}
 
 /** The `overrides:` block of pnpm-workspace.yaml, read line by line. */
 const readWorkspaceOverrides = (yaml: string): Record<string, string> => {
@@ -81,9 +49,11 @@ const pnpm: ManagerAdapter = {
   name: 'pnpm',
   lockfile: 'pnpm-lock.yaml',
 
+  projectRoot: pnpmWorkspaceRoot,
+
   readWorkspace: (cwd) => {
     const yaml = readWorkspaceYaml(cwd)
-    const patterns = workspacePackagePatterns(yaml)
+    const patterns = pnpmWorkspacePatterns(yaml)
     return {
       isWorkspace: patterns.length > 0,
       catalogs: readPnpmCatalogs(yaml),

@@ -11,3 +11,20 @@ export const ancestorFiles = (cwd: string, name: string): string[] => {
     dir = parent
   }
 }
+
+/**
+ * `from` and each parent up to and including `to`, nearest first. When `to`
+ * is not `from` or one of its ancestors, only `from`.
+ */
+export const ancestorDirs = (from: string, to: string): string[] => {
+  const end = path.resolve(to)
+  const dirs: string[] = []
+  let dir = path.resolve(from)
+  for (;;) {
+    dirs.push(dir)
+    if (dir === end) return dirs
+    const parent = path.dirname(dir)
+    if (parent === dir) return [path.resolve(from)]
+    dir = parent
+  }
+}

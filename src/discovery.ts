@@ -88,7 +88,13 @@ export const discoverFromRegistry = async ({
   requireNodeModules = true,
   readInstalled = readInstalledPackages,
 }: RegistryDiscoveryInput): Promise<Discovery> => {
-  const declared = readDeclaredDependencies(cwd, workspace)
+  // A member run (#123) reads the member's manifest alone; the other
+  // manifests still name the workspace packages to skip.
+  const scoped = workspace.member ? [workspace.member] : workspace.manifests
+  const declared = readDeclaredDependencies(cwd, {
+    manifests: scoped,
+    catalogs: workspace.catalogs,
+  })
 
   // Any manifest that declares a dependency, or the root, may hold the
   // install: a pnpm workspace with `sharedWorkspaceLockfile: false` has
@@ -103,7 +109,7 @@ export const discoverFromRegistry = async ({
   ) {
     throw new StepError(
       'discover',
-      `Nothing is installed in ${cwd} (no node_modules): run \`${manager} install\`, then check again.`,
+      `Nothing is installed in ${cwd}${workspace.member ? ` (for ${workspace.member.path})` : ''} (no node_modules): run \`${manager} install\`, then check again.`,
     )
   }
 

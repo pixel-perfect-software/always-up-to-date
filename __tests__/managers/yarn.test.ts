@@ -73,45 +73,151 @@ describe('update with yarn', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it("upgrades a member's devDependencies with -D, so yarn keeps them out of dependencies", async () => {
-    // Without -D, yarn 1.22.22's `workspace <name> upgrade` also wrote the
-    // devDependency into the member's dependencies.
+  // A v1 workspace whose member @autd/b holds the yarn-C7 capture's `before`
+  // manifest (kleur only in devDependencies); `afterFixture` is what the mocked
+  // `workspace @autd/b upgrade` leaves on disk, as captured from yarn 1.22.22.
+  const memberWithDevDependency = (afterFixture: string) => {
     writeProject({ name: 'ws-root', private: true, workspaces: ['packages/*'] })
-    fs.mkdirSync(path.join(cwd, 'packages', 'b'), { recursive: true })
-    fs.writeFileSync(
-      path.join(cwd, 'packages', 'b', 'package.json'),
-      JSON.stringify({
-        name: '@x/b',
-        dependencies: { debug: '~4.3.1' },
-        devDependencies: { uuid: '~9.0.0' },
-      }),
+    const file = path.join(cwd, 'packages', 'b', 'package.json')
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const before = readFixture('yarn/v1-member-upgrade-dev.before.json')
+    fs.writeFileSync(file, before)
+    mockedRunProcess.mockImplementation(async (_pm, args) => {
+      if (args[0] === 'workspace') {
+        fs.writeFileSync(file, readFixture(afterFixture))
+      }
+      return { stdout: '', stderr: '' }
+    })
+    return { file, before }
+  }
+
+  const memberRow = (
+    name: string,
+    current: string,
+    wanted: string,
+    latest: string,
+  ) => ({
+    name,
+    workspace: 'packages/b',
+    current,
+    wanted,
+    latest,
+  })
+
+  it("upgrades a member's devDependencies in one command and keeps them out of dependencies", async () => {
+    // yarn 1.22.22 has no -D / -O on `upgrade`: commander takes the next
+    // descriptor as the flag's value and everything is upgraded (yarn-C11).
+    // Without a flag, yarn copies the devDependency into `dependencies`
+    // (yarn-C7), so autd puts the manifest's bytes back.
+    const { file, before } = memberWithDevDependency(
+      'yarn/v1-member-upgrade-dev.after.json',
     )
-    mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
 
     await update(projectFor(yarn, cwd), {
       discovered: foldWorkspaceEntries([
+        memberRow('commander', '11.0.0', '11.1.0', '14.0.2'),
+        memberRow('debug', '4.3.1', '4.3.7', '4.4.3'),
+        memberRow('kleur', '3.0.0', '3.0.3', '4.1.5'),
+      ]),
+    })
+
+    expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
+      [
+        'workspace',
+        '@autd/b',
+        'upgrade',
+        'commander@^11.0.0',
+        'debug@~4.3.1',
+        'kleur@~3.0.0',
+      ],
+      ['install', '--check-files'],
+    ])
+    expect(fs.readFileSync(file, 'utf8')).toBe(before)
+  })
+
+  it("writes a member devDependency's spec past its range, and nothing in dependencies", async () => {
+    const { file } = memberWithDevDependency(
+      'yarn/v1-member-upgrade-dev-latest.after.json',
+    )
+
+    await update(projectFor(yarn, cwd, { rules: { kleur: 'latest' } }), {
+      discovered: foldWorkspaceEntries([
+        memberRow('kleur', '3.0.0', '3.0.3', '4.1.5'),
+      ]),
+    })
+
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
+    expect(manifest.devDependencies).toEqual({ kleur: '~4.1.5' })
+    expect(manifest.dependencies).toEqual({
+      commander: '^11.0.0',
+      debug: '~4.3.1',
+    })
+    expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
+      ['workspace', '@autd/b', 'upgrade', 'kleur@~4.1.5'],
+      ['install', '--check-files'],
+    ])
+  })
+
+  it("keeps yarn's own write of the root manifest and runs no install", async () => {
+    // The root's `upgrade` copies nothing between fields (p1-rootdev), so
+    // there is nothing to restore and no member left unlinked.
+    writeProject({
+      name: 'ws-root',
+      private: true,
+      workspaces: ['packages/*'],
+      dependencies: { ms: '~2.1.1' },
+    })
+    const file = path.join(cwd, 'package.json')
+    const byYarn = `${JSON.stringify(
+      {
+        name: 'ws-root',
+        private: true,
+        workspaces: ['packages/*'],
+        dependencies: { ms: '~2.1.3' },
+      },
+      null,
+      4,
+    )}\n`
+    mockedRunProcess.mockImplementation(async () => {
+      fs.writeFileSync(file, byYarn)
+      return { stdout: '', stderr: '' }
+    })
+
+    await update(projectFor(yarn, cwd, { rules: { ms: 'latest' } }), {
+      discovered: foldWorkspaceEntries([
         {
-          name: 'debug',
-          workspace: 'packages/b',
-          current: '4.3.1',
-          wanted: '4.3.7',
-          latest: '4.4.3',
-        },
-        {
-          name: 'uuid',
-          workspace: 'packages/b',
-          current: '9.0.0',
-          wanted: '9.0.1',
-          latest: '14.0.3',
+          name: 'ms',
+          workspace: '.',
+          current: '2.1.2',
+          wanted: '2.1.2',
+          latest: '2.1.3',
         },
       ]),
     })
 
     expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
-      ['workspace', '@x/b', 'upgrade', 'debug@~4.3.1'],
-      ['workspace', '@x/b', 'upgrade', '-D', 'uuid@~9.0.0'],
-      ['install'],
+      ['upgrade', 'ms@~2.1.3'],
     ])
+    expect(fs.readFileSync(file, 'utf8')).toBe(byYarn)
+  })
+
+  it('flags the manifest as written when install fails after a beyond-range write', async () => {
+    memberWithDevDependency('yarn/v1-member-upgrade-dev-latest.after.json')
+    mockedRunProcess.mockImplementation(async (_pm, args) => {
+      if (args[0] === 'install') throw exitError(1, '', 'boom')
+      return { stdout: '', stderr: '' }
+    })
+
+    const error = await update(
+      projectFor(yarn, cwd, { rules: { kleur: 'latest' } }),
+      {
+        discovered: foldWorkspaceEntries([
+          memberRow('kleur', '3.0.0', '3.0.3', '4.1.5'),
+        ]),
+      },
+    ).catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ step: 'apply', manifestWritten: true })
   })
 
   it('keeps the current spec for an in-range update', async () => {

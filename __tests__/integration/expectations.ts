@@ -219,3 +219,45 @@ export const rewritesRanges = (manager: Manager): boolean =>
  */
 export const rewritesCatalogRanges = (manager: Manager): boolean =>
   manager !== 'bun'
+
+/** The workspace members of the `workspace` and `catalogs` layouts. */
+export type Member = 'packages/a' | 'packages/b'
+
+/**
+ * `check --json` from a member (#123): the packages of that member's manifest
+ * only, each with that manifest's row as the record's own `current` and
+ * `wanted` and the one member in `workspaces`. Derived from the root run's
+ * expectation, so the two cannot drift apart.
+ */
+export const expectedMemberCheck = (
+  layout: Layout,
+  member: Member,
+): Record<string, CheckRecord> =>
+  Object.fromEntries(
+    Object.entries(expectedCheck(layout)).flatMap(([name, record]) => {
+      const own = record.workspaces?.find((w) => w.path === member)
+      return own
+        ? [
+            [
+              name,
+              { current: own.current, wanted: own.wanted, workspaces: [own] },
+            ],
+          ]
+        : []
+    }),
+  )
+
+/**
+ * `update --dry-run --json` from a member, with `beyondRange: "patch"` set in
+ * the member's own config (the matrix writes it for packages/a): that
+ * member's rows of the root run's plan, except that packages/a's pinned
+ * `ms 2.1.2` may move a patch past its range, to the latest, 2.1.3.
+ */
+export const expectedMemberPlan = (layout: Layout, member: Member): PlanRow[] =>
+  expectedPlan(layout)
+    .filter((planned) => planned.workspace === member)
+    .map((planned) =>
+      member === 'packages/a' && planned.name === 'ms'
+        ? row('ms', member, '2.1.2', '2.1.2', '2.1.3')
+        : planned,
+    )

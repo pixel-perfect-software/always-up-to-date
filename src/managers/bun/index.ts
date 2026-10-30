@@ -3,7 +3,11 @@ import path from 'path'
 import type { ManagerAdapter } from '@/managers/adapter'
 import { bunfigExact, bunRegistryConfig } from '@/managers/bun/bunfig'
 import { bunNpmrcLayers } from '@/managers/bun/npmrc'
-import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
+import {
+  packageJsonWorkspace,
+  packageJsonWorkspaceRoot,
+  readManifest,
+} from '@/managers/workspaces'
 import {
   readBunCatalogs,
   splitCatalogUpdates,
@@ -21,6 +25,8 @@ import { DEFAULT_SAVE_STYLE, readTextFile } from '@/utils/saveStyle'
 const bun: ManagerAdapter = {
   name: 'bun',
   lockfile: 'bun.lock',
+
+  projectRoot: packageJsonWorkspaceRoot,
 
   readWorkspace: (cwd) => ({
     ...packageJsonWorkspace(cwd),

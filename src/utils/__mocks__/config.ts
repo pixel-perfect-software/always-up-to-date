@@ -18,3 +18,5 @@ export const INITIAL_CONFIG = jest.requireActual('../config').INITIAL_CONFIG
 export const loadConfig = jest.fn().mockReturnValue({ ...DEFAULT_CONFIG })
 
 export const saveJsonConfig = jest.fn()
+
+export const configFileFor = jest.fn()

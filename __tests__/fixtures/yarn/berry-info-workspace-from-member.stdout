@@ -1,0 +1,10 @@
+{"value":"@autd/a@workspace:packages/a","children":{"Version":"1.0.0","Dependencies":[{"descriptor":"chalk@npm:^4.0.0","locator":"chalk@npm:4.0.0"},{"descriptor":"ms@npm:2.1.2","locator":"ms@npm:2.1.2"}]}}
+{"value":"@autd/b@workspace:packages/b","children":{"Version":"1.0.0","Dependencies":[{"descriptor":"commander@npm:^11.0.0","locator":"commander@npm:11.0.0"},{"descriptor":"debug@virtual:9105705c5e7ea8323a27db85ee88c6722e20d39e6e1e95459c45856bccb85ca621fd018f9e1dab1edd1c0ee51bce53cac3d1e3099e264cfd426f2a13424985ed#npm:~4.3.1","locator":"debug@virtual:9105705c5e7ea8323a27db85ee88c6722e20d39e6e1e95459c45856bccb85ca621fd018f9e1dab1edd1c0ee51bce53cac3d1e3099e264cfd426f2a13424985ed#npm:4.3.1"},{"descriptor":"kleur@npm:~3.0.0","locator":"kleur@npm:3.0.0"}]}}
+{"value":"autd-berry-workspace@workspace:.","children":{"Version":"1.0.0","Dependencies":[{"descriptor":"dayjs@npm:1.11.9","locator":"dayjs@npm:1.11.9"},{"descriptor":"ms@npm:~2.1.1","locator":"ms@npm:2.1.1"}]}}
+{"value":"chalk@npm:4.0.0","children":{"Version":"4.0.0","Dependencies":[{"descriptor":"ansi-styles@npm:^4.1.0","locator":"ansi-styles@npm:4.3.0"},{"descriptor":"supports-color@npm:^7.1.0","locator":"supports-color@npm:7.2.0"}]}}
+{"value":"commander@npm:11.0.0","children":{"Version":"11.0.0"}}
+{"value":"dayjs@npm:1.11.9","children":{"Version":"1.11.9"}}
+{"value":"debug@npm:4.3.1","children":{"Instances":1,"Version":"4.3.1","Dependencies":[{"descriptor":"ms@npm:2.1.2","locator":"ms@npm:2.1.2"}]}}
+{"value":"kleur@npm:3.0.0","children":{"Version":"3.0.0"}}
+{"value":"ms@npm:2.1.1","children":{"Version":"2.1.1"}}
+{"value":"ms@npm:2.1.2","children":{"Version":"2.1.2"}}

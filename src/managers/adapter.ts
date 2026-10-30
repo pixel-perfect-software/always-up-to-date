@@ -39,6 +39,11 @@ export interface Workspace {
    * workspace patterns match, sorted by path. Only the root outside a workspace.
    */
   manifests: WorkspaceManifest[]
+  /**
+   * A member run (#123): the one manifest discovery reads.
+   * Set by the pipeline from `Project.member`; `readWorkspace` never sets it.
+   */
+  member?: WorkspaceManifest
 }
 
 /** What discovery found, in the shape the project calls for. */
@@ -96,6 +101,13 @@ export interface ManagerAdapter {
   /** The lockfile that marks a project as this manager's. */
   lockfile: string
   readWorkspace(cwd: string): Workspace
+  /**
+   * The directory this manager treats as the project for `dir` (the nearest
+   * package.json): the workspace root that lists it, else `dir` itself.
+   * Throws a `detect` StepError where the manager refuses to run there
+   * (berry, a directory its root does not list).
+   */
+  projectRoot(dir: string): string
   /**
    * Yarn berry only, until #107: a project autd can't read natively yet is
    * discovered through the manager, keyed by manifest key. Undefined means

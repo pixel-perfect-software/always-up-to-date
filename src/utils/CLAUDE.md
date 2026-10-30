@@ -22,7 +22,7 @@ Core utilities fully implemented. Central barrel export via `index.ts`.
 utils/
   index.ts            # Barrel: re-exports runProcess, config, cooldown, duration, logger, filterPackages, npmrcLoader, registry, updateChecker, files
   runProcess.ts       # runProcess() (execFile + args, no output cap), buildWindowsCommand()
-  config.ts           # loadConfig(), saveJsonConfig(), DEFAULT_CONFIG, INITIAL_CONFIG, ConfigError
+  config.ts           # loadConfig(workingDir, fallbackDir?), configFileFor(), saveJsonConfig(), DEFAULT_CONFIG, INITIAL_CONFIG, ConfigError
   cooldown.ts         # normalizeCooldown(), isCooldownEnabled(), cooldownDaysFor(), evaluateCooldown()
   duration.ts         # parseDuration() (number | '1 week' | '24h' → days), formatAgeDays(), MS_PER_DAY
   npmrc.ts            # parseNpmrc(text, env, substitute?), substituteEnv(): the .npmrc parser (pure); `Substitute` is how `${VAR}` expands
@@ -47,8 +47,8 @@ utils/
   installed.ts        # readInstalledPackages(cwd, rows, { links }) returns `{ version, linked }` (resolves the project's real path once per call; `links: false` skips the link test and `linked` is always false, which is what `readInstalledVersions` and the post-apply check use; linked: a symlink or junction to a directory inside the project and outside node_modules, i.e. a workspace member; pnpm and bun store links are not), readInstalledVersions(cwd, rows) is its versions: each moving row's installed version (the pipeline uses an adapter's own `installed()` instead when it has one: yarn berry, PnP), keyed by `rowKey` (the name, plus `<workspace>:` in a workspace project), read from `<member>/node_modules/<name>` first, then the root's, only for names that manifest declares; checkApplied(): rows the manager left in place become `not applied by <pm> (installed …)`; every row of a package with a cooldown fallback must be installed at exactly its target, since a newer version is one the cooldown held (#151)
   filterPackages.ts   # Async batch filtering with cooldown gating, returns UpdateResult[]
   report.ts           # outcomeOf(), groupResults(): planned rows grouped by outcome, merged across manifests, for logger.report (#138)
-  logger.ts           # Colored logging (colorette); configure(config) takes `debug` and `silent` (defaults before it: debug off, not quiet); report(results, manager, phase) prints the grouped report and its summary line, setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
-  ancestors.ts        # ancestorFiles(cwd, name): a file's name in cwd and each parent, nearest first (yarn v1's .npmrc and .yarnrc)
+  logger.ts           # Colored logging (colorette); configure(config) takes `debug` and `silent` (defaults before it: debug off, not quiet); report(results, manager, phase, { member? }) prints the grouped report and its summary line, setQuiet() silences all, setJsonOutput() drops progress and sends errors/warnings/debug to stderr
+  ancestors.ts        # ancestorFiles(cwd, name): a file's name in cwd and each parent, nearest first (yarn v1's .npmrc and .yarnrc); ancestorDirs(from, to): the directories from `from` up to `to`, nearest first (detection's declarations, isYarnBerry)
   files.ts            # checkIfFileExists(), updatePackageJson(), updatePNPMWorkspaceYAML() (on the shared catalog walk), readPnpmCatalogs(yaml), readBunCatalogs(manifest) (reads `workspaces.catalog(s)` too), updateBunCatalogs(), readSpec(), splitCatalogUpdates(), buildUpdateDescriptors()
 ```
 
@@ -57,7 +57,7 @@ utils/
 ### Configuration (`config.ts`)
 
 - Config file: `.always-up-to-date.json` in project root
-- `loadConfig(workingDir?)` reads JSON, merges with `DEFAULT_CONFIG`. Only `openProject` (`src/project.ts`) calls it for a command run; everything else takes the loaded config as a parameter
+- `loadConfig(workingDir?, fallbackDir?)` reads JSON, merges with `DEFAULT_CONFIG`. `configFileFor(workingDir, fallbackDir?)` is the file it reads: the working directory's own, else the fallback's, with no per-key merge. A member run (#123) passes the member's directory and the workspace root, so a member's file replaces the root's whole. Only `openProject` (`src/project.ts`) calls it for a command run; everything else takes the loaded config as a parameter
 - `saveJsonConfig(config, filePath)` writes formatted JSON; `autd init` writes `INITIAL_CONFIG` (`beyondRange`, `rules`, `cooldown`, `debug`, `silent`), never the deprecated fields
 - Schema: `AlwaysUpToDateConfig` (see `src/types.ts`); `ConfigFile` is any subset of it plus `$schema`
 - `beyondRange` and `rules` are validated strictly: an unknown level or rule throws instead of being ignored (ignoring `"react": "hodl"` would update a package meant to be held). `beyondRange` stays `undefined` when absent so the deprecated fields can still decide
@@ -131,7 +131,7 @@ utils/
     5. each parent directory's `.npmrc`, nearest first, not the filesystem root
     - A parent's `.npmrc` beats a project `.yarnrc` (the `.yarnrc` is only consulted when no `.npmrc` sets the key). `${VAR}` expands in file _values_ only, never in keys (`//${HOST}/:_authToken` never matches a host; b1). yarn's rule: the name is everything up to `}`, so `${TOKEN?}` names a variable `TOKEN?` and fails the run whether `TOKEN` is set or not; a reference behind an odd run of backslashes is kept as written, backslash included (`\${X}` stays `\${X}`, c1, c4). autd keeps an unresolvable reference literal, and a credential still holding `${…}` is dropped, so `${TOKEN?}` sends no credential (c2, c3). yarn aborts on an unset variable in any `.npmrc` it reads, autd keeps the literal and a credential still holding `${…}` is dropped
     - Limitation: Homebrew's yarn wrapper forces `PREFIX=/opt/homebrew`, so Homebrew yarn reads `/opt/homebrew/etc/npmrc` whatever `PREFIX` is; autd reads `$PREFIX/etc/npmrc` or the node prefix's, so they differ unless autd runs with the same `PREFIX`. Corepack and `npm i -g` yarn honor `PREFIX`. `DESTDIR` (yarn joins it to the default prefix on Unix) is not read, and a different Node between yarn and autd gives a different default prefix
-    - `berry` or v1 is decided from `cwd`'s own package.json (`isYarnBerry`), so a berry workspace member is taken for v1 (#123); the choice is made once per load, in `npmrcLayers`, and `registryConfig` follows it
+    - `berry` or v1 is decided by `isYarnBerry(cwd)`, which looks from `cwd` up to the yarn project's directory, so a berry workspace member is berry; the choice is made once per load, in `npmrcLayers`, and `registryConfig` follows it
   - yarn v1 `.yarnrc` (`managers/yarn/yarnrc.ts`; berry keeps the `.npmrc` view; verified on yarn 1.22.22, 2026-10-26, with `yarn install` / `yarn upgrade` and `yarn config get`): default registry `--upgrade.registry` in a `.yarnrc` (`yarn upgrade` only; other commands' `--<cmd>.registry` are ignored) > `--registry` > `npm_config_registry` > `YARN_REGISTRY` > `.npmrc` `registry` > `.yarnrc` `registry`; a scope `npm_config_@scope:registry` / `.npmrc` > `.yarnrc` `"@scope:registry"`, and any scope beats every default, the flags included. Among `.yarnrc` files an ordinary key is read from the cwd (a workspace member when run from one), then `~/.yarnrc`, then the parent directories nearest first, not the filesystem root; the flags take `~/.yarnrc` first, then cwd and parents, the root's file included. Variables are matched like `npm_config_*`: any case, empty skipped, last wins. A `.yarnrc` carries no credentials (`"//host/:_authToken"` sends nothing), so those stay with `.npmrc`. Syntax is yarn's lockfile grammar: keys with `@` or `:` and URL values must be double-quoted; `#` comments, CRLF and a BOM are fine; an even-indented line ends the file for yarn (keys before it count); an odd indent, a tab outside a comment, single quotes, an unquoted URL, or a YAML-style file (`registry: https://…`) make yarn fall back to YAML, and autd reads the file as empty
   - yarn v1 `.yarnrc` not read: `${PREFIX or dirname(execPath)}/etc/yarnrc` (ordinary keys, between `~/.yarnrc` and the parents); `/etc/yarnrc`, `/etc/yarn/config`, `~/.config/yarn/config` and `~/.yarn/config` (the flags, above the project); `YARN_@SCOPE:REGISTRY` variables
   - Not read in bunfig.toml: dotted keys (`scopes.acme = …`) and `scopes = { … }`
@@ -153,6 +153,8 @@ utils/
 ### Report (`report.ts`, `logger.report`)
 
 `outcomeOf(result)` files each `UpdateResult` by its `reason` prefix (`not applied by`, `cooldown:`, `… beyond the range`, `held by rule` / `(rule followRange)`, `controlled by`, `peer conflict:`, `held with`; `not targeted` rows are left out). `groupResults` merges rows that share name, versions and note across manifests, sorts by name then root first, and orders sections update → left in place → cooldown → past the range → rule → override → peer → held with → other. A new hold reason needs its prefix here, or it lands under "Not updated".
+
+A member run (#123) passes `{ member }` (the member's path): there is one manifest, so the manifest column is left out whatever the rows hold, and `logger.memberRun(manager, path, count)` has printed `<pm> workspace member <path> (1 of N manifests)` first.
 
 ### Package Filtering (`filterPackages.ts`)
 

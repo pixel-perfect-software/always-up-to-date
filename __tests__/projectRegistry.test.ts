@@ -149,3 +149,58 @@ describe('openProject registry config from a .yarnrc', () => {
     )
   })
 })
+
+// A yarn workspace member reads the project's .yarnrc routes when the project is
+// v1 and none when it is berry (#123: berry/v1 was decided from the member's own
+// package.json, so a berry member took v1's routes).
+describe('openProject registry config from a yarn workspace member', () => {
+  const A = 'http://127.0.0.1:4873/'
+  let tmp: string
+  let home: string | undefined
+  const projects: Project[] = []
+  const write = (file: string, content: string) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, content)
+  }
+  const registryOfMember = () => {
+    const project = openProject(path.join(tmp, 'packages', 'a'), { pm: 'yarn' })
+    projects.push(project)
+    return project.registry.registryConfig()
+  }
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarn-member-')),
+    )
+    home = process.env.HOME
+    process.env.HOME = path.join(tmp, 'home')
+    write(path.join(tmp, 'yarn.lock'), '')
+    write(path.join(tmp, '.yarnrc'), `registry "${A}"\n`)
+    write(path.join(tmp, 'packages', 'a', 'package.json'), '{"name":"a"}')
+  })
+  afterEach(() => {
+    for (const project of projects.splice(0)) project.registry.close()
+    process.env.HOME = home
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it("a berry member ignores the root's .yarnrc", () => {
+    write(
+      path.join(tmp, 'package.json'),
+      '{"name":"root","packageManager":"yarn@4.12.0","workspaces":["packages/*"]}',
+    )
+
+    expect(registryFor('ms', registryOfMember())).toBe(
+      'https://registry.npmjs.org/',
+    )
+  })
+
+  it("a v1 member reads the root's .yarnrc routes", () => {
+    write(
+      path.join(tmp, 'package.json'),
+      '{"name":"root","packageManager":"yarn@1.22.22","workspaces":["packages/*"]}',
+    )
+
+    expect(registryFor('ms', registryOfMember())).toBe(A)
+  })
+})

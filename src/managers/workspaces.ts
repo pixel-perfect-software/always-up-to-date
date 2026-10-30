@@ -4,6 +4,7 @@ import path from 'path'
 import type { WorkspaceManifest } from '@/managers/adapter'
 import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
+import { readTextFile, unquote } from '@/utils/saveStyle'
 
 /** The project's package.json, or undefined when it can't be read. */
 export const readManifest = (
@@ -150,7 +151,7 @@ const walk = (
     return
   }
 
-  if (!/[*?[]/.test(segment)) {
+  if (!isWildcard(segment)) {
     if (isDirectory(path.join(dir, segment))) {
       walk(root, [...relative, segment], rest, found)
     }
@@ -165,27 +166,45 @@ const walk = (
   }
 }
 
-/** Whether a relative path (as segments) matches a pattern (as segments). */
+const isWildcard = (segment: string): boolean => /[*?[]/.test(segment)
+
+/**
+ * Whether a relative path (as segments) matches a pattern (as segments). A
+ * wildcard never matches `node_modules` or a dot-directory, unless the
+ * pattern segment itself starts with `.`, as the expansion in `walk` skips
+ * them.
+ */
 const matchesSegments = (pattern: string[], parts: string[]): boolean => {
   if (pattern.length === 0) return parts.length === 0
   const [segment, ...rest] = pattern
   if (segment === '**') {
     return (
       matchesSegments(rest, parts) ||
-      (parts.length > 0 && matchesSegments(pattern, parts.slice(1)))
+      (parts.length > 0 &&
+        parts[0] !== 'node_modules' &&
+        !parts[0].startsWith('.') &&
+        matchesSegments(pattern, parts.slice(1)))
     )
   }
+  if (parts.length === 0) return false
+  const [part] = parts
+  if (
+    isWildcard(segment) &&
+    (part === 'node_modules' ||
+      (part.startsWith('.') && !segment.startsWith('.')))
+  ) {
+    return false
+  }
   return (
-    parts.length > 0 &&
-    segmentRegExp(segment).test(parts[0]) &&
-    matchesSegments(rest, parts.slice(1))
+    segmentRegExp(segment).test(part) && matchesSegments(rest, parts.slice(1))
   )
 }
 
 /**
  * Whether the workspace `patterns` include `member`, a posix path relative to
  * the root. A pure match, with the expansion's syntax: no directory is read,
- * so the member's own package.json is the caller's check.
+ * so the member's own package.json is the caller's check. It skips what the
+ * expansion skips: `node_modules` and dot-directories below a wildcard.
  */
 export const matchesWorkspacePatterns = (
   patterns: string[],
@@ -275,4 +294,113 @@ export const packageJsonWorkspace = (
       isWorkspace ? workspacePatterns(manifest) : [],
     ),
   }
+}
+
+/**
+ * The nearest directory at or above `cwd` with a package.json, resolved;
+ * `cwd` itself when none has one.
+ */
+export const nearestManifestDir = (cwd: string): string => {
+  const start = path.resolve(cwd)
+  for (let dir = start; ; dir = path.dirname(dir)) {
+    if (hasManifest(dir)) return dir
+    if (path.dirname(dir) === dir) return start
+  }
+}
+
+/** `dir` relative to `root`, POSIX separators; '' for the root itself. */
+const relativeTo = (root: string, dir: string): string =>
+  toPosix(path.relative(root, dir))
+
+/** Whether `root`'s package.json `workspaces` patterns include `dir`. */
+export const listsMember = (root: string, dir: string): boolean => {
+  const relative = relativeTo(root, dir)
+  if (relative === '' || relative.startsWith('..')) return false
+  return matchesWorkspacePatterns(
+    workspacePatterns(readManifest(root)),
+    relative,
+  )
+}
+
+/**
+ * npm, yarn v1 and bun: the nearest strict ancestor whose package.json
+ * `workspaces` include `dir`, else `dir` itself. Resolved.
+ */
+export const packageJsonWorkspaceRoot = (dir: string): string => {
+  const start = path.resolve(dir)
+  for (let parent = path.dirname(start); ; parent = path.dirname(parent)) {
+    if (listsMember(parent, start)) return parent
+    if (path.dirname(parent) === parent) return start
+  }
+}
+
+/** A member at `dir`: its path from `root` (POSIX) and its own package.json name. */
+export const memberAt = (root: string, dir: string): WorkspaceManifest => {
+  const name = readManifest(dir)?.name
+  const member = relativeTo(path.resolve(root), path.resolve(dir)) || '.'
+  return typeof name === 'string' ? { path: member, name } : { path: member }
+}
+
+/**
+ * The `packages` patterns of pnpm-workspace.yaml, as a block list or a flow
+ * list. The file also holds settings (`overrides`, `catalog`,
+ * `onlyBuiltDependencies`), so single-package projects often have one; the
+ * project is a workspace only when it lists at least one pattern.
+ */
+export const pnpmWorkspacePatterns = (yaml: string): string[] => {
+  const lines = yaml.split(/\r?\n/)
+  const start = lines.findIndex((line) => /^packages:/.test(line))
+  if (start === -1) return []
+
+  const inline = lines[start].replace(/^packages:\s*/, '')
+  if (inline && !inline.startsWith('#')) {
+    const flow = /^\[\s*([^\s\]][^\]]*)\]?/.exec(inline)
+    if (!flow) return []
+    return flow[1]
+      .split(',')
+      .map(unquote)
+      .filter((pattern) => pattern !== '')
+  }
+
+  const patterns: string[] = []
+  for (const line of lines.slice(start + 1)) {
+    const item = /^\s*-\s*([^\s#].*)$/.exec(line)
+    if (item) {
+      patterns.push(unquote(item[1].replace(/\s+#.*$/, '')))
+    } else if (/^\S/.test(line) && !line.startsWith('#')) {
+      break
+    }
+  }
+  return patterns
+}
+
+/**
+ * The directory pnpm reads its project settings from: the nearest one,
+ * walking up from `cwd`, that holds a pnpm-workspace.yaml. From a member that
+ * is the workspace root, and its yaml and .npmrc are the only project files
+ * read (verified on pnpm 12.15.0, 2026-10-26: a member's own .npmrc is
+ * ignored, and a member with a yaml of its own is its own root).
+ */
+export const pnpmProjectRoot = (cwd: string): string => {
+  for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return dir
+    if (path.dirname(dir) === dir) return path.resolve(cwd)
+  }
+}
+
+/**
+ * pnpm's project for `dir`: the directory of the nearest pnpm-workspace.yaml
+ * at or above it when that directory is `dir` or its `packages` list `dir`;
+ * otherwise `dir` is its own project (verified on pnpm 12.15.0, 2026-10-26).
+ */
+export const pnpmWorkspaceRoot = (dir: string): string => {
+  const start = path.resolve(dir)
+  const root = pnpmProjectRoot(start)
+  if (root === start) return start
+  const patterns = pnpmWorkspacePatterns(
+    readTextFile(path.join(root, 'pnpm-workspace.yaml')),
+  )
+  return matchesWorkspacePatterns(patterns, relativeTo(root, start))
+    ? root
+    : start
 }

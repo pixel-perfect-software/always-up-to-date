@@ -2,11 +2,17 @@ import fs from 'fs'
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
-import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
+import {
+  packageJsonWorkspace,
+  packageJsonWorkspaceRoot,
+  readManifest,
+} from '@/managers/workspaces'
 import {
   applyBerry,
+  berryProjectRoot,
   discoverBerry,
   installedBerry,
+  yarnProjectDir,
 } from '@/managers/yarn/berry'
 import {
   type RangedDependency,
@@ -17,31 +23,30 @@ import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import { StepError } from '@/stepError'
 import { logger } from '@/utils'
-import { buildUpdateDescriptors, type DescriptorField } from '@/utils/files'
+import { ancestorDirs } from '@/utils/ancestors'
+import { buildUpdateDescriptors, updatePackageJson } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
 import { npmNpmrcLayers } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
 
 /**
- * Yarn 2+ ("berry") is identified by the `packageManager` field when it is
- * present, otherwise by a `.yarnrc.yml`, which yarn v1 does not use.
+ * Yarn 2+ ("berry") for the project `dir` belongs to, the same from the root,
+ * a member or a directory inside one. Walking from `dir` up to the yarn
+ * project's root, the first package.json with a `packageManager` that names
+ * yarn decides (Corepack: the nearest field wins); otherwise a `.yarnrc.yml`
+ * on the way means berry, which yarn v1 does not use.
  */
-export const isYarnBerry = (cwd: string): boolean => {
-  const declared = /^yarn@(\d+)\./.exec(
-    String(readManifest(cwd)?.packageManager ?? ''),
-  )
-  if (declared) return Number(declared[1]) >= 2
-
-  return fs.existsSync(path.join(cwd, '.yarnrc.yml'))
+export const isYarnBerry = (dir: string): boolean => {
+  const walk = ancestorDirs(dir, yarnProjectDir(dir))
+  for (const at of walk) {
+    const declared = /^yarn@(\d+)\./.exec(
+      String(readManifest(at)?.packageManager ?? ''),
+    )
+    if (declared) return Number(declared[1]) >= 2
+  }
+  return walk.some((at) => fs.existsSync(path.join(at, '.yarnrc.yml')))
 }
-
-/** The `yarn workspace <name> upgrade` flag that keeps each field's packages in it. */
-const MEMBER_FIELD_FLAGS: [DescriptorField, string[]][] = [
-  ['dependencies', []],
-  ['devDependencies', ['-D']],
-  ['optionalDependencies', ['-O']],
-]
 
 /** Whether the last `npmrcLayers` load for a directory took berry's path. */
 const berryLoads = new Map<string, boolean>()
@@ -58,6 +63,9 @@ const yarn: ManagerAdapter = {
   name: 'yarn',
   lockfile: 'yarn.lock',
 
+  projectRoot: (dir) =>
+    isYarnBerry(dir) ? berryProjectRoot(dir) : packageJsonWorkspaceRoot(dir),
+
   readWorkspace: (cwd) => ({
     ...packageJsonWorkspace(cwd),
     catalogs: {},
@@ -65,9 +73,9 @@ const yarn: ManagerAdapter = {
 
   // berry reads .yarnrc.yml, which is not read yet (#107), and keeps npm's
   // .npmrc layers; v1 has its own layers and reads .yarnrc. `isYarnBerry`
-  // looks at `cwd`'s own package.json, so a berry workspace member is taken
-  // for v1 (#123). The choice is made once per load, in `npmrcLayers`, and
-  // `registryConfig` follows it.
+  // answers for the whole project, so a berry member gets berry's layers too.
+  // The choice is made once per load, in `npmrcLayers`, and `registryConfig`
+  // follows it.
   npmrcLayers: (cwd, sources) => {
     const berry = isYarnBerry(cwd)
     berryLoads.set(cwd, berry)
@@ -84,7 +92,8 @@ const yarn: ManagerAdapter = {
 
   ownDiscovery: (cwd) =>
     isYarnBerry(cwd)
-      ? (run, { isWorkspace }) => discoverBerry(run, isWorkspace)
+      ? (run, { isWorkspace, member }) =>
+          discoverBerry(run, isWorkspace, member)
       : undefined,
 
   apply: async (
@@ -131,13 +140,29 @@ const yarn: ManagerAdapter = {
 
     // v1 workspaces: `yarn upgrade` at the root only touches the root's
     // manifest, so each member with something moving gets its own
-    // `yarn workspace <name> upgrade`, and yarn writes every manifest.
-    let memberRan = false
+    // `yarn workspace <name> upgrade`, one command carrying every field's
+    // descriptors.
+    //
+    // `-D` and `-O` are not `upgrade` options in yarn 1.22.22: commander
+    // takes the next descriptor as the flag's value and upgrades everything,
+    // so a field cannot be named. Without one, a member's `upgrade` copies a
+    // devDependency into `dependencies` (and an optionalDependency likewise).
+    // So after each member command the manifest's original bytes go back, then
+    // its beyond-range specs are written as `nextVersionSpec` made them for
+    // the descriptors, and one `install` makes node_modules and yarn.lock agree
+    // with the restored manifests. Checked on yarn 1.22.22, 2026-10-29: `-O` is
+    // swallowed like `-D` (p1-opt: every dependency upgraded, `ms` added to
+    // the member's dependencies). The root's `upgrade` copies nothing
+    // (p1-rootdev), so the root keeps yarn's own write and needs no install.
+    let installNeeded = false
+    let written = false
     for (const m of manifests) {
-      const { descriptors, byField, notInManifest } = buildUpdateDescriptors(
-        path.join(cwd, m.path),
-        { withinRange: m.withinRange, newVersions: m.beyondRange, style },
-      )
+      const dir = path.join(cwd, m.path)
+      const { descriptors, notInManifest } = buildUpdateDescriptors(dir, {
+        withinRange: m.withinRange,
+        newVersions: m.beyondRange,
+        style,
+      })
 
       if (notInManifest.length > 0) {
         logger.warn(
@@ -149,7 +174,7 @@ const yarn: ManagerAdapter = {
       if (descriptors.length === 0) continue
 
       if (m.path === '.') {
-        await run(['upgrade', ...descriptors], { manifestWritten: false })
+        await run(['upgrade', ...descriptors], { manifestWritten: written })
         continue
       }
 
@@ -160,20 +185,29 @@ const yarn: ManagerAdapter = {
           `${m.path}/package.json has no name, so yarn cannot upgrade it as a workspace`,
         )
       }
-      // `yarn workspace <name> upgrade` writes a devDependency into
-      // `dependencies` as well unless told its field (1.22.22), so each
-      // field gets its own command with that field's flag.
-      for (const [field, flags] of MEMBER_FIELD_FLAGS) {
-        if (byField[field].length === 0) continue
-        await run(['workspace', name, 'upgrade', ...flags, ...byField[field]], {
-          manifestWritten: false,
-        })
+      installNeeded = true
+
+      const file = path.join(dir, 'package.json')
+      const original = fs.readFileSync(file, 'utf8')
+      await run(['workspace', name, 'upgrade', ...descriptors], {
+        manifestWritten: written,
+      })
+      fs.writeFileSync(file, original, 'utf8')
+      if (Object.keys(m.beyondRange).length > 0) {
+        await updatePackageJson(dir, m.beyondRange, style)
+        written = true
       }
-      memberRan = true
     }
 
-    // A member's upgrade leaves node_modules unlinked until an install.
-    if (memberRan) await run(['install'], { manifestWritten: false })
+    // `--check-files`: a member's `upgrade` leaves the member's other
+    // dependencies out of node_modules (1.22.22: commander and debug gone
+    // after `workspace @autd/b upgrade commander debug kleur`), yet records
+    // the integrity of the manifests, so a plain `install` says "Already
+    // up-to-date" and leaves them out. `--check-files` relinks them and
+    // leaves yarn.lock alone (p1-root, 2026-10-29).
+    if (installNeeded) {
+      await run(['install', '--check-files'], { manifestWritten: written })
+    }
   },
 
   /**

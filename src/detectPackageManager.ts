@@ -10,10 +10,13 @@ import {
 import { readManifest } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { SupportedPackageManager } from '@/types'
+import { ancestorDirs } from '@/utils/ancestors'
 import logger from '@/utils/logger'
 
 /** Managers package.json names, and the field that names them. */
 interface Declaration {
+  /** The declaring file as seen from the command's cwd: `package.json`, `../../package.json`. */
+  file: string
   names: string[]
   field: 'packageManager' | 'devEngines.packageManager'
   value: string
@@ -24,14 +27,19 @@ interface Declaration {
  * `devEngines.packageManager`: one `{ name, version?, onFail? }` or an array
  * of them, listing the managers the project accepts in order of preference.
  */
-const declarations = (cwd: string): Declaration[] => {
-  const manifest = readManifest(cwd)
+const declarationsIn = (dir: string, file: string): Declaration[] => {
+  const manifest = readManifest(dir)
   const found: Declaration[] = []
 
   const packageManager = manifest?.packageManager
   if (typeof packageManager === 'string' && packageManager.trim()) {
     const value = packageManager.trim()
-    found.push({ names: [value.split('@')[0]], field: 'packageManager', value })
+    found.push({
+      file,
+      names: [value.split('@')[0]],
+      field: 'packageManager',
+      value,
+    })
   }
 
   const devEngines = manifest?.devEngines as
@@ -43,6 +51,7 @@ const declarations = (cwd: string): Declaration[] => {
     .filter((name): name is string => typeof name === 'string')
   if (names.length > 0) {
     found.push({
+      file,
       names,
       field: 'devEngines.packageManager',
       value: JSON.stringify(devEngines?.packageManager),
@@ -50,6 +59,26 @@ const declarations = (cwd: string): Declaration[] => {
   }
 
   return found
+}
+
+/**
+ * The declarations of the nearest package.json from `from` up to `root` that
+ * has any (a member's own beats the workspace root's).
+ */
+const declarations = (
+  root: string,
+  from: string,
+  cwd: string,
+): Declaration[] => {
+  for (const dir of ancestorDirs(from, root)) {
+    const relative = path.relative(cwd, dir).split(path.sep).join('/')
+    const found = declarationsIn(
+      dir,
+      relative ? `${relative}/package.json` : 'package.json',
+    )
+    if (found.length > 0) return found
+  }
+  return []
 }
 
 const ignoreOtherLockfiles = (
@@ -65,22 +94,26 @@ const ignoreOtherLockfiles = (
 }
 
 /**
- * Picks the manager for `cwd`: `--pm` first, then what package.json
+ * Picks the manager for the project at `root`: `--pm` first, then what package.json
  * declares, then the lockfile. A lockfile that disagrees with the declared
  * manager is a leftover and is only logged at debug level, unless the
  * declared manager has no lockfile of its own. With several lockfiles and
  * nothing declared, the last in `adapters` order wins (bun, pnpm, yarn,
  * then npm: package-lock.json is the one most often left behind) and a
- * warning names the choice.
+ * warning names the choice. Lockfiles are read at `root`. From a workspace
+ * member (`from`, a directory below `root`), the declaration is the nearest
+ * package.json's between `from` and `root`. Messages name files and
+ * directories as seen from `cwd`, the command's directory (`from` by default).
  */
 const detectPackageManager = (
-  cwd: string,
+  root: string,
   pm?: SupportedPackageManager,
+  { from = root, cwd = from }: { from?: string; cwd?: string } = {},
 ): SupportedPackageManager => {
   const found = Object.values(adapters).filter((adapter) =>
-    fs.existsSync(path.join(cwd, adapter.lockfile)),
+    fs.existsSync(path.join(root, adapter.lockfile)),
   )
-  const declared = declarations(cwd)
+  const declared = declarations(root, from, cwd)
 
   if (pm) {
     const contradicted = declared.find(
@@ -88,7 +121,7 @@ const detectPackageManager = (
     )
     if (contradicted) {
       logger.warn(
-        `--pm ${pm} overrides ${contradicted.field} ${contradicted.value} in package.json. With Corepack enabled, ${pm} may refuse to run here.`,
+        `--pm ${pm} overrides ${contradicted.field} ${contradicted.value} in ${contradicted.file}. With Corepack enabled, ${pm} may refuse to run here.`,
       )
     }
     logger.debug(`Using ${pm}: --pm ${pm}`)
@@ -103,7 +136,7 @@ const detectPackageManager = (
       const [first] = declared
       throw new StepError(
         'detect',
-        `package.json declares ${first.field} ${first.value}, and autd supports ${supportedManagers.join(', ')}. Pass --pm to choose one.`,
+        `${first.file} declares ${first.field} ${first.value}, and autd supports ${supportedManagers.join(', ')}. Pass --pm to choose one.`,
       )
     }
 
@@ -112,14 +145,14 @@ const detectPackageManager = (
     const name =
       supported.find((name) => found.some((a) => a.name === name)) ??
       supported[0]
-    logger.debug(`Using ${name}: ${usable.field} in package.json`)
+    logger.debug(`Using ${name}: ${usable.field} in ${usable.file}`)
 
     if (found.length > 0 && !found.some((a) => a.name === name)) {
       logger.warn(
-        `package.json declares ${name} in ${usable.field}, but the only lockfile is ${found.map((a) => a.lockfile).join(', ')}. Using ${name}.`,
+        `${usable.file} declares ${name} in ${usable.field}, but the only lockfile is ${found.map((a) => a.lockfile).join(', ')}. Using ${name}.`,
       )
     } else {
-      ignoreOtherLockfiles(found, name, `package.json declares ${name}`)
+      ignoreOtherLockfiles(found, name, `${usable.file} declares ${name}`)
     }
     return name
   }
@@ -128,7 +161,7 @@ const detectPackageManager = (
   if (!chosen) {
     throw new StepError(
       'detect',
-      `No package manager detected in the current directory: package.json declares none and there is no lockfile. Pass --pm ${supportedManagers.join('|')} to choose one.`,
+      `No package manager detected in ${path.resolve(cwd) === root ? 'the current directory' : root}: package.json declares none and there is no lockfile. Pass --pm ${supportedManagers.join('|')} to choose one.`,
     )
   }
 

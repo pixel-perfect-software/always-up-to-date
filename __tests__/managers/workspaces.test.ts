@@ -2,6 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import {
+  listsMember,
   readWorkspaceManifests,
   workspacePatterns,
 } from '@/managers/workspaces'
@@ -174,5 +175,47 @@ describe('readWorkspaceManifests', () => {
     fs.writeFileSync(path.join(cwd, 'package.json'), '{}')
 
     expect(readWorkspaceManifests(cwd, [])).toEqual([{ path: '.' }])
+  })
+})
+
+// A path the expansion never visits is not a member (#123).
+describe('listsMember', () => {
+  let root: string
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-lists-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true })
+  })
+
+  const workspaces = (...patterns: string[]) =>
+    fs.writeFileSync(
+      path.join(root, 'package.json'),
+      JSON.stringify({ workspaces: patterns }),
+    )
+
+  it('lists a directory the patterns match', () => {
+    workspaces('packages/*')
+
+    expect(listsMember(root, path.join(root, 'packages', 'a'))).toBe(true)
+  })
+
+  it.each([
+    ['packages/a/node_modules/lodash', 'packages/**'],
+    ['packages/node_modules/lodash', 'packages/*/lodash'],
+    ['packages/.cache/a', 'packages/*/a'],
+    ['packages/a/.git/hooks', 'packages/**'],
+  ])('skips %s under %s', (member, pattern) => {
+    workspaces(pattern)
+
+    expect(listsMember(root, path.join(root, ...member.split('/')))).toBe(false)
+  })
+
+  it('lists a dot-directory a pattern segment names with a dot', () => {
+    workspaces('.tools/*')
+
+    expect(listsMember(root, path.join(root, '.tools', 'a'))).toBe(true)
   })
 })

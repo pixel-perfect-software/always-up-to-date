@@ -1,8 +1,18 @@
+import fs from 'fs'
 import path from 'path'
 import semver from 'semver'
 
-import type { Discovery, RunManager } from '@/managers/adapter'
-import { ownerPath } from '@/managers/workspaces'
+import type {
+  Discovery,
+  RunManager,
+  WorkspaceManifest,
+} from '@/managers/adapter'
+import {
+  listsMember,
+  ownerPath,
+  packageJsonWorkspaceRoot,
+  toPosix,
+} from '@/managers/workspaces'
 import { type PipelineStep, StepError } from '@/stepError'
 import type { ManifestPlan, OutdatedEntry, PackageInfo } from '@/types'
 import { parseAlias } from '@/utils/aliasSpec'
@@ -272,30 +282,36 @@ const outdatedByWorkspace = async (
 
 /**
  * Discovery for berry: a single-package project reads the root workspace, a
- * workspace project every workspace with its path as the owner.
+ * workspace project every workspace with its path as the owner. A member run
+ * (#123) keeps only that member's workspace.
  */
 export const discoverBerry = async (
   run: RunManager,
   isWorkspace: boolean,
+  member?: WorkspaceManifest,
 ): Promise<Discovery> => {
   const listed = parseBerryInfo(await run(['info', '-A', '--json']))
-  const workspaces = isWorkspace
-    ? listed
-    : listed.filter((workspace) => workspace.path === '.')
+  const workspaces = member
+    ? listed.filter((workspace) => workspace.path === member.path)
+    : isWorkspace
+      ? listed
+      : listed.filter((workspace) => workspace.path === '.')
   // Every project has at least its root workspace; none means the output
   // wasn't understood, which must not read as "up to date".
   if (workspaces.length === 0) {
     throw new StepError(
       'discover',
-      isWorkspace
-        ? 'yarn info -A --json listed no workspaces'
-        : 'yarn info -A --json listed no root workspace',
+      member
+        ? `yarn info -A --json listed no workspace at ${member.path}`
+        : isWorkspace
+          ? 'yarn info -A --json listed no workspaces'
+          : 'yarn info -A --json listed no root workspace',
     )
   }
 
   const found = await outdatedByWorkspace(run, workspaces)
 
-  if (!isWorkspace) {
+  if (!isWorkspace && !member) {
     return {
       kind: 'single',
       outdated: Object.fromEntries(
@@ -388,4 +404,33 @@ export const installedBerry = async (
     if (version !== undefined) installed[rowKey(row)] = version
   }
   return installed
+}
+
+/**
+ * The nearest directory at or above `dir` with a yarn.lock (yarn's
+ * `findProjectCwd`), else the nearest ancestor whose `workspaces` list `dir`,
+ * else `dir`.
+ */
+export const yarnProjectDir = (dir: string): string => {
+  const start = path.resolve(dir)
+  for (let at = start; ; at = path.dirname(at)) {
+    if (fs.existsSync(path.join(at, 'yarn.lock'))) return at
+    if (path.dirname(at) === at) return packageJsonWorkspaceRoot(start)
+  }
+}
+
+/**
+ * Berry's project for `dir`: its root (\`yarnProjectDir\`). From a directory
+ * the root's \`workspaces\` do not list berry fails, "Usage Error: The
+ * nearest package directory … doesn't seem to be part of the project", so
+ * this does too, before any command runs.
+ */
+export const berryProjectRoot = (dir: string): string => {
+  const start = path.resolve(dir)
+  const root = yarnProjectDir(start)
+  if (root === start || listsMember(root, start)) return root
+  throw new StepError(
+    'detect',
+    `${toPosix(path.relative(root, start))} is not listed in "workspaces" of ${path.join(root, 'package.json')}, so yarn does not treat it as part of that project. Add it to "workspaces", or run autd from ${root}.`,
+  )
 }

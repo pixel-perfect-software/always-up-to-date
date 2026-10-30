@@ -41,10 +41,11 @@ src/
   cli.ts                    # Commander.js program setup, registers commands
   types.ts                  # Core types: SupportedPackageManager, PackageInfo, UpdateResult, AlwaysUpToDateConfig, CooldownConfig, RegistryConfig
   commandRunner.ts          # runCommand(pm, args, cwd, isSuccess?) via runProcess; runStep() tags failures
-  project.ts                # openProject(cwd, { pm? }): loads the config once, configures the logger, detects the manager → Project (with a lazy registry session)
+  project.ts                # openProject(cwd, { pm? }): locate(), the config (the member's own file, else the root's), the logger, detection, then adapter.projectRoot() for root (detection and the config again where it differs from locate's) → Project { root, member?, config, adapter, registry } (with a lazy registry session)
+  projectLocation.ts        # locate(cwd): the nearest package.json's directory and the workspace root that lists it (package.json `workspaces`, or the nearest pnpm-workspace.yaml when it lists it), before a manager is known (#123)
   discovery.ts              # discoverFromRegistry(): native discovery for npm, pnpm, yarn v1, bun (manifests, node_modules, registry reader)
-  pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter
-  detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles
+  pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter; refuseMemberApply() (#123)
+  detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles; lockfiles at the root, the declaration nearest the member up to the root
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
   commands/                 # CLI command definitions
     CLAUDE.md
@@ -62,35 +63,38 @@ testRepos/                  # Integration fixtures, <manager>-<layout> (README.m
 bench/                      # pnpm run bench: pinned/ and ranges/ (the 40-dependency benchmark manifests), run.ts (copy, install, hyperfine, table), targets.ts (selection, cold caches), report.ts (hyperfine JSON parsing, table), register.cjs (swc loader for run.ts)
 jest.integration.config.ts  # Jest config for the integration matrix (not part of pnpm test)
 __tests__/
-  integration/              # pnpm run test:integration: harness.ts (copy, pin to minimum, install, run the CLI), lockfiles.ts (yarn v1/berry/bun rewriters), expectations.ts (derived values, per-manager overrides), matrix.ts, <manager>.test.ts
+  integration/              # pnpm run test:integration: harness.ts (copy, pin to minimum, install, run the CLI, frozenInstall, snapshotFiles, runCliExpectingFailure), lockfiles.ts (yarn v1/berry/bun rewriters), expectations.ts (derived values, expectedMemberCheck / expectedMemberPlan, per-manager overrides), matrix.ts (runMatrix, runMemberMatrix), <manager>.test.ts
   bench/                    # report.test.ts (hyperfine 2 JSON parsing, formatting, table), targets.test.ts (selection, cold caches)
   setup.ts                  # Global test setup (console suppression, AUTD_NO_CACHE=1)
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
   project.test.ts           # openProject: config loaded once, logger configured before detection
-  discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95
-  projectRegistry.test.ts   # Real openProject on temp workspaces: a pnpm or bun member reads the workspace root's registry files; a pnpm member with its own yaml is its own root; a yarn v1 .yarnrc routes the default and a scope (#120) and a berry project's is ignored
+  projectLocation.test.ts   # locate(): the root that lists a member, a directory inside one, a negated pattern, the nearest of several, pnpm's own yaml, a nearer pnpm-workspace.yaml that does not list it, no package.json (#123)
+  projectMember.test.ts     # Real openProject from a member on temp workspaces: root and member, the config fallback, berry's detect refusal, the update refusal, an own-project directory, pnpm's own yaml, and the manager's root over locate's (a stray or nearer settings-only pnpm-workspace.yaml) (#123)
+  memberRun.test.ts         # Per native adapter: check and plan from a member read that manifest only, the member header, and update is refused before discovery, any lookup or subprocess, with every manifest keeping its bytes (#123)
+  discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95, a member run (#123)
+  projectRegistry.test.ts   # Real openProject on temp workspaces: a pnpm or bun member reads the workspace root's registry files; a pnpm member with its own yaml is its own root; a yarn v1 .yarnrc routes the default and a scope (#120) and a berry project's is ignored, from a member too
   pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows; a cooldown fallback within the range package.json declares (#151) and an alias looked up by its target (#152)
   singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON (registry captures as of the capture date plus a written node_modules), identical for all four managers; reviewed once for #106: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   commands/
-    check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options
+    check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options; init writes to the nearest package.json's directory, update -i is refused from a member
     jsonOutput.test.ts      # Real logger: stdout is exactly one JSON document with --json
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, JSON error object
     registryPathToken.test.ts # A token in a registry URL path never reaches a message: the client's errors, a fake npm's stderr, debug lines and the --json error object (#131)
-  detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging
+  detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging; from a member, the root's declaration and lockfile, the member's own first, files named from the cwd (#123)
   startup.test.ts           # Loading the CLI never loads the registry client or reader
   fixtures/
     registry.ts, tls/       # Local registry/proxy servers (replies() for exact url tables, registryBody() which gunzips a .body.gz, derive()); test-only TLS material (generate.sh)
     registry/               # Verbatim curl captures (.body; .body.gz over 100 KB decoded) of dist-tags, deps.dev and packuments: ms, @types/ms, mkdirp, then yarn, pnpm, dayjs, debug, express, semver, zod, axios, lodash, next, qs, typescript for #106 (packuments only for yarn and pnpm); README.md lists status, type, wire and decoded size and the checks
     index.ts                # readFixture(), exitError(), fakeRegistry(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers; capturedPackage(name, { source, asOf }) and capturedRegistry(names, options) build RegistryPackage / a session from the captures, installPackages(cwd, dir, versions) writes node_modules, readRegistryBody() and derive() are re-exported from registry.ts
     captured.test.ts        # The captured-registry helpers: sources, asOf, latest fallback, unplanned names, installPackages
-    npm/ pnpm/ yarn/        # Real captured manager stdout/stderr: apply commands and errors (pnpm update, yarn v1 update/upgrade, yarn berry info), npm's package-lock.json for #107
+    npm/ pnpm/ yarn/        # Real captured manager stdout/stderr: apply commands and errors (pnpm update, yarn v1 update/upgrade, yarn berry info), a yarn v1 member's package.json before and after `workspace … upgrade`, npm's package-lock.json for #107
   managers/
     adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager
     npm.test.ts, pnpm.test.ts  # npm: readLockedVersions on package-lock.json (for #107); pnpm: readWorkspace (workspace detection, catalog records, CRLF), single-package update paths, member map
-    yarn.test.ts            # yarn v1: upgrade descriptors, v1-over-stray-.yarnrc.yml, stderr warning at debug level, failed apply
-    yarnBerry.test.ts       # yarn berry on real captures (PnP, node-modules, workspace, patch:/alias/link): parsers, discovery, in-range and beyond-range apply, installed-version check
+    yarn.test.ts            # yarn v1: upgrade descriptors, a member's devDependency kept in its field (manifest restored, beyond-range spec written), the root keeping yarn's write, v1-over-stray-.yarnrc.yml, stderr warning at debug level, failed apply
+    yarnBerry.test.ts       # yarn berry on real captures (PnP, node-modules, workspace, patch:/alias/link): parsers, discovery (from a member too), in-range and beyond-range apply, installed-version check
     realSubprocess.test.ts  # Fake npm on PATH (sh wrapper / cmd-shim, all platforms): >1 MB output, names passed as arguments
     reuseDiscovery.test.ts  # update with a discovery result applies without discovering again (the throwing fake registry proves no lookup)
     withinRange.test.ts     # Native discovery on registry captures, default config: proposes exactly npm update's set; zero for pins
@@ -104,16 +108,17 @@ __tests__/
     bunfig.test.ts          # bunfig.toml routes and credentials, $NAME, global/project merge, env overrides, bunfigExact
     pin.test.ts             # applyPinned on temp dirs: exact pin then a byte-for-byte restore, past-the-range spec, catalog entry, relock order, relock failure (#147)
     stepFailures.test.ts    # Each manager rejects with a discover/apply StepError
-    workspaces.test.ts      # Member map: workspace patterns, negations, skips
+    workspaces.test.ts      # Member map: workspace patterns, negations, skips; listsMember and the same node_modules and dot-directory skips
     workspaceDiscovery.test.ts  # Workspace check on all four managers (native) returns one record; unnamed roots
     workspaceApply.test.ts  # Workspace apply per manager: commands, member manifest writes, catalog routing
+    projectRoot.test.ts     # projectRoot on temp dirs: the npm/bun rule, pnpm's yaml (own yaml, catalog-only root), berry's yarn.lock root and its refusal, isYarnBerry from a member (#123)
   utils/
-    config.test.ts          # Config loading/saving tests (incl. cooldown variants, strict depsDev)
+    config.test.ts          # Config loading/saving tests (incl. cooldown variants, strict depsDev, the member's file else the root's)
     cooldown.test.ts        # Normalize/evaluate cooldown gate
     duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests; readPnpmCatalogs / readBunCatalogs and their agreement with the pnpm writer
     filterPackages.test.ts  # Package filtering, targeting, cooldown integration, cooldown fallbacks and pinned rows (#147), a fallback only within the declared range (#151), an alias judged by its target (#152)
-    logger.test.ts          # Logger output, configure(), quiet and JSON output modes; report(): every row once under its outcome, merged manifests, summary line (#138)
+    logger.test.ts          # Logger output, configure(), quiet and JSON output modes; report(): every row once under its outcome, merged manifests, summary line (#138); memberRun(), no manifest column in a member run (#123)
     npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
     npmrcLayers.test.ts     # mergeNpmrcLayers (per key, origin), envLayer rules, npmrcFileLayer (substitute null leaves out ${…}), npmNpmrcLayers order and merge
     npmrcLoader.test.ts     # Layering (global, user, project, npm_config_*), workspace root, RegistryConfig, on temp dirs

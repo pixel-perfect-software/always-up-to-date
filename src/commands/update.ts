@@ -1,5 +1,10 @@
 import { type Command, Option } from 'commander'
-import { findOutdated, plan, update as runUpdate } from '@/pipeline'
+import {
+  findOutdated,
+  plan,
+  refuseMemberApply,
+  update as runUpdate,
+} from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import type { SupportedPackageManager, UpdateResult } from '@/types'
 import { logger } from '@/utils'
@@ -91,7 +96,9 @@ const dryRun = async (
     return
   }
 
-  logger.report(results, project.adapter.name, 'plan')
+  logger.report(results, project.adapter.name, 'plan', {
+    member: project.member?.path,
+  })
 }
 
 /** One choice per package: a package in several manifests moves in all of them. */
@@ -116,6 +123,7 @@ const choicesByPackage = (eligible: UpdateResult[]) => {
 }
 
 const interactiveUpdate = async (project: Project) => {
+  refuseMemberApply(project)
   const outdatedPackages = await findOutdated(project)
 
   if (Object.keys(outdatedPackages).length === 0) return
