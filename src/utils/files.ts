@@ -113,7 +113,9 @@ export const updatePackageJson = async (
 
   const packageJson = JSON.parse(packageJsonContent)
 
-  // Update the version of each package in the package.json
+  // Update the version of each package in the package.json.
+  // peerDependencies is left alone: a peer range is the package's contract
+  // with its consumers, the same reason discovery skips it.
   Object.keys(versions).forEach((packageName) => {
     if (packageJson?.dependencies?.[packageName]) {
       const currentVersion = packageJson.dependencies[packageName]
@@ -136,18 +138,6 @@ export const updatePackageJson = async (
           style,
         )
         packageJson.optionalDependencies[packageName] = newVersion
-      }
-    }
-
-    if (packageJson?.peerDependencies?.[packageName]) {
-      const currentVersion = packageJson.peerDependencies[packageName]
-      if (!isWorkspaceReference(currentVersion)) {
-        const newVersion = nextVersionSpec(
-          currentVersion,
-          versions[packageName],
-          style,
-        )
-        packageJson.peerDependencies[packageName] = newVersion
       }
     }
 
