@@ -2,11 +2,17 @@ import fs from 'fs'
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
-import { packageJsonWorkspace, readManifest } from '@/managers/workspaces'
+import {
+  packageJsonWorkspace,
+  packageJsonWorkspaceRoot,
+  readManifest,
+} from '@/managers/workspaces'
 import {
   applyBerry,
+  berryProjectRoot,
   discoverBerry,
   installedBerry,
+  yarnProjectDir,
 } from '@/managers/yarn/berry'
 import {
   type RangedDependency,
@@ -17,6 +23,7 @@ import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import { StepError } from '@/stepError'
 import { logger } from '@/utils'
+import { ancestorDirs } from '@/utils/ancestors'
 import { buildUpdateDescriptors, updatePackageJson } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
 import { npmNpmrcLayers } from '@/utils/npmrcLoader'
@@ -24,16 +31,21 @@ import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
 
 /**
- * Yarn 2+ ("berry") is identified by the `packageManager` field when it is
- * present, otherwise by a `.yarnrc.yml`, which yarn v1 does not use.
+ * Yarn 2+ ("berry") for the project `dir` belongs to, the same from the root,
+ * a member or a directory inside one. Walking from `dir` up to the yarn
+ * project's root, the first package.json with a `packageManager` that names
+ * yarn decides (Corepack: the nearest field wins); otherwise a `.yarnrc.yml`
+ * on the way means berry, which yarn v1 does not use.
  */
-export const isYarnBerry = (cwd: string): boolean => {
-  const declared = /^yarn@(\d+)\./.exec(
-    String(readManifest(cwd)?.packageManager ?? ''),
-  )
-  if (declared) return Number(declared[1]) >= 2
-
-  return fs.existsSync(path.join(cwd, '.yarnrc.yml'))
+export const isYarnBerry = (dir: string): boolean => {
+  const walk = ancestorDirs(dir, yarnProjectDir(dir))
+  for (const at of walk) {
+    const declared = /^yarn@(\d+)\./.exec(
+      String(readManifest(at)?.packageManager ?? ''),
+    )
+    if (declared) return Number(declared[1]) >= 2
+  }
+  return walk.some((at) => fs.existsSync(path.join(at, '.yarnrc.yml')))
 }
 
 /** Whether the last `npmrcLayers` load for a directory took berry's path. */
@@ -51,6 +63,9 @@ const yarn: ManagerAdapter = {
   name: 'yarn',
   lockfile: 'yarn.lock',
 
+  projectRoot: (dir) =>
+    isYarnBerry(dir) ? berryProjectRoot(dir) : packageJsonWorkspaceRoot(dir),
+
   readWorkspace: (cwd) => ({
     ...packageJsonWorkspace(cwd),
     catalogs: {},
@@ -58,9 +73,9 @@ const yarn: ManagerAdapter = {
 
   // berry reads .yarnrc.yml, which is not read yet (#107), and keeps npm's
   // .npmrc layers; v1 has its own layers and reads .yarnrc. `isYarnBerry`
-  // looks at `cwd`'s own package.json, so a berry workspace member is taken
-  // for v1 (#123). The choice is made once per load, in `npmrcLayers`, and
-  // `registryConfig` follows it.
+  // answers for the whole project, so a berry member gets berry's layers too.
+  // The choice is made once per load, in `npmrcLayers`, and `registryConfig`
+  // follows it.
   npmrcLayers: (cwd, sources) => {
     const berry = isYarnBerry(cwd)
     berryLoads.set(cwd, berry)

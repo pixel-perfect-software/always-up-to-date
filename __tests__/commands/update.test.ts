@@ -71,7 +71,7 @@ describe('update command', () => {
     mockUpdatePackages.mockResolvedValue([])
     await program.parseAsync(['node', 'test', 'update'])
     expect(mockUpdatePackages).toHaveBeenCalledWith(
-      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      expect.objectContaining({ adapter: npm, root: expect.any(String) }),
       {
         targetPackages: undefined,
       },
@@ -82,7 +82,7 @@ describe('update command', () => {
     mockUpdatePackages.mockResolvedValue([])
     await program.parseAsync(['node', 'test', 'update', 'react', 'lodash'])
     expect(mockUpdatePackages).toHaveBeenCalledWith(
-      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      expect.objectContaining({ adapter: npm, root: expect.any(String) }),
       {
         targetPackages: ['react', 'lodash'],
       },
@@ -98,6 +98,7 @@ describe('update command', () => {
     expect(mockDetectPackageManager).toHaveBeenCalledWith(
       expect.any(String),
       'bun',
+      { from: expect.any(String) },
     )
     expect(mockUpdatePackages).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: bun }),
@@ -229,7 +230,7 @@ describe('update command', () => {
 
     expect(mockCheckPackageVersions).toHaveBeenCalledTimes(1)
     expect(mockUpdatePackages).toHaveBeenCalledWith(
-      expect.objectContaining({ adapter: npm, cwd: expect.any(String) }),
+      expect.objectContaining({ adapter: npm, root: expect.any(String) }),
       {
         targetPackages: ['react'],
         discovered: outdated,

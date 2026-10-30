@@ -44,7 +44,7 @@ describe('openProject', () => {
     const project = openProject('/project')
 
     expect(project).toEqual({
-      cwd: '/project',
+      root: '/project',
       config,
       adapter: pnpm,
       registry: session,
@@ -53,7 +53,9 @@ describe('openProject', () => {
       depsDev: true,
       loadConfig: expect.any(Function),
     })
-    expect(detectPackageManager).toHaveBeenCalledWith('/project', undefined)
+    expect(detectPackageManager).toHaveBeenCalledWith('/project', undefined, {
+      from: '/project',
+    })
   })
 
   it("hands the config's depsDev switch to the registry session", () => {
@@ -175,7 +177,9 @@ describe('openProject', () => {
     jest.mocked(detectPackageManager).mockReturnValue('bun')
 
     expect(openProject('/project', { pm: 'bun' }).adapter).toBe(bun)
-    expect(detectPackageManager).toHaveBeenCalledWith('/project', 'bun')
+    expect(detectPackageManager).toHaveBeenCalledWith('/project', 'bun', {
+      from: '/project',
+    })
   })
 
   it('loads the config once and configures the logger with it', () => {
@@ -186,7 +190,7 @@ describe('openProject', () => {
     openProject('/project')
 
     expect(loadConfig).toHaveBeenCalledTimes(1)
-    expect(loadConfig).toHaveBeenCalledWith('/project')
+    expect(loadConfig).toHaveBeenCalledWith('/project', '/project')
     expect(logger.configure).toHaveBeenCalledWith(config)
   })
 

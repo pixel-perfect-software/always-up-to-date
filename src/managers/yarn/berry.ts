@@ -1,8 +1,14 @@
+import fs from 'fs'
 import path from 'path'
 import semver from 'semver'
 
 import type { Discovery, RunManager } from '@/managers/adapter'
-import { ownerPath } from '@/managers/workspaces'
+import {
+  listsMember,
+  ownerPath,
+  packageJsonWorkspaceRoot,
+  toPosix,
+} from '@/managers/workspaces'
 import { type PipelineStep, StepError } from '@/stepError'
 import type { ManifestPlan, OutdatedEntry, PackageInfo } from '@/types'
 import { parseAlias } from '@/utils/aliasSpec'
@@ -388,4 +394,33 @@ export const installedBerry = async (
     if (version !== undefined) installed[rowKey(row)] = version
   }
   return installed
+}
+
+/**
+ * The nearest directory at or above `dir` with a yarn.lock (yarn's
+ * `findProjectCwd`), else the nearest ancestor whose `workspaces` list `dir`,
+ * else `dir`.
+ */
+export const yarnProjectDir = (dir: string): string => {
+  const start = path.resolve(dir)
+  for (let at = start; ; at = path.dirname(at)) {
+    if (fs.existsSync(path.join(at, 'yarn.lock'))) return at
+    if (path.dirname(at) === at) return packageJsonWorkspaceRoot(start)
+  }
+}
+
+/**
+ * Berry's project for `dir`: its root (\`yarnProjectDir\`). From a directory
+ * the root's \`workspaces\` do not list berry fails, "Usage Error: The
+ * nearest package directory … doesn't seem to be part of the project", so
+ * this does too, before any command runs.
+ */
+export const berryProjectRoot = (dir: string): string => {
+  const start = path.resolve(dir)
+  const root = yarnProjectDir(start)
+  if (root === start || listsMember(root, start)) return root
+  throw new StepError(
+    'detect',
+    `${toPosix(path.relative(root, start))} is not listed in "workspaces" of ${path.join(root, 'package.json')}, so yarn does not treat it as part of that project. Add it to "workspaces", or run autd from ${root}.`,
+  )
 }

@@ -2,7 +2,10 @@ import fs from 'fs'
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
-import { packageJsonWorkspace } from '@/managers/workspaces'
+import {
+  packageJsonWorkspace,
+  packageJsonWorkspaceRoot,
+} from '@/managers/workspaces'
 import { updatePackageJson } from '@/utils/files'
 import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
@@ -31,6 +34,8 @@ export const readLockedVersions = (cwd: string): Record<string, string> => {
 const npm: ManagerAdapter = {
   name: 'npm',
   lockfile: 'package-lock.json',
+
+  projectRoot: packageJsonWorkspaceRoot,
 
   readWorkspace: (cwd) => ({
     ...packageJsonWorkspace(cwd),

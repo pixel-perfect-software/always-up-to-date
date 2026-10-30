@@ -70,6 +70,20 @@ describe('pipeline', () => {
     expect(loadConfig).not.toHaveBeenCalled()
   })
 
+  // Phase 2 of #123 only: member-scoped discovery replaces this guard.
+  it('stops a member run in discover until member runs are wired', async () => {
+    const project = projectFor(npm, cwd, {}, registryFor('dayjs'), {
+      path: 'packages/a',
+      name: '@ws/a',
+    })
+
+    await expect(check(project)).rejects.toMatchObject({
+      step: 'discover',
+      message: expect.stringContaining('member runs are not wired yet (#123)'),
+    })
+    expect(runProcess).not.toHaveBeenCalled()
+  })
+
   it('plans with the config the project carries', async () => {
     const registry = registryFor('dayjs')
     // The manager moves dayjs to its target, so the post-apply check agrees.

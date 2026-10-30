@@ -3,6 +3,7 @@ import os from 'os'
 import path from 'path'
 import semver from 'semver'
 import type { ManagerAdapter } from '@/managers'
+import type { WorkspaceManifest } from '@/managers/adapter'
 import type { Project } from '@/project'
 import type {
   AlwaysUpToDateConfig,
@@ -170,12 +171,14 @@ export const installPackages = (
 /** A project for the pipeline: the default config with `config` laid over it. */
 export const projectFor = (
   adapter: ManagerAdapter,
-  cwd: string,
+  root: string,
   config: Partial<AlwaysUpToDateConfig> = {},
   registry: RegistrySession = fakeRegistry(),
+  member?: WorkspaceManifest,
 ): Project => ({
   adapter,
-  cwd,
+  root,
+  member,
   config: { ...DEFAULT_CONFIG, ...config },
   registry,
 })

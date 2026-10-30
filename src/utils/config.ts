@@ -139,16 +139,33 @@ const loadJsonConfig = (filePath: string): AlwaysUpToDateConfig => {
   }
 }
 
+const CONFIG_FILE = '.always-up-to-date.json'
+
 /**
- * Load configuration from the working directory
+ * The config file a run uses: the working directory's own, else
+ * `fallbackDir`'s (a workspace root, for a member run, #123). Undefined when
+ * neither has one. No per-key merge.
+ */
+export const configFileFor = (
+  workingDir: string,
+  fallbackDir?: string,
+): string | undefined =>
+  [workingDir, fallbackDir]
+    .filter((dir): dir is string => dir !== undefined)
+    .map((dir) => path.join(dir, CONFIG_FILE))
+    .find((file) => checkIfFileExists(file))
+
+/**
+ * Load configuration from the working directory, else from `fallbackDir`.
  * Only supports JSON format
  */
 export const loadConfig = (
   workingDir: string = process.cwd(),
+  fallbackDir?: string,
 ): AlwaysUpToDateConfig => {
-  const jsonConfigPath = path.join(workingDir, '.always-up-to-date.json')
+  const jsonConfigPath = configFileFor(workingDir, fallbackDir)
 
-  if (checkIfFileExists(jsonConfigPath)) {
+  if (jsonConfigPath) {
     return loadJsonConfig(jsonConfigPath)
   }
 
