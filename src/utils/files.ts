@@ -187,8 +187,6 @@ const DESCRIPTOR_FIELDS = [
   'optionalDependencies',
 ] as const
 
-export type DescriptorField = (typeof DESCRIPTOR_FIELDS)[number]
-
 export const buildUpdateDescriptors = (
   cwd: string,
   {
@@ -202,8 +200,6 @@ export const buildUpdateDescriptors = (
   },
 ): {
   descriptors: string[]
-  /** The same descriptors, grouped by the field that declares each package. */
-  byField: Record<DescriptorField, string[]>
   notInManifest: string[]
 } => {
   const packageJson = JSON.parse(
@@ -211,11 +207,6 @@ export const buildUpdateDescriptors = (
   )
 
   const descriptors: string[] = []
-  const byField: Record<DescriptorField, string[]> = {
-    dependencies: [],
-    devDependencies: [],
-    optionalDependencies: [],
-  }
   const notInManifest: string[] = []
 
   for (const packageName of [...withinRange, ...Object.keys(newVersions)]) {
@@ -231,13 +222,12 @@ export const buildUpdateDescriptors = (
         ? nextVersionSpec(currentVersion, newVersion, style)
         : currentVersion
       descriptors.push(`${packageName}@${spec}`)
-      byField[field].push(`${packageName}@${spec}`)
     } else {
       notInManifest.push(packageName)
     }
   }
 
-  return { descriptors, byField, notInManifest }
+  return { descriptors, notInManifest }
 }
 
 /** A `name: value` line: indent, the name with its quotes, the separator, then the value text. */

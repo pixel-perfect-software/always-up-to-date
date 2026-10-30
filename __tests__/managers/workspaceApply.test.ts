@@ -49,6 +49,7 @@ describe.each([
     inRange: [['update', 'dayjs', 'debug', 'ms']],
     beyond: [['update', 'dayjs', 'debug', 'ms']],
     writesManifests: true,
+    flagsFirstFailure: true,
   },
   {
     pm: 'pnpm',
@@ -60,6 +61,7 @@ describe.each([
       ['update', '-r', 'dayjs', 'debug', 'ms'],
     ],
     writesManifests: true,
+    flagsFirstFailure: true,
   },
   {
     pm: 'yarn',
@@ -68,15 +70,17 @@ describe.each([
     inRange: [
       ['upgrade', 'ms@~2.1.1'],
       ['workspace', '@ws/b', 'upgrade', 'dayjs@^1.11.9', 'debug@~4.3.1'],
-      ['install'],
+      ['install', '--check-files'],
     ],
     beyond: [
       ['upgrade', 'ms@~2.1.1', 'dayjs@1.11.23'],
       ['workspace', '@ws/a', 'upgrade', 'ms@2.1.3'],
       ['workspace', '@ws/b', 'upgrade', 'dayjs@^1.11.9', 'debug@~4.3.1'],
-      ['install'],
+      ['install', '--check-files'],
     ],
-    writesManifests: false,
+    // yarn's first command runs before autd writes anything.
+    writesManifests: true,
+    flagsFirstFailure: false,
   },
   {
     pm: 'bun',
@@ -85,10 +89,19 @@ describe.each([
     inRange: [['update', 'dayjs', 'debug', 'ms', '--filter', '*']],
     beyond: [['update', 'dayjs', 'debug', 'ms', '--filter', '*']],
     writesManifests: true,
+    flagsFirstFailure: true,
   },
 ] as const)(
   'workspace apply with $pm',
-  ({ pm, adapter, pnpm: usesPnpm, inRange, beyond, writesManifests }) => {
+  ({
+    pm,
+    adapter,
+    pnpm: usesPnpm,
+    inRange,
+    beyond,
+    writesManifests,
+    flagsFirstFailure,
+  }) => {
     let cwd: string
 
     const readJson = (file: string) =>
@@ -169,7 +182,7 @@ describe.each([
 
       expect(error).toMatchObject({
         step: 'apply',
-        manifestWritten: writesManifests,
+        manifestWritten: flagsFirstFailure,
       })
     })
   },

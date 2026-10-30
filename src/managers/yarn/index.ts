@@ -17,7 +17,7 @@ import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import { StepError } from '@/stepError'
 import { logger } from '@/utils'
-import { buildUpdateDescriptors, type DescriptorField } from '@/utils/files'
+import { buildUpdateDescriptors, updatePackageJson } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
 import { npmNpmrcLayers } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
@@ -35,13 +35,6 @@ export const isYarnBerry = (cwd: string): boolean => {
 
   return fs.existsSync(path.join(cwd, '.yarnrc.yml'))
 }
-
-/** The `yarn workspace <name> upgrade` flag that keeps each field's packages in it. */
-const MEMBER_FIELD_FLAGS: [DescriptorField, string[]][] = [
-  ['dependencies', []],
-  ['devDependencies', ['-D']],
-  ['optionalDependencies', ['-O']],
-]
 
 /** Whether the last `npmrcLayers` load for a directory took berry's path. */
 const berryLoads = new Map<string, boolean>()
@@ -131,13 +124,30 @@ const yarn: ManagerAdapter = {
 
     // v1 workspaces: `yarn upgrade` at the root only touches the root's
     // manifest, so each member with something moving gets its own
-    // `yarn workspace <name> upgrade`, and yarn writes every manifest.
-    let memberRan = false
+    // `yarn workspace <name> upgrade`, one command carrying every field's
+    // descriptors.
+    //
+    // `-D` and `-O` are not `upgrade` options in yarn 1.22.22: commander
+    // takes the next descriptor as the flag's value and upgrades everything,
+    // so a field cannot be named. Without one, yarn copies a devDependency
+    // into `dependencies` (and an optionalDependency likewise). So after each
+    // command the manifest's original bytes go back, then its beyond-range
+    // specs are written as `nextVersionSpec` made them for the descriptors,
+    // and one `install` makes node_modules and yarn.lock agree with the
+    // restored manifests. Checked on yarn 1.22.22, 2026-10-29: `-O` is
+    // swallowed like `-D` (p1-opt: every dependency upgraded, `ms` added to
+    // the member's dependencies); the root's `upgrade` does not copy a root
+    // devDependency into `dependencies` (p1-rootdev), so there the restore
+    // changes nothing and only the beyond-range write matters.
+    let installNeeded = false
+    let written = false
     for (const m of manifests) {
-      const { descriptors, byField, notInManifest } = buildUpdateDescriptors(
-        path.join(cwd, m.path),
-        { withinRange: m.withinRange, newVersions: m.beyondRange, style },
-      )
+      const dir = path.join(cwd, m.path)
+      const { descriptors, notInManifest } = buildUpdateDescriptors(dir, {
+        withinRange: m.withinRange,
+        newVersions: m.beyondRange,
+        style,
+      })
 
       if (notInManifest.length > 0) {
         logger.warn(
@@ -148,32 +158,43 @@ const yarn: ManagerAdapter = {
       }
       if (descriptors.length === 0) continue
 
+      let command: string[]
       if (m.path === '.') {
-        await run(['upgrade', ...descriptors], { manifestWritten: false })
-        continue
+        command = ['upgrade', ...descriptors]
+      } else {
+        const name = members.find((w) => w.path === m.path)?.name
+        if (!name) {
+          throw new StepError(
+            'apply',
+            `${m.path}/package.json has no name, so yarn cannot upgrade it as a workspace`,
+          )
+        }
+        command = ['workspace', name, 'upgrade', ...descriptors]
+        installNeeded = true
       }
 
-      const name = members.find((w) => w.path === m.path)?.name
-      if (!name) {
-        throw new StepError(
-          'apply',
-          `${m.path}/package.json has no name, so yarn cannot upgrade it as a workspace`,
-        )
+      const file = path.join(dir, 'package.json')
+      const original = fs.readFileSync(file, 'utf8')
+      await run(command, { manifestWritten: written })
+      if (fs.readFileSync(file, 'utf8') !== original) {
+        fs.writeFileSync(file, original, 'utf8')
+        installNeeded = true
       }
-      // `yarn workspace <name> upgrade` writes a devDependency into
-      // `dependencies` as well unless told its field (1.22.22), so each
-      // field gets its own command with that field's flag.
-      for (const [field, flags] of MEMBER_FIELD_FLAGS) {
-        if (byField[field].length === 0) continue
-        await run(['workspace', name, 'upgrade', ...flags, ...byField[field]], {
-          manifestWritten: false,
-        })
+      if (Object.keys(m.beyondRange).length > 0) {
+        await updatePackageJson(dir, m.beyondRange, style)
+        written = true
       }
-      memberRan = true
     }
 
-    // A member's upgrade leaves node_modules unlinked until an install.
-    if (memberRan) await run(['install'], { manifestWritten: false })
+    // `--check-files`: a member's `upgrade` leaves the member's other
+    // dependencies out of node_modules (1.22.22: commander and debug gone
+    // after `workspace @autd/b upgrade commander debug kleur`), yet records
+    // the integrity of the manifests, so a plain `install` says "Already
+    // up-to-date" and leaves them out. `--check-files` relinks them and
+    // leaves yarn.lock alone (p1-root, 2026-10-29).
+    if (installNeeded) {
+      await run(['install', '--check-files'], { manifestWritten: written })
+    }
   },
 
   /**

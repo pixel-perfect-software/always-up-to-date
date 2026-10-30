@@ -1,0 +1,13 @@
+{
+  "name": "@autd/b",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "commander": "^11.0.0",
+    "debug": "~4.3.1",
+    "kleur": "~3.0.0"
+  },
+  "devDependencies": {
+    "kleur": "~3.0.0"
+  }
+}
