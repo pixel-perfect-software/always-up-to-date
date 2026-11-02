@@ -137,59 +137,18 @@ export const expectedPlan = (layout: Layout): PlanRow[] =>
       ]
 
 /**
- * pnpm, in a workspace, dedupes the root's `ms` (`~2.1.1`, so 2.1.3 is allowed)
- * onto 2.1.2, the version packages/a pins and the lockfile already holds:
- * `pnpm update -r ms` prints `- ms 2.1.1` / `+ ms 2.1.2` and writes `~2.1.2`,
- * with autd out of the loop. autd reports the move as not applied (it checks
- * what was installed). Observed with pnpm 12.14.0, 2026-10-23, and confirmed
- * with a lockfile that agrees with the manifests (the harness rewrites the
- * lockfile's specifiers and checks it with a frozen install), so the dedupe
- * isn't an artefact of a lockfile that disagrees.
+ * The floors a manager that rewrites ranges writes for the packages that moved.
+ * Every manager applies the whole plan: pnpm 12.14.0 deduped the workspace
+ * root's `ms` (`~2.1.1`) onto packages/a's 2.1.2 and wrote `~2.1.2`; pnpm
+ * 12.16.1 moves it to 2.1.3 like the others.
  */
-const PNPM_MS_DEDUPED: PlanRow = {
-  name: 'ms',
-  workspace: '.',
-  current: '2.1.1',
-  wanted: '2.1.3',
-  updated: false,
-  reason: 'not applied by pnpm (installed 2.1.2)',
-}
-
-/**
- * `update --json` is the plan, except where a manager leaves a package where it
- * was. Keyed by `<manager>-<layout>`; rows replace the plan's by name and workspace.
- */
-const UPDATE_OVERRIDES: Record<string, PlanRow[]> = {
-  'pnpm-workspace': [PNPM_MS_DEDUPED],
-  'pnpm-catalogs': [PNPM_MS_DEDUPED],
-}
-
-export const expectedUpdate = (manager: Manager, layout: Layout): PlanRow[] => {
-  const overrides = UPDATE_OVERRIDES[`${manager}-${layout}`] ?? []
-  return expectedPlan(layout).map(
-    (planned) =>
-      overrides.find(
-        (o) => o.name === planned.name && o.workspace === planned.workspace,
-      ) ?? planned,
-  )
-}
-
-const FLOORS: Record<string, string> = {
+export const FLOORS: Record<string, string> = {
   chalk: '4.1.2',
   commander: '11.1.0',
   debug: '4.3.7',
   kleur: '3.0.3',
   ms: '2.1.3',
 }
-
-/** The floors a manager that rewrites ranges writes for the packages that moved. */
-export const floorsFor = (
-  manager: Manager,
-  layout: Layout,
-): Record<string, string> =>
-  UPDATE_OVERRIDES[`${manager}-${layout}`]?.some((o) => o.name === 'ms')
-    ? { ...FLOORS, ms: '2.1.2' } // see PNPM_MS_DEDUPED
-    : FLOORS
 
 /** `^4.0.0` -> `^4.1.2`; exact pins and `catalog:` references stay. */
 export const raiseFloors = (

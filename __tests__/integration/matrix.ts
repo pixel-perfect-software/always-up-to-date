@@ -6,8 +6,7 @@ import {
   expectedMemberCheck,
   expectedMemberPlan,
   expectedPlan,
-  expectedUpdate,
-  floorsFor,
+  FLOORS,
   isWorkspaceLayout,
   type Layout,
   type Member,
@@ -158,13 +157,12 @@ export const runMatrix = (manager: Manager): void => {
 
         it('update --json applies the plan', async () => {
           const rows = projectRows(await runCli(cwd, ['update', '--json']))
-          expect(rows).toEqual(expectedUpdate(manager, layout))
+          expect(rows).toEqual(expectedPlan(layout))
           moved = rows.filter((r) => r.updated)
         })
 
         it('leaves the manifests as the manager rewrites them', () => {
           const after = manifests()
-          const floors = floorsFor(manager, layout)
           if (!rewritesRanges(manager)) {
             expect(after).toEqual(before)
             return
@@ -176,7 +174,7 @@ export const runMatrix = (manager: Manager): void => {
                 Object.fromEntries(
                   Object.entries(fields).map(([field, map]) => [
                     field,
-                    raiseFloors(map, floors),
+                    raiseFloors(map, FLOORS),
                   ]),
                 ),
               ]),
@@ -187,7 +185,7 @@ export const runMatrix = (manager: Manager): void => {
               ? Object.fromEntries(
                   Object.entries(before.catalogs).map(([name, map]) => [
                     name,
-                    raiseFloors(map, floors),
+                    raiseFloors(map, FLOORS),
                   ]),
                 )
               : before.catalogs,
