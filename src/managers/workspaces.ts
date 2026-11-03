@@ -2,7 +2,6 @@ import fs from 'fs'
 import path from 'path'
 
 import type { WorkspaceManifest } from '@/managers/adapter'
-import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
 import { readTextFile, unquote } from '@/utils/saveStyle'
 
@@ -60,27 +59,6 @@ const expandBraces = (pattern: string): string[] => {
 
 export const toPosix = (value: string): string =>
   value.split(path.sep).join('/')
-
-/**
- * A manager-reported owner as a path relative to the root ('.' for the root
- * itself). An owner outside the root (`..`, an absolute path) fails
- * discovery: apply writes the owner's package.json, and must not write
- * outside the project.
- */
-export const ownerPath = (
-  manager: string,
-  name: string,
-  relative: string,
-): string => {
-  const owner = toPosix(relative) || '.'
-  if (owner === '..' || owner.startsWith('../') || path.isAbsolute(owner)) {
-    throw new StepError(
-      'discover',
-      `${manager} reported ${name} in ${relative}, which is outside the project`,
-    )
-  }
-  return owner
-}
 
 const segmentsOf = (pattern: string): string[] =>
   pattern

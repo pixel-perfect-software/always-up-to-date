@@ -30,6 +30,8 @@ export interface RegistryDiscoveryInput {
   manager: SupportedPackageManager
   workspace: Workspace
   registry: Pick<RegistrySession, 'lookup' | 'unusableRoute'>
+  /** `wantedVersion`'s `preferLatest`: false for yarn berry (#107). Default true. */
+  preferLatest?: boolean
   /**
    * Fail with the install command when no node_modules exists. Default true;
    * a reader that doesn't need node_modules (a lockfile reader, #107) turns
@@ -87,6 +89,7 @@ export const discoverFromRegistry = async ({
   registry,
   requireNodeModules = true,
   readInstalled = readInstalledPackages,
+  preferLatest = true,
 }: RegistryDiscoveryInput): Promise<Discovery> => {
   // A member run (#123) reads the member's manifest alone; the other
   // manifests still name the workspace packages to skip.
@@ -162,8 +165,16 @@ export const discoverFromRegistry = async ({
   const lookups = names.map((name) => registry.lookup(name))
 
   const results = await Promise.all(lookups)
+  // The manager's release-age gate lets no version through (#166): nothing
+  // can move, so the package is left out, as the manager leaves it.
+  for (const result of results) {
+    if (!result.ok && result.kind === 'quarantined') {
+      logger.warn(`Leaving ${result.name} out: ${result.reason}`)
+    }
+  }
   const failures = results.filter(
-    (result): result is Extract<PackageLookup, { ok: false }> => !result.ok,
+    (result): result is Extract<PackageLookup, { ok: false }> =>
+      !result.ok && result.kind !== 'quarantined',
   )
   if (failures.length > 0) throw failureError(failures)
 
@@ -187,7 +198,9 @@ export const discoverFromRegistry = async ({
     if (!pkg) continue
     const current = found?.version ?? 'missing'
     const wanted =
-      'tag' in spec ? pkg.latest : (wantedVersion(spec.range, pkg) ?? current)
+      'tag' in spec
+        ? pkg.latest
+        : (wantedVersion(spec.range, pkg, { preferLatest }) ?? current)
 
     const behind = (version: string): boolean =>
       semver.valid(current) === null || semver.gt(version, current)

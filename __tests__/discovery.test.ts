@@ -506,6 +506,39 @@ describe('discoverFromRegistry', () => {
       expect((error as Error).message).toContain('ms: registry unreachable')
     })
 
+    // #166: the manager's release-age gate lets no version through, so the
+    // package cannot move; it is left out with a warning, not a failure.
+    it('leave out a package the release-age gate quarantines, with a warning', async () => {
+      writeJson('package.json', {
+        dependencies: { dayjs: '1.11.9', ms: '2.1.1' },
+      })
+      installPackages(cwd, '.', { dayjs: '1.11.9', ms: '2.1.1' })
+      const registry = fakeRegistry({
+        lookup: async (name) =>
+          name === 'ms'
+            ? {
+                ok: false,
+                name,
+                kind: 'quarantined',
+                reason:
+                  'every version is younger than npmMinimalAgeGate (1440 minutes)',
+              }
+            : { ok: true, package: capturedPackage(name, { asOf: AS_OF }) },
+      })
+
+      const found = await discover(registry)
+
+      expect(found).toEqual({
+        kind: 'single',
+        outdated: {
+          dayjs: expect.objectContaining({ current: '1.11.9' }),
+        },
+      })
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Leaving ms out: every version is younger than npmMinimalAgeGate (1440 minutes)',
+      )
+    })
+
     it('name the first ten, then count the rest', async () => {
       const names = Array.from({ length: 12 }, (_, i) => `pkg-${i}`)
       writeJson('package.json', {

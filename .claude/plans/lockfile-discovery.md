@@ -66,3 +66,31 @@ Files and settings:
 - **Environment:** `YARN_<SETTING>` overrides the files, e.g. `YARN_NPM_REGISTRY_SERVER`, `YARN_NPM_AUTH_TOKEN`, `YARN_NPM_ALWAYS_AUTH`.
 - **`${VAR}` substitution:** `${VAR:-x}` works; an unset `${VAR}` fails the run.
 - **Settings defaults** (from the 4.18.1 bundle): `npmRegistryServer` `https://registry.yarnpkg.com`, `httpTimeout` `1m` (a DURATION), `httpRetry` 3, `networkConcurrency` 50, `enableStrictSsl` true. `httpsCaFilePath`, `httpsKeyFilePath` and `httpsCertFilePath` are absolute paths. `httpProxy` and `httpsProxy` are strings with no env fallback. `unsafeHttpWhitelist` holds hostname globs: an `http:` registry not on it is refused. `networkSettings` holds per-hostname globs.
+
+## Berry's version choice for a range (part C)
+
+Probed on yarn 4.18.1, 2026-11-03, with `yarn install` against a local registry with set times, deprecations and tags. The code was read from the bundle (`getCandidates`, `l2`, `Rvt`, `Qvt`, `Tvt`):
+1. The candidates are the versions satisfying the range; prereleases only when the range names one (p-pre).
+2. The `npmMinimalAgeGate` filter (a DURATION in minutes, default `1d`, also settable per scope) drops versions younger than the gate. A version with no publish time counts as too young. `npmPreapprovedPackages` (descriptors or name globs, with an optional range) are exempt. When every satisfying version is dropped, berry fails: `All versions satisfying "^1.0.0" are quarantined`.
+3. Non-deprecated versions are preferred; all of them are used if all are deprecated (p-deprecated: 1.0.1 over a deprecated 1.0.2).
+4. The highest wins. There is no `latest`-tag preference (p-latest: 1.0.2 over the tagged 1.0.1).
+
+**Decision:**
+- Part C uses `wantedVersion(range, pkg, { preferLatest: false })` for berry, which covers steps 1, 3 and 4. `main`'s berry discovery used `semver.maxSatisfying` over `yarn npm info`, so it had no gate and no deprecated skip either.
+- The age gate (step 2) was first filed as #166. The user then ruled (2026-11-03) that autd never overrides a manager's security default, so part C applies it. `withReleaseAgeGate` wraps the session and gates every lookup and `releaseTimes`. Times come from deps.dev, else the full packument. A package with nothing let through is left out with a warning.
+
+## Part C plan
+
+- `yarn.lock` (berry) reader. For each row, the workspace entry `<name>@workspace:<path>` gives `dependencies[key]`, the descriptor `key@<value>`. The entry whose key list holds that descriptor gives `version`. A `workspace:` value is a member, so it is linked. It reads aliases (`m@npm:ms@^2`) and builtin patches as they are written.
+- Berry gets `installedFromLockfile` → always `yarn.lock`, PnP or node-modules linker. `ownDiscovery`, `discoverBerry`, `parseBerryInfo`, `parseBerryRegistry`, `yarn npm info` and `yarn info` go. `installed()` reads `yarn.lock` after apply.
+- `discoverFromRegistry` takes the berry `wanted` option (`preferLatest: false`).
+- **More gate rows** (4.18.1, 2026-11-03):
+  - top level 0 with `npmScopes.acme` listed without a gate: `@acme/p-fresh` still gated (a scope entry's own default, one day);
+  - `npmMinimalAgeGate: 30` is 30 minutes;
+  - a version with no `time` is quarantined;
+  - `npmPreapprovedPackages: ["p-exempt", "@acme/*@^1.0.0"]` let both fresh versions through.
+- **The real run:** p-fresh at 1.0.0, then 1.0.1 (old) and 1.0.2 (now) published.
+  - `main` proposed 1.0.2, berry installed 1.0.1, and autd reported `not applied by yarn (installed 1.0.1)`.
+  - The branch proposed 1.0.1 and applied it.
+  - `yarn install --immutable` passed on both.
+- Done when: berry `check` runs no `yarn` command; bench cold under 1 s; the integration matrix passes unchanged.

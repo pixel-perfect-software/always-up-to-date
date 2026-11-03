@@ -10,8 +10,7 @@ import {
 import {
   applyBerry,
   berryProjectRoot,
-  discoverBerry,
-  installedBerry,
+  readBerryLock,
   yarnProjectDir,
 } from '@/managers/yarn/berry'
 import {
@@ -90,11 +89,14 @@ const yarn: ManagerAdapter = {
       ? berryRegistryConfig(cwd, sources)
       : yarnRegistryConfig(cwd, fromNpmrc, sources, npmrc),
 
-  ownDiscovery: (cwd) =>
-    isYarnBerry(cwd)
-      ? (run, { isWorkspace, member }) =>
-          discoverBerry(run, isWorkspace, member)
-      : undefined,
+  // berry (#107): `yarn.lock` holds the installed versions, PnP or not; v1
+  // reads node_modules.
+  installedFromLockfile: (cwd) =>
+    isYarnBerry(cwd) ? { file: 'yarn.lock', read: readBerryLock } : undefined,
+
+  // berry resolves a range to its highest version, with no preference for
+  // the `latest` tag (yarn 4.18.1, p-latest); v1 prefers `latest`.
+  prefersLatestInRange: (cwd) => !isYarnBerry(cwd),
 
   apply: async (run, cwd, { withinRange, beyondRange, manifests }) => {
     // berry: autd writes the specs that move past their range, yarn locks.
@@ -146,12 +148,20 @@ const yarn: ManagerAdapter = {
 
   /**
    * berry locks versions in `yarn.lock` and, under PnP, has no node_modules,
-   * so the versions come from `yarn info`. Yarn v1 reads node_modules.
+   * so the versions after apply come from `yarn.lock`. Yarn v1 reads
+   * node_modules.
    */
-  installed: (run, cwd, rows) =>
-    isYarnBerry(cwd)
-      ? installedBerry(run, rows)
-      : Promise.resolve(readInstalledVersions(cwd, rows)),
+  installed: (_run, cwd, rows) => {
+    if (!isYarnBerry(cwd))
+      return Promise.resolve(readInstalledVersions(cwd, rows))
+    const versions: Record<string, string> = {}
+    for (const [key, { version, linked }] of Object.entries(
+      readBerryLock(cwd, rows),
+    )) {
+      if (!linked) versions[key] = version
+    }
+    return Promise.resolve(versions)
+  },
 
   /** berry: `defaultSemverRangePrefix` in .yarnrc.yml, where `''` means exact. Yarn v1 keeps the default. */
   saveStyle: (cwd) => {

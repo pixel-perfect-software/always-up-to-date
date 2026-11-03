@@ -47,12 +47,14 @@ describe('openProject', () => {
 
     const project = openProject(cwd)
 
-    expect(project).toEqual({
-      root: cwd,
-      config,
-      adapter: pnpm,
-      registry: session,
+    expect(project).toMatchObject({ root: cwd, config, adapter: pnpm })
+    // The session, with the manager's release-age gate on its lookups (#166).
+    expect(project.registry).toMatchObject({
+      registryConfig: session.registryConfig,
+      client: session.client,
+      close: session.close,
     })
+    expect(project.registry.lookup).not.toBe(session.lookup)
     expect(createRegistrySession).toHaveBeenCalledWith(cwd, {
       depsDev: true,
       loadConfig: expect.any(Function),
