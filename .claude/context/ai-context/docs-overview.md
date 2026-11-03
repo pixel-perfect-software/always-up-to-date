@@ -68,12 +68,12 @@ __tests__/
   setup.ts                  # Global test setup (console suppression, AUTD_NO_CACHE=1)
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
-  project.test.ts           # openProject: config loaded once, logger configured before detection; the registry view loaded at the root (#127)
+  project.test.ts           # openProject: config loaded once, logger configured before detection; the registry view loaded at the root, which projectRegistry.test.ts checks for a yarn v1 member over ~/.npmrc and its own .npmrc (#127)
   projectLocation.test.ts   # locate(): the root that lists a member, a directory inside one, a negated pattern, the nearest of several, pnpm's own yaml, a nearer pnpm-workspace.yaml that does not list it, no package.json (#123)
   projectMember.test.ts     # Real openProject from a member on temp workspaces: root and member, the config fallback, berry's detect refusal, the update refusal, an own-project directory, pnpm's own yaml, and the manager's root over locate's (a stray or nearer settings-only pnpm-workspace.yaml) (#123)
   memberRun.test.ts         # Per native adapter: check and plan from a member read that manifest only, the member header, and update is refused before discovery, any lookup or subprocess, with every manifest keeping its bytes (#123)
   discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95, a member run (#123)
-  projectRegistry.test.ts   # Real openProject on temp workspaces: a pnpm or bun member reads the workspace root's registry files; a pnpm member with its own yaml is its own root; a yarn v1 .yarnrc routes the default and a scope (#120) and a berry project's is ignored, from a member too; a yarn v1 member reads the root's .npmrc over ~/.npmrc and its own (#127)
+  projectRegistry.test.ts   # Real openProject on temp workspaces: a pnpm or bun member reads the workspace root's registry files; a pnpm member with its own yaml is its own root; a yarn v1 .yarnrc routes the default and a scope (#120) and a berry project's is ignored, from a member too
   pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows; a cooldown fallback within the range package.json declares (#151) and an alias looked up by its target (#152)
   singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON (registry captures as of the capture date plus a written node_modules), identical for all four managers; reviewed once for #106: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
