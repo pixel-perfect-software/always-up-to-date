@@ -14,3 +14,6 @@ testRepos/**/pnpm-lock.yaml
 testRepos/**/bun.lock
 testRepos/**/.yarn/
 testRepos/**/.pnp.*
+
+# The session handoff is local to each session, never committed.
+.claude/context/ai-context/handoff.md
