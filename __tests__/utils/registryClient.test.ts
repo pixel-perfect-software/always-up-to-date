@@ -422,6 +422,67 @@ describe('registry client', () => {
     })
   })
 
+  // yarn berry 4.18.1's rule (#107; probes r01, r10, r25, r26 on 2026-11-03).
+  describe('yarn berry credentials', () => {
+    const berryConfig = (
+      server: TestRegistry,
+      auth: Partial<NonNullable<RegistryConfig['berryAuth']>>,
+    ): RegistryConfig => ({
+      ...configFrom(''),
+      registry: server.url,
+      berryAuth: {
+        top: { alwaysAuth: false },
+        scopes: {},
+        registries: {},
+        ...auth,
+      },
+    })
+
+    it('sends no top-level token for an unscoped package, but does for a scoped one', async () => {
+      const server = await registry()
+      const config = berryConfig(server, {
+        top: { token: 'T', alwaysAuth: false },
+      })
+      await get(config, server, 'probe-unscoped')
+      await get(config, server, '@acme%2fprobe')
+      expect(authOf(server)).toEqual([undefined, 'Bearer T'])
+    })
+
+    it('drops the header on a redirect to another port, which yarn v1 keeps', async () => {
+      const target = await registry()
+      const server = await registry((_req, res) => {
+        res.statusCode = 302
+        res.setHeader('location', `${target.url}@acme%2fprobe`)
+        res.end()
+      })
+      const config = berryConfig(server, {
+        top: { token: 'T', alwaysAuth: false },
+      })
+      await get(config, server, '@acme%2fprobe')
+      expect(authOf(server)).toEqual(['Bearer T'])
+      expect(authOf(target)).toEqual([undefined])
+    })
+
+    it('keeps the header on a redirect within the same origin', async () => {
+      const server = await registry((req, res) => {
+        if (req.url === '/@acme%2fprobe') {
+          res.statusCode = 302
+          res.setHeader('location', '/moved/@acme%2fprobe')
+          res.end()
+          return
+        }
+        json({ done: true })(req, res)
+      })
+      const config = berryConfig(server, {
+        top: { token: 'T', alwaysAuth: false },
+      })
+      expect(await get(config, server, '@acme%2fprobe')).toEqual({
+        done: true,
+      })
+      expect(authOf(server)).toEqual(['Bearer T', 'Bearer T'])
+    })
+  })
+
   describe('redirects', () => {
     it('follows a same-host redirect and recomputes the credentials', async () => {
       const server = await registry((req, res) => {

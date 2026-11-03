@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
 import type {
+  BerryAuthEntry,
   RegistryConfig,
   RegistryCredentials,
   UnusableRegistry,
@@ -210,6 +211,70 @@ export const yarnV1AuthorizationFor = (
   for (const reg of routes) {
     const found = yarnV1AuthByRegistry(auth, reg)
     if (found) return found
+  }
+  return undefined
+}
+
+/** The path of `url` after `registry`'s own, or undefined when `registry` doesn't parse. */
+const pathAfter = (url: URL, registry: string): string | undefined => {
+  try {
+    const own = new URL(registry.trim()).pathname.replace(/\/?$/, '/')
+    return url.pathname.startsWith(own)
+      ? url.pathname.slice(own.length)
+      : url.pathname
+  } catch {
+    return undefined
+  }
+}
+
+const isRoute = (
+  registry: string,
+  config: Pick<RegistryConfig, 'registry' | 'scopedRegistries'>,
+): boolean =>
+  registry === config.registry ||
+  Object.values(config.scopedRegistries).includes(registry)
+
+/**
+ * The Authorization yarn berry sends with the first request for `url`, built
+ * from `registry`: undefined when `config` has no berry rule or berry sends
+ * none. Verified on yarn 4.18.1, 2026-11-03, against local registries logging
+ * `Authorization` (#107, probes r01-r30 in `.claude/plans/lockfile-discovery.md`):
+ * - only to a registry a package routes to, so deps.dev never gets one;
+ * - the configuration that answers is the scope's when it holds a token or
+ *   an ident, else the `npmRegistries` entry for `registry` (one trailing
+ *   `/` dropped, then without the protocol; no walk up the path, r28), else
+ *   the top level (r04, r07, r24);
+ * - a scoped package sends what that configuration holds; an unscoped one
+ *   only when that configuration's own `npmAlwaysAuth` is set (r01, r02,
+ *   r21). With it set and nothing to send, berry fails the run (r22); autd
+ *   sends nothing;
+ * - `npmAuthToken` is Bearer; `npmAuthIdent` is Basic, base64-encoded when
+ *   it holds a `:` (r08, r09).
+ */
+export const berryAuthorizationFor = (
+  url: URL,
+  registry: string,
+  config: Pick<RegistryConfig, 'registry' | 'scopedRegistries' | 'berryAuth'>,
+): string | undefined => {
+  const auth = config.berryAuth
+  if (!auth || !isRoute(registry, config)) return undefined
+  const path = pathAfter(url, registry)
+  if (path === undefined) return undefined
+  const scope = YARN_SCOPED.exec(path)?.[1]
+  const scoped = scope ? auth.scopes[scope] : undefined
+  const normalized = registry.trim().replace(/\/$/, '')
+  const effective: BerryAuthEntry =
+    scoped && (scoped.token || scoped.ident)
+      ? scoped
+      : (auth.registries[normalized] ??
+        auth.registries[normalized.replace(/^[a-z]+:/, '')] ??
+        auth.top)
+  if (!scope && !effective.alwaysAuth) return undefined
+  if (effective.token) return `Bearer ${effective.token}`
+  if (effective.ident) {
+    return effective.ident.includes(':')
+      ? `Basic ${Buffer.from(effective.ident).toString('base64')}`
+      : `Basic ${effective.ident}`
   }
   return undefined
 }

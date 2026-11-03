@@ -1,7 +1,13 @@
-import type { RegistryConfig, RegistryCredentials, YarnV1Auth } from '@/types'
+import type {
+  BerryAuth,
+  RegistryConfig,
+  RegistryCredentials,
+  YarnV1Auth,
+} from '@/types'
 import {
   ABBREVIATED_ACCEPT,
   authorizationFor,
+  berryAuthorizationFor,
   credentialPrefixes,
   credentialsFor,
   DEFAULT_ENDPOINTS,
@@ -387,6 +393,181 @@ describe('yarn v1 credentials', () => {
         scopedRegistries: {},
       }),
     ).toBeUndefined()
+  })
+})
+
+// yarn berry 4.18.1's rule (#107). Each row is a probe run on 2026-11-03:
+// `yarn install` against local registries logging Authorization (r01-r30 in
+// .claude/plans/lockfile-discovery.md), the header berry sent with the
+// packument request.
+describe('yarn berry credentials', () => {
+  const B = 'http://127.0.0.1:4902'
+  const none = { alwaysAuth: false }
+  const berryConfig = (
+    auth: Partial<BerryAuth>,
+    routes: { registry?: string; scopes?: Record<string, string> } = {},
+  ) => ({
+    registry: routes.registry ?? 'https://registry.yarnpkg.com',
+    scopedRegistries: routes.scopes ?? {},
+    berryAuth: { top: none, scopes: {}, registries: {}, ...auth },
+  })
+  const sent = (name: string, cfg: ReturnType<typeof berryConfig>) => {
+    const registry = registryFor(name, { ...config(), ...cfg })
+    return berryAuthorizationFor(
+      new URL(packumentUrl(name, registry)),
+      registry,
+      cfg,
+    )
+  }
+
+  it.each([
+    [
+      'r01: no top-level token for an unscoped package',
+      'probe-unscoped',
+      { top: { token: 'T', alwaysAuth: false } },
+      { registry: B },
+      undefined,
+    ],
+    [
+      'r02: the top-level token with npmAlwaysAuth',
+      'probe-unscoped',
+      { top: { token: 'T', alwaysAuth: true } },
+      { registry: B },
+      'Bearer T',
+    ],
+    [
+      "r03: the scope's token",
+      '@acme/probe',
+      { scopes: { '@acme': { token: 'S', alwaysAuth: false } } },
+      { scopes: { '@acme': B } },
+      'Bearer S',
+    ],
+    [
+      'r04: the top-level token for a scoped package on its scope registry',
+      '@acme/probe',
+      { top: { token: 'T', alwaysAuth: false }, scopes: { '@acme': none } },
+      { scopes: { '@acme': B } },
+      'Bearer T',
+    ],
+    [
+      "r05: an entry's token without its npmAlwaysAuth, unscoped",
+      'probe-unscoped',
+      { registries: { '//127.0.0.1:4902': { token: 'R', alwaysAuth: false } } },
+      { registry: B },
+      undefined,
+    ],
+    [
+      "r06: the entry's token with its own npmAlwaysAuth",
+      'probe-unscoped',
+      { registries: { '//127.0.0.1:4902': { token: 'R', alwaysAuth: true } } },
+      { registry: B },
+      'Bearer R',
+    ],
+    [
+      'r07: the entry over the top level for a scoped package',
+      '@acme/probe',
+      {
+        top: { token: 'T', alwaysAuth: false },
+        registries: { [B]: { token: 'R', alwaysAuth: false } },
+      },
+      { scopes: { '@acme': B } },
+      'Bearer R',
+    ],
+    [
+      'r08: npmAuthIdent with a colon, base64-encoded',
+      '@acme/probe',
+      { scopes: { '@acme': { ident: 'u:p', alwaysAuth: false } } },
+      { scopes: { '@acme': B } },
+      `Basic ${Buffer.from('u:p').toString('base64')}`,
+    ],
+    [
+      'r09: npmAuthIdent already encoded, as written',
+      '@acme/probe',
+      { scopes: { '@acme': { ident: 'dTpw', alwaysAuth: false } } },
+      { scopes: { '@acme': B } },
+      'Basic dTpw',
+    ],
+    [
+      'r10: the top-level token for a scoped package on the default registry',
+      '@acme/probe',
+      { top: { token: 'T', alwaysAuth: false } },
+      { registry: B },
+      'Bearer T',
+    ],
+    [
+      "r21: an entry doesn't inherit the top level's npmAlwaysAuth",
+      'probe-unscoped',
+      {
+        top: { alwaysAuth: true },
+        registries: { '//127.0.0.1:4902': { token: 'R', alwaysAuth: false } },
+      },
+      { registry: B },
+      undefined,
+    ],
+    [
+      'r22: npmAlwaysAuth with nothing to send (berry fails the run)',
+      'probe-unscoped',
+      {
+        top: { token: 'T', alwaysAuth: false },
+        registries: { '//127.0.0.1:4902': { alwaysAuth: true } },
+      },
+      { registry: B },
+      undefined,
+    ],
+    [
+      'r24: the scope over the entry',
+      '@acme/probe',
+      {
+        scopes: { '@acme': { token: 'S', alwaysAuth: false } },
+        registries: { [B]: { token: 'R', alwaysAuth: false } },
+      },
+      { scopes: { '@acme': B } },
+      'Bearer S',
+    ],
+    [
+      'r28: no entry for a registry at a path below it',
+      '@acme/probe',
+      { registries: { '//127.0.0.1:4902': { token: 'R', alwaysAuth: false } } },
+      { scopes: { '@acme': `${B}/npm` } },
+      undefined,
+    ],
+    [
+      'r30: a trailing slash on the route matches the entry',
+      'probe-unscoped',
+      {
+        top: { alwaysAuth: true },
+        registries: { [B]: { token: 'R', alwaysAuth: true } },
+      },
+      { registry: `${B}/` },
+      'Bearer R',
+    ],
+  ])('%s', (_label, name, auth, routes, expected) => {
+    expect(sent(name, berryConfig(auth, routes))).toBe(expected)
+  })
+
+  it('sends nothing to a base no package routes to, such as deps.dev', () => {
+    const cfg = berryConfig({ top: { token: 'T', alwaysAuth: true } })
+    expect(
+      berryAuthorizationFor(
+        new URL(depsDevUrl('@types/ms', DEFAULT_ENDPOINTS.depsDev)),
+        DEFAULT_ENDPOINTS.depsDev,
+        cfg,
+      ),
+    ).toBeUndefined()
+  })
+
+  it('takes the scope from a dist-tags URL too', () => {
+    const cfg = berryConfig(
+      { scopes: { '@types': { token: 'S', alwaysAuth: false } } },
+      { registry: 'https://registry.yarnpkg.com' },
+    )
+    expect(
+      berryAuthorizationFor(
+        new URL(distTagsUrl('@types/ms', cfg.registry)),
+        cfg.registry,
+        cfg,
+      ),
+    ).toBe('Bearer S')
   })
 })
 
