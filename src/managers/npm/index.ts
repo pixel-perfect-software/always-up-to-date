@@ -7,28 +7,75 @@ import {
   packageJsonWorkspaceRoot,
 } from '@/managers/workspaces'
 import { updatePackageJson } from '@/utils/files'
+import { type InstalledPackage, rowKey } from '@/utils/installed'
+import { isRecord } from '@/utils/isRecord'
 import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
 
-/**
- * Versions package-lock.json records, keyed by install path
- * (`node_modules/ms`). Empty when there is no readable lockfile.
- */
-export const readLockedVersions = (cwd: string): Record<string, string> => {
-  let packages: Record<string, { version?: unknown }>
+/** One `packages` entry of package-lock.json (lockfileVersion 2 and 3). */
+interface LockedEntry {
+  version?: unknown
+  link?: unknown
+  resolved?: unknown
+}
+
+const readLockfile = (cwd: string): Record<string, LockedEntry> | undefined => {
   try {
-    packages =
-      JSON.parse(fs.readFileSync(path.join(cwd, 'package-lock.json'), 'utf8'))
-        .packages ?? {}
+    const packages = JSON.parse(
+      fs.readFileSync(path.join(cwd, 'package-lock.json'), 'utf8'),
+    ).packages
+    return isRecord(packages)
+      ? (packages as Record<string, LockedEntry>)
+      : undefined
   } catch {
-    return {}
+    return undefined
   }
-  const versions: Record<string, string> = {}
-  for (const [location, entry] of Object.entries(packages)) {
-    if (typeof entry?.version === 'string') versions[location] = entry.version
+}
+
+/**
+ * The versions package-lock.json records for `rows`, keyed by `rowKey`, as
+ * node_modules would hold them (#107): a member's own
+ * `<member>/node_modules/<key>` first, then the root's `node_modules/<key>`
+ * (npm hoists there). A `link: true` entry is a workspace member, so it is
+ * `linked`. A row the lockfile doesn't record is left out, and so is every
+ * row when there is no readable lockfile. Paths in the lockfile are POSIX,
+ * as workspace paths are.
+ */
+export const readLockedPackages = (
+  cwd: string,
+  rows: { name: string; workspace?: string }[],
+): Record<string, InstalledPackage> => {
+  const packages = readLockfile(cwd)
+  if (!packages) return {}
+  const installed: Record<string, InstalledPackage> = {}
+  for (const row of rows) {
+    const dir = row.workspace ?? '.'
+    const locations = [
+      ...(dir === '.' ? [] : [`${dir}/node_modules/${row.name}`]),
+      `node_modules/${row.name}`,
+    ]
+    for (const location of locations) {
+      const entry = packages[location]
+      if (!isRecord(entry)) continue
+      if (entry.link === true) {
+        const target =
+          typeof entry.resolved === 'string'
+            ? packages[entry.resolved]
+            : undefined
+        installed[rowKey(row)] = {
+          version: typeof target?.version === 'string' ? target.version : '',
+          linked: true,
+        }
+        break
+      }
+      if (typeof entry.version === 'string') {
+        installed[rowKey(row)] = { version: entry.version, linked: false }
+        break
+      }
+    }
   }
-  return versions
+  return installed
 }
 
 const npm: ManagerAdapter = {
@@ -70,6 +117,15 @@ const npm: ManagerAdapter = {
   },
 
   pinning: () => ({ install: ['install'] }),
+
+  // #107: a project with package-lock.json and no node_modules (never
+  // installed, `npm ci` not run yet, node_modules removed) has its installed
+  // versions in the lockfile. With node_modules, node_modules decides.
+  installedFromLockfile: (cwd) =>
+    !fs.existsSync(path.join(cwd, 'node_modules')) &&
+    fs.existsSync(path.join(cwd, 'package-lock.json'))
+      ? { file: 'package-lock.json', read: readLockedPackages }
+      : undefined,
 
   overrides: (cwd) => manifestOverrides(cwd, ['overrides']),
 }
