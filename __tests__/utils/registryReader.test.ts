@@ -3,6 +3,7 @@ jest.mock('@/utils/logger')
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import zlib from 'zlib'
 import type { PackageLookup, RegistryConfig } from '@/types'
 import logger from '@/utils/logger'
 import { createRegistryCache } from '@/utils/registryCache'
@@ -10,7 +11,10 @@ import {
   createRegistryClient,
   type RegistryClient,
 } from '@/utils/registryClient'
-import { createRegistryReader } from '@/utils/registryReader'
+import {
+  createRegistryReader,
+  type RegistryReader,
+} from '@/utils/registryReader'
 import {
   ABBREVIATED_ACCEPT,
   type RegistryEndpoints,
@@ -63,6 +67,44 @@ const msRegistry = (): Handler =>
 
 const msDepsDev = (): Handler =>
   replies({ [`${DEPS_DEV_PREFIX}ms`]: ok('ms.deps-dev') })
+
+const TYPES_MS = '@types/ms'
+const PACKUMENT_URL = '/@types%2fms'
+const DEPS_DEV_URL = `${DEPS_DEV_PREFIX}%40types%2Fms`
+// deps.dev's time for 0.7.34 and the full packument's, a few ms apart.
+const DEPS_DEV_0_7_34 = '2023-11-07T11:26:21Z'
+const FULL_0_7_34 = '2023-11-07T11:26:21.925Z'
+const FULL_2_1_0 = '2025-01-16T21:02:46.181Z'
+const MOVING_TO_LATEST = { current: '0.7.34', target: '2.1.0' }
+
+/**
+ * `@types/ms` on a registry that answers the abbreviated packument and the
+ * full one by `Accept`, as npm does, plus its dist-tags.
+ */
+const typesMsRegistry = (
+  full: Reply | Handler = ok('types-ms.packument-full'),
+): Handler => {
+  const abbreviated = replies({
+    '/-/package/@types%2fms/dist-tags': ok('types-ms.dist-tags'),
+    [PACKUMENT_URL]: packument('types-ms.packument'),
+  })
+  const complete =
+    typeof full === 'function' ? full : replies({ [PACKUMENT_URL]: full })
+  return (req, res) => {
+    const wantsFull =
+      req.url === PACKUMENT_URL && req.headers.accept !== ABBREVIATED_ACCEPT
+    return (wantsFull ? complete : abbreviated)(req, res)
+  }
+}
+
+/** deps.dev one release behind: the dist-tags name 2.1.0, deps.dev does not list it. */
+const lagging = derive<{
+  versions: Array<{ versionKey: { version: string } }>
+}>('types-ms.deps-dev', (body) => {
+  body.versions = body.versions.filter((v) => v.versionKey.version !== '2.1.0')
+})
+const laggingDepsDev = (): Handler =>
+  replies({ [DEPS_DEV_URL]: { body: lagging } })
 
 const never: Handler = () => undefined
 
@@ -869,45 +911,6 @@ describe('registry reader', () => {
   })
 
   describe('releaseTimes', () => {
-    const TYPES_MS = '@types/ms'
-    const PACKUMENT_URL = '/@types%2fms'
-    const DEPS_DEV_URL = `${DEPS_DEV_PREFIX}%40types%2Fms`
-    // deps.dev's time for 0.7.34 and the full packument's, a few ms apart.
-    const DEPS_DEV_0_7_34 = '2023-11-07T11:26:21Z'
-    const FULL_0_7_34 = '2023-11-07T11:26:21.925Z'
-    const FULL_2_1_0 = '2025-01-16T21:02:46.181Z'
-    const MOVING_TO_LATEST = { current: '0.7.34', target: '2.1.0' }
-
-    /**
-     * `@types/ms` on a registry that answers the abbreviated packument and the
-     * full one by `Accept`, as npm does, plus its dist-tags.
-     */
-    const typesMsRegistry = (
-      full: Reply = ok('types-ms.packument-full'),
-    ): Handler => {
-      const abbreviated = replies({
-        '/-/package/@types%2fms/dist-tags': ok('types-ms.dist-tags'),
-        [PACKUMENT_URL]: packument('types-ms.packument'),
-      })
-      const complete = replies({ [PACKUMENT_URL]: full })
-      return (req, res) => {
-        const wantsFull =
-          req.url === PACKUMENT_URL && req.headers.accept !== ABBREVIATED_ACCEPT
-        return (wantsFull ? complete : abbreviated)(req, res)
-      }
-    }
-
-    /** deps.dev one release behind: the dist-tags name 2.1.0, deps.dev does not list it. */
-    const lagging = derive<{
-      versions: Array<{ versionKey: { version: string } }>
-    }>('types-ms.deps-dev', (body) => {
-      body.versions = body.versions.filter(
-        (v) => v.versionKey.version !== '2.1.0',
-      )
-    })
-    const laggingDepsDev = (): Handler =>
-      replies({ [DEPS_DEV_URL]: { body: lagging } })
-
     const packumentAccepts = (server: TestRegistry) =>
       server.requests
         .filter((r) => r.url === PACKUMENT_URL)
@@ -1533,6 +1536,206 @@ describe('registry reader', () => {
         expect(result.latest).toBe('2.1.0')
         expect(result.versions.every((v) => v.publishedAt)).toBe(true)
         expect(asked().registry).toEqual([])
+      })
+    })
+
+    describe('publish times from the full packument', () => {
+      const lagged = (
+        full?: Reply | Handler,
+        options: { credentials?: boolean; cacheDir?: string } = {},
+      ) =>
+        cached(
+          { registry: typesMsRegistry(full), depsDev: laggingDepsDev() },
+          options,
+        )
+
+      /** What the gate and the cooldown do in one run: look up, then ask about a move to 2.1.0. */
+      const gate = async (reader: RegistryReader) => {
+        await reader.lookup(TYPES_MS)
+        return reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+      }
+
+      /** The full-packument requests the registry took since the last call. */
+      const fullRequests = (registry: TestRegistry) =>
+        registry.requests
+          .splice(0)
+          .filter(
+            (r) =>
+              r.url === PACKUMENT_URL &&
+              r.headers.accept !== ABBREVIATED_ACCEPT,
+          )
+
+      const readingLines = () =>
+        jest
+          .mocked(logger.debug)
+          .mock.calls.map(([line]) => String(line))
+          .filter((line) => line.startsWith('Reading the full packument'))
+
+      const without = (version: string) =>
+        derive<{ versions: Record<string, unknown> }>(
+          'types-ms.packument-full',
+          (body) => {
+            delete body.versions[version]
+          },
+        )
+
+      it('stores the document, and answers later runs from it at any age without a request or a log line', async () => {
+        const { registry, run } = await lagged()
+        const first = await gate(run().reader)
+        expect(first['2.1.0']).toBe(FULL_2_1_0)
+        expect(fullRequests(registry)).toHaveLength(1)
+        expect(filesIn('packument-full')).toHaveLength(1)
+
+        clock += 60 * SECOND
+        expect(await gate(run().reader)).toEqual(first)
+        expect(fullRequests(registry)).toHaveLength(0)
+
+        clock += 301 * SECOND
+        const third = run()
+        expect(await gate(third.reader)).toEqual(first)
+        expect(fullRequests(registry)).toHaveLength(0)
+        expect(third.reader.stats().notModified).toBe(0)
+        expect(readingLines()).toHaveLength(1)
+      })
+
+      it.each([
+        ['fresh', 10],
+        ['300 seconds old and more', 301],
+      ])(
+        'asks again, with If-None-Match, when a %s document lacks a version it needs, and the 200 replaces it',
+        async (_label, later) => {
+          const side = switchable(
+            conditional({ body: without('2.1.0') }, 'W/"one"'),
+          )
+          const { registry, run } = await lagged(side.handler)
+          const first = await gate(run().reader)
+          expect(first['2.1.0']).toBeUndefined()
+          expect(fullRequests(registry)).toHaveLength(1)
+          side.use(conditional(ok('types-ms.packument-full'), 'W/"two"'))
+
+          clock += later * SECOND
+          const second = await gate(run().reader)
+          const asked = fullRequests(registry)
+          expect(asked.map((r) => r.headers['if-none-match'])).toEqual([
+            'W/"one"',
+          ])
+          expect(second['2.1.0']).toBe(FULL_2_1_0)
+
+          clock += 301 * SECOND
+          expect(await gate(run().reader)).toEqual(second)
+          expect(fullRequests(registry)).toHaveLength(0)
+          expect(readingLines()).toHaveLength(2)
+        },
+      )
+
+      it('keeps the document when the registry confirms it with a 304, and the version stays unknown', async () => {
+        const { registry, run } = await lagged(
+          conditional({ body: without('2.1.0') }, 'W/"one"'),
+        )
+        await gate(run().reader)
+        fullRequests(registry)
+
+        clock += 10 * SECOND
+        const second = run()
+        const times = await gate(second.reader)
+
+        expect(times['2.1.0']).toBeUndefined()
+        expect(
+          fullRequests(registry).map((r) => r.headers['if-none-match']),
+        ).toEqual(['W/"one"'])
+        expect(second.reader.stats().notModified).toBe(1)
+      })
+
+      it('treats a version the document lists without a time as a known gap, not a reason to ask again', async () => {
+        const noTime = derive<{ time: Record<string, string> }>(
+          'types-ms.packument-full',
+          (body) => {
+            delete body.time['2.1.0']
+          },
+        )
+        const { registry, run } = await lagged({ body: noTime })
+        const first = await gate(run().reader)
+        expect(first['2.1.0']).toBeUndefined()
+        expect(fullRequests(registry)).toHaveLength(1)
+
+        clock += 301 * SECOND
+        expect(await gate(run().reader)).toEqual(first)
+        expect(fullRequests(registry)).toHaveLength(0)
+      })
+
+      it('asks again on every run for an authenticated registry, with the ETag, and a 304 serves the times', async () => {
+        const { registry, run } = await lagged(
+          conditional(ok('types-ms.packument-full'), 'W/"auth"'),
+          { credentials: true },
+        )
+        const first = await gate(run().reader)
+        clock += SECOND
+        const second = run()
+        const times = await gate(second.reader)
+        clock += SECOND
+        await gate(run().reader)
+
+        expect(times).toEqual(first)
+        expect(times['2.1.0']).toBe(FULL_2_1_0)
+        expect(
+          fullRequests(registry).map((r) => r.headers['if-none-match']),
+        ).toEqual([undefined, 'W/"auth"', 'W/"auth"'])
+        expect(second.reader.stats().notModified).toBe(1)
+      })
+
+      it('asks again on every run when the registry said no-cache, as it does for a lookup', async () => {
+        const { registry, run } = await lagged(
+          conditional(
+            {
+              ...ok('types-ms.packument-full'),
+              headers: { 'cache-control': 'no-cache' },
+            },
+            'W/"fresh"',
+          ),
+        )
+        await gate(run().reader)
+        clock += SECOND
+        await gate(run().reader)
+        clock += SECOND
+        await gate(run().reader)
+
+        expect(
+          fullRequests(registry).map((r) => r.headers['if-none-match']),
+        ).toEqual([undefined, 'W/"fresh"', 'W/"fresh"'])
+      })
+
+      it('keeps no token, endpoint or URL in any stored file', async () => {
+        const { registry, run } = await lagged(
+          conditional(ok('types-ms.packument-full'), 'W/"auth"'),
+          { credentials: true },
+        )
+        await gate(run().reader)
+
+        const files = (
+          fs.readdirSync(path.join(dir, 'v1'), { recursive: true }) as string[]
+        ).filter((file) => file.endsWith('.json.gz'))
+        expect(files.length).toBeGreaterThan(2)
+        for (const file of files) {
+          const text = zlib
+            .gunzipSync(fs.readFileSync(path.join(dir, 'v1', file)))
+            .toString()
+          expect(text).not.toContain('TOK')
+          expect(text).not.toContain(registry.url)
+          expect(text).not.toContain(`127.0.0.1:${registry.port}`)
+        }
+      })
+
+      it('gives the same times when the folder cannot be written, asking every run', async () => {
+        const file = path.join(dir, 'in-the-way')
+        fs.writeFileSync(file, 'a file, not a folder')
+        const { registry, run } = await lagged(undefined, { cacheDir: file })
+
+        const first = await gate(run().reader)
+        const second = await gate(run().reader)
+
+        expect(first['2.1.0']).toBe(FULL_2_1_0)
+        expect(second).toEqual(first)
+        expect(fullRequests(registry)).toHaveLength(2)
       })
     })
 

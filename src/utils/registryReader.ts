@@ -25,6 +25,7 @@ import {
   isPublicNpmRegistry,
   isValidPackageName,
   packumentUrl,
+  parseCacheControl,
   type RegistryEndpoints,
   registryFor,
 } from './registryRequest'
@@ -121,6 +122,26 @@ const timesOf = (
     if (publishedAt) times[version] = publishedAt
   }
   return times
+}
+
+/**
+ * Whether a stored entry must be confirmed before every use: it was fetched
+ * with credentials, or its registry said `private`, `no-cache` or `max-age=0`.
+ */
+const asksEveryTime = ({
+  authenticated,
+  cacheControl,
+}: {
+  authenticated?: boolean
+  cacheControl?: string
+}): boolean => {
+  const directives = parseCacheControl(cacheControl)
+  return (
+    authenticated === true ||
+    directives.isPrivate ||
+    directives.noCache ||
+    directives.maxAge === 0
+  )
 }
 
 /** The first three of `versions`, then how many more. */
@@ -544,13 +565,29 @@ export const createRegistryReader = ({
 
   /**
    * Every version's publish time the full packument has, for a package whose
-   * lookup lacks `needed`. Failures are a debug line and `{}`.
+   * lookup lacks `needed`. Publish times never change on npm, so a stored
+   * document that lists every version in `needed` answers whatever its age:
+   * a version it lists without a time is a known gap (the registry has none),
+   * one it does not list means it predates that version, and the registry is
+   * asked. What the registry says about reuse still holds: an authenticated
+   * entry, and one stored under `private`, `no-cache` or `max-age=0`, is
+   * asked again every time (a 304 costs no body), as `freshFor` does. This is
+   * the document the lookup's 404 fallback stores, under the same key, so a
+   * fresh entry written here can also answer a lookup that has no abbreviated
+   * one: it is a superset. Failures are a debug line and `{}`.
    */
   const fullTimes = async (
     name: string,
     needed: readonly string[],
   ): Promise<Record<string, string>> => {
     const registry = registryFor(name, registryConfig)
+    const hit = cache?.get('packument-full', registry, name)
+    if (hit && !asksEveryTime(hit)) {
+      const listed = new Set(hit.value.versions.map((v) => v.version))
+      if (needed.every((version) => listed.has(version))) {
+        return timesOf(hit.value.versions)
+      }
+    }
     logger.debug(
       `Reading the full packument of ${name} for publish times: ${sample(needed)} ${needed.length === 1 ? 'has' : 'have'} none`,
     )
@@ -558,7 +595,7 @@ export const createRegistryReader = ({
       packumentUrl(name, registry),
       registry,
       'application/json',
-      undefined,
+      hit,
       parsePackument,
     )
     if (!fetched.ok) {
@@ -573,6 +610,7 @@ export const createRegistryReader = ({
       )
       return {}
     }
+    cache?.put('packument-full', registry, name, fetched.value, fetched.meta)
     return timesOf(fetched.value.versions)
   }
 
