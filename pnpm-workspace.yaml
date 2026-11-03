@@ -11,7 +11,7 @@ catalog:
   "@inquirer/prompts": 8.7.5
   colorette: 2.0.20
   commander: 15.0.0
-  semver: 7.8.5
+  semver: 7.8.6
   "@biomejs/biome": 2.6.4
   "@swc/core": 1.16.21
   "@swc/jest": "0.2.39"
@@ -41,6 +41,7 @@ minimumReleaseAgeExclude:
   - "@inquirer/search@4.3.6"
   - "@inquirer/select@5.2.8"
   - "@inquirer/type@4.2.1"
+  - semver@7.8.6
 
 overrides:
   minimist@<0.2.4: ^0.2.4
