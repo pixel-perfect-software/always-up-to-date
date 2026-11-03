@@ -1,5 +1,6 @@
 import type { PackageLookup, ReleaseAgeGate } from '@/types'
 import {
+  exemptionOf,
   gateMinutesFor,
   gatePackage,
   isExempt,
@@ -16,6 +17,7 @@ const gate = (overrides: Partial<ReleaseAgeGate> = {}): ReleaseAgeGate => ({
   minutes: 1440,
   scopes: {},
   exempt: [],
+  missingTime: 'held',
   ...overrides,
 })
 const versionsOf = (pkg: { versions: { version: string }[] } | undefined) =>
@@ -31,17 +33,37 @@ describe('gateMinutesFor', () => {
 })
 
 describe('isExempt', () => {
+  // Each manager's own syntax (#166, #168): berry and npm globs keep `*` in a
+  // segment, pnpm's cross it, bun takes exact names.
   it.each([
-    ['p-exempt', 'p-exempt', '1.0.1', true],
-    ['p-exempt', 'p-other', '1.0.1', false],
-    ['@acme/*@^1.0.0', '@acme/probe', '1.0.1', true],
-    ['@acme/*@^1.0.0', '@acme/probe', '2.0.0', false],
-    ['@acme/*', '@acme/deep/name', '1.0.0', false],
-    ['@acme/**', '@acme/deep/name', '1.0.0', true],
-    ['p-?', 'p-x', '1.0.0', true],
-    ['ms@not a range', 'ms', '1.0.0', false],
-  ])('%s exempts %s@%s: %s', (pattern, name, version, expected) => {
-    expect(isExempt(name, version, [pattern])).toBe(expected)
+    ['p-exempt', 'segment', 'p-exempt', '1.0.1', true],
+    ['p-exempt', 'segment', 'p-other', '1.0.1', false],
+    ['@acme/*@^1.0.0', 'segment', '@acme/probe', '1.0.1', true],
+    ['@acme/*@^1.0.0', 'segment', '@acme/probe', '2.0.0', false],
+    ['@acme/*', 'segment', '@acme/deep/name', '1.0.0', false],
+    ['@acme/**', 'segment', '@acme/deep/name', '1.0.0', true],
+    ['@acme*', 'any', '@acme/probe', '1.0.0', true],
+    ['@acme*', 'segment', '@acme/probe', '1.0.0', false],
+    ['p-?', 'segment', 'p-x', '1.0.0', true],
+    ['p-fresh@1.0.1 || 1.0.2', 'any', 'p-fresh', '1.0.2', true],
+    ['p-fresh@1.0.1', 'none', 'p-fresh', '1.0.2', false],
+    ['p-*', 'none', 'p-fresh', '1.0.0', false],
+    ['ms@not a range', 'segment', 'ms', '1.0.0', false],
+  ] as const)(
+    '%s (%s) exempts %s@%s: %s',
+    (pattern, glob, name, version, expected) => {
+      expect(isExempt(name, version, [exemptionOf(pattern, glob)])).toBe(
+        expected,
+      )
+    },
+  )
+
+  it("keeps npm's `name@version` whole, so it matches no package (n06)", () => {
+    expect(
+      isExempt('p-fresh', '1.0.2', [
+        { name: 'p-fresh@1.0.2', glob: 'segment' },
+      ]),
+    ).toBe(false)
   })
 })
 
@@ -67,7 +89,14 @@ describe('gatePackage', () => {
     const now = MS_2_1_3 + 60 * 60_000
     expect(gatePackage(pkg, gate(), {}, now)).toBeUndefined()
     expect(
-      versionsOf(gatePackage(pkg, gate({ exempt: ['ms@2.1.3'] }), {}, now)),
+      versionsOf(
+        gatePackage(
+          pkg,
+          gate({ exempt: [exemptionOf('ms@2.1.3', 'segment')] }),
+          {},
+          now,
+        ),
+      ),
     ).toEqual(['2.1.3'])
     expect(
       gatePackage(
@@ -77,6 +106,32 @@ describe('gatePackage', () => {
         now,
       )?.latest,
     ).toBe('2.1.2')
+  })
+})
+
+describe('gatePackage for pnpm, bun and npm (#168)', () => {
+  const now = MS_2_1_3 + 60 * 60_000
+
+  it('lets a version with no publish time through where the manager does (p08, b07, n08)', () => {
+    const pkg = capturedPackage('ms', { source: 'packument' })
+    expect(
+      gatePackage(pkg, gate({ missingTime: 'allowed' }), {}, now)?.latest,
+    ).toBe('2.1.3')
+  })
+
+  it("holds what npm's `before` cuts off, even with no age (n10)", () => {
+    const gated = gatePackage(
+      capturedPackage('ms'),
+      gate({
+        minutes: 0,
+        missingTime: 'allowed',
+        notAfter: '2020-01-01T00:00:00.000Z',
+      }),
+      {},
+      now,
+    )
+    expect(gated?.latest).toBe('2.1.2')
+    expect(versionsOf(gated)).not.toContain('2.1.3')
   })
 })
 

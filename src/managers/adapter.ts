@@ -4,6 +4,7 @@ import type {
   OutdatedEntry,
   PackageInfo,
   RegistryConfig,
+  ReleaseAgeGate,
   SupportedPackageManager,
 } from '@/types'
 import type { Catalogs } from '@/utils/dependencySpecs'
@@ -175,6 +176,18 @@ export interface ManagerAdapter {
    * package-lock.json's reader when the root has no node_modules.
    */
   installedFromLockfile?(cwd: string): LockedInstall | undefined
+  /**
+   * The manager's release-age gate (#168): versions younger than it are never
+   * installed, so autd never proposes them. Read from the manager's own
+   * settings where `managerRegistryConfig` builds the registry config (`npmrc`
+   * is the merged view of its `.npmrc` layers). Undefined when it has none
+   * set. Yarn berry sets `releaseAgeGate` in its `registryConfig` instead.
+   */
+  releaseAgeGate?(
+    cwd: string,
+    sources: NpmrcSources,
+    npmrc: NpmrcView,
+  ): ReleaseAgeGate | undefined
   /** How a cooldown fallback is pinned and restored with this manager. */
   pinning(cwd: string): Pinning
   /**

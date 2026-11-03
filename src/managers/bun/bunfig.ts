@@ -3,6 +3,7 @@ import path from 'path'
 import type {
   RegistryConfig,
   RegistryCredentials,
+  ReleaseAgeGate,
   UnusableRegistry,
 } from '@/types'
 import logger from '@/utils/logger'
@@ -20,6 +21,7 @@ import {
   isPublicNpmRegistry,
   nerfDart,
 } from '@/utils/registryRequest'
+import { exemptionOf } from '@/utils/releaseAgeGate'
 import { readTextFile } from '@/utils/saveStyle'
 
 /** `exact = true` inside bunfig.toml's `[install]` table. */
@@ -280,6 +282,77 @@ export const parseBunfigRegistries = (
 const globalBunfig = ({ env, home }: NpmrcSources): string => {
   const xdg = nonEmpty(env.XDG_CONFIG_HOME)
   return path.join(xdg && path.isAbsolute(xdg) ? xdg : home, '.bunfig.toml')
+}
+
+/**
+ * One key of bunfig.toml's `[install]` table, as written: a string or bare
+ * value (`3600`), or an array of strings (single- or multi-line).
+ */
+const installSetting = (
+  content: string,
+  key: string,
+): string | string[] | undefined => {
+  let inInstall = false
+  const lines = content.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const line = stripComment(lines[i])
+    const table = /^\s*\[([^\]]+)\]\s*$/.exec(line)
+    if (table) {
+      inInstall = table[1].trim() === 'install'
+      continue
+    }
+    if (!inInstall) continue
+    const [name, ...rest] = splitTop(line, '=')
+    if (rest.length === 0 || tomlKey(name) !== key) continue
+    let value = rest.join('=').trim()
+    if (value.startsWith('[')) {
+      while (!value.trimEnd().endsWith(']') && i + 1 < lines.length) {
+        value += ` ${stripComment(lines[++i])}`
+      }
+      return splitTop(value.trim().slice(1, -1), ',')
+        .map((item) => tomlString(item))
+        .filter((item): item is string => item !== undefined)
+    }
+    return tomlString(value) ?? value
+  }
+  return undefined
+}
+
+/**
+ * bun's release-age gate (#168), which autd never overrides. Verified on bun
+ * 1.4.4, 2026-11-03, with `bun install` against a local registry with set
+ * publish times (b01-b11 in `.claude/plans/release-age-gates.md`): off
+ * unless set (b01); `[install] minimumReleaseAge` in seconds (b02), the
+ * project bunfig.toml's, else the global one's (b10), never
+ * `BUN_CONFIG_MINIMUM_RELEASE_AGE` (b08); `minimumReleaseAgeExcludes` holds
+ * exact names (b03; globs are not names to bun, b04, b05), each with an
+ * optional `@<version>` (b09, b11). A version with no publish time is let
+ * through (b07); with nothing old enough bun fails the install (b06).
+ */
+export const bunReleaseAgeGate = (
+  cwd: string,
+  sources: NpmrcSources,
+): ReleaseAgeGate | undefined => {
+  const files = [
+    path.join(findNpmProjectRoot(cwd), 'bunfig.toml'),
+    globalBunfig(sources),
+  ].map((file) => readTextFile(file) ?? '')
+  const setting = (key: string) =>
+    files
+      .map((content) => installSetting(content, key))
+      .find((value) => value !== undefined)
+  const seconds = Number(setting('minimumReleaseAge'))
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined
+  const excludes = setting('minimumReleaseAgeExcludes')
+  return {
+    setting: 'minimumReleaseAge',
+    minutes: seconds / 60,
+    scopes: {},
+    exempt: (Array.isArray(excludes) ? excludes : []).map((pattern) =>
+      exemptionOf(pattern, 'none'),
+    ),
+    missingTime: 'allowed',
+  }
 }
 
 /**
