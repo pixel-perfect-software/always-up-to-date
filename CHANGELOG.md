@@ -3,6 +3,47 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-11-03 — 3.4.0: yarn 2+ checks without running yarn, and autd respects the package managers' release-age gates
+
+`check` on yarn 2+ reads `yarn.lock` and the registry itself and runs no `yarn` command. Its registries and tokens come from `.yarnrc.yml`. autd no longer proposes a version a package manager won't install for its age: pnpm and yarn 2+ refuse versions under a day old by default, and npm's and bun's release-age settings are honored when set. An npm project with a lockfile but no `node_modules` can be checked. On yarn v1, registry tokens follow yarn's rules, and a workspace member's update resolves through the root's registry settings, as `yarn install` does.
+
+### Added
+
+- An npm project with `package-lock.json` and no `node_modules` can be checked: a fresh clone, CI before `npm ci`, or a lockfile from `npm install --package-lock-only`. Installed versions come from the lockfile, a member's own copy first, then the root's. Before, `check` stopped with "Nothing is installed in … (no node_modules): run `npm install`, then check again." pnpm, yarn v1 and bun still ask for an install ([#107](https://github.com/pixel-perfect-software/always-up-to-date/issues/107)).
+- autd honors each package manager's release-age gate: it never proposes a version the manager refuses because it is too new. This covers `check`, a past-the-range target, and a cooldown fallback ([#166](https://github.com/pixel-perfect-software/always-up-to-date/issues/166), [#168](https://github.com/pixel-perfect-software/always-up-to-date/issues/168)).
+  - **pnpm:** `minimumReleaseAge`, in minutes, one day unless set. It is read from `pnpm-workspace.yaml`, the global `config.yaml` and `pnpm_config_minimum_release_age`. `minimumReleaseAgeExclude` exempts names, globs and exact versions.
+  - **yarn 2+:** `npmMinimalAgeGate`, one day unless set. A scope listed in `npmScopes` has its own gate. `npmPreapprovedPackages` exempts names or globs, with an optional range.
+  - **bun:** `[install] minimumReleaseAge`, in seconds, off unless set. `minimumReleaseAgeExcludes` exempts exact names, with an optional version.
+  - **npm:** `min-release-age`, in days, and `before`, both off unless set. `min-release-age-exclude` exempts names and globs.
+  - Before, autd proposed the version the manager then refused. With pnpm's default, a package published within the day was proposed, pnpm installed an older one, and the report said `not applied by pnpm (installed 1.0.1)`. Verified on pnpm 12.16.1, yarn 4.18.1, bun 1.4.4 and npm 12.2.1.
+
+### Changed
+
+- yarn 2+ discovery no longer runs `yarn info` or `yarn npm info` ([#107](https://github.com/pixel-perfect-software/always-up-to-date/issues/107)).
+  - **Installed versions:** from `yarn.lock`, with PnP or the node-modules linker. The check after an update reads `yarn.lock` too.
+  - **`wanted`:** the highest version the range allows, skipping deprecated ones, as yarn 4.18.1 resolves it. A newer `latest` tag no longer wins.
+  - **Measured:** on a 12-package workspace, `check` took 0.35 s, against 1.29 s, with no cache, and 0.08 s, against 1.37 s, cached.
+- yarn 2+ registries and tokens come from `.yarnrc.yml`, merged across the project's file, its parents' and `~/.yarnrc.yml`, with `YARN_*` variables over them ([#107](https://github.com/pixel-perfect-software/always-up-to-date/issues/107)):
+  - `npmRegistryServer`, `npmScopes`, `npmRegistries`, and `npmAuthToken` / `npmAuthIdent` / `npmAlwaysAuth`, by yarn 2+'s own rules;
+  - `httpsCaFilePath`, `httpProxy` / `httpsProxy`, `httpTimeout`, `httpRetry` and `networkConcurrency`.
+
+  `.npmrc` and the `HTTP_PROXY` / `HTTPS_PROXY` variables are ignored, as yarn 2+ ignores them. Before, autd read npm's `.npmrc` for a yarn 2+ project, so cooldown asked the wrong registry, without the project's token, and held every move as `release date unknown`.
+- yarn v1: a workspace member's update resolves with root installs, through the root's registry settings ([#127](https://github.com/pixel-perfect-software/always-up-to-date/issues/127)). autd pins the exact version, installs, puts the manifest back, and relocks `yarn.lock`. Before, autd ran `yarn workspace <name> upgrade`, which reads the member folder's settings, where `~/.npmrc` outranks the root's `.npmrc`. A developer's own `registry=` could then win over the repo's, and its URLs were written to `yarn.lock`.
+- Registry settings are read where autd runs the package manager: the project root, whatever folder `autd` is run from ([#127](https://github.com/pixel-perfect-software/always-up-to-date/issues/127)).
+- The published package's `semver` is 7.8.6 (was 7.8.5).
+
+### Fixed
+
+- yarn v1 sends a registry token only for a scoped package or with `always-auth`, and falls back to a bare `_authToken`, `_auth`, `username` and `_password`, as yarn 1.22.22 does ([#126](https://github.com/pixel-perfect-software/always-up-to-date/issues/126)). Credentials are looked up by the package's registry, not by walking up the request URL's path, and a redirect to another hostname drops them. Before, autd sent a token for unscoped packages, which yarn never does, and none to a private scope set up with a bare `_authToken`, so `check` failed with a 404.
+- yarn v1: a member's in-range update to a range another dependency also requests (`shared@^1.0.0`) moves both, as `yarn upgrade` does ([#127](https://github.com/pixel-perfect-software/always-up-to-date/issues/127)).
+
+### Known issues
+
+- Cooldown still reads full registry documents for its dates, uncached. So does a release-age gate, when a registry's document lacks publish times ([#47](https://github.com/pixel-perfect-software/always-up-to-date/issues/47)).
+- yarn 2+ with PnP: installed peer ranges aren't read, so no update is held for a peer conflict.
+- yarn 2+: `networkSettings` and the client-certificate settings in `.yarnrc.yml` aren't read.
+- pnpm: when every version a range allows is under the gate, pnpm installs the lowest. autd leaves the package where it is, with a warning.
+
 ## 2026-10-30 — 3.3.0: run from a workspace member, and an update no longer rewrites your peer range
 
 autd runs from inside a workspace member. There, `check` and `update --dry-run` cover only that member, and `update` points you to the workspace root. Before, it found no package manager there. A past-the-range update no longer rewrites a matching `peerDependencies` range. yarn v1 workspaces no longer upgrade a member's every dependency, or copy a devDependency into `dependencies`. Two cooldown fallback bugs from 3.2.0 are fixed.
