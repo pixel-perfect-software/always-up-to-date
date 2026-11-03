@@ -7,6 +7,7 @@ import type {
   SupportedPackageManager,
 } from '@/types'
 import type { Catalogs } from '@/utils/dependencySpecs'
+import type { InstalledPackage } from '@/utils/installed'
 import type {
   EmptyRegistryPolicy,
   NpmrcLayer,
@@ -71,6 +72,17 @@ export interface ApplyPlan {
   beyondRange: Record<string, string>
   /** Each manifest with something moving, root first. A single-package project has the root only. */
   manifests: ManifestPlan[]
+}
+
+/** A lockfile that stands in for node_modules: its name, and its reader. */
+export interface LockedInstall {
+  /** The lockfile, for the debug line: `package-lock.json`. */
+  file: string
+  /** Installed copies by `rowKey`, as `readInstalledPackages` returns them. */
+  read(
+    cwd: string,
+    rows: { name: string; workspace?: string }[],
+  ): Record<string, InstalledPackage>
 }
 
 /** What pinning a cooldown fallback (#147, `applyPinned`) needs from the manager. */
@@ -158,6 +170,13 @@ export interface ManagerAdapter {
   ): RegistryConfig
   /** How the manager writes a new spec, read from where its current version keeps that setting. */
   saveStyle(cwd: string): SaveStyle
+  /**
+   * Where installed versions come from when node_modules can't say (#107):
+   * the lockfile and its reader, or undefined to read node_modules (and fail
+   * discovery with the install command when there is none). npm returns
+   * package-lock.json's reader when the root has no node_modules.
+   */
+  installedFromLockfile?(cwd: string): LockedInstall | undefined
   /** How a cooldown fallback is pinned and restored with this manager. */
   pinning(cwd: string): Pinning
   /**
