@@ -547,6 +547,10 @@ describe('filterPackages', () => {
     })
 
     it('never asks about a step whose cooldown is zero, and keeps no release age for it', async () => {
+      const declared = jest.fn(({ name }: { name: string }) => ({
+        name,
+        spec: { range: '^1.0.0' },
+      }))
       const filter = loadFilterWithConfig(
         { cooldown: { patch: 0, minor: 7 } },
         {
@@ -562,9 +566,11 @@ describe('filterPackages', () => {
           { name: 'patch', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
           { name: 'minor', current: '1.0.0', wanted: '1.1.0', latest: '1.1.0' },
         ]),
-        { now: NOW },
+        { now: NOW, declared },
       )
 
+      // Nor reads its manifest: the pipeline's `declared` reads package.json.
+      expect(declared.mock.calls.map(([row]) => row.name)).toEqual(['minor'])
       expect(filter.releaseTimes).toHaveBeenCalledTimes(1)
       expect(filter.releaseTimes).toHaveBeenCalledWith('minor', {
         current: '1.0.0',

@@ -6,7 +6,7 @@ import path from 'path'
 import zlib from 'zlib'
 import type { PackageLookup, RegistryConfig } from '@/types'
 import logger from '@/utils/logger'
-import { createRegistryCache } from '@/utils/registryCache'
+import { createRegistryCache, type RegistryCache } from '@/utils/registryCache'
 import {
   createRegistryClient,
   type RegistryClient,
@@ -83,10 +83,11 @@ const MOVING_TO_LATEST = { current: '0.7.34', target: '2.1.0' }
  */
 const typesMsRegistry = (
   full: Reply | Handler = ok('types-ms.packument-full'),
+  abbreviatedReply: Reply = packument('types-ms.packument'),
 ): Handler => {
   const abbreviated = replies({
     '/-/package/@types%2fms/dist-tags': ok('types-ms.dist-tags'),
-    [PACKUMENT_URL]: packument('types-ms.packument'),
+    [PACKUMENT_URL]: abbreviatedReply,
   })
   const complete =
     typeof full === 'function' ? full : replies({ [PACKUMENT_URL]: full })
@@ -129,7 +130,11 @@ describe('registry reader', () => {
   /** A registry and a deps.dev on separate servers, and a reader over both. */
   const setup = async (
     handlers: { registry: Handler; depsDev?: Handler },
-    options: { depsDev?: boolean; config?: Partial<RegistryConfig> } = {},
+    options: {
+      depsDev?: boolean
+      config?: Partial<RegistryConfig>
+      cache?: RegistryCache
+    } = {},
   ) => {
     const registry = await start(handlers.registry)
     const depsDev = await start(handlers.depsDev ?? msDepsDev())
@@ -147,6 +152,7 @@ describe('registry reader', () => {
       client: async () => client,
       depsDev: options.depsDev ?? true,
       endpoints,
+      cache: options.cache,
     })
     return { registry, depsDev, reader, registryConfig }
   }
@@ -1153,6 +1159,42 @@ describe('registry reader', () => {
         )
       })
 
+      it('keeps the lookup times, and never rejects, when reading the full packument throws', async () => {
+        // A cache whose write of the full document throws: a failure outside the request.
+        const cache: RegistryCache = {
+          dir: '',
+          get: () => undefined,
+          put: (kind) => {
+            if (kind === 'packument-full') throw new Error('disk on fire')
+            return false
+          },
+          stats: () => ({
+            fresh: 0,
+            stale: 0,
+            missing: 0,
+            written: 0,
+            failedWrites: 0,
+            pruned: 0,
+          }),
+          close: () => undefined,
+        }
+        const { reader } = await setup(
+          { registry: typesMsRegistry(), depsDev: laggingDepsDev() },
+          { cache },
+        )
+        await reader.lookup(TYPES_MS)
+
+        const first = await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+        const again = await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+
+        expect(Object.keys(first)).toHaveLength(16)
+        expect(first['0.7.34']).toBe(DEPS_DEV_0_7_34)
+        expect(again).toEqual(first)
+        expect(debugLines()).toContainEqual(
+          'Failed to read the full packument of @types/ms: disk on fire',
+        )
+      })
+
       it('keeps the lookup times when the document is not a packument', async () => {
         const { reader } = await behind({
           body: derive<{ versions?: unknown }>(
@@ -1644,6 +1686,38 @@ describe('registry reader', () => {
           fullRequests(registry).map((r) => r.headers['if-none-match']),
         ).toEqual(['W/"one"'])
         expect(second.reader.stats().notModified).toBe(1)
+      })
+
+      it('drops a stored version the lookup no longer lists, so a fallback never lands on an unpublished one', async () => {
+        const side = switchable(typesMsRegistry())
+        const { registry, run } = await cached({
+          registry: side.handler,
+          depsDev: laggingDepsDev(),
+        })
+        const first = await gate(run().reader)
+        expect(first['0.7.33']).toBeDefined()
+        fullRequests(registry)
+        // 0.7.33 is unpublished: the abbreviated packument drops it, and the
+        // stored full one, which still covers 2.1.0, lists it.
+        side.use(
+          typesMsRegistry(ok('types-ms.packument-full'), {
+            body: derive<{ versions: Record<string, unknown> }>(
+              'types-ms.packument',
+              (body) => {
+                delete body.versions['0.7.33']
+              },
+            ),
+            type: 'application/vnd.npm.install-v1+json',
+          }),
+        )
+
+        clock += 301 * SECOND
+        const times = await gate(run().reader)
+
+        expect(fullRequests(registry)).toHaveLength(0)
+        expect(times['0.7.33']).toBeUndefined()
+        expect(times['2.1.0']).toBe(FULL_2_1_0)
+        expect(Object.keys(times)).toHaveLength(16)
       })
 
       it('treats a version the document lists without a time as a known gap, not a reason to ask again', async () => {

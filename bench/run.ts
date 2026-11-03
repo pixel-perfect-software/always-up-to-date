@@ -257,6 +257,7 @@ const measure = async (
   const manager: Manager = managerOf(target)
   const restoreEnv = managerEnv(manager)
   let cwd: string | undefined
+  let config: string | undefined
   try {
     const caches = coldCaches(target, cacheRoot)
     Object.assign(process.env, caches.env)
@@ -289,9 +290,10 @@ const measure = async (
 
     // Cooldown only costs something on a row with a target, and the default
     // policy holds every exact pin: the moving config gives all of them one.
-    const config = path.join(cwd, '.always-up-to-date.json')
+    const file = path.join(cwd, '.always-up-to-date.json')
+    config = file
     const writeConfig = (value: ConfigFile): void => {
-      fs.writeFileSync(config, `${JSON.stringify(value)}\n`)
+      fs.writeFileSync(file, `${JSON.stringify(value)}\n`)
     }
     writeConfig(MOVING_CONFIG)
     const targets = movingRows(await dryRunJson(cli, cwd))
@@ -314,10 +316,10 @@ const measure = async (
       ['--warmup', '1', '--runs', String(runs.warm)],
       [check],
     )
-    fs.rmSync(config)
-
     return { label, warm, cold, targets, moving, cooldownCold, cooldownWarm }
   } finally {
+    // A kept copy must not keep a bench config, failed run or not.
+    if (config !== undefined) fs.rmSync(config, { force: true })
     restoreEnv()
     if (cwd !== undefined) cleanup(cwd, KEEP)
   }

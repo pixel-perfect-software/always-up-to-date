@@ -310,6 +310,10 @@ const filterPackages = async (
   const gated = await Promise.all(
     results.map(async (result) => {
       if (!result.updated || !result.target) return result
+      // A zero-day step is never gated, whatever its release time is.
+      if (cooldownDaysFor(config.cooldown, result.updateType) <= 0) {
+        return { ...result, releaseAge: undefined }
+      }
 
       const dependency = declared?.({
         name: result.name,
@@ -317,10 +321,6 @@ const filterPackages = async (
       })
       // A row is keyed by its manifest key; an alias's dates are its target's.
       const name = dependency?.name ?? result.name
-      // A zero-day step is never gated, whatever its release time is.
-      if (cooldownDaysFor(config.cooldown, result.updateType) <= 0) {
-        return { ...result, releaseAge: undefined }
-      }
       const releaseTimes = await registry.releaseTimes(name, {
         current: result.current,
         target: result.target,

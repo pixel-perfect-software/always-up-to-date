@@ -25,9 +25,9 @@ import {
   isPublicNpmRegistry,
   isValidPackageName,
   packumentUrl,
-  parseCacheControl,
   type RegistryEndpoints,
   registryFor,
+  revalidatesEveryUse,
 } from './registryRequest'
 
 export interface RegistryReaderOptions {
@@ -47,9 +47,10 @@ export interface RegistryReader {
   /**
    * Publish times by version: the lookup's own, plus the full packument's when
    * a version in `window` (any version, without one) has none. The full
-   * packument's time wins where both have one, and only versions it lists
-   * count. Never rejects: a failed request leaves the lookup's times, with a
-   * debug line. A name whose lookup failed is `{}`, with no request.
+   * packument's time wins where both have one, and only versions both it and
+   * the lookup list count. Never rejects: a failed request leaves the lookup's
+   * times, with a debug line. A name whose lookup failed is `{}`, with no
+   * request.
    */
   releaseTimes(
     name: string,
@@ -101,12 +102,9 @@ const withTimes = (
   listed: readonly RegistryVersion[] | undefined,
 ): RegistryVersion[] => {
   if (!listed) return versions
-  const times = new Map<string, string>()
-  for (const { version, publishedAt } of listed) {
-    if (publishedAt) times.set(version, publishedAt)
-  }
+  const times = timesOf(listed)
   return versions.map((entry) => {
-    const publishedAt = times.get(entry.version)
+    const publishedAt = times[entry.version]
     return entry.publishedAt === undefined && publishedAt !== undefined
       ? { ...entry, publishedAt }
       : entry
@@ -122,26 +120,6 @@ const timesOf = (
     if (publishedAt) times[version] = publishedAt
   }
   return times
-}
-
-/**
- * Whether a stored entry must be confirmed before every use: it was fetched
- * with credentials, or its registry said `private`, `no-cache` or `max-age=0`.
- */
-const asksEveryTime = ({
-  authenticated,
-  cacheControl,
-}: {
-  authenticated?: boolean
-  cacheControl?: string
-}): boolean => {
-  const directives = parseCacheControl(cacheControl)
-  return (
-    authenticated === true ||
-    directives.isPrivate ||
-    directives.noCache ||
-    directives.maxAge === 0
-  )
 }
 
 /** The first three of `versions`, then how many more. */
@@ -574,22 +552,24 @@ export const createRegistryReader = ({
    * asked again every time (a 304 costs no body), as `freshFor` does. This is
    * the document the lookup's 404 fallback stores, under the same key, so a
    * fresh entry written here can also answer a lookup that has no abbreviated
-   * one: it is a superset. Failures are a debug line and `{}`.
+   * one: it is a superset. `judged` names, in the debug line, the versions that
+   * made the caller ask. Failures are a debug line and `{}`.
    */
   const fullTimes = async (
     name: string,
     needed: readonly string[],
+    judged: readonly string[],
   ): Promise<Record<string, string>> => {
     const registry = registryFor(name, registryConfig)
     const hit = cache?.get('packument-full', registry, name)
-    if (hit && !asksEveryTime(hit)) {
+    if (hit && !revalidatesEveryUse(hit)) {
       const listed = new Set(hit.value.versions.map((v) => v.version))
       if (needed.every((version) => listed.has(version))) {
         return timesOf(hit.value.versions)
       }
     }
     logger.debug(
-      `Reading the full packument of ${name} for publish times: ${sample(needed)} ${needed.length === 1 ? 'has' : 'have'} none`,
+      `Reading the full packument of ${name} for publish times: ${sample(judged)} ${judged.length === 1 ? 'has' : 'have'} none`,
     )
     const fetched = await revalidate(
       packumentUrl(name, registry),
@@ -636,10 +616,23 @@ export const createRegistryReader = ({
     if (judged.length === 0) return own
     let request = fullRequests.get(name)
     if (!request) {
-      request = fullTimes(name, missing)
+      // An unexpected throw is a failed read too: the lookup's times stand.
+      request = fullTimes(name, missing, judged).catch((error: unknown) => {
+        logger.debug(
+          `Failed to read the full packument of ${name}: ${messageOf(error)}`,
+        )
+        return {}
+      })
       fullRequests.set(name, request)
     }
-    return { ...own, ...(await request) }
+    const full = await request
+    // Only versions the lookup lists: a stored document can predate an unpublish.
+    const times = { ...own }
+    for (const { version } of looked.package.versions) {
+      const time = full[version]
+      if (time !== undefined) times[version] = time
+    }
+    return times
   }
 
   return { lookup, releaseTimes, stats: () => ({ ...counts }) }

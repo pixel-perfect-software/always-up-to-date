@@ -98,6 +98,7 @@ describe('formatting', () => {
     [-0.008, '-8 ms'],
     [-0.35, '-0.35 s'],
     [0, '+0 ms'],
+    [-0.0004, '+0 ms'],
   ])('formats a difference of %s seconds as %s', (seconds, text) => {
     expect(formatDifference(seconds)).toBe(text)
   })

@@ -89,9 +89,14 @@ export const formatSeconds = (seconds: number): string => {
   return `${seconds.toFixed(seconds < 10 ? 2 : 1)} s`
 }
 
-/** A signed difference in `formatSeconds`' units: `+0.12 s`, `-8 ms`, `+0 ms`. */
-export const formatDifference = (seconds: number): string =>
-  `${seconds < 0 ? '-' : '+'}${formatSeconds(Math.abs(seconds))}`
+/**
+ * A signed difference in `formatSeconds`' units: `+0.12 s`, `-8 ms`, `+0 ms`.
+ * The sign is the rounded value's, so noise under half a millisecond is `+0 ms`.
+ */
+export const formatDifference = (seconds: number): string => {
+  const text = formatSeconds(Math.abs(seconds))
+  return `${seconds < 0 && /[1-9]/.test(text) ? '-' : '+'}${text}`
+}
 
 /**
  * How many rows `autd update --dry-run --json` plans to move: the ones with
