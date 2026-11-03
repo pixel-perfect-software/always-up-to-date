@@ -83,7 +83,7 @@ export const readLockedPackages = (
  * npm's release-age gate (#168), from its `.npmrc` view (`npm_config_*`
  * included), which autd never overrides. Verified on npm 12.2.1, 2026-11-03,
  * with `npm install` against a local registry with set publish times
- * (n01-n11 in `.claude/plans/release-age-gates.md`): off unless set (n01);
+ * (n01-n11, the cases in `__tests__/releaseAgeGates.test.ts`): off unless set (n01);
  * `min-release-age` in days, fractions allowed (n02, n11; `npm_config_*`
  * too, n09); `min-release-age-exclude` holds names and globs (n03-n05), and
  * a `name@version` entry exempts nothing (n06); `before` is an inclusive

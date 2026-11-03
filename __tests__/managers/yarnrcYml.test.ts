@@ -351,8 +351,8 @@ describe('berry settings', () => {
       })
     })
 
-    // #166: yarn 4.18.1, probed 2026-11-03 (npmMinimalAgeGate rows in
-    // .claude/plans/lockfile-discovery.md).
+    // #166: yarn 4.18.1, probed 2026-11-03 with `yarn install` against a
+    // local registry with set publish times.
     it("reads npmMinimalAgeGate in minutes, and a configured scope's own, one day by default", () => {
       write(
         at('parent', 'proj', '.yarnrc.yml'),

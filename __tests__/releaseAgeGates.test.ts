@@ -15,7 +15,8 @@ import { startRegistry, type TestRegistry } from './fixtures/registry'
 
 // #168: each manager's release-age gate, a security setting autd never
 // overrides. Probed 2026-11-03 on pnpm 12.16.1 (p-rows), bun 1.4.4 (b-rows)
-// and npm 12.2.1 (n-rows): .claude/plans/release-age-gates.md.
+// and npm 12.2.1 (n-rows), each with its own install against a local
+// registry with set publish times.
 
 let tmp: string
 const at = (...parts: string[]) => path.join(tmp, ...parts)

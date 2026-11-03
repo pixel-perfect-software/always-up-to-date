@@ -21,7 +21,7 @@ const readYaml = (file: string): Record<string, YamlNode> => {
 /**
  * pnpm's release-age gate (#168), a security default autd never overrides.
  * Verified on pnpm 12.16.1, 2026-11-03, with `pnpm install` against a local
- * registry with set publish times (p01-p19 in `.claude/plans/release-age-gates.md`):
+ * registry with set publish times (p01-p19, the cases in `__tests__/releaseAgeGates.test.ts`):
  * - `minimumReleaseAge` in minutes, one day unless set (p01), 0 is off
  *   (p12); from `pnpm_config_minimum_release_age` (p10), then the project's
  *   `pnpm-workspace.yaml` (p13), then the global `config.yaml` (p14);

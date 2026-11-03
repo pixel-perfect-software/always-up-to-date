@@ -397,9 +397,8 @@ describe('yarn v1 credentials', () => {
 })
 
 // yarn berry 4.18.1's rule (#107). Each row is a probe run on 2026-11-03:
-// `yarn install` against local registries logging Authorization (r01-r30 in
-// .claude/plans/lockfile-discovery.md), the header berry sent with the
-// packument request.
+// `yarn install` against local registries logging Authorization (r01-r30),
+// the header berry sent with the packument request.
 describe('yarn berry credentials', () => {
   const B = 'http://127.0.0.1:4902'
   const none = { alwaysAuth: false }

@@ -23,8 +23,8 @@ import { parseYaml, type YamlNode } from '@/utils/yaml'
  * yarn berry's registry settings, from its `.yarnrc.yml` files and `YARN_*`
  * variables (#107). Berry reads no `.npmrc` (probe r19). Verified on yarn
  * 4.18.1, 2026-11-03: `yarn install` against local registries logging each
- * request, and `yarn config get <key> --json`; the rows are in
- * `.claude/plans/lockfile-discovery.md`.
+ * request, and `yarn config get <key> --json`; each row is a case in
+ * `__tests__/managers/yarnrcYml.test.ts` and `__tests__/utils/registryRequest.test.ts`.
  */
 
 /** `.yarnrc.yml` is read with the shared YAML subset reader. */

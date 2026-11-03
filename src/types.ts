@@ -191,7 +191,7 @@ export interface BerryAuthEntry {
 /**
  * What yarn berry reads its credentials from, by its rule
  * (`berryAuthorizationFor` in `registryRequest.ts`; yarn 4.18.1 probes
- * r01-r30 in `.claude/plans/lockfile-discovery.md`).
+ * r01-r30, each a case in `__tests__/utils/registryRequest.test.ts`).
  */
 export interface BerryAuth {
   top: BerryAuthEntry

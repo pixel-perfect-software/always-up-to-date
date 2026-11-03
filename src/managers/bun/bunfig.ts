@@ -321,7 +321,7 @@ const installSetting = (
 /**
  * bun's release-age gate (#168), which autd never overrides. Verified on bun
  * 1.4.4, 2026-11-03, with `bun install` against a local registry with set
- * publish times (b01-b11 in `.claude/plans/release-age-gates.md`): off
+ * publish times (b01-b11, the cases in `__tests__/releaseAgeGates.test.ts`): off
  * unless set (b01); `[install] minimumReleaseAge` in seconds (b02), the
  * project bunfig.toml's, else the global one's (b10), never
  * `BUN_CONFIG_MINIMUM_RELEASE_AGE` (b08); `minimumReleaseAgeExcludes` holds

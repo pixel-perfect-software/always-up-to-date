@@ -238,7 +238,7 @@ const isRoute = (
  * The Authorization yarn berry sends with the first request for `url`, built
  * from `registry`: undefined when `config` has no berry rule or berry sends
  * none. Verified on yarn 4.18.1, 2026-11-03, against local registries logging
- * `Authorization` (#107, probes r01-r30 in `.claude/plans/lockfile-discovery.md`):
+ * `Authorization` (#107, probes r01-r30, each a case in `__tests__/utils/registryRequest.test.ts`):
  * - only to a registry a package routes to, so deps.dev never gets one;
  * - the configuration that answers is the scope's when it holds a token or
  *   an ident, else the `npmRegistries` entry for `registry` (one trailing

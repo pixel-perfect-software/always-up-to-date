@@ -8,8 +8,8 @@ import {
 } from '@/utils/releaseAgeGate'
 import { capturedPackage } from '../fixtures'
 
-// yarn berry 4.18.1's npmMinimalAgeGate (#166), probed 2026-11-03: rows in
-// .claude/plans/lockfile-discovery.md. The packages are registry captures; ms
+// yarn berry 4.18.1's npmMinimalAgeGate (#166), probed 2026-11-03 with
+// `yarn install` against a local registry. The packages are registry captures; ms
 // 2.1.3 was published 2020-12-08T13:54:35Z, 2.1.2 2019-06-06T17:31:55Z.
 const MS_2_1_3 = Date.parse('2020-12-08T13:54:35Z')
 const gate = (overrides: Partial<ReleaseAgeGate> = {}): ReleaseAgeGate => ({
