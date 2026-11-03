@@ -291,6 +291,95 @@ describe('rewriteYarnV1Lock', () => {
     expect(out).toContain('"m@npm:ms@2.1.2", "m@npm:ms@^2.0.0":\n')
   })
 
+  // #127: a member's in-range move goes through a pin and a root install,
+  // which locks `shared@1.0.1` beside the `shared@^1.0.0` entry a dependency
+  // still asks for (yarn 1.22.22, 2026-11-03); the range moves to the new one.
+  describe('a range another entry still lists', () => {
+    const shared = (keys: string, version: string) => [
+      `${keys}:`,
+      `  version "${version}"`,
+      `  resolved "http://127.0.0.1:4891/shared/-/x-${version}.tgz#abc"`,
+      '  dependencies:',
+      '    leaf "^1.0.0"',
+    ]
+    const header = ['# yarn lockfile v1', '', '']
+
+    it('moves the range to the installed version and drops the emptied entry', () => {
+      const before = [
+        ...header,
+        ...shared('shared@1.0.1', '1.0.1'),
+        '',
+        ...shared('shared@^1.0.0', '1.0.0'),
+        '',
+      ].join('\n')
+      expect(
+        rewriteYarnV1Lock(before, [
+          dep('shared', '^1.0.0', '1.0.1', { workspace: 'packages/app' }),
+        ]),
+      ).toBe(
+        [...header, ...shared('shared@1.0.1, shared@^1.0.0', '1.0.1'), ''].join(
+          '\n',
+        ),
+      )
+    })
+
+    it("keeps the old entry's other ranges, and an entry between them", () => {
+      const before = [
+        ...header,
+        ...shared('shared@1.0.1', '1.0.1'),
+        '',
+        ...shared('shared@^1.0.0, shared@~1.0.0', '1.0.0'),
+        '',
+        'zeta@1.0.0:',
+        '  version "1.0.0"',
+        '',
+      ].join('\n')
+      expect(
+        rewriteYarnV1Lock(before, [
+          dep('shared', '^1.0.0', '1.0.1', { workspace: '.' }),
+        ]),
+      ).toBe(
+        [
+          ...header,
+          ...shared('shared@1.0.1, shared@^1.0.0', '1.0.1'),
+          '',
+          ...shared('shared@~1.0.0', '1.0.0'),
+          '',
+          'zeta@1.0.0:',
+          '  version "1.0.0"',
+          '',
+        ].join('\n'),
+      )
+    })
+
+    it('drops an emptied entry in the middle and keeps CRLF', () => {
+      const before = [
+        ...header,
+        ...shared('shared@^1.0.0', '1.0.0'),
+        '',
+        ...shared('shared@1.0.1', '1.0.1'),
+        '',
+        'zeta@1.0.0:',
+        '  version "1.0.0"',
+        '',
+      ].join('\r\n')
+      expect(
+        rewriteYarnV1Lock(before, [
+          dep('shared', '^1.0.0', '1.0.1', { workspace: '.' }),
+        ]),
+      ).toBe(
+        [
+          ...header,
+          ...shared('shared@1.0.1, shared@^1.0.0', '1.0.1'),
+          '',
+          'zeta@1.0.0:',
+          '  version "1.0.0"',
+          '',
+        ].join('\r\n'),
+      )
+    })
+  })
+
   it('throws naming the lockfile and the key when none lists the version', () => {
     expect(() =>
       rewriteYarnV1Lock(lock, [

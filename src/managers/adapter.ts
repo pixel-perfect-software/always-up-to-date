@@ -160,6 +160,14 @@ export interface ManagerAdapter {
   saveStyle(cwd: string): SaveStyle
   /** How a cooldown fallback is pinned and restored with this manager. */
   pinning(cwd: string): Pinning
+  /**
+   * Whether a workspace member's moves go through `applyPinned` (installs at
+   * the root) instead of `apply`. yarn v1 says yes (#127): its only per-member
+   * command, `workspace <name> upgrade`, resolves with the member directory's
+   * registry settings, where `~/.npmrc` outranks the root's `.npmrc`, while a
+   * root `install` resolves with the root's, as discovery does.
+   */
+  pinMembers?(cwd: string): boolean
   /** Packages pinned by an override this manager enforces. */
   overrides(cwd: string): Record<string, ControllingOverride>
 }

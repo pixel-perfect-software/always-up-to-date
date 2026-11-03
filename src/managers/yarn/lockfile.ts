@@ -67,7 +67,12 @@ const quoteV1Key = (key: string): string =>
 
 /**
  * yarn v1: the key line that lists `name@<installed>` gains `name@<range>`:
- * `chalk@4.0.0:` becomes `chalk@4.0.0, chalk@^4.0.0:`.
+ * `chalk@4.0.0:` becomes `chalk@4.0.0, chalk@^4.0.0:`. The range leaves any
+ * other entry that still lists it, and an entry left with no key goes: yarn
+ * locks one version per spec, so another package asking for the same
+ * `name@<range>` moves with it, as `yarn upgrade` moves it. Otherwise that
+ * entry still holds the old version and yarn keeps it (#127: yarn 1.22.22,
+ * 2026-11-03, a member's `shared@^1.0.0` that a dependency also asks for).
  */
 export const rewriteYarnV1Lock = (
   lock: string,
@@ -76,23 +81,46 @@ export const rewriteYarnV1Lock = (
   const { lines, eol } = splitLines(lock)
   const wanted = manifestEntries(ranged)
   const done = new Set<RangedDependency>()
+  const moving = new Set(wanted.map((dep) => `${dep.name}@${dep.range}`))
 
-  const out = lines.map((line) => {
+  const out: string[] = []
+  // After a dropped key line: its indented body, then the one blank line that
+  // ends the entry.
+  let dropping = false
+  for (const line of lines) {
     const match = /^(\S.*):$/.exec(line)
-    if (!match || line.startsWith('#')) return line
+    if (!match || line.startsWith('#')) {
+      if (dropping) {
+        if (/^\s+\S/.test(line)) continue
+        dropping = false
+        if (line === '') continue
+      }
+      out.push(line)
+      continue
+    }
+    dropping = false
 
     const keys = match[1].split(', ').map(unquote)
-    const added: string[] = []
+    const own: string[] = []
     for (const dep of wanted) {
       if (!keys.includes(`${dep.name}@${lockedSpec(dep)}`)) continue
       done.add(dep)
-      const key = `${dep.name}@${dep.range}`
-      if (!keys.includes(key) && !added.includes(key)) added.push(key)
+      own.push(`${dep.name}@${dep.range}`)
     }
-    if (added.length === 0) return line
-
-    return `${[...keys, ...added].sort().map(quoteV1Key).join(', ')}:`
-  })
+    const next = [
+      ...new Set([
+        ...keys.filter((key) => !moving.has(key) || own.includes(key)),
+        ...own,
+      ]),
+    ]
+    if (next.length === 0) {
+      dropping = true
+      continue
+    }
+    if (next.length === keys.length && next.every((key) => keys.includes(key)))
+      out.push(line)
+    else out.push(`${next.sort().map(quoteV1Key).join(', ')}:`)
+  }
 
   for (const dep of wanted) {
     if (!done.has(dep)) {

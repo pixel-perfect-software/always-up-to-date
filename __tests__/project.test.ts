@@ -151,11 +151,13 @@ describe('openProject', () => {
       )
     })
 
-    it('hands registryConfig the merged view as its fourth argument, and builds nothing in openProject', () => {
+    // #127: the view is read where autd runs the manager, the project root,
+    // whichever directory the session was opened from.
+    it('hands registryConfig the root and the merged view, and builds nothing in openProject', () => {
       const hook = jest.spyOn(bun, 'registryConfig')
       jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
       jest.mocked(detectPackageManager).mockReturnValue('bun')
-      openProject(cwd)
+      const { root } = openProject(cwd)
       const options = jest.mocked(createRegistrySession).mock.calls[0][1]
       expect(hook).not.toHaveBeenCalled()
 
@@ -166,7 +168,7 @@ describe('openProject', () => {
       hook.mockReturnValue(adjusted)
       expect(options?.loadConfig?.('/nonexistent-autd-project')).toBe(adjusted)
       expect(hook).toHaveBeenCalledWith(
-        '/nonexistent-autd-project',
+        root,
         expect.objectContaining({ registry: expect.any(String) }),
         expect.objectContaining({ env: process.env }),
         expect.objectContaining({

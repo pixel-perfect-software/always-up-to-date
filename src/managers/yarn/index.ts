@@ -24,7 +24,7 @@ import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import { StepError } from '@/stepError'
 import { logger } from '@/utils'
 import { ancestorDirs } from '@/utils/ancestors'
-import { buildUpdateDescriptors, updatePackageJson } from '@/utils/files'
+import { buildUpdateDescriptors } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
 import { npmNpmrcLayers } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
@@ -96,12 +96,7 @@ const yarn: ManagerAdapter = {
           discoverBerry(run, isWorkspace, member)
       : undefined,
 
-  apply: async (
-    run,
-    cwd,
-    { withinRange, beyondRange, manifests },
-    { isWorkspace, manifests: members },
-  ) => {
+  apply: async (run, cwd, { withinRange, beyondRange, manifests }) => {
     // berry: autd writes the specs that move past their range, yarn locks.
     if (isYarnBerry(cwd)) {
       return applyBerry(
@@ -112,101 +107,40 @@ const yarn: ManagerAdapter = {
       )
     }
 
+    // v1 moves the root's own rows only: a workspace member's are pinned by
+    // the pipeline (`pinMembers`) and resolve with a root install. yarn's one
+    // per-member command, `workspace <name> upgrade`, resolves with the
+    // member directory's registry settings, where `~/.npmrc` outranks the
+    // root's `.npmrc` (#127; yarn 1.22.22, 2026-11-03, m1-m4), so it could
+    // install from a registry discovery never asked.
+    const members = manifests.filter((m) => m.path !== '.')
+    if (members.length > 0) {
+      throw new StepError(
+        'apply',
+        `yarn v1 moves a workspace member's packages with a root install, but ${members.map((m) => m.path).join(', ')} reached \`yarn upgrade\``,
+      )
+    }
+
     // v1 rewrites the manifest itself and refuses to upgrade against a
     // pre-written package.json ("Outdated lockfile"). Hand it `name@spec`
     // descriptors instead: the current spec for in-range packages, the new
-    // version with the entry's decorator for packages moving past it.
-    const style = yarn.saveStyle(cwd)
+    // version with the entry's decorator for packages moving past it. At a
+    // workspace root, `upgrade` touches the root's manifest only and copies
+    // nothing between its fields (p1-rootdev). No `--recursive`: v1 ignores it.
+    const { descriptors, notInManifest } = buildUpdateDescriptors(cwd, {
+      withinRange,
+      newVersions: beyondRange,
+      style: yarn.saveStyle(cwd),
+    })
 
-    // No `--recursive`: v1 ignores it.
-    if (!isWorkspace) {
-      const { descriptors, notInManifest } = buildUpdateDescriptors(cwd, {
-        withinRange,
-        newVersions: beyondRange,
-        style,
-      })
-
-      if (notInManifest.length > 0) {
-        logger.warn(
-          `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`,
-        )
-      }
-
-      if (descriptors.length > 0) {
-        await run(['upgrade', ...descriptors], { manifestWritten: false })
-      }
-      return
+    if (notInManifest.length > 0) {
+      logger.warn(
+        `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`,
+      )
     }
 
-    // v1 workspaces: `yarn upgrade` at the root only touches the root's
-    // manifest, so each member with something moving gets its own
-    // `yarn workspace <name> upgrade`, one command carrying every field's
-    // descriptors.
-    //
-    // `-D` and `-O` are not `upgrade` options in yarn 1.22.22: commander
-    // takes the next descriptor as the flag's value and upgrades everything,
-    // so a field cannot be named. Without one, a member's `upgrade` copies a
-    // devDependency into `dependencies` (and an optionalDependency likewise).
-    // So after each member command the manifest's original bytes go back, then
-    // its beyond-range specs are written as `nextVersionSpec` made them for
-    // the descriptors, and one `install` makes node_modules and yarn.lock agree
-    // with the restored manifests. Checked on yarn 1.22.22, 2026-10-29: `-O` is
-    // swallowed like `-D` (p1-opt: every dependency upgraded, `ms` added to
-    // the member's dependencies). The root's `upgrade` copies nothing
-    // (p1-rootdev), so the root keeps yarn's own write and needs no install.
-    let installNeeded = false
-    let written = false
-    for (const m of manifests) {
-      const dir = path.join(cwd, m.path)
-      const { descriptors, notInManifest } = buildUpdateDescriptors(dir, {
-        withinRange: m.withinRange,
-        newVersions: m.beyondRange,
-        style,
-      })
-
-      if (notInManifest.length > 0) {
-        logger.warn(
-          m.path === '.'
-            ? `Skipped ${notInManifest.join(', ')}: not listed in the root package.json.`
-            : `Skipped ${notInManifest.join(', ')}: not listed in ${m.path}/package.json.`,
-        )
-      }
-      if (descriptors.length === 0) continue
-
-      if (m.path === '.') {
-        await run(['upgrade', ...descriptors], { manifestWritten: written })
-        continue
-      }
-
-      const name = members.find((w) => w.path === m.path)?.name
-      if (!name) {
-        throw new StepError(
-          'apply',
-          `${m.path}/package.json has no name, so yarn cannot upgrade it as a workspace`,
-        )
-      }
-      installNeeded = true
-
-      const file = path.join(dir, 'package.json')
-      const original = fs.readFileSync(file, 'utf8')
-      await run(['workspace', name, 'upgrade', ...descriptors], {
-        manifestWritten: written,
-      })
-      fs.writeFileSync(file, original, 'utf8')
-      if (Object.keys(m.beyondRange).length > 0) {
-        await updatePackageJson(dir, m.beyondRange, style)
-        written = true
-      }
-    }
-
-    // `--check-files`: a member's `upgrade` leaves the member's other
-    // dependencies out of node_modules (1.22.22: commander and debug gone
-    // after `workspace @autd/b upgrade commander debug kleur`), yet records
-    // the integrity of the manifests, so a plain `install` says "Already
-    // up-to-date" and leaves them out. `--check-files` relinks them and
-    // leaves yarn.lock alone (p1-root, 2026-10-29).
-    if (installNeeded) {
-      await run(['install', '--check-files'], { manifestWritten: written })
+    if (descriptors.length > 0) {
+      await run(['upgrade', ...descriptors], { manifestWritten: false })
     }
   },
 
@@ -247,6 +181,10 @@ const yarn: ManagerAdapter = {
 
   overrides: (cwd) =>
     isYarnBerry(cwd) ? manifestOverrides(cwd, ['resolutions']) : {},
+
+  // v1: a member's move resolves with a root install (see `apply`); berry's
+  // `up -R` is project-wide and reads the project's .yarnrc.yml.
+  pinMembers: (cwd) => !isYarnBerry(cwd),
 }
 
 export default yarn

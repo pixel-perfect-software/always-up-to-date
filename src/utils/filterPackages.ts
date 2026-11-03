@@ -391,9 +391,12 @@ export const pinnedPackages = (results: UpdateResult[]): Set<string> =>
  * `latest` past the range): cooldown fallbacks (#147), which `applyPinned`
  * moves first. Every moving row of a package with one pinned row is pinned,
  * since the in-range commands are workspace-wide; `names` leaves them out.
+ * With `pinMembers` (yarn v1, #127), a package moving in a workspace member is
+ * pinned too, so the move resolves with a root install.
  */
 export const splitUpdates = (
   results: UpdateResult[],
+  { pinMembers = false }: { pinMembers?: boolean } = {},
 ): {
   names: string[]
   withinRange: string[]
@@ -408,6 +411,11 @@ export const splitUpdates = (
   const pinned: PinnedRow[] = []
 
   const pinnedNames = pinnedPackages(results)
+  if (pinMembers) {
+    for (const { name, workspace = '.', updated, target } of results) {
+      if (updated && target && workspace !== '.') pinnedNames.add(name)
+    }
+  }
 
   for (const { name, workspace = '.', updated, target, wanted } of results) {
     if (!updated || !target) continue

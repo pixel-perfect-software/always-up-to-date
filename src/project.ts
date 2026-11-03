@@ -76,11 +76,14 @@ export const openProject = (
     `config: ${configFileFor(dir, root) ?? 'none'}; root ${root}${member ? `; member ${member.path}` : ''}`,
   )
   // Called on the session's first use, so opening a project reads no files.
+  // The registry settings are the ones the manager reads where autd runs it,
+  // at the root, whatever the cwd: from a yarn v1 member, `~/.npmrc` would
+  // outrank the root's `.npmrc`, while a root install reads the root's (#127).
   const registry = createRegistrySession(cwd, {
     depsDev: config.depsDev,
     cache:
       cache && !cacheDisabledBy(process.env.AUTD_NO_CACHE) ? {} : undefined,
-    loadConfig: (dir) => managerRegistryConfig(adapter, dir, processSources()),
+    loadConfig: () => managerRegistryConfig(adapter, root, processSources()),
   })
   // A manager's own output can hold a registry URL with a token in its path.
   trackRegistries(() => registry.registryConfig())

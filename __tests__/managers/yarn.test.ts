@@ -74,21 +74,30 @@ describe('update with yarn', () => {
   })
 
   // A v1 workspace whose member @autd/b holds the yarn-C7 capture's `before`
-  // manifest (kleur only in devDependencies); `afterFixture` is what the mocked
-  // `workspace @autd/b upgrade` leaves on disk, as captured from yarn 1.22.22.
-  const memberWithDevDependency = (afterFixture: string) => {
+  // manifest (kleur only in devDependencies). A member's rows are pinned and
+  // move with root installs (#127), so `yarn.lock` lists the pinned versions,
+  // as yarn 1.22.22's install leaves it; `pins` records what the first install
+  // saw in the member's manifest.
+  const memberWithDevDependency = (locked: string[]) => {
     writeProject({ name: 'ws-root', private: true, workspaces: ['packages/*'] })
     const file = path.join(cwd, 'packages', 'b', 'package.json')
     fs.mkdirSync(path.dirname(file), { recursive: true })
     const before = readFixture('yarn/v1-member-upgrade-dev.before.json')
     fs.writeFileSync(file, before)
+    fs.writeFileSync(
+      path.join(cwd, 'yarn.lock'),
+      locked
+        .map((key) => `${key}:\n  version "${key.split('@')[1]}"\n`)
+        .join('\n'),
+    )
+    const pins: unknown[] = []
     mockedRunProcess.mockImplementation(async (_pm, args) => {
-      if (args[0] === 'workspace') {
-        fs.writeFileSync(file, readFixture(afterFixture))
+      if (args[0] === 'install' && pins.length === 0) {
+        pins.push(JSON.parse(fs.readFileSync(file, 'utf8')))
       }
       return { stdout: '', stderr: '' }
     })
-    return { file, before }
+    return { file, before, pins }
   }
 
   const memberRow = (
@@ -104,14 +113,17 @@ describe('update with yarn', () => {
     latest,
   })
 
-  it("upgrades a member's devDependencies in one command and keeps them out of dependencies", async () => {
-    // yarn 1.22.22 has no -D / -O on `upgrade`: commander takes the next
-    // descriptor as the flag's value and everything is upgraded (yarn-C11).
-    // Without a flag, yarn copies the devDependency into `dependencies`
-    // (yarn-C7), so autd puts the manifest's bytes back.
-    const { file, before } = memberWithDevDependency(
-      'yarn/v1-member-upgrade-dev.after.json',
-    )
+  const lockfile = () => fs.readFileSync(path.join(cwd, 'yarn.lock'), 'utf8')
+
+  it("moves a member's rows with root installs, each pin in its own field (#127)", async () => {
+    // `workspace <name> upgrade` resolved with the member directory's registry
+    // settings, and without -D / -O (not `upgrade` options in yarn 1.22.22,
+    // yarn-C11) it copied a devDependency into `dependencies` (yarn-C7).
+    const { file, before, pins } = memberWithDevDependency([
+      'commander@11.1.0',
+      'debug@4.3.7',
+      'kleur@3.0.3',
+    ])
 
     await update(projectFor(yarn, cwd), {
       discovered: foldWorkspaceEntries([
@@ -122,23 +134,23 @@ describe('update with yarn', () => {
     })
 
     expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
-      [
-        'workspace',
-        '@autd/b',
-        'upgrade',
-        'commander@^11.0.0',
-        'debug@~4.3.1',
-        'kleur@~3.0.0',
-      ],
-      ['install', '--check-files'],
+      ['install'],
+      ['install'],
+    ])
+    expect(pins).toEqual([
+      expect.objectContaining({
+        dependencies: { commander: '11.1.0', debug: '4.3.7' },
+        devDependencies: { kleur: '3.0.3' },
+      }),
     ])
     expect(fs.readFileSync(file, 'utf8')).toBe(before)
+    expect(lockfile()).toContain('commander@11.1.0, commander@^11.0.0:')
+    expect(lockfile()).toContain('debug@4.3.7, debug@~4.3.1:')
+    expect(lockfile()).toContain('kleur@3.0.3, kleur@~3.0.0:')
   })
 
   it("writes a member devDependency's spec past its range, and nothing in dependencies", async () => {
-    const { file } = memberWithDevDependency(
-      'yarn/v1-member-upgrade-dev-latest.after.json',
-    )
+    const { file } = memberWithDevDependency(['kleur@4.1.5'])
 
     await update(projectFor(yarn, cwd, { rules: { kleur: 'latest' } }), {
       discovered: foldWorkspaceEntries([
@@ -153,9 +165,10 @@ describe('update with yarn', () => {
       debug: '~4.3.1',
     })
     expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
-      ['workspace', '@autd/b', 'upgrade', 'kleur@~4.1.5'],
-      ['install', '--check-files'],
+      ['install'],
+      ['install'],
     ])
+    expect(lockfile()).toContain('kleur@4.1.5, kleur@~4.1.5:')
   })
 
   it("keeps yarn's own write of the root manifest and runs no install", async () => {
@@ -202,7 +215,7 @@ describe('update with yarn', () => {
   })
 
   it('flags the manifest as written when install fails after a beyond-range write', async () => {
-    memberWithDevDependency('yarn/v1-member-upgrade-dev-latest.after.json')
+    memberWithDevDependency(['kleur@4.1.5'])
     mockedRunProcess.mockImplementation(async (_pm, args) => {
       if (args[0] === 'install') throw exitError(1, '', 'boom')
       return { stdout: '', stderr: '' }

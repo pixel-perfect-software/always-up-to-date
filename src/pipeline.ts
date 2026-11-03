@@ -171,8 +171,13 @@ export const update = async (
   if (Object.keys(outdated).length === 0) return []
 
   const results = await plan(project, outdated, targetPackages)
-  const { names, withinRange, beyondRange, manifests, pinned } =
-    splitUpdates(results)
+  const { names, withinRange, beyondRange, manifests, pinned } = splitUpdates(
+    results,
+    {
+      pinMembers:
+        workspace.isWorkspace && (adapter.pinMembers?.(root) ?? false),
+    },
+  )
   const moving = names.length + new Set(pinned.map((row) => row.name)).size
 
   if (moving === 0) {

@@ -64,23 +64,16 @@ describe.each([
     flagsFirstFailure: true,
   },
   {
+    // #127: a package moving in a member is pinned and moves with two root
+    // installs (the pin, then the relocked range); the root's own moves keep
+    // `yarn upgrade`. Never `workspace <name> upgrade`.
     pm: 'yarn',
     adapter: yarn,
     pnpm: false,
-    inRange: [
-      ['upgrade', 'ms@~2.1.1'],
-      ['workspace', '@ws/b', 'upgrade', 'dayjs@^1.11.9', 'debug@~4.3.1'],
-      ['install', '--check-files'],
-    ],
-    beyond: [
-      ['upgrade', 'ms@~2.1.1', 'dayjs@1.11.23'],
-      ['workspace', '@ws/a', 'upgrade', 'ms@2.1.3'],
-      ['workspace', '@ws/b', 'upgrade', 'dayjs@^1.11.9', 'debug@~4.3.1'],
-      ['install', '--check-files'],
-    ],
-    // yarn's first command runs before autd writes anything.
+    inRange: [['install'], ['install'], ['upgrade', 'ms@~2.1.1']],
+    beyond: [['install'], ['install']],
     writesManifests: true,
-    flagsFirstFailure: false,
+    flagsFirstFailure: true,
   },
   {
     pm: 'bun',
@@ -128,6 +121,15 @@ describe.each([
         debug: '4.3.1',
       })
       installPackages(cwd, 'packages/a', { ms: '2.1.2' })
+      // What yarn's install of the pinned versions leaves, for the relock.
+      if (pm === 'yarn') {
+        fs.writeFileSync(
+          path.join(cwd, 'yarn.lock'),
+          ['dayjs@1.11.23', 'debug@4.3.7', 'ms@2.1.3']
+            .map((key) => `${key}:\n  version "${key.split('@')[1]}"\n`)
+            .join('\n'),
+        )
+      }
       answerCommands()
     })
 
@@ -158,9 +160,7 @@ describe.each([
       )
 
       expect(commands()).toEqual(beyond)
-      // yarn writes the root's spec itself, which the mocked command does not.
-      const expectedRoot =
-        writesManifests && pm !== 'yarn' ? '1.11.23' : '1.11.9'
+      const expectedRoot = writesManifests ? '1.11.23' : '1.11.9'
       const expectedA = writesManifests ? '2.1.3' : '2.1.2'
       expect(readJson('package.json').dependencies).toEqual({
         dayjs: expectedRoot,
@@ -191,7 +191,9 @@ describe.each([
 )
 
 describe('yarn v1 workspace apply', () => {
-  it('fails when a member that must move has no name', async () => {
+  // #127: a member's move resolves with root installs, which need no
+  // workspace name (`workspace <name> upgrade` did).
+  it('moves a member that has no name', async () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-ws-apply-yarn-'))
     try {
       writeWorkspaceProject(cwd)
@@ -213,12 +215,20 @@ describe('yarn v1 workspace apply', () => {
           ],
         },
       }
+      fs.writeFileSync(
+        path.join(cwd, 'yarn.lock'),
+        'debug@4.3.7:\n  version "4.3.7"\n',
+      )
       mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
 
-      await expect(
-        update(projectFor(yarn, cwd), { discovered }),
-      ).rejects.toMatchObject({ step: 'apply' })
-      expect(mockedRunProcess).not.toHaveBeenCalled()
+      await update(projectFor(yarn, cwd), { discovered })
+      expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
+        ['install'],
+        ['install'],
+      ])
+      expect(fs.readFileSync(path.join(cwd, 'yarn.lock'), 'utf8')).toContain(
+        'debug@4.3.7, debug@~4.3.1:',
+      )
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true })
     }
