@@ -1,5 +1,6 @@
 import path from 'path'
 
+import { yarnV1AuthOptions } from '@/managers/yarn/npmrc'
 import type { RegistryConfig, UnusableRegistries } from '@/types'
 import { ancestorFiles } from '@/utils/ancestors'
 import {
@@ -167,8 +168,10 @@ const envRegistry = (
  *   take `~/.yarnrc` first, then the project directory and its parents, the
  *   root's file included;
  * - credentials: a .yarnrc entry (`"//host/:_authToken"`, `_authToken`) sends
- *   nothing, so they stay with .npmrc, matched to the host the request lands
- *   on.
+ *   nothing, so they stay with .npmrc. yarn sends them by its own rule, not
+ *   npm's (#126): `yarnV1Auth` carries the .npmrc options it reads, and
+ *   `yarnDefault` says whether yarn's own default registry stands (no source
+ *   above sets one), whose requests take npm's credentials too.
  * `npmrc` is the view of yarn's own .npmrc layers (`yarnNpmrcLayers`: the
  * cwd's, `~/.npmrc`, the prefix file, then the parents'), so a member's file
  * and a parent's are already in `base`.
@@ -278,5 +281,16 @@ export const yarnRegistryConfig = (
     }
   }
 
-  return withUnusable({ ...base, registry, scopedRegistries }, unusable)
+  return withUnusable(
+    {
+      ...base,
+      registry,
+      scopedRegistries,
+      yarnV1Auth: {
+        options: yarnV1AuthOptions(npmrc.values),
+        yarnDefault: winner === undefined,
+      },
+    },
+    unusable,
+  )
 }

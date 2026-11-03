@@ -360,7 +360,73 @@ describe('yarnRegistryConfig', () => {
     const sources = sourcesFor()
     const view = viewFor(proj(), sources)
     const base = registryConfigFrom(view, proj(), sources)
-    expect(yarnRegistryConfig(proj(), base, sources, view)).toEqual(base)
+    expect(yarnRegistryConfig(proj(), base, sources, view)).toEqual({
+      ...base,
+      yarnV1Auth: { options: {}, yarnDefault: true },
+    })
+  })
+
+  // #126: what yarn 1.22.22's registry reads its credentials from, as the
+  // probes of 2026-11-03 found (c07, c09, c16, c17, c19).
+  describe('yarnV1Auth', () => {
+    it("carries the .npmrc view's credential keys and always-auth, nothing else", () => {
+      write(
+        at('proj', '.npmrc'),
+        [
+          `@acme:registry=${A}`,
+          '//127.0.0.1:4002/:_authToken=T',
+          'http://127.0.0.1:4002/:_auth=QUJD',
+          '//127.0.0.1:4002/:always-auth=true',
+          '_authToken=U',
+          'username=u',
+          '_password=cA==',
+          'strict-ssl=false',
+          '//127.0.0.1:4002/:certfile=c.pem',
+        ].join('\n'),
+      )
+      expect(configFor(proj()).yarnV1Auth?.options).toEqual({
+        '//127.0.0.1:4002/:_authToken': 'T',
+        'http://127.0.0.1:4002/:_auth': 'QUJD',
+        '//127.0.0.1:4002/:always-auth': true,
+        _authToken: 'U',
+        username: 'u',
+        _password: 'cA==',
+      })
+    })
+
+    it('reads always-auth and _auth from npm_config_*, never _authToken', () => {
+      expect(
+        configFor(proj(), {
+          npm_config_always_auth: 'true',
+          npm_config__auth: 'QUJD',
+          npm_config__authToken: 'U',
+        }).yarnV1Auth?.options,
+      ).toEqual({ 'always-auth': true, _auth: 'QUJD' })
+    })
+
+    it('leaves out a credential still holding ${…}', () => {
+      write(
+        at('proj', '.npmrc'),
+        '//127.0.0.1:4002/:_authToken=${UNSET_126}\n_authToken=U\n',
+      )
+      expect(configFor(proj()).yarnV1Auth?.options).toEqual({
+        _authToken: 'U',
+      })
+    })
+
+    it("says yarn's own default stands only when nothing sets one", () => {
+      expect(configFor(proj()).yarnV1Auth?.yarnDefault).toBe(true)
+      write(at('proj', '.yarnrc'), `registry "${A}"\n`)
+      expect(configFor(proj()).yarnV1Auth?.yarnDefault).toBe(false)
+      fs.rmSync(at('proj', '.yarnrc'))
+      write(at('proj', '.npmrc'), `registry=${A}\n`)
+      expect(configFor(proj()).yarnV1Auth?.yarnDefault).toBe(false)
+      write(at('proj', '.npmrc'), 'registry=\n')
+      expect(configFor(proj()).yarnV1Auth?.yarnDefault).toBe(true)
+      expect(
+        configFor(proj(), { YARN_REGISTRY: A }).yarnV1Auth?.yarnDefault,
+      ).toBe(false)
+    })
   })
 
   it('reads the .npmrc layers once: loadNpmrc is not called again', () => {

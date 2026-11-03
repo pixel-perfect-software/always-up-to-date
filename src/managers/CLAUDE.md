@@ -35,7 +35,7 @@ managers/
   workspaces.ts        # readManifest(), packageJsonWorkspace() (npm/yarn/bun), workspacePatterns(), readWorkspaceManifests() (the member map), ownerPath() (berry); nearestManifestDir(), listsMember(), packageJsonWorkspaceRoot(), memberAt(), pnpmWorkspacePatterns(), pnpmProjectRoot(), pnpmWorkspaceRoot() (member runs, #123)
   npm/index.ts         # npm adapter, readLockedVersions (kept for #107)
   yarn/index.ts        # yarn adapter (v1 `upgrade`, berry's ownDiscovery), isYarnBerry
-  yarn/npmrc.ts        # yarnNpmrcLayers(), YARN_NPM_ENV: yarn v1's .npmrc layers (cwd, user, prefix, parents)
+  yarn/npmrc.ts        # yarnNpmrcLayers(), YARN_NPM_ENV: yarn v1's .npmrc layers (cwd, user, prefix, parents); yarnV1AuthOptions(): what its credential rule reads (#126)
   yarn/yarnrc.ts       # parseYarnrc(), yarnrcRoutes(), yarnRegistryConfig(): registry routes from yarn v1's .yarnrc
   yarn/berry.ts        # berry: parseBerryInfo, parseBerryRegistry, discoverBerry, applyBerry, installedBerry, yarnProjectDir, berryProjectRoot
   yarn/lockfile.ts     # rewriteYarnV1Lock, rewriteBerryLock: record a range against a version locked under another spec (pin relock, integration harness)

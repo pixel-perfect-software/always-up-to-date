@@ -5,6 +5,7 @@ import os from 'os'
 import path from 'path'
 import { openProject, type Project } from '@/project'
 import { registryFor } from '@/utils/registryRequest'
+import { startRegistry, type TestRegistry } from './fixtures/registry'
 
 // The real project, session and adapter hook on temp directories: which files
 // a run from a workspace member reads (pnpm 12.15.0 and bun 1.4.4, probed
@@ -202,5 +203,86 @@ describe('openProject registry config from a yarn workspace member', () => {
     )
 
     expect(registryFor('ms', registryOfMember())).toBe(A)
+  })
+})
+
+// #126: a yarn v1 run sends credentials by yarn's rule, not npm's. yarn
+// 1.22.22, probed 2026-11-03 against local registries logging Authorization:
+// no token for an unscoped package (c01), the bare `_authToken` for a scoped
+// one (c03), and a token for any package with always-auth (c02).
+describe('openProject registry credentials for yarn v1', () => {
+  let tmp: string
+  let saved: { HOME?: string; PREFIX?: string }
+  let server: TestRegistry
+  const projects: Project[] = []
+  const write = (file: string, content: string) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, content)
+  }
+  const authorizationFor = async (
+    pm: 'yarn' | 'npm',
+    name: string,
+  ): Promise<string | undefined> => {
+    const project = openProject(tmp, { pm, cache: false })
+    projects.push(project)
+    const result = await project.registry.lookup(name)
+    expect(result.ok).toBe(true)
+    return server.requests.at(-1)?.headers.authorization
+  }
+
+  beforeEach(async () => {
+    tmp = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarn-auth-')),
+    )
+    saved = { HOME: process.env.HOME, PREFIX: process.env.PREFIX }
+    process.env.HOME = path.join(tmp, 'home')
+    process.env.PREFIX = path.join(tmp, 'prefix')
+    write(path.join(tmp, 'package.json'), '{"name":"p"}')
+    server = await startRegistry((req, res) => {
+      const name = decodeURIComponent((req.url ?? '/').slice(1))
+      res.setHeader('content-type', 'application/json')
+      res.end(
+        JSON.stringify({
+          name,
+          'dist-tags': { latest: '1.0.0' },
+          versions: { '1.0.0': { name, version: '1.0.0' } },
+        }),
+      )
+    })
+  })
+  afterEach(async () => {
+    for (const project of projects.splice(0)) project.registry.close()
+    await server.close()
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('sends no token for an unscoped package, where npm sends the host token', async () => {
+    write(
+      path.join(tmp, '.npmrc'),
+      `registry=${server.url}\n//127.0.0.1:${server.port}/:_authToken=T\n`,
+    )
+    expect(await authorizationFor('yarn', 'probe-unscoped')).toBeUndefined()
+    expect(await authorizationFor('npm', 'probe-unscoped')).toBe('Bearer T')
+  })
+
+  it('sends a token for an unscoped package with always-auth', async () => {
+    write(
+      path.join(tmp, '.npmrc'),
+      `registry=${server.url}\n//127.0.0.1:${server.port}/:_authToken=T\nalways-auth=true\n`,
+    )
+    expect(await authorizationFor('yarn', 'probe-unscoped')).toBe('Bearer T')
+  })
+
+  it('sends the bare _authToken for a scoped package, which npm ignores', async () => {
+    write(
+      path.join(tmp, '.npmrc'),
+      `_authToken=U\n@acme:registry=${server.url}\n`,
+    )
+    expect(await authorizationFor('yarn', '@acme/probe')).toBe('Bearer U')
+    expect(await authorizationFor('npm', '@acme/probe')).toBeUndefined()
   })
 })

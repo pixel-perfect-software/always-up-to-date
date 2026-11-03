@@ -129,6 +129,28 @@ export interface RegistryCredentials {
 }
 
 /**
+ * What yarn v1 reads its credentials from (`yarnV1AuthorizationFor` in
+ * `registryRequest.ts` applies the rule). yarn sends them only for a scoped
+ * package or with `always-auth`, and looks them up by the package's registry,
+ * not by the request URL's prefixes.
+ */
+export interface YarnV1Auth {
+  /**
+   * `_authToken`, `_auth`, `username`, `_password` and `always-auth`, by key
+   * as the merged `.npmrc` view holds them: bare (`_authToken`) or under a
+   * registry (`//host/path/:_authToken`, `https://host/:_auth`). A credential
+   * still holding `${…}` is left out.
+   */
+  options: Record<string, string | boolean>
+  /**
+   * Nothing sets the default registry, so yarn's own,
+   * `https://registry.yarnpkg.com`, is the route it looks credentials up by
+   * (then npm's), although autd asks `registry.npmjs.org`.
+   */
+  yarnDefault: boolean
+}
+
+/**
  * The Agent's `proxyEnv`, already resolved from .npmrc and the environment.
  * A type alias: an interface isn't assignable to http.ProxyEnv's index signature.
  */
@@ -169,6 +191,12 @@ export interface RegistryConfig {
   unusable?: UnusableRegistries
   /** '//host[:port]/path/' (as written) → its credentials */
   credentials: Record<string, RegistryCredentials>
+  /**
+   * yarn v1's credential rule (#126), which replaces `credentials` for the
+   * Authorization header (client certificates still come from `credentials`).
+   * Absent for every other manager.
+   */
+  yarnV1Auth?: YarnV1Auth
   /** cafile (if readable), else ca / ca[]; undefined means Node's default store */
   ca?: string[]
   strictSSL: boolean
