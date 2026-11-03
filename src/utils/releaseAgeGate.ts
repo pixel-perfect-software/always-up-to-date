@@ -3,16 +3,19 @@ import type {
   PackageLookup,
   RegistryPackage,
   RegistryVersion,
+  ReleaseAgeExemption,
   ReleaseAgeGate,
 } from '@/types'
 import type { RegistrySession } from './registry'
 
 /**
- * A manager's release-age gate (#166): versions published less than its
+ * A manager's release-age gate (#166, #168): versions published less than its
  * minutes ago are never installed, so autd never proposes them. A security
- * default of the manager's: yarn berry's `npmMinimalAgeGate` (one day unless
- * set). Verified on yarn 4.18.1, 2026-11-03 (rows in
- * `.claude/plans/lockfile-discovery.md`).
+ * setting of the manager's, which autd never overrides: yarn berry's
+ * `npmMinimalAgeGate` and pnpm's `minimumReleaseAge` (one day unless set),
+ * bun's `minimumReleaseAge` and npm's `min-release-age` / `before` (off
+ * unless set). Verified 2026-11-03 on yarn 4.18.1, pnpm 12.16.1, bun 1.4.4
+ * and npm 12.2.1 (rows in `.claude/plans/release-age-gates.md`).
  */
 
 /** The gate's minutes for `name`: its scope's own when the manager configures that scope, else the top level's. */
@@ -24,42 +27,68 @@ export const gateMinutesFor = (name: string, gate: ReleaseAgeGate): number => {
   return gate.minutes
 }
 
-/** A name glob as berry matches one (micromatch): `*` and `?` stay within a path segment, `**` crosses them. */
-const globMatches = (glob: string, name: string): boolean => {
+/** A name glob: `*` and `?` stay within a path segment (`segment`) or cross them (`any`); `**` always crosses. */
+const globMatches = (
+  glob: string,
+  name: string,
+  star: 'segment' | 'any',
+): boolean => {
   let pattern = ''
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i]
     if (c === '*' && glob[i + 1] === '*') {
       pattern += '.*'
       i++
-    } else if (c === '*') pattern += '[^/]*'
-    else if (c === '?') pattern += '[^/]'
+    } else if (c === '*') pattern += star === 'any' ? '.*' : '[^/]*'
+    else if (c === '?') pattern += star === 'any' ? '.' : '[^/]'
     else pattern += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
   }
   return new RegExp(`^${pattern}$`).test(name)
 }
 
 /**
- * Whether one of `patterns` exempts `name@version`, as berry's
- * `npmPreapprovedPackages` does: a descriptor or name glob, with an optional
- * range after the name (`p-exempt`, `@acme/*@^1.0.0`). No range exempts every
- * version; a range that doesn't parse exempts none.
+ * Whether one of `exemptions` lets `name@version` through: its name matches
+ * (exactly, or as its manager's glob), and it lists no versions or the
+ * version satisfies them. Versions that don't parse exempt none.
  */
 export const isExempt = (
   name: string,
   version: string,
-  patterns: readonly string[],
+  exemptions: readonly ReleaseAgeExemption[],
 ): boolean =>
-  patterns.some((pattern) => {
-    const at = pattern.indexOf('@', 1)
-    const glob = at === -1 ? pattern : pattern.slice(0, at)
-    const range = at === -1 ? undefined : pattern.slice(at + 1)
-    if (glob !== name && !globMatches(glob, name)) return false
-    if (range === undefined) return true
-    return semver.validRange(range) !== null && semver.satisfies(version, range)
+  exemptions.some((exemption) => {
+    const matches =
+      exemption.name === name ||
+      (exemption.glob !== 'none' &&
+        globMatches(exemption.name, name, exemption.glob))
+    if (!matches) return false
+    if (exemption.versions === undefined) return true
+    return (
+      semver.validRange(exemption.versions) !== null &&
+      semver.satisfies(version, exemption.versions)
+    )
   })
 
-/** Whether the gate lets `version` through: exempt, or published at least its minutes before `now`. A version with no known time does not pass. */
+/** A pattern written `<name>@<versions>` (a scope's `@` first is part of the name); `<name>` alone exempts every version. */
+export const exemptionOf = (
+  pattern: string,
+  glob: ReleaseAgeExemption['glob'],
+): ReleaseAgeExemption => {
+  const at = pattern.indexOf('@', 1)
+  return at === -1
+    ? { name: pattern, glob }
+    : { name: pattern.slice(0, at), glob, versions: pattern.slice(at + 1) }
+}
+
+/** Whether the gate holds anything back for `name`: an age, or npm's `before`. */
+const isActive = (name: string, gate: ReleaseAgeGate): boolean =>
+  gateMinutesFor(name, gate) > 0 || gate.notAfter !== undefined
+
+/**
+ * Whether the gate lets `version` through: exempt, or published at least its
+ * minutes before `now` and not after its `notAfter`. A version with no known
+ * time passes only where the manager lets one through (`missingTime`).
+ */
 const passes = (
   name: string,
   version: string,
@@ -69,9 +98,12 @@ const passes = (
   now: number,
 ): boolean => {
   if (isExempt(name, version, gate.exempt)) return true
-  if (published === undefined) return false
-  const at = Date.parse(published)
-  return !Number.isNaN(at) && (now - at) / 60_000 >= minutes
+  const at = published === undefined ? Number.NaN : Date.parse(published)
+  if (Number.isNaN(at)) return gate.missingTime === 'allowed'
+  if (gate.notAfter !== undefined && at > Date.parse(gate.notAfter)) {
+    return false
+  }
+  return (now - at) / 60_000 >= minutes
 }
 
 /**
@@ -86,7 +118,7 @@ export const gatePackage = (
   now: number,
 ): RegistryPackage | undefined => {
   const minutes = gateMinutesFor(pkg.name, gate)
-  if (minutes <= 0) return pkg
+  if (!isActive(pkg.name, gate)) return pkg
   const versions = pkg.versions.filter((v) =>
     passes(
       pkg.name,
@@ -121,7 +153,7 @@ export const gatePackage = (
  * `releaseTimes` keeps only those versions' times, so a cooldown fallback
  * never lands on one the gate holds. Times missing from a lookup (a
  * packument without `time`) come from `releaseTimes`, the full packument;
- * a version still without one doesn't pass, as berry treats it. `gate` is
+ * a version still without one passes only where the manager lets it. `gate` is
  * read on the first lookup, so opening a project reads nothing.
  */
 export const withReleaseAgeGate = <
@@ -135,9 +167,7 @@ export const withReleaseAgeGate = <
   lookup: async (name: string): Promise<PackageLookup> => {
     const result = await session.lookup(name)
     const active = gate()
-    if (!result.ok || !active || gateMinutesFor(name, active) <= 0) {
-      return result
-    }
+    if (!result.ok || !active || !isActive(name, active)) return result
     const pkg = result.package
     const times = pkg.versions.every((v) => v.publishedAt)
       ? {}
@@ -148,14 +178,16 @@ export const withReleaseAgeGate = <
       ok: false,
       name,
       kind: 'quarantined',
-      reason: `every version is younger than ${active.setting} (${gateMinutesFor(name, active)} minutes)`,
+      reason: active.notAfter
+        ? `no version passes ${active.setting} (published before ${active.notAfter}${gateMinutesFor(name, active) > 0 ? ` and ${gateMinutesFor(name, active)} minutes old` : ''})`
+        : `every version is younger than ${active.setting} (${gateMinutesFor(name, active)} minutes)`,
     }
   },
   releaseTimes: async (name: string): Promise<Record<string, string>> => {
     const times = await session.releaseTimes(name)
     const active = gate()
-    const minutes = active ? gateMinutesFor(name, active) : 0
-    if (!active || minutes <= 0) return times
+    if (!active || !isActive(name, active)) return times
+    const minutes = gateMinutesFor(name, active)
     const at = now()
     return Object.fromEntries(
       Object.entries(times).filter(([version, published]) =>

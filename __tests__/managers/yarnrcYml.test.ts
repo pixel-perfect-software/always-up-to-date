@@ -251,6 +251,7 @@ describe('berry settings', () => {
           minutes: 1440,
           scopes: {},
           exempt: [],
+          missingTime: 'held',
         },
         strictSSL: true,
         proxy: {},
@@ -374,7 +375,11 @@ describe('berry settings', () => {
         setting: 'npmMinimalAgeGate',
         minutes: 0,
         scopes: { '@acme': 1440, '@fast': 120 },
-        exempt: ['@acme/*@^1.0.0', 'p-exempt'],
+        exempt: [
+          { name: '@acme/*', glob: 'segment', versions: '^1.0.0' },
+          { name: 'p-exempt', glob: 'segment' },
+        ],
+        missingTime: 'held',
       })
     })
 

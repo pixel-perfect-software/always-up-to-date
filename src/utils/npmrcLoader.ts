@@ -598,13 +598,14 @@ export const loadRegistryConfig = (
 
 /**
  * The run's registry config for a manager: the merge of its `.npmrc` layers
- * (`npmrcLayers`, else npm's), then the manager's own `registryConfig` hook.
+ * (`npmrcLayers`, else npm's), then the manager's own `registryConfig` hook,
+ * then its `releaseAgeGate`.
  * One place for the session's wiring, so tests exercise the real thing.
  */
 export const managerRegistryConfig = (
   adapter: Pick<
     ManagerAdapter,
-    'npmrcLayers' | 'registryConfig' | 'emptyRegistry'
+    'npmrcLayers' | 'registryConfig' | 'emptyRegistry' | 'releaseAgeGate'
   >,
   dir: string,
   sources: NpmrcSources,
@@ -618,5 +619,9 @@ export const managerRegistryConfig = (
     sources,
     adapter.emptyRegistry,
   )
-  return adapter.registryConfig?.(dir, fromNpmrc, sources, npmrc) ?? fromNpmrc
+  const config =
+    adapter.registryConfig?.(dir, fromNpmrc, sources, npmrc) ?? fromNpmrc
+  // The manager's release-age gate (#168), from its own settings.
+  const gate = adapter.releaseAgeGate?.(dir, sources, npmrc)
+  return gate ? { ...config, releaseAgeGate: gate } : config
 }

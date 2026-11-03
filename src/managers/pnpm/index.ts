@@ -2,6 +2,7 @@ import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
 import { pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
+import { pnpmReleaseAgeGate } from '@/managers/pnpm/releaseAge'
 import {
   pnpmWorkspacePatterns,
   pnpmWorkspaceRoot,
@@ -146,6 +147,9 @@ const pnpm: ManagerAdapter = {
     install: INSTALL_AFTER_WRITE,
     writeCatalog: updatePNPMWorkspaceYAML,
   }),
+
+  // pnpm 12 gates versions younger than one day unless set (#168).
+  releaseAgeGate: (cwd, sources) => pnpmReleaseAgeGate(cwd, sources),
 
   overrides: (cwd) =>
     overridesFromField(

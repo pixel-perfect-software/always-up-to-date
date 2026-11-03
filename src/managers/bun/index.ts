@@ -1,7 +1,11 @@
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
-import { bunfigExact, bunRegistryConfig } from '@/managers/bun/bunfig'
+import {
+  bunfigExact,
+  bunRegistryConfig,
+  bunReleaseAgeGate,
+} from '@/managers/bun/bunfig'
 import { bunNpmrcLayers } from '@/managers/bun/npmrc'
 import {
   packageJsonWorkspace,
@@ -102,6 +106,9 @@ const bun: ManagerAdapter = {
   }),
 
   pinning: () => ({ install: ['install'], writeCatalog: updateBunCatalogs }),
+
+  // bun's minimumReleaseAge (#168), off unless set.
+  releaseAgeGate: (cwd, sources) => bunReleaseAgeGate(cwd, sources),
 
   overrides: (cwd) => manifestOverrides(cwd, ['overrides', 'resolutions']),
 }

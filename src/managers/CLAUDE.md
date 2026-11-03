@@ -23,6 +23,7 @@ All four package managers are implemented with workspace support. Yarn is one ad
   - `registryConfig?(cwd, fromNpmrc, sources, npmrc)`: optional. The run's `RegistryConfig` for this manager, adjusting the merged `.npmrc` view (`npmrc`) where the manager reads registries elsewhere: yarn v1 (`yarn/yarnrc.ts`, .yarnrc, over `yarn/npmrc.ts`'s own `.npmrc` layers), yarn berry (`yarn/yarnrcYml.ts`, `.yarnrc.yml`, replacing the `.npmrc` view: berry's `npmrcLayers` are empty) and bun (`bun/bunfig.ts`, bunfig.toml and the registry/token variables). Precedence in `src/utils/CLAUDE.md`
   - `saveStyle(cwd)`: exact or prefix for specs that can't keep their shape, read from where the manager's current version keeps it
   - `pinning(cwd)`: what `applyPinned` needs for a cooldown fallback (#147): `install` (the install after a manifest write), `writeCatalog?` (pnpm, bun) and `relock?` (both yarns)
+  - `releaseAgeGate?(cwd, sources, npmrc)`: optional. The manager's release-age gate from its own settings (#168): pnpm (one day unless set), bun and npm (off unless set). `managerRegistryConfig` sets it as `RegistryConfig.releaseAgeGate`; yarn berry sets it in its `registryConfig` instead. autd never proposes a version the gate holds (`src/utils/CLAUDE.md`)
   - `pinMembers?(cwd)`: optional. Whether a package moving in a workspace member goes through `applyPinned` (root installs) instead of `apply`; `splitUpdates` then pins every moving row of it. yarn v1 only (#127): its one per-member command, `workspace <name> upgrade`, resolves with the member directory's registry settings
   - `overrides(cwd)`: packages pinned by an override field the manager enforces
 - Adapters never log progress, group output, run the policy or catch failures: the pipeline does. `run` is bound to the step, so a failure is already a `StepError`
@@ -45,6 +46,7 @@ managers/
   pin.ts               # applyPinned(): cooldown fallbacks, pinned and restored before apply (#147)
   pnpm/index.ts        # pnpm adapter; re-exports pnpmWorkspaceRoot
   pnpm/npmrc.ts        # pnpmNpmrcLayers(), PNPM_ENV, pnpmConfigDir(): pnpm 12's .npmrc layers
+  pnpm/releaseAge.ts   # pnpmReleaseAgeGate(): minimumReleaseAge and its excludes (#168)
   pnpm/registries.ts   # pnpmRegistrySettings(yaml, { env }?), substitutePnpm(): registry routes from a pnpm yaml file (the parser only)
   bun/index.ts         # bun adapter
   bun/npmrc.ts         # bunNpmrcLayers(), bunUserNpmrc(), substituteBun(): bun's .npmrc layers (project, one user file)

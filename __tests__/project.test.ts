@@ -138,7 +138,17 @@ describe('openProject', () => {
       expect(layers).not.toHaveBeenCalled()
 
       layers.mockReturnValue([])
-      expect(loadConfigForSession(cwd)).toEqual(registryDefaults)
+      // pnpm's own release-age gate, one day unless set (#168).
+      expect(loadConfigForSession(cwd)).toEqual({
+        ...registryDefaults,
+        releaseAgeGate: {
+          setting: 'minimumReleaseAge',
+          minutes: 1440,
+          scopes: {},
+          exempt: [],
+          missingTime: 'allowed',
+        },
+      })
       expect(layers).toHaveBeenCalledTimes(1)
       expect(layers).toHaveBeenCalledWith(
         cwd,

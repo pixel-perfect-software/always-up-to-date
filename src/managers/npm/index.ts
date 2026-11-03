@@ -6,6 +6,7 @@ import {
   packageJsonWorkspace,
   packageJsonWorkspaceRoot,
 } from '@/managers/workspaces'
+import type { ReleaseAgeGate } from '@/types'
 import { updatePackageJson } from '@/utils/files'
 import { type InstalledPackage, rowKey } from '@/utils/installed'
 import { isRecord } from '@/utils/isRecord'
@@ -78,6 +79,43 @@ export const readLockedPackages = (
   return installed
 }
 
+/**
+ * npm's release-age gate (#168), from its `.npmrc` view (`npm_config_*`
+ * included), which autd never overrides. Verified on npm 12.2.1, 2026-11-03,
+ * with `npm install` against a local registry with set publish times
+ * (n01-n11 in `.claude/plans/release-age-gates.md`): off unless set (n01);
+ * `min-release-age` in days, fractions allowed (n02, n11; `npm_config_*`
+ * too, n09); `min-release-age-exclude` holds names and globs (n03-n05), and
+ * a `name@version` entry exempts nothing (n06); `before` is an inclusive
+ * cutoff (n10). A version with no publish time is let through (n08); with
+ * nothing old enough npm fails (`ENOVERSIONS`, n07).
+ */
+export const npmReleaseAgeGate = (
+  values: Record<string, unknown>,
+): ReleaseAgeGate | undefined => {
+  const days = Number(values['min-release-age'])
+  const minutes = Number.isFinite(days) && days > 0 ? days * 1440 : 0
+  const before =
+    typeof values.before === 'string' ? Date.parse(values.before) : Number.NaN
+  const notAfter = Number.isNaN(before)
+    ? undefined
+    : new Date(before).toISOString()
+  if (minutes === 0 && notAfter === undefined) return undefined
+  const exclude = values['min-release-age-exclude']
+  const patterns = (Array.isArray(exclude) ? exclude : [exclude]).filter(
+    (item): item is string => typeof item === 'string' && item !== '',
+  )
+  return {
+    setting: minutes > 0 ? 'min-release-age' : 'before',
+    minutes,
+    scopes: {},
+    // A pattern keeps any `@version` in its name, so it matches no package.
+    exempt: patterns.map((pattern) => ({ name: pattern, glob: 'segment' })),
+    missingTime: 'allowed',
+    ...(notAfter ? { notAfter } : {}),
+  }
+}
+
 const npm: ManagerAdapter = {
   name: 'npm',
   lockfile: 'package-lock.json',
@@ -117,6 +155,8 @@ const npm: ManagerAdapter = {
   },
 
   pinning: () => ({ install: ['install'] }),
+
+  releaseAgeGate: (_cwd, _sources, npmrc) => npmReleaseAgeGate(npmrc.values),
 
   // #107: a project with package-lock.json and no node_modules (never
   // installed, `npm ci` not run yet, node_modules removed) has its installed

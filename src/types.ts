@@ -150,16 +150,32 @@ export interface YarnV1Auth {
   yarnDefault: boolean
 }
 
-/** A manager's release-age gate, as `withReleaseAgeGate` (`utils/releaseAgeGate.ts`) applies it. */
+/** One package (or name glob) a release-age gate lets through, as each manager's own syntax means it. */
+export interface ReleaseAgeExemption {
+  /** A package name, or a glob of one. */
+  name: string
+  /**
+   * How `name` matches: a glob whose `*` stays within a path segment (berry,
+   * npm), one whose `*` crosses segments (pnpm), or an exact name (bun).
+   */
+  glob: 'segment' | 'any' | 'none'
+  /** The exempt versions (a semver range, or a union of exact versions); every version when absent. */
+  versions?: string
+}
+
+/** A manager's release-age gate (#166, #168), as `withReleaseAgeGate` (`utils/releaseAgeGate.ts`) applies it. */
 export interface ReleaseAgeGate {
-  /** The setting, for messages: `npmMinimalAgeGate`. */
+  /** The setting, for messages: `npmMinimalAgeGate`, `minimumReleaseAge`, `min-release-age`. */
   setting: string
   /** Minutes for an unscoped package, or a scope the manager doesn't configure; 0 is off. */
   minutes: number
-  /** `@scope` → minutes, for each scope the manager configures (berry: its `npmScopes` entry's own gate, one day by default). */
+  /** `@scope` → minutes, for each scope the manager configures on its own (berry's `npmScopes` entries). */
   scopes: Record<string, number>
-  /** Descriptors or name globs, with an optional range, the gate lets through (berry's `npmPreapprovedPackages`). */
-  exempt: string[]
+  exempt: ReleaseAgeExemption[]
+  /** A version with no publish time: berry holds it; pnpm, bun and npm let it through. */
+  missingTime: 'held' | 'allowed'
+  /** npm's `before`: a version published after this instant is held, whatever its age. */
+  notAfter?: string
 }
 
 /** One berry configuration that can hold credentials: the top level, a scope, or an `npmRegistries` entry. */

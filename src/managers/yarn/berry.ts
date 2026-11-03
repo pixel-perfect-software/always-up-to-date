@@ -7,12 +7,12 @@ import {
   packageJsonWorkspaceRoot,
   toPosix,
 } from '@/managers/workspaces'
-import { parseYarnrcYml, type YamlNode } from '@/managers/yarn/yarnrcYml'
 import { StepError } from '@/stepError'
 import type { ManifestPlan } from '@/types'
 import { updatePackageJson } from '@/utils/files'
 import { type InstalledPackage, rowKey } from '@/utils/installed'
 import type { SaveStyle } from '@/utils/saveStyle'
+import { parseYaml, type YamlNode } from '@/utils/yaml'
 
 /**
  * Yarn 2+ ("berry"). Discovery is native (#107): `yarn.lock` says what each
@@ -47,7 +47,7 @@ export const readBerryLock = (
 ): Record<string, InstalledPackage> => {
   let lock: Record<string, YamlNode>
   try {
-    lock = parseYarnrcYml(fs.readFileSync(path.join(cwd, 'yarn.lock'), 'utf8'))
+    lock = parseYaml(fs.readFileSync(path.join(cwd, 'yarn.lock'), 'utf8'))
   } catch {
     return {}
   }
