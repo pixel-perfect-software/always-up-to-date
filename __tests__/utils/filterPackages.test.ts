@@ -1067,6 +1067,70 @@ describe('filterPackages', () => {
       ])
     })
 
+    // #127: yarn v1 moves a member's packages with root installs (the pin
+    // path), so a package moving in a member is pinned in every manifest.
+    describe('with pinMembers', () => {
+      it("pins a member's moves and leaves the root's own to the manager", async () => {
+        const filter = loadFilterWithConfig({})
+        const results = await filter(workspaceOutdated())
+
+        expect(filter.split(results, { pinMembers: true })).toEqual({
+          names: ['ms'],
+          withinRange: ['ms'],
+          beyondRange: {},
+          manifests: [{ path: '.', withinRange: ['ms'], beyondRange: {} }],
+          pinned: [
+            {
+              path: 'packages/b',
+              name: 'dayjs',
+              version: '1.11.23',
+              beyondRange: false,
+            },
+            {
+              path: 'packages/b',
+              name: 'debug',
+              version: '4.3.7',
+              beyondRange: false,
+            },
+          ],
+        })
+      })
+
+      it("pins the root's row of a package that also moves in a member", async () => {
+        const filter = loadFilterWithConfig({ beyondRange: 'patch' })
+        const results = await filter(workspaceOutdated())
+
+        const { names, manifests, pinned } = filter.split(results, {
+          pinMembers: true,
+        })
+
+        expect(names).toEqual([])
+        expect(manifests).toEqual([])
+        expect(pinned).toEqual([
+          { path: '.', name: 'dayjs', version: '1.11.23', beyondRange: true },
+          {
+            path: 'packages/b',
+            name: 'dayjs',
+            version: '1.11.23',
+            beyondRange: false,
+          },
+          {
+            path: 'packages/b',
+            name: 'debug',
+            version: '4.3.7',
+            beyondRange: false,
+          },
+          { path: '.', name: 'ms', version: '2.1.3', beyondRange: false },
+          {
+            path: 'packages/a',
+            name: 'ms',
+            version: '2.1.3',
+            beyondRange: true,
+          },
+        ])
+      })
+    })
+
     it('gives a single-package project the root as its only manifest', async () => {
       const filter = loadFilterWithConfig({})
       const results = await filter(

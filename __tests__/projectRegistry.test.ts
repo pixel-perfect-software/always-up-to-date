@@ -196,6 +196,26 @@ describe('openProject registry config from a yarn workspace member', () => {
     )
   })
 
+  // #127: a root install resolves a member's packages with the root's
+  // settings, while yarn run from the member ranks `~/.npmrc` above the
+  // root's `.npmrc` and reads the member's own (yarn 1.22.22, 2026-11-03,
+  // m1, m2, m4). autd applies at the root, so a member run reads the root's.
+  it("a v1 member reads the root's .npmrc over ~/.npmrc and its own", () => {
+    const B = 'http://127.0.0.1:4874/'
+    write(
+      path.join(tmp, 'package.json'),
+      '{"name":"root","packageManager":"yarn@1.22.22","workspaces":["packages/*"]}',
+    )
+    fs.rmSync(path.join(tmp, '.yarnrc'))
+    write(path.join(tmp, '.npmrc'), `registry=${A}\n@acme:registry=${A}\n`)
+    write(path.join(tmp, 'home', '.npmrc'), `registry=${B}\n`)
+    write(path.join(tmp, 'packages', 'a', '.npmrc'), `@acme:registry=${B}\n`)
+
+    const config = registryOfMember()
+    expect(registryFor('ms', config)).toBe(A)
+    expect(registryFor('@acme/probe', config)).toBe(A)
+  })
+
   it("a v1 member reads the root's .yarnrc routes", () => {
     write(
       path.join(tmp, 'package.json'),
