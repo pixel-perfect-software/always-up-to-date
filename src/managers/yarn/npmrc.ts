@@ -1,5 +1,5 @@
 import path from 'path'
-
+import type { YarnV1Auth } from '@/types'
 import { ancestorFiles } from '@/utils/ancestors'
 import type { Npmrc, Substitute } from '@/utils/npmrc'
 import {
@@ -135,4 +135,34 @@ export const yarnNpmrcLayers = (
     yarnFileLayer(prefixFile, env),
     ...parents.slice(0, -1).map((file) => yarnFileLayer(file, env)),
   ]
+}
+
+const YARN_AUTH_FIELDS = new Set([
+  '_authToken',
+  '_auth',
+  'username',
+  '_password',
+  'always-auth',
+])
+
+/**
+ * The options yarn v1's registry reads credentials and `always-auth` from
+ * (`YarnV1Auth.options`): every key of the merged view whose field (the whole
+ * key, or what follows its last `:`) is one of them, bare keys and
+ * `https://host/:` keys included, as yarn reads both (probes c07, c09). A
+ * credential still holding `${…}` is left out, as for every manager; yarn
+ * fails the whole run on one (c19).
+ */
+export const yarnV1AuthOptions = (values: Npmrc): YarnV1Auth['options'] => {
+  const options: YarnV1Auth['options'] = Object.create(null)
+  for (const [key, value] of Object.entries(values)) {
+    const field = key.slice(key.lastIndexOf(':') + 1)
+    if (!YARN_AUTH_FIELDS.has(field)) continue
+    if (typeof value === 'boolean') options[key] = value
+    else if (typeof value === 'string') {
+      if (field !== 'always-auth' && value.includes('${')) continue
+      options[key] = value
+    }
+  }
+  return options
 }

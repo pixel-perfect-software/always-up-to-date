@@ -3,6 +3,7 @@ import type {
   RegistryConfig,
   RegistryCredentials,
   UnusableRegistry,
+  YarnV1Auth,
 } from '@/types'
 
 export const RETRY_BASE_MS = 100
@@ -106,6 +107,109 @@ export const authorizationFor = (
   if (c.username && c.password) {
     const password = Buffer.from(c.password, 'base64').toString('utf8')
     return `Basic ${Buffer.from(`${c.username}:${password}`).toString('base64')}`
+  }
+  return undefined
+}
+
+/** yarn v1's own default registry (`YARN_REGISTRY`), as yarn spells it. */
+export const YARN_V1_REGISTRY = 'https://registry.yarnpkg.com'
+/** The registry yarn v1 also takes credentials from for its own (`DEFAULT_REGISTRY`). */
+const YARN_V1_NPM_REGISTRY = 'https://registry.npmjs.org/'
+/** yarn's `SCOPED_PKG_REGEXP`: a `@scope` segment followed by an escaped or plain `/`. */
+const YARN_SCOPED = /(?:^|\/)(@[^/?]+?)(?=%2f|\/)/
+
+/**
+ * The keys yarn v1's `getRegistryOption` tries for `option` of `registry`, in
+ * its order: the registry with a trailing `/`, then without its `http(s):`,
+ * then with a trailing `registry/` dropped, each recursively. There is no walk
+ * up the path: `https://host/npm/` never reads `//host/:_authToken`.
+ */
+export const yarnV1RegistryKeys = (
+  registry: string,
+  option: string,
+): string[] => {
+  const keys: string[] = []
+  const visit = (value: string): void => {
+    const reg = value.endsWith('/') ? value : `${value}/`
+    keys.push(`${reg}:${option}`)
+    if (/^https?:/i.test(reg)) visit(reg.replace(/^https?:/i, ''))
+    if (/registry\/?$/.test(reg)) visit(reg.replace(/registry\/?$/, ''))
+  }
+  visit(registry)
+  return keys
+}
+
+/** yarn's `getRegistryOrGlobalOption`: the first set (truthy) registry key, else the bare one. */
+const yarnV1Option = (
+  auth: YarnV1Auth,
+  registry: string,
+  option: string,
+): string | boolean | undefined => {
+  for (const key of yarnV1RegistryKeys(registry, option)) {
+    if (auth.options[key]) return auth.options[key]
+  }
+  return auth.options[option] || undefined
+}
+
+/** yarn's `getAuthByRegistry`: Bearer, else `_auth`, else username and password, each field on its own. */
+const yarnV1AuthByRegistry = (
+  auth: YarnV1Auth,
+  registry: string,
+): string | undefined => {
+  const token = yarnV1Option(auth, registry, '_authToken')
+  if (token) return `Bearer ${String(token)}`
+  const basic = yarnV1Option(auth, registry, '_auth')
+  if (basic) return `Basic ${String(basic)}`
+  const username = yarnV1Option(auth, registry, 'username')
+  const password = yarnV1Option(auth, registry, '_password')
+  if (username && password) {
+    const decoded = Buffer.from(String(password), 'base64').toString('utf8')
+    return `Basic ${Buffer.from(`${String(username)}:${decoded}`).toString('base64')}`
+  }
+  return undefined
+}
+
+/**
+ * The Authorization yarn v1 sends with the first request for `url`, built
+ * from `registry`: undefined when `config` has no yarn v1 rule or yarn sends
+ * none. Verified on yarn 1.22.22, 2026-11-03, against local registries
+ * logging `Authorization` (#126, probes c01-c20):
+ * - only to a registry a package routes to (the default or a scope's), so
+ *   deps.dev never gets one;
+ * - only for a scoped package (yarn's `SCOPED_PKG_REGEXP` on the path after
+ *   the registry's) or with `always-auth` for that registry or bare;
+ * - looked up by that registry (`yarnV1RegistryKeys`), each field falling back
+ *   to its bare key: `_authToken=U` alone authenticates every scoped package,
+ *   and `//host/:_authToken` does not reach a registry at `//host/npm/`;
+ * - yarn's own default registry also takes `registry.npmjs.org`'s credentials.
+ */
+export const yarnV1AuthorizationFor = (
+  url: URL,
+  registry: string,
+  config: Pick<RegistryConfig, 'registry' | 'scopedRegistries' | 'yarnV1Auth'>,
+): string | undefined => {
+  const auth = config.yarnV1Auth
+  if (!auth) return undefined
+  const isDefault = registry === config.registry
+  if (!isDefault && !Object.values(config.scopedRegistries).includes(registry))
+    return undefined
+  const route =
+    isDefault && auth.yarnDefault ? YARN_V1_REGISTRY : registry.trim()
+  let path = url.pathname
+  try {
+    const own = new URL(registry.trim()).pathname.replace(/\/?$/, '/')
+    if (path.startsWith(own)) path = path.slice(own.length)
+  } catch {
+    return undefined
+  }
+  if (!YARN_SCOPED.test(path) && !yarnV1Option(auth, route, 'always-auth')) {
+    return undefined
+  }
+  const routes =
+    route === YARN_V1_REGISTRY ? [route, YARN_V1_NPM_REGISTRY] : [route]
+  for (const reg of routes) {
+    const found = yarnV1AuthByRegistry(auth, reg)
+    if (found) return found
   }
   return undefined
 }

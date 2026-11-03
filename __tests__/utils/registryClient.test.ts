@@ -4,6 +4,7 @@ import os from 'os'
 import path from 'path'
 import tls from 'tls'
 import zlib from 'zlib'
+import { yarnV1AuthOptions } from '@/managers/yarn/npmrc'
 import type { RegistryConfig } from '@/types'
 import { type Npmrc, parseNpmrc } from '@/utils/npmrc'
 import {
@@ -346,6 +347,78 @@ describe('registry client', () => {
       )
       expect(await get(config, server)).toEqual({ ok: 'noclient' })
       expect(authOf(server)).toEqual(['Bearer TOK'])
+    })
+  })
+
+  // yarn 1.22.22's rule (#126; probes c01, c03, c12, c13 on 2026-11-03).
+  describe('yarn v1 credentials', () => {
+    const yarnConfigFrom = (npmrc: string): RegistryConfig => ({
+      ...configFrom(npmrc),
+      yarnV1Auth: {
+        options: yarnV1AuthOptions(parseNpmrc(npmrc, {})),
+        yarnDefault: false,
+      },
+    })
+    const toLoopback = ((
+      _host: string,
+      _options: unknown,
+      callback: (
+        error: null,
+        address: { address: string; family: number }[],
+      ) => void,
+    ) => {
+      callback(null, [{ address: '127.0.0.1', family: 4 }])
+    }) as unknown as RegistryClientOptions['lookup']
+    const redirectingTo = (location: string) =>
+      registry((_req, res) => {
+        res.statusCode = 302
+        res.setHeader('location', location)
+        res.end()
+      })
+
+    it("sends no token for an unscoped package, where npm's rule sends the host's", async () => {
+      const server = await registry()
+      const config = yarnConfigFrom(
+        `registry=${server.url}\n//127.0.0.1:${server.port}/:_authToken=T`,
+      )
+      await get(config, server, 'probe-unscoped')
+      expect(authOf(server)).toEqual([undefined])
+    })
+
+    it('sends the bare _authToken for a scoped package', async () => {
+      const server = await registry()
+      const config = yarnConfigFrom(
+        `_authToken=U\n@acme:registry=${server.url}`,
+      )
+      await get(config, server, '@acme%2fprobe')
+      expect(authOf(server)).toEqual(['Bearer U'])
+    })
+
+    it('keeps the header on a redirect to another port of the same host', async () => {
+      const target = await registry()
+      const server = await redirectingTo(`${target.url}@acme%2fprobe`)
+      const config = yarnConfigFrom(
+        `@acme:registry=${server.url}\n//127.0.0.1:${server.port}/:_authToken=T`,
+      )
+      await get(config, server, '@acme%2fprobe')
+      expect(authOf(server)).toEqual(['Bearer T'])
+      expect(authOf(target)).toEqual(['Bearer T'])
+    })
+
+    it('drops the header on a redirect to another host', async () => {
+      const target = await registry()
+      const server = await redirectingTo(
+        `http://other.test:${target.port}/@acme%2fprobe`,
+      )
+      const config = yarnConfigFrom(
+        `@acme:registry=${server.url}\n//127.0.0.1:${server.port}/:_authToken=T\n//other.test:${target.port}/:_authToken=OTHER`,
+      )
+      await clientFor(config, toLoopback).getJson(
+        `${server.url}@acme%2fprobe`,
+        server.url,
+      )
+      expect(authOf(server)).toEqual(['Bearer T'])
+      expect(authOf(target)).toEqual([undefined])
     })
   })
 

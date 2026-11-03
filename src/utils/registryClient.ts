@@ -16,6 +16,7 @@ import {
   isRetryableError,
   isRetryableStatus,
   retryDelay,
+  yarnV1AuthorizationFor,
 } from './registryRequest'
 
 /** What a GET came back with; `authenticated` is true when any hop sent credentials. */
@@ -283,6 +284,7 @@ export const createRegistryClient = (
     accept: string,
     timeoutMs: number,
     ifNoneMatch: string | undefined,
+    yarnAuthorization: ((hop: URL) => string | undefined) | undefined,
   ): Promise<Outcome> => {
     const url = new URL(target)
     const hop = { registry, redirected }
@@ -292,7 +294,10 @@ export const createRegistryClient = (
     url.username = ''
     url.password = ''
     const credentials = credentialsFor(url, registry, config.credentials)
-    const authorization = authorizationFor(credentials) ?? userinfo
+    const authorization =
+      (yarnAuthorization
+        ? yarnAuthorization(url)
+        : authorizationFor(credentials)) ?? userinfo
     const authenticated =
       Boolean(authorization) ||
       Boolean(credentials?.certfile && credentials?.keyfile)
@@ -386,6 +391,16 @@ export const createRegistryClient = (
     let target = new URL(url)
     let redirects = 0
     let authenticated = false
+    // yarn v1 decides once, for the URL it built (#126); its `request` library
+    // keeps the header on a redirect to the same hostname, any port or
+    // protocol, and drops it on another (probes c12, c13).
+    const first = target
+    const yarnHeader = config.yarnV1Auth
+      ? yarnV1AuthorizationFor(first, registry, config)
+      : undefined
+    const yarnAuthorization = config.yarnV1Auth
+      ? (hop: URL) => (hop.hostname === first.hostname ? yarnHeader : undefined)
+      : undefined
 
     for (let attempt = 0; ; ) {
       const hop = { registry, redirected: redirects > 0 }
@@ -399,6 +414,7 @@ export const createRegistryClient = (
           accept,
           timeoutMs,
           requestOptions.ifNoneMatch,
+          yarnAuthorization,
         )
       } catch (error) {
         if (attempt < retries && isRetryableError(error)) {

@@ -1,4 +1,4 @@
-import type { RegistryConfig, RegistryCredentials } from '@/types'
+import type { RegistryConfig, RegistryCredentials, YarnV1Auth } from '@/types'
 import {
   ABBREVIATED_ACCEPT,
   authorizationFor,
@@ -21,6 +21,9 @@ import {
   RETRY_MAX_MS,
   registryFor,
   retryDelay,
+  YARN_V1_REGISTRY,
+  yarnV1AuthorizationFor,
+  yarnV1RegistryKeys,
 } from '@/utils/registryRequest'
 
 const config = (overrides: Partial<RegistryConfig> = {}): RegistryConfig => ({
@@ -165,6 +168,225 @@ describe('authorizationFor', () => {
   it('sends nothing without credentials', () => {
     expect(authorizationFor(undefined)).toBeUndefined()
     expect(header({ username: 'user' })).toBeUndefined()
+  })
+})
+
+// yarn 1.22.22's rule (#126). Each row is a probe run on 2026-11-03: yarn
+// install against local registries logging Authorization (c01-c20), the
+// header yarn sent with the packument request.
+describe('yarn v1 credentials', () => {
+  const B = 'http://127.0.0.1:4872/'
+  const yarnConfig = (
+    options: YarnV1Auth['options'],
+    routes: { registry?: string; scopes?: Record<string, string> } = {},
+    yarnDefault = false,
+  ) => ({
+    registry: routes.registry ?? 'https://registry.npmjs.org/',
+    scopedRegistries: routes.scopes ?? {},
+    yarnV1Auth: { options, yarnDefault },
+  })
+  const sent = (
+    name: string,
+    cfg: ReturnType<typeof yarnConfig>,
+  ): string | undefined => {
+    const registry = registryFor(name, { ...config(), ...cfg })
+    return yarnV1AuthorizationFor(
+      new URL(packumentUrl(name, registry)),
+      registry,
+      cfg,
+    )
+  }
+  const password = Buffer.from('p').toString('base64')
+  const userPass = `Basic ${Buffer.from('u:p').toString('base64')}`
+
+  it('tries the registry, without its protocol, then without a trailing registry/', () => {
+    expect(
+      yarnV1RegistryKeys('https://host/api/registry/', '_authToken'),
+    ).toEqual([
+      'https://host/api/registry/:_authToken',
+      '//host/api/registry/:_authToken',
+      '//host/api/:_authToken',
+      'https://host/api/:_authToken',
+      '//host/api/:_authToken',
+    ])
+    expect(yarnV1RegistryKeys('http://host:1', 'username')).toEqual([
+      'http://host:1/:username',
+      '//host:1/:username',
+    ])
+  })
+
+  it.each([
+    [
+      'c01: no token for an unscoped package',
+      'probe-unscoped',
+      { '//127.0.0.1:4872/:_authToken': 'T' },
+      { registry: B },
+      undefined,
+    ],
+    [
+      'c02: a token for an unscoped package with always-auth',
+      'probe-unscoped',
+      { '//127.0.0.1:4872/:_authToken': 'T', 'always-auth': true },
+      { registry: B },
+      'Bearer T',
+    ],
+    [
+      'c03: the bare _authToken for a scoped package',
+      '@acme/probe',
+      { _authToken: 'U' },
+      { scopes: { '@acme': B } },
+      'Bearer U',
+    ],
+    [
+      'c04: no bare _authToken for an unscoped package',
+      'probe-unscoped',
+      { _authToken: 'U' },
+      { registry: B },
+      undefined,
+    ],
+    [
+      'c05: no host token for a registry at a path (no walk up)',
+      '@acme/probe',
+      { '//127.0.0.1:4872/:_authToken': 'T' },
+      { scopes: { '@acme': `${B}npm/` } },
+      undefined,
+    ],
+    [
+      'c06: the token of the registry without its trailing registry/',
+      '@acme/probe',
+      { '//127.0.0.1:4872/api/:_authToken': 'T' },
+      { scopes: { '@acme': `${B}api/registry/` } },
+      'Bearer T',
+    ],
+    [
+      'c07: a key written with the protocol',
+      '@acme/probe',
+      { 'http://127.0.0.1:4872/:_authToken': 'T' },
+      { scopes: { '@acme': B } },
+      'Bearer T',
+    ],
+    [
+      "c08: the registry's own always-auth",
+      'probe-unscoped',
+      {
+        '//127.0.0.1:4872/:_authToken': 'T',
+        '//127.0.0.1:4872/:always-auth': true,
+      },
+      { registry: B },
+      'Bearer T',
+    ],
+    [
+      'c09: the bare _auth',
+      '@acme/probe',
+      { _auth: 'QUJD' },
+      { scopes: { '@acme': B } },
+      'Basic QUJD',
+    ],
+    [
+      'c10: the bare username and _password',
+      '@acme/probe',
+      { username: 'u', _password: password },
+      { scopes: { '@acme': B } },
+      userPass,
+    ],
+    [
+      "c11: the registry's token over the bare one",
+      '@acme/probe',
+      { '//127.0.0.1:4872/:_authToken': 'T', _authToken: 'U' },
+      { scopes: { '@acme': B } },
+      'Bearer T',
+    ],
+    [
+      "c14: the registry's username with the bare _password",
+      '@acme/probe',
+      { '//127.0.0.1:4872/:username': 'u', _password: password },
+      { scopes: { '@acme': B } },
+      userPass,
+    ],
+    [
+      'c15: always-auth with nothing to send',
+      'probe-unscoped',
+      { 'always-auth': true },
+      { registry: B },
+      undefined,
+    ],
+    [
+      "c18: the registry's exact path",
+      '@acme/probe',
+      { '//127.0.0.1:4872/npm/:_authToken': 'T' },
+      { scopes: { '@acme': `${B}npm/` } },
+      'Bearer T',
+    ],
+    [
+      "c20: a registry's always-auth=false falls through to the bare one",
+      'probe-unscoped',
+      {
+        '//127.0.0.1:4872/:_authToken': 'T',
+        '//127.0.0.1:4872/:always-auth': false,
+        'always-auth': true,
+      },
+      { registry: B },
+      'Bearer T',
+    ],
+  ])('%s', (_label, name, options, routes, expected) => {
+    expect(sent(name, yarnConfig(options, routes))).toBe(expected)
+  })
+
+  it('looks a scoped dist-tags request up by the path after the registry', () => {
+    const cfg = yarnConfig({ _authToken: 'U' }, { registry: `${B}npm/` })
+    const header = (name: string) =>
+      yarnV1AuthorizationFor(
+        new URL(distTagsUrl(name, `${B}npm/`)),
+        `${B}npm/`,
+        cfg,
+      )
+    expect(header('@types/ms')).toBe('Bearer U')
+    expect(header('ms')).toBeUndefined()
+  })
+
+  it('sends nothing to a base no package routes to, such as deps.dev', () => {
+    const cfg = yarnConfig({ _authToken: 'U', 'always-auth': true })
+    expect(
+      yarnV1AuthorizationFor(
+        new URL(depsDevUrl('@types/ms', DEFAULT_ENDPOINTS.depsDev)),
+        DEFAULT_ENDPOINTS.depsDev,
+        cfg,
+      ),
+    ).toBeUndefined()
+  })
+
+  it("looks yarn's own default registry up first, then npm's", () => {
+    const npmToken = { '//registry.npmjs.org/:_authToken': 'NPM' }
+    expect(sent('@types/ms', yarnConfig(npmToken, {}, true))).toBe('Bearer NPM')
+    expect(
+      sent(
+        '@types/ms',
+        yarnConfig(
+          { ...npmToken, '//registry.yarnpkg.com/:_authToken': 'YARN' },
+          {},
+          true,
+        ),
+      ),
+    ).toBe('Bearer YARN')
+    expect(
+      sent('@types/ms', yarnConfig(npmToken, { registry: YARN_V1_REGISTRY })),
+    ).toBe('Bearer NPM')
+    // A configured registry.npmjs.org is not yarn's default: its own keys only.
+    expect(
+      sent(
+        '@types/ms',
+        yarnConfig({ '//registry.yarnpkg.com/:_authToken': 'YARN' }),
+      ),
+    ).toBeUndefined()
+  })
+
+  it('is off without the yarn v1 rule', () => {
+    expect(
+      yarnV1AuthorizationFor(new URL(`${B}@acme%2fprobe`), B, {
+        registry: B,
+        scopedRegistries: {},
+      }),
+    ).toBeUndefined()
   })
 })
 
