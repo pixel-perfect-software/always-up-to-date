@@ -5,6 +5,7 @@ import type {
   RegistryVersion,
   ReleaseAgeExemption,
   ReleaseAgeGate,
+  ReleaseWindow,
 } from '@/types'
 import type { RegistrySession } from './registry'
 
@@ -152,10 +153,12 @@ export const gatePackage = (
  * `lookup` answers with the versions the gate lets through, and a package it
  * lets none through is a `quarantined` failure, which discovery leaves out.
  * `releaseTimes` keeps only those versions' times, so a cooldown fallback
- * never lands on one the gate holds. Times missing from a lookup (a
- * packument without `time`) come from `releaseTimes`, the full packument;
- * a version still without one passes only where the manager lets it. `gate` is
- * read on the first lookup, so opening a project reads nothing.
+ * never lands on one the gate holds, and the window a cooldown asks about
+ * goes through to the session. Times missing from a lookup (a packument
+ * without `time`, and no deps.dev time to add) come from `releaseTimes` for
+ * every version, through the reader's limiter and cache; a version still
+ * without one passes only where the manager lets it. `gate` is read on the
+ * first lookup, so opening a project reads nothing.
  */
 export const withReleaseAgeGate = <
   S extends Pick<RegistrySession, 'lookup' | 'releaseTimes'>,
@@ -184,8 +187,11 @@ export const withReleaseAgeGate = <
         : `every version is younger than ${active.setting} (${gateMinutesFor(name, active)} minutes)`,
     }
   },
-  releaseTimes: async (name: string): Promise<Record<string, string>> => {
-    const times = await session.releaseTimes(name)
+  releaseTimes: async (
+    name: string,
+    window?: ReleaseWindow,
+  ): Promise<Record<string, string>> => {
+    const times = await session.releaseTimes(name, window)
     const active = gate()
     if (!active || !isActive(name, active)) return times
     const minutes = gateMinutesFor(name, active)

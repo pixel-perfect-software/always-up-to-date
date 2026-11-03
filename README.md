@@ -181,13 +181,13 @@ Run `check` or `update --dry-run` from a member's directory (or any directory in
 
 ## 🗄️ Cache
 
-autd keeps what it learns from the registries (each package's latest version and the list of its versions) so a second `check` within five minutes asks nobody. The folder is `ca.pixel-perfect.alwaysuptodate` in:
+autd keeps what it learns from the registries (each package's latest version, the list of its versions, and when versions were published, for `cooldown` and a manager's release-age setting) so a second `check` within five minutes asks nobody. The folder is `ca.pixel-perfect.alwaysuptodate` in:
 
 - `~/Library/Caches/` on macOS
 - `$XDG_CACHE_HOME` if it is an absolute path, else `~/.cache`, on Linux and other Unixes
 - `%LOCALAPPDATA%` on Windows
 
-It holds derived version lists only, never a registry document, a header or anything about your credentials. Latest versions are kept for 5 minutes and deps.dev lists for an hour; a registry's own `Cache-Control` can shorten that. A stale package document is checked with the registry (`If-None-Match`) rather than downloaded again. An answer from a registry you authenticate to is reused without asking only when the package is also public on deps.dev; otherwise autd asks the registry each time (a cheap `304` when nothing changed). The folder stays under 32 MiB, dropping the least recently used entries.
+It holds derived version lists only, never a registry document, a header or anything about your credentials. Latest versions are kept for 5 minutes and deps.dev lists for an hour; a registry's own `Cache-Control` can shorten that. A stale package document is checked with the registry (`If-None-Match`) rather than downloaded again. An answer from a registry you authenticate to is reused without asking only when the package is also public on deps.dev; otherwise autd asks the registry each time (a cheap `304` when nothing changed). Publish dates never change, so a stored package document that already lists every version autd needs a date for is reused whatever its age, unless the registry needs credentials or says to check each time. autd downloads a package's full document only for a date the lookup didn't give: on the public npm registry, for versions deps.dev has not indexed yet; on any other registry or with `depsDev: false`, for the versions a cooldown or a release-age setting judges. The folder stays under 32 MiB, dropping the least recently used entries.
 
 - `--no-cache` on `check` or `update`, or `AUTD_NO_CACHE` set to anything but empty, `0` or `false` (`1` and `true` both work), reads and writes nothing.
 - `AUTD_CACHE_DIR=<path>` puts the folder somewhere else; autd only writes inside its `v1/` subfolder.

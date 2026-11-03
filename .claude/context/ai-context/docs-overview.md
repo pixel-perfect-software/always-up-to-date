@@ -60,11 +60,11 @@ src/
 schema/
   config.schema.json        # JSON schema for .always-up-to-date.json (referenced via $schema)
 testRepos/                  # Integration fixtures, <manager>-<layout> (README.md); lockfiles are generated in temp copies, never committed
-bench/                      # pnpm run bench: pinned/ and ranges/ (the 40-dependency benchmark manifests), run.ts (copy, install, hyperfine, table), targets.ts (selection, cold caches), report.ts (hyperfine JSON parsing, table), register.cjs (swc loader for run.ts)
+bench/                      # pnpm run bench: pinned/ and ranges/ (the 40-dependency benchmark manifests), run.ts (copy, install, hyperfine, the moving-rows guard, three tables), targets.ts (selection, cold caches, MOVING_CONFIG / COOLDOWN_CONFIG), report.ts (hyperfine JSON parsing, formatDifference, movingRows, tables), register.cjs (swc loader for run.ts)
 jest.integration.config.ts  # Jest config for the integration matrix (not part of pnpm test)
 __tests__/
   integration/              # pnpm run test:integration: harness.ts (copy, pin to minimum, install, run the CLI, frozenInstall, snapshotFiles, runCliExpectingFailure), lockfiles.ts (yarn v1/berry/bun rewriters), expectations.ts (derived values, expectedMemberCheck / expectedMemberPlan, per-manager overrides), matrix.ts (runMatrix, runMemberMatrix), <manager>.test.ts
-  bench/                    # report.test.ts (hyperfine 2 JSON parsing, formatting, table), targets.test.ts (selection, cold caches)
+  bench/                    # report.test.ts (hyperfine 2 JSON parsing, formatting and formatDifference, movingRows, table), targets.test.ts (selection, cold caches)
   setup.ts                  # Global test setup (console suppression, AUTD_NO_CACHE=1)
   index.test.ts             # CLI entry: a failure to start prints and exits 1
   cli.test.ts               # Loading the CLI reads no config
@@ -119,18 +119,18 @@ __tests__/
     cooldown.test.ts        # Normalize/evaluate cooldown gate
     duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests; readPnpmCatalogs / readBunCatalogs and their agreement with the pnpm writer
-    filterPackages.test.ts  # Package filtering, targeting, cooldown integration, cooldown fallbacks and pinned rows (#147), a fallback only within the declared range (#151), an alias judged by its target (#152), splitUpdates with pinMembers (#127)
+    filterPackages.test.ts  # Package filtering, targeting, cooldown integration, cooldown fallbacks and pinned rows (#147), a fallback only within the declared range (#151), an alias judged by its target (#152), releaseTimes asked with { current, target } and never for a zero-day step, splitUpdates with pinMembers (#127)
     logger.test.ts          # Logger output, configure(), quiet and JSON output modes; report(): every row once under its outcome, merged manifests, summary line (#138); memberRun(), no manifest column in a member run (#123)
     npmrc.test.ts           # .npmrc parser: cases ported from ini 7, npm's ${VAR} substitution
     npmrcLayers.test.ts     # mergeNpmrcLayers (per key, origin), envLayer rules, npmrcFileLayer (substitute null leaves out ${…}), npmNpmrcLayers order and merge
     npmrcLoader.test.ts     # Layering (global, user, project, npm_config_*), workspace root, RegistryConfig, on temp dirs
     registryRequest.test.ts # Pure client helpers: scoped registry, prefix walk, Authorization forms, yarn v1's credential rule on the c01-c20 probe rows (#126), berry's on r01-r30 (#107), retry rules, public-registry check, dist-tags and deps.dev URLs, package-name rule
     registryClient.test.ts  # node:https client against local HTTP(S) servers and a CONNECT proxy: auth, TLS, mTLS, proxies, retries, timeout, maxsockets, redirects, per-request accept/timeout/retries, stats(); yarn v1's rule on the wire, a redirect keeping the header on the same hostname (#126); berry's rule, a redirect keeping it on the same origin only (#107)
-    registry.test.ts        # createRegistrySession: lazy config and client, one per run, in-flight dedupe, fails open, scoped registry (#104), close(), lookup() sharing the client and honoring depsDev
-    registryReader.test.ts  # createRegistryReader on captured bodies and local servers: deps.dev path, packument fallbacks, breaker, depsDev: false, other registries, credentials, 404s, failures, dedupe, bounded concurrency; with the disk cache: TTLs, 304 revalidation, Q1 (authenticated answers), Cache-Control, no stale fallback, unwritable folder
+    registry.test.ts        # createRegistrySession: lazy config and client, one per run, releaseTimes() on @types/ms captures (a lookup, then one full packument; fails open; scoped registry and credentials, #104), close(), lookup() sharing the client and honoring depsDev, releaseTimes() answered from deps.dev's dates (#139), and behind a pnpm-shaped release-age gate (one full request for a lagging deps.dev, none after)
+    registryReader.test.ts  # createRegistryReader on captured bodies and local servers: deps.dev path, packument fallbacks, breaker, depsDev: false, other registries, credentials, 404s, failures, dedupe, bounded concurrency; releaseTimes (#47): deps.dev's times kept on the packument path, no packument request for a name deps.dev lists, the window, one full request per name, only listed versions, failures, the limiter; with the disk cache: TTLs, 304 revalidation, Q1 (authenticated answers), Cache-Control, no stale fallback, unwritable folder, the coverage rule on packument-full (any age, a missing version revalidates and replaces, authenticated and no-cache asked every run, no token stored)
     registryCache.test.ts   # The store: cacheDirectory per platform, endpointKey, freshFor, round trips, misses, atomic writes across processes, pruning, fails open, modes
-    registryDocuments.test.ts # dist-tags, deps.dev and packument parsers on the fixtures; the sources agree; malformed input
-    releaseAgeGate.test.ts  # A manager's release-age gate (#166) on registry captures: per-scope minutes, npmPreapprovedPackages forms, latest moved below a quarantined one, no time quarantined, the full packument's times filling a packument, quarantined lookups, releaseTimes filtered
+    registryDocuments.test.ts # dist-tags, deps.dev and packument parsers on the fixtures; the sources agree; malformed input; non-string and unlisted-version `time` entries
+    releaseAgeGate.test.ts  # A manager's release-age gate (#166) on registry captures: per-scope minutes, npmPreapprovedPackages forms, latest moved below a quarantined one, no time quarantined, the full packument's times filling a packument, quarantined lookups, releaseTimes filtered and a cooldown's window forwarded
     limiter.test.ts         # createLimiter: peak, FIFO, rejection frees the slot
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping

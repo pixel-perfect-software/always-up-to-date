@@ -1,4 +1,4 @@
-import type { PackageLookup, ReleaseAgeGate } from '@/types'
+import type { PackageLookup, ReleaseAgeGate, ReleaseWindow } from '@/types'
 import {
   exemptionOf,
   gateMinutesFor,
@@ -139,11 +139,14 @@ describe('withReleaseAgeGate', () => {
   const now = () => MS_2_1_3 + 60 * 60_000
   const session = (lookup: PackageLookup, times: Record<string, string>) => {
     const calls: string[] = []
+    const windows: Array<ReleaseWindow | undefined> = []
     return {
       calls,
+      windows,
       lookup: async (_name: string) => lookup,
-      releaseTimes: async (name: string) => {
+      releaseTimes: async (name: string, window?: ReleaseWindow) => {
         calls.push(name)
+        windows.push(window)
         return times
       },
     }
@@ -169,6 +172,22 @@ describe('withReleaseAgeGate', () => {
     )
     expect(result.ok && result.package.latest).toBe('2.1.2')
     expect(base.calls).toEqual(['ms'])
+  })
+
+  it("forwards a cooldown's window to the session, and asks about every version for its own lookup", async () => {
+    const base = session(
+      { ok: true, package: capturedPackage('ms', { source: 'packument' }) },
+      { '2.1.2': '2019-06-06T17:31:55Z', '2.1.3': '2020-12-08T13:54:35Z' },
+    )
+    const gated = withReleaseAgeGate(base, () => gate(), now)
+
+    await gated.lookup('ms')
+    await gated.releaseTimes('ms', { current: '2.1.2', target: '2.1.3' })
+
+    expect(base.windows).toEqual([
+      undefined,
+      { current: '2.1.2', target: '2.1.3' },
+    ])
   })
 
   it('answers quarantined when the gate lets no version through', async () => {

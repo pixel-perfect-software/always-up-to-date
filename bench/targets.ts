@@ -1,5 +1,17 @@
 import path from 'path'
 import { type Manager, parseSelection } from '../__tests__/integration/harness'
+import type { ConfigFile } from '../src/types'
+
+/** The pinned dependencies move to `latest` (a peer conflict holds a few), so each reaches the cooldown gate; the default policy holds exact pins. */
+export const MOVING_CONFIG = {
+  beyondRange: 'major',
+} as const satisfies ConfigFile
+
+/** `MOVING_CONFIG` and a cooldown, nothing else: the difference of their times is the cooldown's cost. */
+export const COOLDOWN_CONFIG = {
+  ...MOVING_CONFIG,
+  cooldown: 7,
+} as const satisfies ConfigFile
 
 /**
  * What the benchmark times: the five managers, with yarn berry twice. `berry`

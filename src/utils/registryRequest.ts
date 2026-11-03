@@ -356,6 +356,24 @@ export const parseCacheControl = (
   return directives
 }
 
+/**
+ * Whether a stored answer may be reused only once the registry confirms it (a
+ * 304): it was fetched with credentials and isn't known to be the same for
+ * everyone, or the registry said `private`, `no-cache` or `max-age=0`.
+ */
+export const revalidatesEveryUse = (
+  meta: { authenticated?: boolean; cacheControl?: string },
+  sameForEveryone = false,
+): boolean => {
+  const directives = parseCacheControl(meta.cacheControl)
+  return (
+    directives.isPrivate ||
+    (meta.authenticated === true && !sameForEveryone) ||
+    directives.noCache ||
+    directives.maxAge === 0
+  )
+}
+
 /** Sent for packuments: npm's install-time document, which omits most fields. */
 export const ABBREVIATED_ACCEPT =
   'application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*'

@@ -89,6 +89,43 @@ export const formatSeconds = (seconds: number): string => {
   return `${seconds.toFixed(seconds < 10 ? 2 : 1)} s`
 }
 
+/**
+ * A signed difference in `formatSeconds`' units: `+0.12 s`, `-8 ms`, `+0 ms`.
+ * The sign is the rounded value's, so noise under half a millisecond is `+0 ms`.
+ */
+export const formatDifference = (seconds: number): string => {
+  const text = formatSeconds(Math.abs(seconds))
+  return `${seconds < 0 && /[1-9]/.test(text) ? '-' : '+'}${text}`
+}
+
+/**
+ * How many rows `autd update --dry-run --json` plans to move: the ones with
+ * `updated: true`. The cooldown rows only measure something when this is above
+ * zero, because a row with no target never reaches the gate. An `{ error }`
+ * document (autd's failure output) throws with autd's message.
+ */
+export const movingRows = (text: string): number => {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('update --dry-run --json printed no JSON')
+  }
+
+  if (Array.isArray(parsed)) {
+    return parsed.filter((row) => isRecord(row) && row.updated === true).length
+  }
+  const failure = isRecord(parsed) ? parsed.error : undefined
+  if (isRecord(failure) && typeof failure.message === 'string') {
+    throw new Error(
+      typeof failure.step === 'string'
+        ? `Failed during ${failure.step}: ${failure.message}`
+        : failure.message,
+    )
+  }
+  throw new Error('update --dry-run --json printed neither rows nor an error')
+}
+
 /** Megabytes (10^6 bytes), or `n/a` when hyperfine reported none. */
 export const formatMemory = (bytes: number | undefined): string =>
   bytes === undefined ? 'n/a' : `${Math.round(bytes / 1e6)} MB`

@@ -287,6 +287,16 @@ export interface RegistryPackage {
   source: 'deps.dev' | 'packument'
 }
 
+/**
+ * The versions a cooldown judges for a row moving from `current` to `target`:
+ * above `current`, up to and including `target`. Only a version in this window
+ * is worth a full packument when the lookup has no publish time for it.
+ */
+export interface ReleaseWindow {
+  current: string
+  target: string
+}
+
 /** `quarantined`: the manager's release-age gate lets no version through (#166). */
 export type LookupFailureKind =
   | 'not-found'

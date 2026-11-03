@@ -1,8 +1,10 @@
 import {
+  formatDifference,
   formatMemory,
   formatSeconds,
   formatTiming,
   hyperfineMajor,
+  movingRows,
   parseHyperfine,
   renderTable,
 } from '../../bench/report'
@@ -90,6 +92,17 @@ describe('formatting', () => {
     expect(formatSeconds(seconds)).toBe(text)
   })
 
+  it.each([
+    [0.123, '+0.12 s'],
+    [0.0126, '+13 ms'],
+    [-0.008, '-8 ms'],
+    [-0.35, '-0.35 s'],
+    [0, '+0 ms'],
+    [-0.0004, '+0 ms'],
+  ])('formats a difference of %s seconds as %s', (seconds, text) => {
+    expect(formatDifference(seconds)).toBe(text)
+  })
+
   it('formats a timing with its deviation in the mean’s unit', () => {
     expect(
       formatTiming({ mean: 0.92, stddev: 0.034, median: 0.9, runs: 5 }),
@@ -102,6 +115,81 @@ describe('formatting', () => {
   it('formats memory in megabytes, or n/a', () => {
     expect(formatMemory(347_400_000)).toBe('347 MB')
     expect(formatMemory(undefined)).toBe('n/a')
+  })
+})
+
+describe('movingRows', () => {
+  const row = (fields: object): object => ({
+    name: 'ms',
+    current: '2.0.0',
+    wanted: '2.0.0',
+    latest: '2.1.3',
+    updateType: 'minor',
+    ...fields,
+  })
+
+  it('counts the rows that move', () => {
+    const rows = [
+      row({ name: 'ms', target: '2.1.3', updated: true }),
+      row({ name: 'debug', target: '4.4.3', updated: true }),
+    ]
+
+    expect(movingRows(JSON.stringify(rows))).toBe(2)
+  })
+
+  it('leaves out the rows that are held or not targeted', () => {
+    const rows = [
+      row({ name: 'ms', target: '2.1.3', updated: true }),
+      row({
+        name: 'debug',
+        updated: false,
+        reason: 'cooldown: released 2d ago, requires 7d',
+      }),
+      row({ name: 'semver', updated: false, reason: 'not targeted' }),
+    ]
+
+    expect(movingRows(JSON.stringify(rows))).toBe(1)
+  })
+
+  it('counts a cooldown fallback, which moves below its target', () => {
+    const rows = [
+      row({
+        name: 'debug',
+        target: '4.4.1',
+        updated: true,
+        reason: 'cooldown: 4.4.3 released 2d ago, requires 7d',
+      }),
+    ]
+
+    expect(movingRows(JSON.stringify(rows))).toBe(1)
+  })
+
+  it('counts none in an empty list', () => {
+    expect(movingRows('[]')).toBe(0)
+  })
+
+  it('throws autd’s message for the error document a failed run prints', () => {
+    const failure = {
+      error: {
+        step: 'discover',
+        message: 'Could not look up 2 packages',
+        manifestWritten: false,
+      },
+    }
+
+    expect(() => movingRows(JSON.stringify(failure))).toThrow(
+      'Failed during discover: Could not look up 2 packages',
+    )
+    expect(() =>
+      movingRows(JSON.stringify({ error: { message: 'Bad config' } })),
+    ).toThrow('Bad config')
+  })
+
+  it('throws on output that is not JSON, or neither rows nor an error', () => {
+    expect(() => movingRows('Nothing to update')).toThrow(/printed no JSON/)
+    expect(() => movingRows('')).toThrow(/printed no JSON/)
+    expect(() => movingRows('{}')).toThrow(/neither rows nor an error/)
+    expect(() => movingRows('"ok"')).toThrow(/neither rows nor an error/)
   })
 })
 

@@ -3,7 +3,7 @@ import {
   parseDistTags,
   parsePackument,
 } from '@/utils/registryDocuments'
-import { registryBody } from '../fixtures/registry'
+import { derive, registryBody } from '../fixtures/registry'
 
 const json = (name: string): unknown => JSON.parse(registryBody(name))
 
@@ -206,6 +206,35 @@ describe('parsePackument', () => {
       { version: '1.0.0', deprecated: false },
       { version: '1.1.0', deprecated: false },
     ])
+  })
+
+  it('keeps only the string entries of time, and only for versions the document lists', () => {
+    const body = JSON.parse(
+      derive<{
+        versions: Record<string, unknown>
+        time: Record<string, unknown>
+      }>('types-ms.packument-full', (full) => {
+        full.time['2.1.0'] = 7
+        full.time['0.7.34'] = null
+        // Unpublished, but the registry keeps its time entry.
+        delete full.versions['0.7.33']
+      }),
+    )
+
+    const versions = parsePackument(body)?.versions ?? []
+
+    expect(versions).toHaveLength(16)
+    expect(versions.find((v) => v.version === '0.7.33')).toBeUndefined()
+    expect(versions.find((v) => v.version === '2.1.0')?.publishedAt).toBe(
+      undefined,
+    )
+    expect(versions.find((v) => v.version === '0.7.34')?.publishedAt).toBe(
+      undefined,
+    )
+    expect(versions.find((v) => v.version === '0.7.32')?.publishedAt).toBe(
+      '2023-09-27T10:26:06.002Z',
+    )
+    expect(versions.filter((v) => v.publishedAt)).toHaveLength(14)
   })
 
   it('leaves latest out when dist-tags has none that is valid', () => {

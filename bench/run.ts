@@ -10,18 +10,23 @@ import {
   managerEnv,
   YARN_VERSIONS,
 } from '../__tests__/integration/harness'
+import type { ConfigFile } from '../src/types'
 import { runProcess } from '../src/utils/runProcess'
 import {
+  formatDifference,
   formatMemory,
   formatSeconds,
   formatTiming,
   hyperfineMajor,
+  movingRows,
   parseHyperfine,
   renderTable,
   type Timing,
 } from './report'
 import {
+  COOLDOWN_CONFIG,
   coldCaches,
+  MOVING_CONFIG,
   managerOf,
   runsFrom,
   selectedTargets,
@@ -48,7 +53,14 @@ type Row = {
   label: string
   warm: Timing
   cold: Timing
-  cooldown: Timing
+  /** Rows the moving config plans to update: each one reaches the cooldown gate. */
+  targets: number
+  /** `MOVING_CONFIG`, cold. */
+  moving: Timing
+  /** `COOLDOWN_CONFIG`, cold. */
+  cooldownCold: Timing
+  /** `COOLDOWN_CONFIG`, warm. */
+  cooldownWarm: Timing
 }
 
 type Outcome = { target: Target; row: Row } | { target: Target; error: string }
@@ -156,6 +168,28 @@ const hyperfine = async (
   }
 }
 
+/**
+ * `autd update --dry-run --json`'s stdout in `cwd`. A failed run prints its
+ * `{ error }` document there too, which `movingRows` words.
+ */
+const dryRunJson = async (cli: string, cwd: string): Promise<string> => {
+  try {
+    return (
+      await runProcess(
+        process.execPath,
+        [cli, 'update', '--dry-run', '--json'],
+        { cwd },
+      )
+    ).stdout
+  } catch (error) {
+    const { stdout } = error as { stdout?: string }
+    if (stdout?.trim()) return stdout
+    throw new Error(
+      `autd update --dry-run --json failed in ${cwd}\n${output(error) || String(error)}`,
+    )
+  }
+}
+
 /** Corepack shims for yarn in `dir`, so the manifests' `packageManager` picks yarn 1 or berry. */
 const enableYarn = async (dir: string): Promise<void> => {
   fs.mkdirSync(dir, { recursive: true })
@@ -223,6 +257,7 @@ const measure = async (
   const manager: Manager = managerOf(target)
   const restoreEnv = managerEnv(manager)
   let cwd: string | undefined
+  let config: string | undefined
   try {
     const caches = coldCaches(target, cacheRoot)
     Object.assign(process.env, caches.env)
@@ -245,29 +280,46 @@ const measure = async (
     )
 
     log(`${label}: check, cold`)
-    const [cold] = await hyperfine(
-      cwd,
-      [
-        '--prepare',
-        `rm -rf ${caches.dirs.map(quote).join(' ')}`,
-        '--runs',
-        String(runs.cold),
-      ],
-      [check],
-    )
+    const coldRuns = [
+      '--prepare',
+      `rm -rf ${caches.dirs.map(quote).join(' ')}`,
+      '--runs',
+      String(runs.cold),
+    ]
+    const [cold] = await hyperfine(cwd, coldRuns, [check])
+
+    // Cooldown only costs something on a row with a target, and the default
+    // policy holds every exact pin: the moving config gives all of them one.
+    const file = path.join(cwd, '.always-up-to-date.json')
+    config = file
+    const writeConfig = (value: ConfigFile): void => {
+      fs.writeFileSync(file, `${JSON.stringify(value)}\n`)
+    }
+    writeConfig(MOVING_CONFIG)
+    const targets = movingRows(await dryRunJson(cli, cwd))
+    if (targets === 0) {
+      throw new Error(
+        `${label}: ${JSON.stringify(MOVING_CONFIG)} plans no update on ${project}: the cooldown rows would measure nothing`,
+      )
+    }
+
+    log(`${label}: check, cold, ${targets} planned updates`)
+    const [moving] = await hyperfine(cwd, coldRuns, [check])
+
+    log(`${label}: check, cold, cooldown 7`)
+    writeConfig(COOLDOWN_CONFIG)
+    const [cooldownCold] = await hyperfine(cwd, coldRuns, [check])
 
     log(`${label}: check, warm, cooldown 7`)
-    const config = path.join(cwd, '.always-up-to-date.json')
-    fs.writeFileSync(config, `${JSON.stringify({ cooldown: 7 })}\n`)
-    const [cooldown] = await hyperfine(
+    const [cooldownWarm] = await hyperfine(
       cwd,
       ['--warmup', '1', '--runs', String(runs.warm)],
       [check],
     )
-    fs.rmSync(config)
-
-    return { label, warm, cold, cooldown }
+    return { label, warm, cold, targets, moving, cooldownCold, cooldownWarm }
   } finally {
+    // A kept copy must not keep a bench config, failed run or not.
+    if (config !== undefined) fs.rmSync(config, { force: true })
     restoreEnv()
     if (cwd !== undefined) cleanup(cwd, KEEP)
   }
@@ -334,9 +386,7 @@ const main = async (): Promise<void> => {
           'Manager',
           '`autd check`, warm',
           '`autd check`, cold',
-          'cooldown 7, warm',
-          'peak memory',
-          'peak memory, cooldown 7',
+          'peak memory, warm',
         ],
         outcomes.map((outcome) =>
           'row' in outcome
@@ -344,11 +394,48 @@ const main = async (): Promise<void> => {
                 outcome.row.label,
                 formatTiming(outcome.row.warm),
                 formatTiming(outcome.row.cold),
-                formatTiming(outcome.row.cooldown),
                 formatMemory(outcome.row.warm.peakMemory),
-                formatMemory(outcome.row.cooldown.peakMemory),
               ]
-            : [outcome.target, 'failed', 'failed', 'failed', 'n/a', 'n/a'],
+            : [outcome.target, 'failed', 'failed', 'n/a'],
+        ),
+      )}\n\n`,
+    )
+    process.stdout.write(
+      `${renderTable(
+        [
+          'Manager',
+          'targets',
+          'moving, cold',
+          'cooldown 7, cold',
+          'cooldown overhead, cold',
+          'cooldown 7, warm',
+          'peak memory, moving cold',
+          'peak memory, cooldown 7 cold',
+        ],
+        outcomes.map((outcome) =>
+          'row' in outcome
+            ? [
+                outcome.row.label,
+                String(outcome.row.targets),
+                formatTiming(outcome.row.moving),
+                formatTiming(outcome.row.cooldownCold),
+                formatDifference(
+                  outcome.row.cooldownCold.mean - outcome.row.moving.mean,
+                ),
+                formatTiming(outcome.row.cooldownWarm),
+                formatMemory(outcome.row.moving.peakMemory),
+                formatMemory(outcome.row.cooldownCold.peakMemory),
+              ]
+            : [
+                outcome.target,
+                'failed',
+                'failed',
+                'failed',
+                'failed',
+                'failed',
+                'n/a',
+                'n/a',
+              ],
         ),
       )}\n\n`,
     )

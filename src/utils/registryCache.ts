@@ -7,7 +7,7 @@ import { isRecord } from './isRecord'
 import logger from './logger'
 import { type NpmrcSources, nonEmpty } from './npmrcLoader'
 import type { ParsedPackument } from './registryDocuments'
-import { parseCacheControl } from './registryRequest'
+import { parseCacheControl, revalidatesEveryUse } from './registryRequest'
 
 export const CACHE_FOLDER = 'ca.pixel-perfect.alwaysuptodate'
 export const DEFAULT_MAX_BYTES = 32 * 1024 * 1024
@@ -140,13 +140,7 @@ export const freshFor = (
   const directives = parseCacheControl(meta.cacheControl)
   if (directives.noStore) return undefined
   const revalidateOnly = meta.etag ? 0 : undefined
-  if (
-    directives.isPrivate ||
-    (meta.authenticated && !sameForEveryone) ||
-    directives.noCache ||
-    directives.maxAge === 0
-  )
-    return revalidateOnly
+  if (revalidatesEveryUse(meta, sameForEveryone)) return revalidateOnly
   const seconds =
     Math.min(TTL_SECONDS[kind], directives.maxAge ?? Number.POSITIVE_INFINITY) -
     Math.max(0, meta.age ?? 0)

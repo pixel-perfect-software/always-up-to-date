@@ -41,6 +41,9 @@ function loadFilterWithConfig(
 ) {
   let filter: typeof filterPackagesType
   let split: typeof splitUpdatesType
+  const releaseTimes = jest.fn(
+    async (name: string) => opts.releaseTimes?.[name] ?? {},
+  )
   jest.isolateModules(() => {
     jest.doMock('@/utils/logger', () => mockLogger)
     jest.doMock('@/utils/peers', () => ({
@@ -63,9 +66,7 @@ function loadFilterWithConfig(
     filter!(outdated, {
       config: { ...DEFAULTS, ...config },
       registry: {
-        releaseTimes: jest.fn(
-          async (name: string) => opts.releaseTimes?.[name] ?? {},
-        ),
+        releaseTimes,
         ...(opts.deprecated && {
           lookup: async (name: string) => ({
             ok: true as const,
@@ -86,7 +87,7 @@ function loadFilterWithConfig(
       },
       ...options,
     })
-  return Object.assign(run, { split: split! })
+  return Object.assign(run, { split: split!, releaseTimes })
 }
 
 /** What a manifest declaring `name` at `range` gives the cooldown (the `declared` option). */
@@ -501,6 +502,88 @@ describe('filterPackages', () => {
       expect(results.find((r) => r.name === 'patch')?.updated).toBe(true)
       expect(results.find((r) => r.name === 'minor')?.updated).toBe(true)
       expect(results.find((r) => r.name === 'major')?.updated).toBe(false)
+    })
+
+    it('asks for the versions between current and the target it judges', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 7 },
+        { releaseTimes: { foo: { '1.0.1': daysAgo(10) } } },
+      )
+
+      await filter(
+        makeOutdated([
+          { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
+        { now: NOW },
+      )
+
+      expect(filter.releaseTimes).toHaveBeenCalledTimes(1)
+      expect(filter.releaseTimes).toHaveBeenCalledWith('foo', {
+        current: '1.0.0',
+        target: '1.0.1',
+      })
+    })
+
+    it("asks for an alias's target under its own window", async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 7 },
+        { releaseTimes: { target: { '1.0.1': daysAgo(10) } } },
+      )
+
+      await filter(
+        makeOutdated([
+          { name: 'key', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
+        {
+          now: NOW,
+          declared: declaring('target', '^1.0.0'),
+        },
+      )
+
+      expect(filter.releaseTimes).toHaveBeenCalledWith('target', {
+        current: '1.0.0',
+        target: '1.0.1',
+      })
+    })
+
+    it('never asks about a step whose cooldown is zero, and keeps no release age for it', async () => {
+      const declared = jest.fn(({ name }: { name: string }) => ({
+        name,
+        spec: { range: '^1.0.0' },
+      }))
+      const filter = loadFilterWithConfig(
+        { cooldown: { patch: 0, minor: 7 } },
+        {
+          releaseTimes: {
+            patch: { '1.0.1': daysAgo(0) },
+            minor: { '1.1.0': daysAgo(10) },
+          },
+        },
+      )
+
+      const results = await filter(
+        makeOutdated([
+          { name: 'patch', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+          { name: 'minor', current: '1.0.0', wanted: '1.1.0', latest: '1.1.0' },
+        ]),
+        { now: NOW, declared },
+      )
+
+      // Nor reads its manifest: the pipeline's `declared` reads package.json.
+      expect(declared.mock.calls.map(([row]) => row.name)).toEqual(['minor'])
+      expect(filter.releaseTimes).toHaveBeenCalledTimes(1)
+      expect(filter.releaseTimes).toHaveBeenCalledWith('minor', {
+        current: '1.0.0',
+        target: '1.1.0',
+      })
+      expect(results.find((r) => r.name === 'patch')).toMatchObject({
+        updated: true,
+        target: '1.0.1',
+        releaseAge: undefined,
+      })
+      expect(
+        Math.round(results.find((r) => r.name === 'minor')?.releaseAge ?? 0),
+      ).toBe(10)
     })
 
     it('skips network calls entirely when cooldown is zero', async () => {
