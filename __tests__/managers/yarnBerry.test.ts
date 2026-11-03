@@ -2,19 +2,15 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import yarn from '@/managers/yarn'
-import {
-  discoverBerry,
-  parseBerryInfo,
-  parseBerryRegistry,
-} from '@/managers/yarn/berry'
+import { readBerryLock } from '@/managers/yarn/berry'
 import { check, update } from '@/pipeline'
+import type { OutdatedEntry } from '@/types'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 import {
+  capturedRegistry,
   exitError,
   projectFor,
   readFixture,
-  WORKSPACE_ENTRIES,
-  writeWorkspaceProject,
 } from '../fixtures'
 
 jest.mock('@/utils/logger')
@@ -27,656 +23,273 @@ import { runProcess } from '@/utils'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
-const INFO = ['info', '-A', '--json']
-
-/**
- * Answers yarn's commands from captured output: `info` with each of `infos`
- * in turn (the last one for every later call), `npm info` with `registry`,
- * and any other command (`install`, `up`) with an empty success.
- */
-const mockYarn = (infos: string[], registry: string) => {
-  let infoCalls = 0
-  mockedRunProcess.mockImplementation(async (_command, args) => {
-    if (args[0] === 'info') {
-      return {
-        stdout: infos[Math.min(infoCalls++, infos.length - 1)],
-        stderr: '',
-      }
-    }
-    if (args[0] === 'npm') return { stdout: registry, stderr: '' }
-    return { stdout: '', stderr: '' }
-  })
+// A real capture: yarn 4.12.0 (the repo's packageManager, through Corepack)
+// `install` on testRepos/berry-workspace, with packages/b also declaring
+// `@autd/a: workspace:*`, `m: npm:ms@^2.0.0` and the devDependency
+// `resolve: ^1.22.0` (a builtin patch), 2026-11-03.
+const LOCK = 'yarn/berry-workspace.yarn.lock'
+const CAPTURED = {
+  '.': {
+    name: 'autd-berry-workspace',
+    private: true,
+    packageManager: 'yarn@4.12.0',
+    workspaces: ['packages/*'],
+    dependencies: { dayjs: '1.11.9', ms: '~2.1.1' },
+  },
+  'packages/a': {
+    name: '@autd/a',
+    dependencies: { chalk: '^4.0.0', ms: '2.1.2' },
+  },
+  'packages/b': {
+    name: '@autd/b',
+    dependencies: {
+      commander: '^11.0.0',
+      debug: '~4.3.1',
+      '@autd/a': 'workspace:*',
+      m: 'npm:ms@^2.0.0',
+    },
+    devDependencies: { kleur: '~3.0.0', resolve: '^1.22.0' },
+  },
 }
 
-/** The evidence workspace, with the root declaring yarn 4. */
-const writeBerryWorkspace = (cwd: string): void => {
-  writeWorkspaceProject(cwd)
-  const file = path.join(cwd, 'package.json')
-  fs.writeFileSync(
-    file,
-    JSON.stringify({
-      ...JSON.parse(fs.readFileSync(file, 'utf8')),
-      packageManager: 'yarn@4.12.0',
-    }),
-  )
-}
+// When the registry captures were taken, so no version drifts.
+const AS_OF = '2026-10-23T16:38:12-03:00'
 
 const commands = (): string[][] =>
   mockedRunProcess.mock.calls.map(([, args]) => args)
 
-describe('parseBerryInfo', () => {
-  it('reads the root workspace of a single project, virtual hashes stripped', () => {
-    const [root, ...rest] = parseBerryInfo(
-      readFixture('yarn/berry-info.stdout'),
-    )
-
-    expect(rest).toEqual([])
-    expect(root).toEqual({
-      path: '.',
-      dependencies: [
-        { key: 'chalk', name: 'chalk', range: '^4.0.0', current: '4.0.0' },
-        { key: 'dayjs', name: 'dayjs', range: '1.11.9', current: '1.11.9' },
-        { key: 'debug', name: 'debug', range: '~4.3.1', current: '4.3.1' },
-        { key: 'ms', name: 'ms', range: '~2.1.1', current: '2.1.1' },
-      ],
-    })
-  })
-
-  it('reads each workspace of a workspace project with its path', () => {
-    const workspaces = parseBerryInfo(
-      readFixture('yarn/berry-workspace-info.stdout'),
-    )
-
-    expect(workspaces.map(({ path: dir }) => dir).sort()).toEqual([
-      '.',
-      'packages/a',
-      'packages/b',
-    ])
-    expect(
-      workspaces.find(({ path: dir }) => dir === 'packages/b')?.dependencies,
-    ).toEqual([
-      { key: 'dayjs', name: 'dayjs', range: '^1.11.9', current: '1.11.9' },
-      { key: 'debug', name: 'debug', range: '~4.3.1', current: '4.3.1' },
-    ])
-  })
-
-  it('reads a builtin-patched package, an alias and a scoped name, and skips a link', () => {
-    const [root] = parseBerryInfo(readFixture('yarn/berry-special-info.stdout'))
-
-    expect(root.dependencies).toEqual([
-      {
-        key: '@sindresorhus/is',
-        name: '@sindresorhus/is',
-        range: '^4.0.0',
-        current: '4.0.0',
-      },
-      { key: 'dj', name: 'dayjs', range: '^1.11.9', current: '1.11.9' },
-      {
-        key: 'typescript',
-        name: 'typescript',
-        range: '^5.4.0',
-        current: '5.4.5',
-      },
-    ])
-  })
-
-  it('reads a project with no dependencies', () => {
-    expect(parseBerryInfo(readFixture('yarn/berry-info-empty.stdout'))).toEqual(
-      [{ path: '.', dependencies: [] }],
-    )
-  })
-
-  it('fails discovery on a line it cannot read', () => {
-    expect(() => parseBerryInfo('not json')).toThrow(
-      expect.objectContaining({ step: 'discover' }),
-    )
-  })
-
-  it("reads a locator's version past yarn's ::key=value parameters", () => {
-    // Yarn appends `::__archiveUrl=…` to a locator whose tarball URL isn't
-    // the registry's standard one (GitHub Packages, Artifactory).
-    const archived = readFixture('yarn/berry-info.stdout').replace(
-      '"locator":"chalk@npm:4.0.0"',
-      '"locator":"chalk@npm:4.0.0::__archiveUrl=https%3A%2F%2Fnpm.pkg.github.com%2Fdownload%2Fchalk%2F4.0.0%2Fchalk-4.0.0.tgz"',
-    )
-
-    const [root] = parseBerryInfo(archived)
-
-    expect(root.dependencies.find((d) => d.name === 'chalk')).toMatchObject({
-      current: '4.0.0',
-    })
-  })
-})
-
-describe('discoverBerry from a member (#123)', () => {
-  const run = (info: string, registry: string) =>
-    jest.fn(async (args: string[]) => (args[0] === 'info' ? info : registry))
-
-  it.each([
-    [
-      'yarn/berry-info-workspace-from-member.stdout',
-      'packages/a',
-      ['chalk', 'ms'],
-    ],
-  ])("keeps the member's workspace of %s", async (info, member, names) => {
-    const runYarn = run(
-      readFixture(info),
-      readFixture('yarn/berry-npm-info-chalk-ms.stdout'),
-    )
-
-    const discovery = await discoverBerry(runYarn, true, {
-      path: member,
-      name: '@autd/a',
-    })
-
-    expect(discovery.kind).toBe('workspace')
-    const entries = discovery.kind === 'workspace' ? discovery.entries : []
-    expect(entries.map((entry) => [entry.name, entry.workspace])).toEqual(
-      names.map((name) => [name, member]),
-    )
-    // The registry is asked for the member's packages alone.
-    expect(runYarn.mock.calls[1][0].slice(0, 4)).toEqual([
-      'npm',
-      'info',
-      'chalk',
-      'ms',
-    ])
-  })
-
-  it('filters the existing workspace capture to one member', async () => {
-    const discovery = await discoverBerry(
-      run(
-        readFixture('yarn/berry-workspace-info.stdout'),
-        readFixture('yarn/berry-workspace-npm-info.stdout'),
-      ),
-      true,
-      { path: 'packages/b', name: '@ws/b' },
-    )
-
-    expect(
-      discovery.kind === 'workspace' &&
-        discovery.entries.map((entry) => [entry.name, entry.workspace]),
-    ).toEqual([
-      ['dayjs', 'packages/b'],
-      ['debug', 'packages/b'],
-    ])
-  })
-
-  it('fails when yarn lists no workspace at the member', async () => {
-    await expect(
-      discoverBerry(
-        run(readFixture('yarn/berry-workspace-info.stdout'), ''),
-        true,
-        { path: 'tools/x' },
-      ),
-    ).rejects.toMatchObject({
-      step: 'discover',
-      message: 'yarn info -A --json listed no workspace at tools/x',
-    })
-  })
-})
-
-describe('parseBerryRegistry', () => {
-  it('reads the latest tag and the versions of each package', () => {
-    const registry = parseBerryRegistry(
-      readFixture('yarn/berry-npm-info.stdout'),
-    )
-
-    expect([...registry.keys()]).toEqual(['chalk', 'dayjs', 'debug', 'ms'])
-    expect(registry.get('ms')?.latest).toBe('2.1.3')
-    expect(registry.get('ms')?.versions).toContain('2.1.1')
-  })
-})
-
-describe('check with yarn berry', () => {
+describe('yarn berry', () => {
   let cwd: string
-
-  beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-berry-check-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
-  })
-
-  const writeManifest = (manifest: Record<string, unknown>) =>
+  const write = (file: string, content: string | object) => {
+    fs.mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true })
     fs.writeFileSync(
-      path.join(cwd, 'package.json'),
-      JSON.stringify({ packageManager: 'yarn@4.12.0', ...manifest }),
+      path.join(cwd, file),
+      typeof content === 'string' ? content : JSON.stringify(content),
     )
-
-  it('has no outdated command: it reads yarn info, then asks the registry through yarn', async () => {
-    writeManifest({
-      dependencies: {
-        chalk: '^4.0.0',
-        dayjs: '1.11.9',
-        debug: '~4.3.1',
-        ms: '~2.1.1',
-      },
-    })
-    mockYarn(
-      [readFixture('yarn/berry-info.stdout')],
-      readFixture('yarn/berry-npm-info.stdout'),
-    )
-
-    const result = await check(projectFor(yarn, cwd))
-
-    expect(commands()).toEqual([
-      INFO,
-      [
-        'npm',
-        'info',
-        'chalk',
-        'dayjs',
-        'debug',
-        'ms',
-        '--fields',
-        'dist-tags,versions',
-        '--json',
-      ],
-    ])
-    expect(result).toEqual({
-      chalk: {
-        name: 'chalk',
-        current: '4.0.0',
-        wanted: '4.1.2',
-        latest: '6.0.1',
-      },
-      dayjs: {
-        name: 'dayjs',
-        current: '1.11.9',
-        wanted: '1.11.9',
-        latest: '1.11.23',
-      },
-      debug: {
-        name: 'debug',
-        current: '4.3.1',
-        wanted: '4.3.7',
-        latest: '4.4.3',
-      },
-      ms: { name: 'ms', current: '2.1.1', wanted: '2.1.3', latest: '2.1.3' },
-    })
-  })
-
-  it('reports the same packages with the node-modules linker', async () => {
-    writeManifest({ dependencies: {} })
-    fs.writeFileSync(
-      path.join(cwd, '.yarnrc.yml'),
-      'nodeLinker: node-modules\n',
-    )
-    mockYarn(
-      [readFixture('yarn/berry-node-modules-info.stdout')],
-      readFixture('yarn/berry-node-modules-npm-info.stdout'),
-    )
-
-    const result = await check(projectFor(yarn, cwd))
-
-    expect(Object.keys(result)).toEqual([
-      'chalk',
-      'commander',
-      'dayjs',
-      'debug',
-      'lodash',
-      'ms',
-      'semver',
-      'uuid',
-    ])
-    expect(result.semver).toEqual({
-      name: 'semver',
-      current: '7.5.0',
-      wanted: '7.8.5',
-      latest: '7.8.5',
-    })
-    expect(result.lodash).toMatchObject({
-      current: '4.17.20',
-      wanted: '4.17.20',
-    })
-  })
-
-  it('reports one entry per package per workspace, owners from the workspace paths', async () => {
-    writeBerryWorkspace(cwd)
-    mockYarn(
-      [readFixture('yarn/berry-workspace-info.stdout')],
-      readFixture('yarn/berry-workspace-npm-info.stdout'),
-    )
-
-    const result = await check(projectFor(yarn, cwd))
-
-    expect(result).toEqual(foldWorkspaceEntries(WORKSPACE_ENTRIES))
-    expect(commands()[0]).toEqual(INFO)
-  })
-
-  it('keys an npm alias by its manifest name and asks the registry for the target', async () => {
-    writeManifest({
-      dependencies: {
-        '@sindresorhus/is': '^4.0.0',
-        dj: 'npm:dayjs@^1.11.9',
-        local: 'link:./local',
-      },
-      devDependencies: { typescript: '^5.4.0' },
-    })
-    mockYarn(
-      [readFixture('yarn/berry-special-info.stdout')],
-      readFixture('yarn/berry-special-npm-info.stdout'),
-    )
-
-    const result = await check(projectFor(yarn, cwd))
-
-    expect(commands()[1].slice(0, 5)).toEqual([
-      'npm',
-      'info',
-      '@sindresorhus/is',
-      'dayjs',
-      'typescript',
-    ])
-    expect(Object.keys(result)).toEqual([
-      '@sindresorhus/is',
-      'dj',
-      'typescript',
-    ])
-    expect(result.dj).toEqual({
-      name: 'dj',
-      current: '1.11.9',
-      wanted: '1.11.23',
-      latest: '1.11.23',
-    })
-    // The patch: descriptor's npm range is what is compared, not the locator.
-    expect(result.typescript).toMatchObject({
-      current: '5.4.5',
-      wanted: '5.9.3',
-    })
-  })
-
-  it('reports nothing outdated without asking the registry when there are no dependencies', async () => {
-    writeManifest({})
-    mockYarn([readFixture('yarn/berry-info-empty.stdout')], '')
-
-    await expect(check(projectFor(yarn, cwd))).resolves.toEqual({})
-    expect(commands()).toEqual([INFO])
-  })
-
-  it('fails discovery when a workspace project lists no workspaces', async () => {
-    // Only package lines: the output wasn't understood, not "up to date".
-    writeManifest({ dependencies: { ms: '2.1.1' }, workspaces: ['packages/*'] })
-    mockedRunProcess.mockResolvedValue({
-      stdout: readFixture('yarn/berry-info.stdout')
-        .split('\n')
-        .filter((line) => !line.includes('@workspace:'))
-        .join('\n'),
-      stderr: '',
-    })
-
-    await expect(check(projectFor(yarn, cwd))).rejects.toMatchObject({
-      step: 'discover',
-      message: 'yarn info -A --json listed no workspaces',
-    })
-  })
-
-  it('fails discovery when yarn info fails', async () => {
-    writeManifest({ dependencies: { ms: '2.1.1' } })
-    mockedRunProcess.mockRejectedValue(
-      exitError(1, readFixture('yarn/berry-info-error.stdout'), ''),
-    )
-
-    await expect(check(projectFor(yarn, cwd))).rejects.toMatchObject({
-      step: 'discover',
-      message: expect.stringContaining('run "yarn install"'),
-    })
-  })
-
-  it('fails discovery when the registry lookup fails', async () => {
-    writeManifest({ dependencies: { ms: '2.1.1' } })
-    mockedRunProcess
-      .mockResolvedValueOnce({
-        stdout: readFixture('yarn/berry-info.stdout'),
-        stderr: '',
-      })
-      .mockRejectedValueOnce(
-        exitError(1, readFixture('yarn/berry-npm-info-not-found.stdout'), ''),
-      )
-
-    await expect(check(projectFor(yarn, cwd))).rejects.toMatchObject({
-      step: 'discover',
-      message: expect.stringContaining('Package not found'),
-    })
-  })
-
-  it('fails discovery when the registry answers for fewer packages than were asked', async () => {
-    writeManifest({ dependencies: { ms: '2.1.1' } })
-    const withoutMs = readFixture('yarn/berry-npm-info.stdout')
-      .split('\n')
-      .filter((line) => !line.startsWith('{"name":"ms"'))
-      .join('\n')
-    mockYarn([readFixture('yarn/berry-info.stdout')], withoutMs)
-
-    await expect(check(projectFor(yarn, cwd))).rejects.toMatchObject({
-      step: 'discover',
-      message: 'yarn npm info printed nothing for ms',
-    })
-  })
-})
-
-describe('update with yarn berry', () => {
-  let cwd: string
-
-  beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-berry-update-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
-  })
-
+  }
+  /** The captured workspace; `keep` cuts each manifest to the registry captures' packages. */
+  const writeCaptured = (keep?: string[]) => {
+    for (const [dir, manifest] of Object.entries(CAPTURED)) {
+      const cut = { ...manifest } as Record<string, unknown>
+      if (keep) {
+        for (const field of ['dependencies', 'devDependencies']) {
+          const deps = cut[field] as Record<string, string> | undefined
+          if (!deps) continue
+          cut[field] = Object.fromEntries(
+            Object.entries(deps).filter(([key]) => keep.includes(key)),
+          )
+        }
+      }
+      write(path.join(dir, 'package.json'), cut)
+    }
+    write('yarn.lock', readFixture(LOCK))
+  }
   const readJson = (file: string) =>
     JSON.parse(fs.readFileSync(path.join(cwd, file), 'utf8'))
 
-  const BENCH = {
-    packageManager: 'yarn@4.12.0',
-    dependencies: {
-      chalk: '^4.0.0',
-      commander: '^11.0.0',
-      dayjs: '1.11.9',
-      debug: '~4.3.1',
-      lodash: '4.17.20',
-      ms: '2.1.1',
-      semver: '^7.5.0',
-      uuid: '~9.0.0',
-    },
-  }
-
-  const writeBench = () =>
-    fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify(BENCH))
-
-  const mockBench = (updated = true) =>
-    mockYarn(
-      [
-        readFixture('yarn/berry-node-modules-info.stdout'),
-        readFixture(
-          updated
-            ? 'yarn/berry-node-modules-info-updated.stdout'
-            : 'yarn/berry-node-modules-info.stdout',
-        ),
-      ],
-      readFixture('yarn/berry-node-modules-npm-info.stdout'),
-    )
-
-  it('re-resolves in-range packages with `up -R`, leaving package.json alone', async () => {
-    writeBench()
-    mockBench()
-
-    const results = await update(projectFor(yarn, cwd))
-
-    expect(commands()).toEqual([
-      INFO,
-      expect.arrayContaining(['npm', 'info']),
-      ['up', '-R', 'chalk', 'commander', 'debug', 'semver', 'uuid'],
-      INFO,
-    ])
-    expect(readJson('package.json')).toEqual(BENCH)
-    expect(results.filter((r) => r.updated).map((r) => r.name)).toEqual([
-      'chalk',
-      'commander',
-      'debug',
-      'semver',
-      'uuid',
-    ])
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-berry-'))
+    // Native discovery (#107): no yarn command runs for check.
+    mockedRunProcess.mockRejectedValue(new Error('no yarn command expected'))
+  })
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('reads the installed versions from yarn info, so PnP needs no node_modules', async () => {
-    writeBench()
-    mockBench(false)
-
-    const results = await update(projectFor(yarn, cwd))
-
-    // The lockfile still holds chalk 4.0.0: not applied, though yarn exited 0.
-    expect(results.find((r) => r.name === 'chalk')).toMatchObject({
-      updated: false,
-      reason: 'not applied by yarn (installed 4.0.0)',
+  describe('readBerryLock', () => {
+    it("reads each workspace's locked version, an alias and a patched package included", () => {
+      writeCaptured()
+      expect(
+        readBerryLock(cwd, [
+          { name: 'dayjs', workspace: '.' },
+          { name: 'ms', workspace: '.' },
+          { name: 'chalk', workspace: 'packages/a' },
+          { name: 'ms', workspace: 'packages/a' },
+          { name: 'debug', workspace: 'packages/b' },
+          { name: 'kleur', workspace: 'packages/b' },
+          { name: 'm', workspace: 'packages/b' },
+          { name: 'resolve', workspace: 'packages/b' },
+          { name: '@autd/a', workspace: 'packages/b' },
+        ]),
+      ).toEqual({
+        '.:dayjs': { version: '1.11.9', linked: false },
+        '.:ms': { version: '2.1.3', linked: false },
+        'packages/a:chalk': { version: '4.1.2', linked: false },
+        'packages/a:ms': { version: '2.1.2', linked: false },
+        'packages/b:debug': { version: '4.3.7', linked: false },
+        'packages/b:kleur': { version: '3.0.3', linked: false },
+        'packages/b:m': { version: '2.1.3', linked: false },
+        'packages/b:resolve': { version: '1.22.13', linked: false },
+        'packages/b:@autd/a': { version: '', linked: true },
+      })
     })
-    expect(fs.existsSync(path.join(cwd, 'node_modules'))).toBe(false)
-  })
 
-  it('fails the apply step when yarn info is unreadable after apply', async () => {
-    writeBench()
-    mockYarn(
-      [readFixture('yarn/berry-node-modules-info.stdout'), 'not json'],
-      readFixture('yarn/berry-node-modules-npm-info.stdout'),
-    )
-
-    await expect(update(projectFor(yarn, cwd))).rejects.toMatchObject({
-      step: 'apply',
-      message: "yarn info (after apply) printed a line it can't read",
+    it('leaves out what the lockfile does not record, and everything without one', () => {
+      writeCaptured()
+      expect(
+        readBerryLock(cwd, [
+          { name: 'not-locked', workspace: 'packages/b' },
+          { name: 'ms', workspace: 'packages/none' },
+        ]),
+      ).toEqual({})
+      fs.rmSync(path.join(cwd, 'yarn.lock'))
+      expect(readBerryLock(cwd, [{ name: 'ms', workspace: '.' }])).toEqual({})
     })
   })
 
-  it('writes a beyond-range spec into the manifest, installs, then re-resolves the rest', async () => {
-    writeBench()
-    mockBench()
+  describe('check', () => {
+    const registry = () =>
+      capturedRegistry(['dayjs', 'ms', 'debug'], { asOf: AS_OF })
 
-    await update(projectFor(yarn, cwd, { beyondRange: 'major' }))
+    it('reads yarn.lock and the registry, and runs no yarn command', async () => {
+      writeCaptured(['dayjs', 'ms', 'debug', 'm', '@autd/a'])
 
-    expect(readJson('package.json').dependencies).toMatchObject({
-      chalk: '^6.0.1',
-      dayjs: '1.11.23',
-      debug: '~4.4.3',
-      uuid: '~14.0.3',
+      const outdated = await check(projectFor(yarn, cwd, {}, registry()))
+
+      expect(mockedRunProcess).not.toHaveBeenCalled()
+      // The alias `m` (2.1.3) and the root's ms are up to date; `@autd/a`
+      // is a member and never looked up.
+      expect(outdated).toEqual({
+        dayjs: expect.objectContaining({
+          workspaces: [{ path: '.', current: '1.11.9', wanted: '1.11.9' }],
+          latest: '1.11.23',
+        }),
+        debug: expect.objectContaining({
+          workspaces: [
+            { path: 'packages/b', current: '4.3.7', wanted: '4.3.7' },
+          ],
+          latest: '4.4.3',
+        }),
+        ms: expect.objectContaining({
+          workspaces: [
+            { path: 'packages/a', current: '2.1.2', wanted: '2.1.2' },
+          ],
+          latest: '2.1.3',
+        }),
+      })
     })
-    // Only semver's range allows its latest.
-    expect(commands().slice(2)).toEqual([
-      ['install', '--no-immutable'],
-      ['up', '-R', 'semver'],
-      INFO,
-    ])
+
+    it('reads one member alone from a member run (#123)', async () => {
+      writeCaptured(['dayjs', 'ms', 'debug', 'm', '@autd/a'])
+
+      const outdated = await check(
+        projectFor(yarn, cwd, {}, registry(), {
+          path: 'packages/b',
+          name: '@autd/b',
+        }),
+      )
+
+      expect(Object.keys(outdated)).toEqual(['debug'])
+      expect(mockedRunProcess).not.toHaveBeenCalled()
+    })
+
+    it('resolves a range without preferring the latest tag, as berry does', () => {
+      writeCaptured()
+      expect(yarn.prefersLatestInRange?.(cwd)).toBe(false)
+      write('package.json', {
+        ...CAPTURED['.'],
+        packageManager: 'yarn@1.22.22',
+      })
+      fs.rmSync(path.join(cwd, 'yarn.lock'))
+      expect(yarn.prefersLatestInRange?.(cwd)).toBe(true)
+    })
   })
 
-  it('skips `up` when every package moves past its range', async () => {
-    writeBench()
-    mockBench()
+  describe('update', () => {
+    const row = (
+      workspace: string,
+      name: string,
+      current: string,
+      wanted: string,
+      latest: string,
+    ): OutdatedEntry => ({ name, workspace, current, wanted, latest })
+    // What discovery found before apply; yarn.lock is the capture, which is
+    // what the mocked commands leave.
+    const discovered = () =>
+      foldWorkspaceEntries([
+        row('.', 'dayjs', '1.11.9', '1.11.9', '1.11.23'),
+        row('.', 'ms', '2.1.1', '2.1.3', '2.1.3'),
+        row('packages/b', 'debug', '4.3.1', '4.3.7', '4.4.3'),
+      ])
+    const succeed = () =>
+      mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
 
-    await update(projectFor(yarn, cwd, { beyondRange: 'major' }), {
-      targetPackages: ['dayjs'],
+    it('re-resolves in-range packages with `up -R` and checks them in yarn.lock', async () => {
+      writeCaptured()
+      succeed()
+
+      const results = await update(projectFor(yarn, cwd), {
+        discovered: discovered(),
+      })
+
+      expect(commands()).toEqual([['up', '-R', 'ms', 'debug']])
+      expect(readJson('package.json')).toEqual(CAPTURED['.'])
+      expect(
+        results.filter((r) => r.updated).map((r) => `${r.workspace}:${r.name}`),
+      ).toEqual(['.:ms', 'packages/b:debug'])
     })
 
-    expect(commands().slice(2)).toEqual([['install', '--no-immutable'], INFO])
-  })
+    it('writes a spec past its range, installs, and reports what yarn.lock still holds', async () => {
+      writeCaptured()
+      succeed()
 
-  it('writes each owning manifest of a workspace and re-resolves project-wide', async () => {
-    writeBerryWorkspace(cwd)
-    mockYarn(
-      [
-        readFixture('yarn/berry-workspace-info.stdout'),
-        readFixture('yarn/berry-workspace-info-updated.stdout'),
-      ],
-      readFixture('yarn/berry-workspace-npm-info.stdout'),
-    )
+      const results = await update(
+        projectFor(yarn, cwd, { beyondRange: 'major' }),
+        { discovered: discovered() },
+      )
 
-    await update(projectFor(yarn, cwd, { beyondRange: 'major' }))
-
-    expect(readJson('package.json').dependencies).toEqual({
-      dayjs: '1.11.23',
-      ms: '~2.1.1',
-    })
-    expect(readJson('packages/a/package.json').dependencies).toEqual({
-      ms: '2.1.3',
-    })
-    expect(readJson('packages/b/package.json').dependencies).toEqual({
-      debug: '~4.4.3',
-      dayjs: '^1.11.9',
-    })
-    expect(commands().slice(2)).toEqual([
-      ['install', '--no-immutable'],
-      ['up', '-R', 'dayjs', 'ms'],
-      INFO,
-    ])
-  })
-
-  it('checks each workspace row against its own workspace in the installed versions', async () => {
-    writeBerryWorkspace(cwd)
-    mockYarn(
-      [
-        readFixture('yarn/berry-workspace-info.stdout'),
-        readFixture('yarn/berry-workspace-info-updated.stdout'),
-      ],
-      readFixture('yarn/berry-workspace-npm-info.stdout'),
-    )
-
-    const results = await update(projectFor(yarn, cwd))
-
-    expect(commands()).toEqual([
-      INFO,
-      expect.arrayContaining(['npm', 'info']),
-      ['up', '-R', 'dayjs', 'debug', 'ms'],
-      INFO,
-    ])
-    expect(
-      results.filter((r) => r.updated).map((r) => `${r.workspace}:${r.name}`),
-    ).toEqual(['packages/b:dayjs', 'packages/b:debug', '.:ms'])
-  })
-
-  it('fails apply with the manifest flagged as written when install fails', async () => {
-    writeBench()
-    mockedRunProcess.mockImplementation(async (_command, args) => {
-      if (args[0] === 'info') {
-        return {
-          stdout: readFixture('yarn/berry-node-modules-info.stdout'),
-          stderr: '',
-        }
-      }
-      if (args[0] === 'npm') {
-        return {
-          stdout: readFixture('yarn/berry-node-modules-npm-info.stdout'),
-          stderr: '',
-        }
-      }
-      throw exitError(1, '➤ YN0001: │ Error: install failed', '')
+      expect(readJson('packages/b/package.json').dependencies.debug).toBe(
+        '~4.4.3',
+      )
+      expect(readJson('package.json').dependencies.dayjs).toBe('1.11.23')
+      expect(commands()).toEqual([
+        ['install', '--no-immutable'],
+        ['up', '-R', 'ms'],
+      ])
+      // The mocked install relocked nothing: yarn.lock's debug is 4.3.7.
+      expect(results.find((r) => r.name === 'debug')).toMatchObject({
+        updated: false,
+        reason: 'not applied by yarn (installed 4.3.7)',
+      })
+      expect(results.find((r) => r.name === 'ms')).toMatchObject({
+        updated: true,
+      })
     })
 
-    await expect(
-      update(projectFor(yarn, cwd, { beyondRange: 'major' })),
-    ).rejects.toMatchObject({ step: 'apply', manifestWritten: true })
-  })
+    it('skips `up` when every package moves past its range', async () => {
+      writeCaptured()
+      succeed()
 
-  it('fails apply without the manifest flagged when `up` fails', async () => {
-    writeBench()
-    mockedRunProcess.mockImplementation(async (_command, args) => {
-      if (args[0] === 'info') {
-        return {
-          stdout: readFixture('yarn/berry-node-modules-info.stdout'),
-          stderr: '',
-        }
-      }
-      if (args[0] === 'npm') {
-        return {
-          stdout: readFixture('yarn/berry-node-modules-npm-info.stdout'),
-          stderr: '',
-        }
-      }
-      throw exitError(1, '➤ YN0001: │ Error: up failed', '')
+      await update(projectFor(yarn, cwd, { beyondRange: 'major' }), {
+        discovered: discovered(),
+        targetPackages: ['dayjs'],
+      })
+
+      expect(commands()).toEqual([['install', '--no-immutable']])
     })
 
-    await expect(update(projectFor(yarn, cwd))).rejects.toMatchObject({
-      step: 'apply',
-      manifestWritten: false,
+    it('fails apply with the manifest flagged as written when install fails', async () => {
+      writeCaptured()
+      mockedRunProcess.mockRejectedValue(
+        exitError(1, '➤ YN0001: │ Error: install failed', ''),
+      )
+
+      await expect(
+        update(projectFor(yarn, cwd, { beyondRange: 'major' }), {
+          discovered: discovered(),
+        }),
+      ).rejects.toMatchObject({ step: 'apply', manifestWritten: true })
+    })
+
+    it('fails apply without the manifest flagged when `up` fails', async () => {
+      writeCaptured()
+      mockedRunProcess.mockRejectedValue(
+        exitError(1, '➤ YN0001: │ Error: up failed', ''),
+      )
+
+      await expect(
+        update(projectFor(yarn, cwd), { discovered: discovered() }),
+      ).rejects.toMatchObject({ step: 'apply', manifestWritten: false })
     })
   })
 })

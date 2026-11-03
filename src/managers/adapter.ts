@@ -121,13 +121,11 @@ export interface ManagerAdapter {
    */
   projectRoot(dir: string): string
   /**
-   * Yarn berry only, until #107: a project autd can't read natively yet is
-   * discovered through the manager, keyed by manifest key. Undefined means
-   * autd discovers natively (`discoverFromRegistry`).
+   * Whether a range resolves to `latest` when `latest` satisfies it, before
+   * the highest satisfying version (`wantedVersion`'s `preferLatest`).
+   * Default true; yarn berry resolves to the highest (#107).
    */
-  ownDiscovery?(
-    cwd: string,
-  ): ((run: RunManager, workspace: Workspace) => Promise<Discovery>) | undefined
+  prefersLatestInRange?(cwd: string): boolean
   /** Writes the specs the manager does not write itself, then runs its update commands. */
   apply(
     run: RunManager,

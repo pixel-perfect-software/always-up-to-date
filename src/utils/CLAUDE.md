@@ -178,6 +178,6 @@ A member run (#123) passes `{ member }` (the member's path): there is one manife
 
 - `src/commandRunner.ts` uses `runProcess` and `logger`
 - `src/pipeline.ts` uses `filterPackages`, `logger`, `groupAndSortPackages`, `computeReleaseAges`; adapters use `files.ts`, `overrides.ts`, `saveStyle.ts`, `npmrcLoader.ts`
-- `npmrcLoader.ts` uses `@/managers/workspaces` to find the npm project root (no cycle: `workspaces.ts` imports only the logger and `StepError`)
+- `npmrcLoader.ts` uses `@/managers/workspaces` to find the npm project root (no cycle: `workspaces.ts` imports only the logger)
 - `src/commands/update.ts` uses `filterPackages` for dry-run and interactive mode
 - `src/commands/init.ts` uses `saveJsonConfig` and `INITIAL_CONFIG`

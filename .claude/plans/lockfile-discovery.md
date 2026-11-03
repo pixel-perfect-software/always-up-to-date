@@ -77,7 +77,7 @@ Probed on yarn 4.18.1, 2026-11-03, with `yarn install` against a local registry 
 
 **Decision:**
 - Part C uses `wantedVersion(range, pkg, { preferLatest: false })` for berry, which covers steps 1, 3 and 4. `main`'s berry discovery used `semver.maxSatisfying` over `yarn npm info`, so it had no gate and no deprecated skip either.
-- The age gate (step 2), for `wanted` and for a past-the-range target, goes to a follow-up issue. It needs publish times for every candidate: deps.dev has them, and a private registry needs the full packument (the session's `releaseTimes`).
+- The age gate (step 2), for `wanted` and for a past-the-range target, goes to a follow-up issue, #166. It needs publish times for every candidate: deps.dev has them, and a private registry needs the full packument (the session's `releaseTimes`).
 
 ## Part C plan
 

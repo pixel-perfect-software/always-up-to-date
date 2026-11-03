@@ -5,7 +5,7 @@ import type { RegistryPackage } from '@/types'
  * The version a range allows, the same rule for every manager:
  * 1. an exact pin (`1.2.3`, `=1.2.3`, `v1.2.3`) is its own,
  * 2. otherwise `latest`, when it satisfies the range and isn't deprecated
- *    (`preferLatest`; yarn berry will turn it off),
+ *    (`preferLatest`; yarn berry turns it off, #107),
  * 3. otherwise the highest satisfying version that isn't deprecated,
  * 4. otherwise the highest satisfying version.
  * Prereleases follow semver's default: one satisfies a range only when a

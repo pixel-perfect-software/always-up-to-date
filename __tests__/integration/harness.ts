@@ -608,7 +608,8 @@ export const runCliExpectingFailure = (
 /**
  * `runCliWithoutManagers` with every registry request sent through a proxy
  * that records it, for the call: `seen` empty proves the run asked nobody. A
- * `NO_PROXY` (found case-insensitively) would let requests bypass it.
+ * `NO_PROXY` (found case-insensitively) would let requests bypass it. Berry
+ * reads its proxy from `YARN_HTTPS_PROXY` / `YARN_HTTP_PROXY` only (#107).
  */
 export const runCliThroughTripwire = async (
   cwd: string,
@@ -624,6 +625,8 @@ export const runCliThroughTripwire = async (
     HTTP_PROXY: proxy.url,
     https_proxy: proxy.url,
     http_proxy: proxy.url,
+    YARN_HTTPS_PROXY: proxy.url,
+    YARN_HTTP_PROXY: proxy.url,
   })
   try {
     return { output: await runCliWithoutManagers(cwd, args), seen: proxy.seen }

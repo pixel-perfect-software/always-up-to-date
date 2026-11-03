@@ -65,22 +65,18 @@ const discover = async (
       `Manifests: ${workspace.manifests.map((manifest) => manifest.path).join(', ')}`,
     )
   }
-  const own = adapter.ownDiscovery?.(root)
-  const locked = own ? undefined : adapter.installedFromLockfile?.(root)
-  if (locked) {
-    logger.debug(`No node_modules: installed versions from ${locked.file}`)
-  }
-  const discovery = own
-    ? await own(runFor(adapter, root, 'discover'), workspace)
-    : await discoverFromRegistry({
-        cwd: root,
-        manager: adapter.name,
-        workspace,
-        registry,
-        ...(locked
-          ? { readInstalled: locked.read, requireNodeModules: false }
-          : {}),
-      })
+  const locked = adapter.installedFromLockfile?.(root)
+  if (locked) logger.debug(`Installed versions from ${locked.file}`)
+  const discovery = await discoverFromRegistry({
+    cwd: root,
+    manager: adapter.name,
+    workspace,
+    registry,
+    preferLatest: adapter.prefersLatestInRange?.(root) ?? true,
+    ...(locked
+      ? { readInstalled: locked.read, requireNodeModules: false }
+      : {}),
+  })
   const outdated =
     discovery.kind === 'single'
       ? discovery.outdated

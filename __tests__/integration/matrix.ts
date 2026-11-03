@@ -114,39 +114,39 @@ export const runMatrix = (manager: Manager): void => {
           if (cwd) cleanup(cwd)
         })
 
-        // Berry still discovers through `yarn info` (#107); the rest read the
-        // manifests, node_modules and the registry, so they need no manager.
+        // Every manager is read natively (berry too since #107: yarn.lock and
+        // .yarnrc.yml), so check needs no manager on PATH.
         it('check --json reports the installed minimums against the wanted maxima', async () => {
-          const check = manager === 'berry' ? runCli : runCliWithoutManagers
           expect(
-            projectCheck(await check(cwd, ['check', '--json']), layout),
+            projectCheck(
+              await runCliWithoutManagers(cwd, ['check', '--json']),
+              layout,
+            ),
           ).toEqual(expectedCheck(layout))
         })
 
-        // Berry still asks its manager (#107). The rest answer the repeat from
-        // autd's cache, and a proxy that records every request proves it.
-        if (manager !== 'berry') {
-          it('check --json again within the TTL asks no registry', async () => {
-            const first = await runCliWithoutManagers(cwd, ['check', '--json'])
+        // The repeat is answered from autd's cache, and a proxy that records
+        // every request proves it.
+        it('check --json again within the TTL asks no registry', async () => {
+          const first = await runCliWithoutManagers(cwd, ['check', '--json'])
 
-            const { output, seen } = await runCliThroughTripwire(cwd, [
-              'check',
-              '--json',
-            ])
+          const { output, seen } = await runCliThroughTripwire(cwd, [
+            'check',
+            '--json',
+          ])
 
-            expect(output).toEqual(first)
-            expect(seen).toEqual([])
+          expect(output).toEqual(first)
+          expect(seen).toEqual([])
 
-            // The tripwire is live: the same run without the cache is seen.
-            const bypassed = await runCliThroughTripwire(cwd, [
-              'check',
-              '--json',
-              '--no-cache',
-            ])
-            expect(bypassed.output).toEqual(first)
-            expect(bypassed.seen.length).toBeGreaterThan(0)
-          })
-        }
+          // The tripwire is live: the same run without the cache is seen.
+          const bypassed = await runCliThroughTripwire(cwd, [
+            'check',
+            '--json',
+            '--no-cache',
+          ])
+          expect(bypassed.output).toEqual(first)
+          expect(bypassed.seen.length).toBeGreaterThan(0)
+        })
 
         it('update --dry-run --json plans the moves and holds the pins', async () => {
           expect(
@@ -264,8 +264,8 @@ export const runMemberMatrix = (manager: Manager): void => {
         let cwd = ''
         let before: Record<string, string>
         const dir = (member: string) => path.join(cwd, ...member.split('/'))
-        // Berry still discovers through `yarn info` (#107).
-        const check = manager === 'berry' ? runCli : runCliWithoutManagers
+        // Native for every manager, berry included (#107).
+        const check = runCliWithoutManagers
 
         beforeAll(async () => {
           ;({ cwd } = await prepareRepo(`${manager}-${layout}`))
