@@ -150,6 +150,18 @@ export interface YarnV1Auth {
   yarnDefault: boolean
 }
 
+/** A manager's release-age gate, as `withReleaseAgeGate` (`utils/releaseAgeGate.ts`) applies it. */
+export interface ReleaseAgeGate {
+  /** The setting, for messages: `npmMinimalAgeGate`. */
+  setting: string
+  /** Minutes for an unscoped package, or a scope the manager doesn't configure; 0 is off. */
+  minutes: number
+  /** `@scope` → minutes, for each scope the manager configures (berry: its `npmScopes` entry's own gate, one day by default). */
+  scopes: Record<string, number>
+  /** Descriptors or name globs, with an optional range, the gate lets through (berry's `npmPreapprovedPackages`). */
+  exempt: string[]
+}
+
 /** One berry configuration that can hold credentials: the top level, a scope, or an `npmRegistries` entry. */
 export interface BerryAuthEntry {
   /** `npmAuthToken`, sent as Bearer. */
@@ -225,6 +237,12 @@ export interface RegistryConfig {
    * Authorization header. Absent for every other manager.
    */
   berryAuth?: BerryAuth
+  /**
+   * The manager's release-age gate (#166): versions younger than it are never
+   * installed, so autd never proposes them. yarn berry's `npmMinimalAgeGate`.
+   * Absent where the manager has none.
+   */
+  releaseAgeGate?: ReleaseAgeGate
   /** cafile (if readable), else ca / ca[]; undefined means Node's default store */
   ca?: string[]
   strictSSL: boolean
@@ -253,7 +271,12 @@ export interface RegistryPackage {
   source: 'deps.dev' | 'packument'
 }
 
-export type LookupFailureKind = 'not-found' | 'request' | 'invalid'
+/** `quarantined`: the manager's release-age gate lets no version through (#166). */
+export type LookupFailureKind =
+  | 'not-found'
+  | 'request'
+  | 'invalid'
+  | 'quarantined'
 
 export type PackageLookup =
   | { ok: true; package: RegistryPackage }

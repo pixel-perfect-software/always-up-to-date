@@ -165,8 +165,16 @@ export const discoverFromRegistry = async ({
   const lookups = names.map((name) => registry.lookup(name))
 
   const results = await Promise.all(lookups)
+  // The manager's release-age gate lets no version through (#166): nothing
+  // can move, so the package is left out, as the manager leaves it.
+  for (const result of results) {
+    if (!result.ok && result.kind === 'quarantined') {
+      logger.warn(`Leaving ${result.name} out: ${result.reason}`)
+    }
+  }
   const failures = results.filter(
-    (result): result is Extract<PackageLookup, { ok: false }> => !result.ok,
+    (result): result is Extract<PackageLookup, { ok: false }> =>
+      !result.ok && result.kind !== 'quarantined',
   )
   if (failures.length > 0) throw failureError(failures)
 

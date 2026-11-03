@@ -72,7 +72,7 @@ __tests__/
   projectLocation.test.ts   # locate(): the root that lists a member, a directory inside one, a negated pattern, the nearest of several, pnpm's own yaml, a nearer pnpm-workspace.yaml that does not list it, no package.json (#123)
   projectMember.test.ts     # Real openProject from a member on temp workspaces: root and member, the config fallback, berry's detect refusal, the update refusal, an own-project directory, pnpm's own yaml, and the manager's root over locate's (a stray or nearer settings-only pnpm-workspace.yaml) (#123)
   memberRun.test.ts         # Per native adapter: check and plan from a member read that manifest only, the member header, and update is refused before discovery, any lookup or subprocess, with every manifest keeping its bytes (#123)
-  discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95, a member run (#123)
+  discovery.test.ts         # Native discovery on registry captures: no subprocess, skipped specs, links, missing, failed lookups, #95, a member run (#123), a quarantined lookup left out (#166)
   projectRegistry.test.ts   # Real openProject on temp workspaces: a pnpm or bun member reads the workspace root's registry files; a pnpm member with its own yaml is its own root; a yarn v1 .yarnrc routes the default and a scope (#120) and a berry project's is ignored, from a member too; yarn v1 sends credentials by its own rule, npm by npm's (#126); berry routes and authenticates from .yarnrc.yml and reads no .npmrc (#107)
   pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows; a cooldown fallback within the range package.json declares (#151) and an alias looked up by its target (#152)
   singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON (registry captures as of the capture date plus a written node_modules), identical for all four managers; reviewed once for #106: never update it to make a change pass
@@ -104,7 +104,7 @@ __tests__/
     pnpmNpmrc.test.ts       # pnpm 12 layers on temp dirs: #117 evidence rows, one test per probe decision (p20-p55), config directory per platform (Linux and Windows source-read), workspace members, `fetchTimeout` / `fetchRetries` from yaml and env only (#125)
     yarnNpmrc.test.ts       # yarn v1 .npmrc layers on temp dirs: #122 evidence rows, the comment's example, one test per probe decision (y20-y32), the filesystem root, berry reads no .npmrc (#107)
     yarnrc.test.ts          # yarn v1 .yarnrc grammar (quotes, comments, CRLF, --registry), routes, precedence against .npmrc, env and ~/.yarnrc, workspace parents; what yarnV1Auth carries (#126)
-    yarnrcYml.test.ts       # yarn berry .yarnrc.yml: the YAML subset, substituteBerry on 4.18.1's grammar, file and env merge (r11-r15, `yarn config get` captures), berryRegistryConfig routes, unusable http, CA, network settings (#107)
+    yarnrcYml.test.ts       # yarn berry .yarnrc.yml: the YAML subset, substituteBerry on 4.18.1's grammar, file and env merge (r11-r15, `yarn config get` captures), berryRegistryConfig routes, unusable http, CA, network settings (#107), the release-age gate from npmMinimalAgeGate and npmPreapprovedPackages (#166)
     bunNpmrc.test.ts        # bun's .npmrc layers on temp dirs: project, one user file (XDG, userconfig), no env/prefix/parent, $VAR forms
     bunfig.test.ts          # bunfig.toml routes and credentials, $NAME, global/project merge, env overrides, bunfigExact
     pin.test.ts             # applyPinned on temp dirs: exact pin then a byte-for-byte restore, past-the-range spec, catalog entry, relock order, relock failure (#147)
@@ -129,6 +129,7 @@ __tests__/
     registryReader.test.ts  # createRegistryReader on captured bodies and local servers: deps.dev path, packument fallbacks, breaker, depsDev: false, other registries, credentials, 404s, failures, dedupe, bounded concurrency; with the disk cache: TTLs, 304 revalidation, Q1 (authenticated answers), Cache-Control, no stale fallback, unwritable folder
     registryCache.test.ts   # The store: cacheDirectory per platform, endpointKey, freshFor, round trips, misses, atomic writes across processes, pruning, fails open, modes
     registryDocuments.test.ts # dist-tags, deps.dev and packument parsers on the fixtures; the sources agree; malformed input
+    releaseAgeGate.test.ts  # A manager's release-age gate (#166) on registry captures: per-scope minutes, npmPreapprovedPackages forms, latest moved below a quarantined one, no time quarantined, the full packument's times filling a packument, quarantined lookups, releaseTimes filtered
     limiter.test.ts         # createLimiter: peak, FIFO, rejection frees the slot
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping

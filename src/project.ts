@@ -10,6 +10,7 @@ import logger from '@/utils/logger'
 import { managerRegistryConfig, processSources } from '@/utils/npmrcLoader'
 import { trackRegistries } from '@/utils/redaction'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
+import { withReleaseAgeGate } from '@/utils/releaseAgeGate'
 
 /** `AUTD_NO_CACHE`: anything set except `0` and `false` turns the cache off. */
 const cacheDisabledBy = (value: string | undefined): boolean => {
@@ -79,12 +80,18 @@ export const openProject = (
   // The registry settings are the ones the manager reads where autd runs it,
   // at the root, whatever the cwd: from a yarn v1 member, `~/.npmrc` would
   // outrank the root's `.npmrc`, while a root install reads the root's (#127).
-  const registry = createRegistrySession(cwd, {
+  const session = createRegistrySession(cwd, {
     depsDev: config.depsDev,
     cache:
       cache && !cacheDisabledBy(process.env.AUTD_NO_CACHE) ? {} : undefined,
     loadConfig: () => managerRegistryConfig(adapter, root, processSources()),
   })
+  // The manager's release-age gate (#166) on every lookup, so nothing it
+  // would refuse is proposed: discovery, the plan and cooldown fallbacks.
+  const registry = withReleaseAgeGate(
+    session,
+    () => session.registryConfig().releaseAgeGate,
+  )
   // A manager's own output can hold a registry URL with a token in its path.
   trackRegistries(() => registry.registryConfig())
   return { root, member, config, adapter, registry }

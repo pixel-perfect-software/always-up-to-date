@@ -344,6 +344,8 @@ describe('openProject registry config for yarn berry', () => {
           name,
           'dist-tags': { latest: '1.0.0' },
           versions: { '1.0.0': { name, version: '1.0.0' } },
+          // Past berry's default npmMinimalAgeGate (one day, #166).
+          time: { '1.0.0': '2020-01-01T00:00:00.000Z' },
         }),
       )
     })

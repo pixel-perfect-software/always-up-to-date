@@ -5,6 +5,7 @@ import type {
   BerryAuth,
   BerryAuthEntry,
   RegistryConfig,
+  ReleaseAgeGate,
   UnusableRegistries,
 } from '@/types'
 import { ancestorFiles } from '@/utils/ancestors'
@@ -324,6 +325,7 @@ interface NpmEntry {
   npmAuthToken?: Sourced<string>
   npmAuthIdent?: Sourced<string>
   npmAlwaysAuth?: Sourced<string>
+  npmMinimalAgeGate?: Sourced<string>
 }
 
 const ENTRY_KEYS = [
@@ -331,6 +333,7 @@ const ENTRY_KEYS = [
   'npmAuthToken',
   'npmAuthIdent',
   'npmAlwaysAuth',
+  'npmMinimalAgeGate',
 ] as const
 
 const SCALARS = [
@@ -354,6 +357,7 @@ export interface BerrySettings {
   /** Registry key with one trailing `/` dropped → its settings. */
   registries: Record<string, NpmEntry>
   unsafeHttpWhitelist: string[]
+  npmPreapprovedPackages: string[]
 }
 
 /** `YARN_NPM_REGISTRY_SERVER` for `npmRegistryServer`. */
@@ -405,6 +409,7 @@ export const berrySettings = (
     scopes: Object.create(null),
     registries: Object.create(null),
     unsafeHttpWhitelist: [],
+    npmPreapprovedPackages: [],
   }
   const { env } = sources
 
@@ -436,6 +441,7 @@ export const berrySettings = (
   // Raw npmRegistries keys, nearest file first, before normalizing.
   const rawRegistries: { key: string; entry: NpmEntry }[] = []
   const whitelists: string[][] = []
+  const preapproved: string[][] = []
 
   for (const file of berryRcFiles(cwd, sources)) {
     let values: Record<string, YamlNode>
@@ -478,12 +484,14 @@ export const berrySettings = (
         mergeEntry(raw.entry, node, `npmRegistries."${key}"`)
       }
     }
-    const whitelist = values.unsafeHttpWhitelist
-    if (Array.isArray(whitelist)) {
-      whitelists.push(
-        whitelist.filter((host): host is string => typeof host === 'string'),
-      )
-    }
+    const strings = (node: YamlNode | undefined): string[] | undefined =>
+      Array.isArray(node)
+        ? node.filter((item): item is string => typeof item === 'string')
+        : undefined
+    const whitelist = strings(values.unsafeHttpWhitelist)
+    if (whitelist) whitelists.push(whitelist)
+    const approved = strings(values.npmPreapprovedPackages)
+    if (approved) preapproved.push(approved)
   }
 
   // Nearest file first, so the first raw key to claim a registry keeps it.
@@ -492,17 +500,32 @@ export const berrySettings = (
     settings.registries[normalized] ??= entry
   }
   settings.unsafeHttpWhitelist = whitelists.reverse().flat()
+  settings.npmPreapprovedPackages = preapproved.reverse().flat()
   return settings
 }
 
-/** Berry's DURATION in milliseconds: a number, or one with `ms`, `s`, `m`, `h`, `d` or `w`. */
-const durationMs = (value: string | undefined): number | undefined => {
-  const match = /^\s*(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)?\s*$/.exec(value ?? '')
+const DURATION_UNITS: Record<string, number> = {
+  ms: 1,
+  s: 1e3,
+  m: 6e4,
+  h: 36e5,
+  d: 864e5,
+  w: 6048e5,
+}
+
+/**
+ * Berry's DURATION (`eF` in its bundle): a number in the setting's own
+ * `unit`, or one followed by `ms`, `s`, `m`, `h`, `d` or `w`, with no space.
+ * Undefined when it doesn't parse (berry fails on it).
+ */
+export const berryDuration = (
+  value: string | undefined,
+  unit: keyof typeof DURATION_UNITS,
+): number | undefined => {
+  const match = /^(\d*\.?\d+)(ms|s|m|h|d|w)?$/.exec(value ?? '')
   if (!match) return undefined
-  const unit = { ms: 1, s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 }[
-    (match[2] ?? 'ms') as 'ms'
-  ]
-  return Math.round(Number(match[1]) * unit)
+  const n = Number.parseFloat(match[1])
+  return match[2] ? (n * DURATION_UNITS[match[2]]) / DURATION_UNITS[unit] : n
 }
 
 const wholeAtLeast = (
@@ -540,6 +563,9 @@ const authEntry = (
 
 export const DEFAULT_BERRY_REGISTRY = 'https://registry.yarnpkg.com'
 
+/** `npmMinimalAgeGate`'s default, `1d`, in minutes. */
+export const DEFAULT_BERRY_AGE_GATE_MINUTES = 1440
+
 /**
  * The registry config yarn berry resolves (#107), replacing the `.npmrc`
  * view, which berry doesn't read:
@@ -553,7 +579,7 @@ export const DEFAULT_BERRY_REGISTRY = 'https://registry.yarnpkg.com'
  * - a route berry refuses is `unusable`: a value that isn't an http(s) URL,
  *   or an `http:` registry whose host `unsafeHttpWhitelist` doesn't list.
  * Not read: `networkSettings`, `httpsKeyFilePath` / `httpsCertFilePath`,
- * plugins' authentication hooks, and `npmMinimalAgeGate` (discovery's).
+ * and plugins' authentication hooks. `npmMinimalAgeGate` and `npmPreapprovedPackages` become `releaseAgeGate` (#166).
  */
 export const berryRegistryConfig = (
   cwd: string,
@@ -604,6 +630,22 @@ export const berryRegistryConfig = (
   }
   const berryAuth: BerryAuth = { top: authEntry(scalars), scopes, registries }
 
+  // Every scope with an npmScopes entry has its own gate, one day unless
+  // set, whatever the top level says (4.18.1's `Wxe`; probed 2026-11-03).
+  const gateOf = (found: Sourced<string> | undefined): number =>
+    berryDuration(found?.value, 'm') ?? DEFAULT_BERRY_AGE_GATE_MINUTES
+  const releaseAgeGate: ReleaseAgeGate = {
+    setting: 'npmMinimalAgeGate',
+    minutes: gateOf(scalars.npmMinimalAgeGate),
+    scopes: Object.fromEntries(
+      Object.entries(settings.scopes).map(([name, entry]) => [
+        `@${name}`,
+        gateOf(entry.npmMinimalAgeGate),
+      ]),
+    ),
+    exempt: settings.npmPreapprovedPackages,
+  }
+
   let ca: string[] | undefined
   const caFile = scalars.httpsCaFilePath
   if (caFile) {
@@ -636,11 +678,14 @@ export const berryRegistryConfig = (
       scopedRegistries,
       credentials: {},
       berryAuth,
+      releaseAgeGate,
       ...(ca ? { ca } : {}),
       strictSSL: berryBoolean(scalars.enableStrictSsl?.value) ?? true,
       proxy,
       fetchRetries: wholeAtLeast(scalars.httpRetry?.value, 0, 3),
-      fetchTimeout: durationMs(scalars.httpTimeout?.value) ?? 60_000,
+      fetchTimeout: Math.round(
+        berryDuration(scalars.httpTimeout?.value, 'ms') ?? 60_000,
+      ),
       maxSockets: wholeAtLeast(scalars.networkConcurrency?.value, 1, 50),
     },
     unusable,

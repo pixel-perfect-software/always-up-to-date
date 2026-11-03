@@ -246,6 +246,12 @@ describe('berry settings', () => {
           scopes: {},
           registries: {},
         },
+        releaseAgeGate: {
+          setting: 'npmMinimalAgeGate',
+          minutes: 1440,
+          scopes: {},
+          exempt: [],
+        },
         strictSSL: true,
         proxy: {},
         fetchRetries: 3,
@@ -342,6 +348,47 @@ describe('berry settings', () => {
           },
         },
       })
+    })
+
+    // #166: yarn 4.18.1, probed 2026-11-03 (npmMinimalAgeGate rows in
+    // .claude/plans/lockfile-discovery.md).
+    it("reads npmMinimalAgeGate in minutes, and a configured scope's own, one day by default", () => {
+      write(
+        at('parent', 'proj', '.yarnrc.yml'),
+        [
+          'npmMinimalAgeGate: 0',
+          'npmScopes:',
+          '  acme:',
+          '    npmRegistryServer: "https://acme.example.com"',
+          '  fast:',
+          '    npmMinimalAgeGate: 2h',
+          'npmPreapprovedPackages: ["p-exempt"]',
+        ].join('\n'),
+      )
+      write(
+        at('home', '.yarnrc.yml'),
+        'npmPreapprovedPackages:\n  - "@acme/*@^1.0.0"\n',
+      )
+
+      expect(berryRegistryConfig(proj(), sourcesFor()).releaseAgeGate).toEqual({
+        setting: 'npmMinimalAgeGate',
+        minutes: 0,
+        scopes: { '@acme': 1440, '@fast': 120 },
+        exempt: ['@acme/*@^1.0.0', 'p-exempt'],
+      })
+    })
+
+    it('reads YARN_NPM_MINIMAL_AGE_GATE, and keeps the default for a value berry cannot parse', () => {
+      expect(
+        berryRegistryConfig(
+          proj(),
+          sourcesFor({ YARN_NPM_MINIMAL_AGE_GATE: '30' }),
+        ).releaseAgeGate?.minutes,
+      ).toBe(30)
+      write(at('parent', 'proj', '.yarnrc.yml'), 'npmMinimalAgeGate: "1 day"\n')
+      expect(
+        berryRegistryConfig(proj(), sourcesFor()).releaseAgeGate?.minutes,
+      ).toBe(1440)
     })
 
     it('reads httpsCaFilePath relative to the file that sets it', () => {
