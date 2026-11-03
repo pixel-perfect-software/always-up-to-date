@@ -518,7 +518,8 @@ describe('a registry value the manager cannot use (#129)', () => {
         expect(await session.releaseTimes('@acme/probe')).toEqual({})
         expect(requests).toEqual([])
         await session.releaseTimes('left-pad')
-        expect(requests).toEqual(['/left-pad'])
+        // The lookup's abbreviated GET, then its retry for the full document on a 404 (as pacote does).
+        expect(requests).toEqual(['/left-pad', '/left-pad'])
       } finally {
         session.close()
       }

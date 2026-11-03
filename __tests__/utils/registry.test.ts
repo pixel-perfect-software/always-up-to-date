@@ -1,18 +1,21 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import type http from 'http'
 import os from 'os'
 import path from 'path'
 import type { ManagerAdapter } from '@/managers/adapter'
 import bun from '@/managers/bun'
 import pnpm from '@/managers/pnpm'
-import type { RegistryConfig } from '@/types'
+import type { RegistryConfig, ReleaseAgeGate } from '@/types'
 import logger from '@/utils/logger'
 import { managerRegistryConfig, type NpmrcSources } from '@/utils/npmrcLoader'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
 import type { RegistryClient } from '@/utils/registryClient'
+import { ABBREVIATED_ACCEPT } from '@/utils/registryRequest'
+import { withReleaseAgeGate } from '@/utils/releaseAgeGate'
 import {
+  derive,
+  type Handler,
   registryBody,
   replies,
   startRegistry,
@@ -34,10 +37,30 @@ const configFor = (
   ...overrides,
 })
 
-const packument =
-  (body: unknown) => (_req: http.IncomingMessage, res: http.ServerResponse) => {
-    res.setHeader('content-type', 'application/json')
-    res.end(JSON.stringify(body))
+/**
+ * `@types/ms` on a registry that answers the abbreviated packument and the
+ * full one by `Accept`, whatever name was asked for: what an npm-compatible
+ * registry does for a name deps.dev never saw.
+ */
+const typesMs: Handler = (req, res) => {
+  res.setHeader('content-type', 'application/json')
+  res.end(
+    registryBody(
+      req.headers.accept === ABBREVIATED_ACCEPT
+        ? 'types-ms.packument'
+        : 'types-ms.packument-full',
+    ),
+  )
+}
+
+/** The full packument's time for @types/ms 2.1.0. */
+const FULL_2_1_0 = '2025-01-16T21:02:46.181Z'
+
+const status =
+  (code: number): Handler =>
+  (_req, res) => {
+    res.statusCode = code
+    res.end('failed')
   }
 
 describe('registry session', () => {
@@ -62,28 +85,28 @@ describe('registry session', () => {
     await Promise.all(servers.splice(0).map((s) => s.close()))
   })
 
-  it('fetches a package once while several manifests ask for it at the same time', async () => {
-    const server = await start(
-      packument({ time: { '1.0.0': '2026-01-01T00:00:00.000Z' } }),
-    )
+  it('reads the full packument once while several manifests ask for a package at the same time', async () => {
+    const server = await start(typesMs)
     const session = sessionFor(configFor(server.url))
 
     const times = await Promise.all([
-      session.releaseTimes('dayjs'),
-      session.releaseTimes('dayjs'),
-      session.releaseTimes('dayjs'),
+      session.releaseTimes('@types/ms'),
+      session.releaseTimes('@types/ms'),
+      session.releaseTimes('@types/ms'),
     ])
 
-    expect(server.requests.map((r) => r.url)).toEqual(['/dayjs'])
-    expect(times).toEqual([
-      { '1.0.0': '2026-01-01T00:00:00.000Z' },
-      { '1.0.0': '2026-01-01T00:00:00.000Z' },
-      { '1.0.0': '2026-01-01T00:00:00.000Z' },
+    // The lookup, then the one full packument, which has the time the lookup lacks.
+    expect(server.requests.map((r) => [r.url, r.headers.accept])).toEqual([
+      ['/@types%2fms', ABBREVIATED_ACCEPT],
+      ['/@types%2fms', 'application/json'],
     ])
+    expect(times[0]['2.1.0']).toBe(FULL_2_1_0)
+    expect(times[1]).toEqual(times[0])
+    expect(times[2]).toEqual(times[0])
   })
 
   it('shares one client between concurrent first requests for different packages', async () => {
-    const server = await start(packument({ time: {} }))
+    const server = await start(typesMs)
     const session = sessionFor(configFor(server.url))
 
     await Promise.all([
@@ -92,15 +115,12 @@ describe('registry session', () => {
       session.releaseTimes('c'),
     ])
 
-    expect(server.requests).toHaveLength(3)
+    expect(server.requests).toHaveLength(6)
     expect(server.connections).toBeLessThanOrEqual(3)
   })
 
-  it('fails open to an empty map, once, on a network error', async () => {
-    const server = await start((_req, res) => {
-      res.statusCode = 500
-      res.end()
-    })
+  it('answers {} once, and asks nothing more, when the lookup fails', async () => {
+    const server = await start(status(500))
     const session = sessionFor(configFor(server.url, { fetchRetries: 0 }))
 
     expect(await session.releaseTimes('ms')).toEqual({})
@@ -108,52 +128,64 @@ describe('registry session', () => {
     expect(server.requests).toHaveLength(1)
   })
 
+  it('answers {} once when the full packument fails, without rejecting', async () => {
+    const server = await start((req, res) =>
+      req.headers.accept === ABBREVIATED_ACCEPT
+        ? typesMs(req, res)
+        : status(500)(req, res),
+    )
+    const session = sessionFor(configFor(server.url))
+
+    expect(await session.releaseTimes('@types/ms')).toEqual({})
+    expect(await session.releaseTimes('@types/ms')).toEqual({})
+    expect(server.requests).toHaveLength(2)
+  })
+
   it('fails open when the registry is unreachable', async () => {
-    const server = await start(packument({}))
+    const server = await start(typesMs)
     const session = sessionFor(configFor(server.url))
     await server.close()
 
-    expect(await session.releaseTimes('ms')).toEqual({})
-  })
-
-  it('keeps only the string entries of time', async () => {
-    const server = await start(
-      packument({
-        time: {
-          '1.0.0': '2026-01-01T00:00:00.000Z',
-          '2.0.0': 7,
-          '3.0.0': null,
-        },
-      }),
-    )
-
-    expect(await sessionFor(configFor(server.url)).releaseTimes('ms')).toEqual({
-      '1.0.0': '2026-01-01T00:00:00.000Z',
-    })
+    expect(await session.releaseTimes('@types/ms')).toEqual({})
   })
 
   it.each([
-    ['no time', {}],
-    ['a time that is not an object', { time: 'soon' }],
-    ['a document that is not an object', ['x']],
-  ])('returns an empty map for %s', async (_label, body) => {
-    const server = await start(packument(body))
-
-    expect(await sessionFor(configFor(server.url)).releaseTimes('ms')).toEqual(
-      {},
+    [
+      'no time',
+      (body: Record<string, unknown>) => {
+        delete body.time
+      },
+    ],
+    [
+      'a time that is not an object',
+      (body: Record<string, unknown>) => {
+        body.time = 'soon'
+      },
+    ],
+    [
+      'a document that is not a packument',
+      (body: Record<string, unknown>) => {
+        delete body.versions
+      },
+    ],
+  ])('answers {} for a full packument with %s', async (_label, edit) => {
+    const server = await start((req, res) =>
+      req.headers.accept === ABBREVIATED_ACCEPT
+        ? typesMs(req, res)
+        : res.end(derive('types-ms.packument-full', edit)),
     )
+
+    expect(
+      await sessionFor(configFor(server.url)).releaseTimes('@types/ms'),
+    ).toEqual({})
   })
 
   it('asks the scope registry for a scoped package, with its own credentials (#104)', async () => {
-    const corp = await start(
-      packument({ time: { '1.0.0': '2026-02-01T00:00:00.000Z' } }),
-    )
-    const standard = await start(
-      packument({ time: { '9.9.9': '2026-03-01T00:00:00.000Z' } }),
-    )
+    const corp = await start(typesMs)
+    const standard = await start(typesMs)
     const session = sessionFor(
       configFor(standard.url, {
-        scopedRegistries: { '@corp': corp.url },
+        scopedRegistries: { '@types': corp.url },
         credentials: {
           [`//127.0.0.1:${corp.port}/`]: { authToken: 'SCOPED' },
           [`//127.0.0.1:${standard.port}/`]: { authToken: 'DEFAULT' },
@@ -161,33 +193,35 @@ describe('registry session', () => {
       }),
     )
 
-    expect(await session.releaseTimes('@corp/pkg')).toEqual({
-      '1.0.0': '2026-02-01T00:00:00.000Z',
-    })
+    expect((await session.releaseTimes('@types/ms'))['2.1.0']).toBe(FULL_2_1_0)
     expect(corp.requests.map((r) => [r.url, r.headers.authorization])).toEqual([
-      ['/@corp%2fpkg', 'Bearer SCOPED'],
+      ['/@types%2fms', 'Bearer SCOPED'],
+      ['/@types%2fms', 'Bearer SCOPED'],
     ])
     expect(standard.requests).toEqual([])
 
     await session.releaseTimes('ms')
     expect(
       standard.requests.map((r) => [r.url, r.headers.authorization]),
-    ).toEqual([['/ms', 'Bearer DEFAULT']])
-    expect(corp.requests).toHaveLength(1)
+    ).toEqual([
+      ['/ms', 'Bearer DEFAULT'],
+      ['/ms', 'Bearer DEFAULT'],
+    ])
+    expect(corp.requests).toHaveLength(2)
   })
 
   it('asks again in a new session', async () => {
-    const server = await start(packument({ time: {} }))
+    const server = await start(typesMs)
     const config = configFor(server.url)
 
-    await sessionFor(config).releaseTimes('ms')
-    await sessionFor(config).releaseTimes('ms')
+    await sessionFor(config).releaseTimes('@types/ms')
+    await sessionFor(config).releaseTimes('@types/ms')
 
-    expect(server.requests).toHaveLength(2)
+    expect(server.requests).toHaveLength(4)
   })
 
   it('reads no config until a request, then once for the whole run', async () => {
-    const server = await start(packument({ time: {} }))
+    const server = await start(typesMs)
     const loadConfig = jest.fn(() => configFor(server.url))
     const session = createRegistrySession('/project', { loadConfig })
     sessions.push(session)
@@ -203,7 +237,7 @@ describe('registry session', () => {
   })
 
   it('hands every caller the same client and the same config', async () => {
-    const server = await start(packument({ time: {} }))
+    const server = await start(typesMs)
     const session = sessionFor(configFor(server.url))
 
     const [first, second] = await Promise.all([
@@ -216,18 +250,19 @@ describe('registry session', () => {
   })
 
   it('reuses one connection for sequential packages', async () => {
-    const server = await start(packument({ time: {} }))
+    const server = await start(typesMs)
     const session = sessionFor(configFor(server.url))
 
     await session.releaseTimes('a')
     await session.releaseTimes('b')
 
-    expect(server.requests).toHaveLength(2)
+    // A lookup and a full packument for each.
+    expect(server.requests).toHaveLength(4)
     expect(server.connections).toBe(1)
   })
 
   it('closes safely before any request, and twice after one', async () => {
-    const server = await start(packument({ time: {} }))
+    const server = await start(typesMs)
     const session = sessionFor(configFor(server.url))
 
     expect(() => session.close()).not.toThrow()
@@ -238,7 +273,7 @@ describe('registry session', () => {
   })
 
   it('destroys a client that was still loading when close() ran', async () => {
-    const server = await start(packument({ time: {} }))
+    const server = await start(typesMs)
     const created: RegistryClient[] = []
     let fresh: typeof import('@/utils/registry') | undefined
     await jest.isolateModulesAsync(async () => {
@@ -352,17 +387,12 @@ describe('registry session', () => {
       expect(depsDev.requests).toHaveLength(1)
     })
 
-    it("fills releaseTimes from the lookup's deps.dev dates where the packument lacks a version (#139)", async () => {
-      // A mirror that lags (or a proxy hiding fresh versions) serves a
-      // packument without 2.1.3, while the dist-tags and deps.dev show it.
+    it("answers releaseTimes from the lookup's deps.dev dates, asking no packument (#139)", async () => {
+      // The registry serves no packument at all, as a mirror that lags or a
+      // proxy hiding fresh versions might; deps.dev and the dist-tags show 2.1.3.
       const registry = await start(
         replies({
           '/-/package/ms/dist-tags': { body: registryBody('ms.dist-tags') },
-          '/ms': {
-            body: JSON.stringify({
-              time: { '2.1.2': '2019-06-07T00:00:00.000Z' },
-            }),
-          },
         }),
       )
       const depsDev = await start(
@@ -380,11 +410,18 @@ describe('registry session', () => {
       sessions.push(session)
 
       await session.lookup('ms')
-      const times = await session.releaseTimes('ms')
+      const times = await session.releaseTimes('ms', {
+        current: '2.1.2',
+        target: '2.1.3',
+      })
+      const everything = await session.releaseTimes('ms')
 
       expect(times['2.1.3']).toBe('2020-12-08T13:54:35Z')
-      // The packument's own time wins where it has one.
-      expect(times['2.1.2']).toBe('2019-06-07T00:00:00.000Z')
+      expect(times['2.1.2']).toBe('2019-06-06T17:31:55Z')
+      expect(everything).toEqual(times)
+      expect(registry.requests.map((r) => r.url)).toEqual([
+        '/-/package/ms/dist-tags',
+      ])
     })
 
     it('asks deps.dev by default', async () => {
@@ -406,6 +443,74 @@ describe('registry session', () => {
       await session.lookup('ms')
 
       expect(depsDev.requests).toHaveLength(1)
+    })
+  })
+
+  describe('behind a manager release-age gate (#168)', () => {
+    // pnpm's: a day, and a version with no known time is let through.
+    const gate: ReleaseAgeGate = {
+      setting: 'minimumReleaseAge',
+      minutes: 1440,
+      scopes: {},
+      exempt: [],
+      missingTime: 'allowed',
+    }
+    const NOW = Date.parse('2026-11-03T00:00:00Z')
+
+    it('reads the full packument once for a lookup deps.dev lags on, and never again for the lookup or the cooldown', async () => {
+      const registry = await start((req, res) =>
+        req.url === '/-/package/@types%2fms/dist-tags'
+          ? res.end(registryBody('types-ms.dist-tags'))
+          : typesMs(req, res),
+      )
+      const depsDev = await start(
+        replies({
+          '/v3/systems/npm/packages/%40types%2Fms': {
+            body: derive<{
+              versions: Array<{ versionKey: { version: string } }>
+            }>('types-ms.deps-dev', (body) => {
+              body.versions = body.versions.filter(
+                (v) => v.versionKey.version !== '2.1.0',
+              )
+            }),
+          },
+        }),
+      )
+      const session = createRegistrySession('/project', {
+        loadConfig: () => configFor(registry.url),
+        endpoints: {
+          publicRegistries: [new URL(registry.url).origin],
+          depsDev: `${depsDev.url}v3/systems/npm/packages/`,
+        },
+      })
+      sessions.push(session)
+      const gated = withReleaseAgeGate(
+        session,
+        () => gate,
+        () => NOW,
+      )
+      const packumentAccepts = () =>
+        registry.requests
+          .filter((r) => r.url === '/@types%2fms')
+          .map((r) => r.headers.accept)
+
+      const first = await gated.lookup('@types/ms')
+      expect(first).toMatchObject({ ok: true, package: { latest: '2.1.0' } })
+      expect(packumentAccepts()).toEqual([
+        ABBREVIATED_ACCEPT,
+        'application/json',
+      ])
+      const before = registry.requests.length
+
+      const again = await gated.lookup('@types/ms')
+      const times = await gated.releaseTimes('@types/ms', {
+        current: '0.7.34',
+        target: '2.1.0',
+      })
+
+      expect(again).toEqual(first)
+      expect(times['2.1.0']).toBe(FULL_2_1_0)
+      expect(registry.requests).toHaveLength(before)
     })
   })
 
@@ -549,14 +654,7 @@ describe('registry session', () => {
     })
 
     // The scope's registry answers the abbreviated packument and the full one.
-    const scopeServer = () =>
-      start((req, res) => {
-        res.setHeader('content-type', 'application/json')
-        const full = !String(req.headers.accept).includes('install-v1')
-        res.end(
-          registryBody(full ? 'types-ms.packument-full' : 'types-ms.packument'),
-        )
-      })
+    const scopeServer = () => start(typesMs)
 
     const sessionWith = (
       adapter: Pick<ManagerAdapter, 'npmrcLayers' | 'registryConfig'>,

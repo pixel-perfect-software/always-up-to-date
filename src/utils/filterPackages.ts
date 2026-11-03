@@ -7,7 +7,11 @@ import type {
   PinnedRow,
   UpdateResult,
 } from '@/types'
-import { evaluateCooldown, isCooldownEnabled } from './cooldown'
+import {
+  cooldownDaysFor,
+  evaluateCooldown,
+  isCooldownEnabled,
+} from './cooldown'
 import type { DeclaredDependency } from './dependencySpecs'
 import { formatAgeDays } from './duration'
 import type { ControllingOverride } from './overrides'
@@ -313,7 +317,14 @@ const filterPackages = async (
       })
       // A row is keyed by its manifest key; an alias's dates are its target's.
       const name = dependency?.name ?? result.name
-      const releaseTimes = await registry.releaseTimes(name)
+      // A zero-day step is never gated, whatever its release time is.
+      if (cooldownDaysFor(config.cooldown, result.updateType) <= 0) {
+        return { ...result, releaseAge: undefined }
+      }
+      const releaseTimes = await registry.releaseTimes(name, {
+        current: result.current,
+        target: result.target,
+      })
       const releaseTime = releaseTimes[result.target]
       const evaluation = evaluateCooldown(
         releaseTime,

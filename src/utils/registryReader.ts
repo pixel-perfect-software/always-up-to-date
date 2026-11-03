@@ -4,6 +4,7 @@ import type {
   RegistryConfig,
   RegistryPackage,
   RegistryVersion,
+  ReleaseWindow,
 } from '@/types'
 import { createLimiter } from './limiter'
 import logger from './logger'
@@ -42,6 +43,17 @@ export interface RegistryReaderOptions {
 export interface RegistryReader {
   /** Never rejects for a network, HTTP or parse failure; those are `ok: false`. */
   lookup(name: string): Promise<PackageLookup>
+  /**
+   * Publish times by version: the lookup's own, plus the full packument's when
+   * a version in `window` (any version, without one) has none. The full
+   * packument's time wins where both have one, and only versions it lists
+   * count. Never rejects: a failed request leaves the lookup's times, with a
+   * debug line. A name whose lookup failed is `{}`, with no request.
+   */
+  releaseTimes(
+    name: string,
+    window?: ReleaseWindow,
+  ): Promise<Record<string, string>>
   /** What the registries answered with: 304s (revalidated) and 200 bodies the cache could store. */
   stats(): { notModified: number; fetched: number }
 }
@@ -79,6 +91,44 @@ type Revalidated<V> =
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
+/**
+ * `versions` with deps.dev's publish time on each that has none. A new list:
+ * the input can be a cached or memoized object other lookups share.
+ */
+const withTimes = (
+  versions: RegistryVersion[],
+  listed: readonly RegistryVersion[] | undefined,
+): RegistryVersion[] => {
+  if (!listed) return versions
+  const times = new Map<string, string>()
+  for (const { version, publishedAt } of listed) {
+    if (publishedAt) times.set(version, publishedAt)
+  }
+  return versions.map((entry) => {
+    const publishedAt = times.get(entry.version)
+    return entry.publishedAt === undefined && publishedAt !== undefined
+      ? { ...entry, publishedAt }
+      : entry
+  })
+}
+
+/** The publish times of the versions a document lists, and only those. */
+const timesOf = (
+  versions: readonly RegistryVersion[],
+): Record<string, string> => {
+  const times: Record<string, string> = {}
+  for (const { version, publishedAt } of versions) {
+    if (publishedAt) times[version] = publishedAt
+  }
+  return times
+}
+
+/** The first three of `versions`, then how many more. */
+const sample = (versions: readonly string[]): string =>
+  versions.length <= 3
+    ? versions.join(', ')
+    : `${versions.slice(0, 3).join(', ')} and ${versions.length - 3} more`
+
 const statusOf = (error: unknown): number | undefined =>
   typeof error === 'object' &&
   error !== null &&
@@ -99,7 +149,9 @@ const codeOf = (error: unknown): string | undefined =>
  * Latest, versions, deprecation and publish times per package. A public npm
  * name takes dist-tags plus deps.dev (two small documents) and falls back to
  * the abbreviated packument; any other name takes one packument request.
- * One lookup per name per reader; at most `maxSockets` requests in flight per host.
+ * `releaseTimes` adds the full packument's times for the versions a cooldown
+ * judges that the lookup has none for. One lookup and one full packument per
+ * name per reader; at most `maxSockets` requests in flight per host.
  */
 export const createRegistryReader = ({
   registryConfig,
@@ -121,6 +173,9 @@ export const createRegistryReader = ({
     return limit
   }
   const lookups = new Map<string, Promise<PackageLookup>>()
+  // A name's full packument is asked for once per run: the lookup is
+  // memoized, so the versions it lacks a time for are the same on every call.
+  const fullRequests = new Map<string, Promise<Record<string, string>>>()
   let depsDevUsable = depsDev
   let depsDevFailures = 0
   const counts = { notModified: 0, fetched: 0 }
@@ -289,10 +344,16 @@ export const createRegistryReader = ({
     return fetched.value
   }
 
+  /**
+   * `depsDevList` is the deps.dev list the caller holds when this is the
+   * fallback from a public name: the packument's version list stays, and each
+   * version gets deps.dev's publish time, which an abbreviated packument has none of.
+   */
   const packumentLookup = async (
     name: string,
     registry: string,
     expectedLatest?: string,
+    depsDevList?: readonly RegistryVersion[],
   ): Promise<PackageLookup> => {
     const url = packumentUrl(name, registry)
     const host = new URL(registry).host
@@ -380,7 +441,7 @@ export const createRegistryReader = ({
     if (latest === undefined) {
       return fail(name, 'not-found', `${name} has no published versions`)
     }
-    return found(name, latest, versions, 'packument')
+    return found(name, latest, withTimes(versions, depsDevList), 'packument')
   }
 
   const publicLookup = async (
@@ -433,7 +494,7 @@ export const createRegistryReader = ({
     }
     if (latest === undefined) {
       logger.debug(`No dist-tags latest for ${name}; reading its packument`)
-      return packumentLookup(name, registry)
+      return packumentLookup(name, registry, undefined, firstVersions)
     }
     let versions = firstVersions
     // A fresh deps.dev entry can be older than the release dist-tags names:
@@ -449,7 +510,7 @@ export const createRegistryReader = ({
         ? `deps.dev does not list ${name}@${latest}; reading its packument`
         : `No deps.dev versions for ${name}; reading its packument`,
     )
-    return packumentLookup(name, registry, latest)
+    return packumentLookup(name, registry, latest, versions ?? firstVersions)
   }
 
   const read = (name: string): Promise<PackageLookup> => {
@@ -472,15 +533,76 @@ export const createRegistryReader = ({
       : packumentLookup(name, registry)
   }
 
-  return {
-    lookup: (name) => {
-      let request = lookups.get(name)
-      if (!request) {
-        request = read(name)
-        lookups.set(name, request)
-      }
-      return request
-    },
-    stats: () => ({ ...counts }),
+  const lookup = (name: string): Promise<PackageLookup> => {
+    let request = lookups.get(name)
+    if (!request) {
+      request = read(name)
+      lookups.set(name, request)
+    }
+    return request
   }
+
+  /**
+   * Every version's publish time the full packument has, for a package whose
+   * lookup lacks `needed`. Failures are a debug line and `{}`.
+   */
+  const fullTimes = async (
+    name: string,
+    needed: readonly string[],
+  ): Promise<Record<string, string>> => {
+    const registry = registryFor(name, registryConfig)
+    logger.debug(
+      `Reading the full packument of ${name} for publish times: ${sample(needed)} ${needed.length === 1 ? 'has' : 'have'} none`,
+    )
+    const fetched = await revalidate(
+      packumentUrl(name, registry),
+      registry,
+      'application/json',
+      undefined,
+      parsePackument,
+    )
+    if (!fetched.ok) {
+      logger.debug(
+        `Failed to read the full packument of ${name}: ${fetched.message}`,
+      )
+      return {}
+    }
+    if (!fetched.value) {
+      logger.debug(
+        `${new URL(registry).host} sent an unreadable document for ${name}`,
+      )
+      return {}
+    }
+    return timesOf(fetched.value.versions)
+  }
+
+  const releaseTimes = async (
+    name: string,
+    window?: ReleaseWindow,
+  ): Promise<Record<string, string>> => {
+    const looked = await lookup(name)
+    if (!looked.ok) return {}
+    const own = timesOf(looked.package.versions)
+    const missing = looked.package.versions
+      .filter((v) => v.publishedAt === undefined)
+      .map((v) => v.version)
+    // A window that is not semver (a row whose version is `missing`) judges everything.
+    const judged =
+      window && semver.valid(window.current) && semver.valid(window.target)
+        ? missing.filter(
+            (version) =>
+              semver.gt(version, window.current) &&
+              semver.lte(version, window.target),
+          )
+        : missing
+    if (judged.length === 0) return own
+    let request = fullRequests.get(name)
+    if (!request) {
+      request = fullTimes(name, missing)
+      fullRequests.set(name, request)
+    }
+    return { ...own, ...(await request) }
+  }
+
+  return { lookup, releaseTimes, stats: () => ({ ...counts }) }
 }

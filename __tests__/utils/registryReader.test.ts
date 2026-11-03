@@ -4,6 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import type { PackageLookup, RegistryConfig } from '@/types'
+import logger from '@/utils/logger'
 import { createRegistryCache } from '@/utils/registryCache'
 import {
   createRegistryClient,
@@ -64,6 +65,11 @@ const msDepsDev = (): Handler =>
   replies({ [`${DEPS_DEV_PREFIX}ms`]: ok('ms.deps-dev') })
 
 const never: Handler = () => undefined
+
+const status500: Handler = (_req, res) => {
+  res.statusCode = 500
+  res.end('oops')
+}
 
 const accepts = (server: TestRegistry): Array<string | undefined> =>
   server.requests.map((r) => r.headers.accept)
@@ -860,6 +866,371 @@ describe('registry reader', () => {
     expect(depsDev.peak).toBe(2)
     expect(overall).toBeGreaterThan(2)
     expect(overall).toBeLessThanOrEqual(4)
+  })
+
+  describe('releaseTimes', () => {
+    const TYPES_MS = '@types/ms'
+    const PACKUMENT_URL = '/@types%2fms'
+    const DEPS_DEV_URL = `${DEPS_DEV_PREFIX}%40types%2Fms`
+    // deps.dev's time for 0.7.34 and the full packument's, a few ms apart.
+    const DEPS_DEV_0_7_34 = '2023-11-07T11:26:21Z'
+    const FULL_0_7_34 = '2023-11-07T11:26:21.925Z'
+    const FULL_2_1_0 = '2025-01-16T21:02:46.181Z'
+    const MOVING_TO_LATEST = { current: '0.7.34', target: '2.1.0' }
+
+    /**
+     * `@types/ms` on a registry that answers the abbreviated packument and the
+     * full one by `Accept`, as npm does, plus its dist-tags.
+     */
+    const typesMsRegistry = (
+      full: Reply = ok('types-ms.packument-full'),
+    ): Handler => {
+      const abbreviated = replies({
+        '/-/package/@types%2fms/dist-tags': ok('types-ms.dist-tags'),
+        [PACKUMENT_URL]: packument('types-ms.packument'),
+      })
+      const complete = replies({ [PACKUMENT_URL]: full })
+      return (req, res) => {
+        const wantsFull =
+          req.url === PACKUMENT_URL && req.headers.accept !== ABBREVIATED_ACCEPT
+        return (wantsFull ? complete : abbreviated)(req, res)
+      }
+    }
+
+    /** deps.dev one release behind: the dist-tags name 2.1.0, deps.dev does not list it. */
+    const lagging = derive<{
+      versions: Array<{ versionKey: { version: string } }>
+    }>('types-ms.deps-dev', (body) => {
+      body.versions = body.versions.filter(
+        (v) => v.versionKey.version !== '2.1.0',
+      )
+    })
+    const laggingDepsDev = (): Handler =>
+      replies({ [DEPS_DEV_URL]: { body: lagging } })
+
+    const packumentAccepts = (server: TestRegistry) =>
+      server.requests
+        .filter((r) => r.url === PACKUMENT_URL)
+        .map((r) => r.headers.accept)
+
+    const debugLines = () =>
+      jest.mocked(logger.debug).mock.calls.map(([line]) => String(line))
+
+    /** Reads the lagging deps.dev first, so the packument path is the one taken. */
+    const behind = async (full?: Reply) => {
+      const made = await setup({
+        registry: typesMsRegistry(full),
+        depsDev: laggingDepsDev(),
+      })
+      const looked = packageOf(await made.reader.lookup(TYPES_MS))
+      return { ...made, looked }
+    }
+
+    describe('the lookup', () => {
+      it("keeps deps.dev's publish times on the packument path, and none for a version it does not list", async () => {
+        const { registry, looked } = await behind()
+
+        expect(looked.source).toBe('packument')
+        expect(looked.versions).toHaveLength(17)
+        expect(
+          looked.versions.find((v) => v.version === '0.7.34')?.publishedAt,
+        ).toBe(DEPS_DEV_0_7_34)
+        expect(
+          looked.versions.filter((v) => v.publishedAt === undefined),
+        ).toEqual([{ version: '2.1.0', deprecated: false }])
+        expect(packumentAccepts(registry)).toEqual([ABBREVIATED_ACCEPT])
+      })
+
+      it('gives a packument read with deps.dev off no time from anywhere', async () => {
+        const { reader } = await setup(
+          { registry: typesMsRegistry() },
+          { depsDev: false },
+        )
+
+        const looked = packageOf(await reader.lookup(TYPES_MS))
+
+        expect(looked.versions.some((v) => v.publishedAt)).toBe(false)
+      })
+    })
+
+    describe('a public name deps.dev lists', () => {
+      it('sends no packument request for any window, or none (D2)', async () => {
+        const { registry, reader } = await setup({
+          registry: typesMsRegistry(),
+          depsDev: replies({ [DEPS_DEV_URL]: ok('types-ms.deps-dev') }),
+        })
+        expect(packageOf(await reader.lookup(TYPES_MS)).source).toBe('deps.dev')
+
+        const all = await reader.releaseTimes(TYPES_MS)
+        const moving = await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+
+        expect(Object.keys(all)).toHaveLength(17)
+        expect(moving).toEqual(all)
+        expect(all['2.1.0']).toBe('2025-01-16T21:02:46Z')
+        expect(registry.requests.map((r) => r.url)).toEqual([
+          '/-/package/@types%2fms/dist-tags',
+        ])
+      })
+    })
+
+    describe('the window', () => {
+      it('sends no full request when every version it covers has a time', async () => {
+        const { registry, reader } = await behind()
+
+        const times = await reader.releaseTimes(TYPES_MS, {
+          current: '0.7.31',
+          target: '0.7.34',
+        })
+
+        expect(packumentAccepts(registry)).toEqual([ABBREVIATED_ACCEPT])
+        expect(times['0.7.34']).toBe(DEPS_DEV_0_7_34)
+        expect(times['2.1.0']).toBeUndefined()
+        expect(Object.keys(times)).toHaveLength(16)
+      })
+
+      it('reads the full packument once a version it covers has none, and its time wins', async () => {
+        const { registry, reader } = await behind()
+
+        const times = await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+
+        expect(packumentAccepts(registry)).toEqual([
+          ABBREVIATED_ACCEPT,
+          'application/json',
+        ])
+        expect(times['2.1.0']).toBe(FULL_2_1_0)
+        expect(times['0.7.34']).toBe(FULL_0_7_34)
+        expect(Object.keys(times)).toHaveLength(17)
+        expect(debugLines()).toContain(
+          'Reading the full packument of @types/ms for publish times: 2.1.0 has none',
+        )
+      })
+
+      it('excludes a version at or below current, and includes the target', async () => {
+        const { registry, reader } = await behind()
+
+        await reader.releaseTimes(TYPES_MS, {
+          current: '2.1.0',
+          target: '2.1.0',
+        })
+        expect(packumentAccepts(registry)).toEqual([ABBREVIATED_ACCEPT])
+
+        await reader.releaseTimes(TYPES_MS, {
+          current: '0.7.34',
+          target: '2.1.0',
+        })
+        expect(packumentAccepts(registry)).toHaveLength(2)
+      })
+
+      it('judges every version when a row has no installed version to start from', async () => {
+        const { registry, reader } = await behind()
+
+        await reader.releaseTimes(TYPES_MS, {
+          current: 'missing',
+          target: '0.7.34',
+        })
+
+        expect(packumentAccepts(registry)).toEqual([
+          ABBREVIATED_ACCEPT,
+          'application/json',
+        ])
+      })
+
+      it('judges every version when there is no window', async () => {
+        const { registry, reader } = await behind()
+
+        const times = await reader.releaseTimes(TYPES_MS)
+
+        expect(packumentAccepts(registry)).toHaveLength(2)
+        expect(times['2.1.0']).toBe(FULL_2_1_0)
+      })
+
+      it('makes one full request for concurrent calls with different windows', async () => {
+        const { registry, reader } = await behind()
+
+        const results = await Promise.all([
+          reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST),
+          reader.releaseTimes(TYPES_MS, { current: '0.7.0', target: '2.1.0' }),
+          reader.releaseTimes(TYPES_MS),
+          reader.releaseTimes(TYPES_MS, {
+            current: '0.7.31',
+            target: '0.7.34',
+          }),
+        ])
+        await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+
+        expect(packumentAccepts(registry)).toEqual([
+          ABBREVIATED_ACCEPT,
+          'application/json',
+        ])
+        expect(results[0]).toEqual(results[1])
+        expect(results[0]).toEqual(results[2])
+        // The window with nothing to judge keeps the lookup's own times.
+        expect(results[3]['0.7.34']).toBe(DEPS_DEV_0_7_34)
+      })
+    })
+
+    describe('what the full packument adds', () => {
+      it('counts only the versions it lists, not created, modified or an unpublished version', async () => {
+        const { reader, looked } = await behind({
+          body: derive<{ versions: Record<string, unknown> }>(
+            'types-ms.packument-full',
+            (body) => {
+              // The version is gone; the registry keeps its `time` entry.
+              delete body.versions['2.1.0']
+            },
+          ),
+        })
+
+        const times = await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+
+        expect(times['2.1.0']).toBeUndefined()
+        expect('created' in times).toBe(false)
+        expect('modified' in times).toBe(false)
+        expect(Object.keys(times).sort()).toEqual(
+          looked.versions
+            .map((v) => v.version)
+            .filter((v) => v !== '2.1.0')
+            .sort(),
+        )
+      })
+
+      it('gives every version a time when deps.dev is off', async () => {
+        const { registry, reader } = await setup(
+          { registry: typesMsRegistry() },
+          { depsDev: false },
+        )
+        await reader.lookup(TYPES_MS)
+
+        const times = await reader.releaseTimes(TYPES_MS)
+
+        expect(Object.keys(times)).toHaveLength(17)
+        expect(times['0.7.15-alpha']).toBe('2016-05-17T18:23:02.430Z')
+        expect(packumentAccepts(registry)).toEqual([
+          ABBREVIATED_ACCEPT,
+          'application/json',
+        ])
+        expect(debugLines()).toContain(
+          'Reading the full packument of @types/ms for publish times: 0.7.15-alpha, 0.7.16-alpha, 0.7.21-alpha and 14 more have none',
+        )
+      })
+    })
+
+    describe('failures', () => {
+      it.each([
+        ['a server error', { status: 500, body: 'oops' }],
+        ['a body that is not JSON', { body: '<html>' }],
+      ] as Array<[string, Reply]>)(
+        'keeps the lookup times and says why after %s',
+        async (_label, full) => {
+          const { reader } = await behind(full)
+
+          const times = await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+
+          expect(Object.keys(times)).toHaveLength(16)
+          expect(times['0.7.34']).toBe(DEPS_DEV_0_7_34)
+          expect(debugLines()).toContainEqual(
+            expect.stringMatching(
+              /^Failed to read the full packument of @types\/ms: /,
+            ),
+          )
+        },
+      )
+
+      it('keeps the lookup times when the registry cannot be reached', async () => {
+        const { registry, reader } = await behind()
+        await registry.close()
+
+        const times = await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+
+        expect(Object.keys(times)).toHaveLength(16)
+        expect(debugLines()).toContainEqual(
+          expect.stringMatching(
+            /^Failed to read the full packument of @types\/ms: /,
+          ),
+        )
+      })
+
+      it('keeps the lookup times when the document is not a packument', async () => {
+        const { reader } = await behind({
+          body: derive<{ versions?: unknown }>(
+            'types-ms.packument-full',
+            (body) => {
+              delete body.versions
+            },
+          ),
+        })
+
+        const times = await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+
+        expect(Object.keys(times)).toHaveLength(16)
+        expect(debugLines()).toContainEqual(
+          expect.stringMatching(/sent an unreadable document for @types\/ms$/),
+        )
+      })
+
+      it('does not ask again after a failed read: the answer is memoized for the run', async () => {
+        const { registry, reader } = await behind({ status: 500, body: 'oops' })
+
+        await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)
+        await reader.releaseTimes(TYPES_MS)
+
+        expect(packumentAccepts(registry)).toEqual([
+          ABBREVIATED_ACCEPT,
+          'application/json',
+        ])
+      })
+
+      it('answers {} for a name whose lookup failed, without a request of its own', async () => {
+        const { registry, reader } = await setup({ registry: status500 })
+        const lookedUp = await reader.lookup(TYPES_MS)
+        expect(lookedUp.ok).toBe(false)
+        const before = registry.requests.length
+
+        expect(await reader.releaseTimes(TYPES_MS)).toEqual({})
+        expect(await reader.releaseTimes(TYPES_MS, MOVING_TO_LATEST)).toEqual(
+          {},
+        )
+
+        expect(registry.requests).toHaveLength(before)
+      })
+    })
+
+    it('keeps full packuments within maxSockets in flight to one host, as every other request is (D5)', async () => {
+      const combined = await start((req, res) => {
+        setTimeout(() => {
+          res.setHeader('content-type', 'application/json')
+          res.end(
+            registryBody(
+              req.headers.accept === ABBREVIATED_ACCEPT
+                ? 'types-ms.packument'
+                : 'types-ms.packument-full',
+            ),
+          )
+        }, 20)
+      })
+      const registryConfig = configFor(combined.url, { maxSockets: 2 })
+      const client = createRegistryClient(registryConfig)
+      clients.push(client)
+      const reader = createRegistryReader({
+        registryConfig,
+        client: async () => client,
+        depsDev: false,
+      })
+      const names = Array.from({ length: 5 }, (_, i) => `pkg-${i}`)
+      await Promise.all(names.map((name) => reader.lookup(name)))
+
+      const results = await Promise.all(
+        names.map((name) => reader.releaseTimes(name)),
+      )
+
+      expect(results.every((times) => Object.keys(times).length === 17)).toBe(
+        true,
+      )
+      expect(
+        accepts(combined).filter((a) => a === 'application/json'),
+      ).toHaveLength(5)
+      expect(combined.peak).toBe(2)
+    })
   })
 
   describe('with the disk cache', () => {

@@ -1,14 +1,16 @@
-import type { PackageLookup, RegistryConfig, UnusableRegistry } from '@/types'
-import { isRecord } from './isRecord'
+import type {
+  PackageLookup,
+  RegistryConfig,
+  ReleaseWindow,
+  UnusableRegistry,
+} from '@/types'
 import logger from './logger'
 import { loadRegistryConfig, processSources } from './npmrcLoader'
 import type { RegistryCache } from './registryCache'
 import type { RegistryClient, RegistryClientOptions } from './registryClient'
 import type { RegistryReader } from './registryReader'
 import {
-  packumentUrl,
   type RegistryEndpoints,
-  registryFor,
   unusableRouteFor,
   unusableText,
 } from './registryRequest'
@@ -25,13 +27,18 @@ export interface RegistrySession {
   /** The run's one client; node:https, node:http and zlib load on the first call. */
   client(): Promise<RegistryClient>
   /**
-   * Cooldown: every version's publish time from the full packument, from the
-   * registry the package manager has resolved (respects .npmrc, scoped
-   * registries and auth). One request per name per run. Any failure degrades
-   * to an empty map, so the cooldown gate fails open rather than blocking
-   * updates.
+   * Cooldown: publish times by version, from the registry the package manager
+   * has resolved (respects .npmrc, scoped registries and auth). The name's
+   * lookup supplies them first (deps.dev's, or a packument's `time`); the full
+   * packument is read only when a version in `window` (any version, without
+   * one) still has none, through the reader's limiter and cache, once per name
+   * per run. Never rejects: a failure leaves the times the lookup had, and the
+   * cooldown gate holds a target with none as `release date unknown`.
    */
-  releaseTimes(name: string): Promise<Record<string, string>>
+  releaseTimes(
+    name: string,
+    window?: ReleaseWindow,
+  ): Promise<Record<string, string>>
   /**
    * Latest, versions, deprecation and publish times, from the registry the
    * package manager has resolved. One lookup per name per run. Resolves for a
@@ -81,13 +88,6 @@ export const createRegistrySession = (
   let diskCache: RegistryCache | undefined
   let readerStats: RegistryReader['stats'] | undefined
   let closed = false
-  // The in-flight request is cached, not its result: a workspace asks for the
-  // same package once per manifest, at the same time.
-  const releaseTimeCache = new Map<string, Promise<Record<string, string>>>()
-  // Publish times the run's lookups already returned (deps.dev has one for
-  // every version). A packument served by a mirror or proxy that lags can lack
-  // a fresh version that deps.dev and the dist-tags already show (#139).
-  const lookedUpTimes = new Map<string, Record<string, string>>()
 
   const registryConfig = (): RegistryConfig => {
     config ??= load(cwd)
@@ -105,39 +105,6 @@ export const createRegistrySession = (
       },
     )
     return clientRequest
-  }
-
-  const requestReleaseTimes = async (
-    packageName: string,
-  ): Promise<Record<string, string>> => {
-    const bad = unusableRouteFor(packageName, registryConfig())
-    if (bad) {
-      // The manager cannot reach this package either; the public registry
-      // must not be asked for a name routed elsewhere.
-      logger.debug(`Not asking for ${packageName}: ${refusal(bad)}`)
-      return {}
-    }
-    try {
-      const registry = registryFor(packageName, registryConfig())
-      const packument = await (await client()).getJson(
-        packumentUrl(packageName, registry),
-        registry,
-      )
-      const time = isRecord(packument) ? packument.time : undefined
-      if (!isRecord(time)) return {}
-      const times: Record<string, string> = {}
-      for (const [version, published] of Object.entries(time)) {
-        if (typeof published === 'string') times[version] = published
-      }
-      return times
-    } catch (error) {
-      logger.debug(
-        `Failed to fetch registry metadata for ${packageName}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      )
-      return {}
-    }
   }
 
   // The reader (and the cache, if asked for) load with the first lookup, not with the CLI.
@@ -194,26 +161,26 @@ export const createRegistrySession = (
       if (bad) {
         return { ok: false, name, kind: 'invalid', reason: refusal(bad) }
       }
-      const result = await (await readerOnce()).lookup(name)
-      if (result.ok) {
-        const times: Record<string, string> = {}
-        for (const { version, publishedAt } of result.package.versions) {
-          if (publishedAt) times[version] = publishedAt
-        }
-        lookedUpTimes.set(name, times)
-      }
-      return result
+      return (await readerOnce()).lookup(name)
     },
-    releaseTimes: (name) => {
-      let request = releaseTimeCache.get(name)
-      if (!request) {
-        request = requestReleaseTimes(name).then((times) => ({
-          ...lookedUpTimes.get(name),
-          ...times,
-        }))
-        releaseTimeCache.set(name, request)
+    releaseTimes: async (name, window) => {
+      const bad = unusableRouteFor(name, registryConfig())
+      if (bad) {
+        // The manager cannot reach this package either; the public registry
+        // must not be asked for a name routed elsewhere.
+        logger.debug(`Not asking for ${name}: ${refusal(bad)}`)
+        return {}
       }
-      return request
+      try {
+        return await (await readerOnce()).releaseTimes(name, window)
+      } catch (error) {
+        logger.debug(
+          `Failed to read publish times for ${name}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+        return {}
+      }
     },
     close: () => {
       if (!closed) {
