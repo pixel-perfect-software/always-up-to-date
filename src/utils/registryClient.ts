@@ -10,6 +10,7 @@ import packageJson from '../../package.json'
 import logger from './logger'
 import {
   authorizationFor,
+  berryAuthorizationFor,
   credentialsFor,
   decodeUri,
   describeUrl,
@@ -391,16 +392,21 @@ export const createRegistryClient = (
     let target = new URL(url)
     let redirects = 0
     let authenticated = false
-    // yarn v1 decides once, for the URL it built (#126); its `request` library
-    // keeps the header on a redirect to the same hostname, any port or
-    // protocol, and drops it on another (probes c12, c13).
+    // yarn v1 and berry decide once, for the URL they built. yarn v1's
+    // `request` library keeps the header on a redirect to the same hostname,
+    // any port or protocol, and drops it on another (#126, probes c12, c13);
+    // berry keeps it on the same origin only (#107, r25, r26).
     const first = target
-    const yarnHeader = config.yarnV1Auth
-      ? yarnV1AuthorizationFor(first, registry, config)
-      : undefined
-    const yarnAuthorization = config.yarnV1Auth
-      ? (hop: URL) => (hop.hostname === first.hostname ? yarnHeader : undefined)
-      : undefined
+    let yarnAuthorization: ((hop: URL) => string | undefined) | undefined
+    if (config.yarnV1Auth) {
+      const header = yarnV1AuthorizationFor(first, registry, config)
+      yarnAuthorization = (hop) =>
+        hop.hostname === first.hostname ? header : undefined
+    } else if (config.berryAuth) {
+      const header = berryAuthorizationFor(first, registry, config)
+      yarnAuthorization = (hop) =>
+        hop.origin === first.origin ? header : undefined
+    }
 
     for (let attempt = 0; ; ) {
       const hop = { registry, redirected: redirects > 0 }

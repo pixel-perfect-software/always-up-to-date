@@ -21,12 +21,12 @@ import {
 } from '@/managers/yarn/lockfile'
 import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
+import { berryRegistryConfig } from '@/managers/yarn/yarnrcYml'
 import { StepError } from '@/stepError'
 import { logger } from '@/utils'
 import { ancestorDirs } from '@/utils/ancestors'
 import { buildUpdateDescriptors } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
-import { npmNpmrcLayers } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
 
@@ -71,15 +71,15 @@ const yarn: ManagerAdapter = {
     catalogs: {},
   }),
 
-  // berry reads .yarnrc.yml, which is not read yet (#107), and keeps npm's
-  // .npmrc layers; v1 has its own layers and reads .yarnrc. `isYarnBerry`
+  // berry reads no .npmrc (#107, r19): its registries come from .yarnrc.yml
+  // (`berryRegistryConfig`); v1 has its own .npmrc layers and reads .yarnrc. `isYarnBerry`
   // answers for the whole project, so a berry member gets berry's layers too.
   // The choice is made once per load, in `npmrcLayers`, and `registryConfig`
   // follows it.
   npmrcLayers: (cwd, sources) => {
     const berry = isYarnBerry(cwd)
     berryLoads.set(cwd, berry)
-    return berry ? npmNpmrcLayers(cwd, sources) : yarnNpmrcLayers(cwd, sources)
+    return berry ? [] : yarnNpmrcLayers(cwd, sources)
   },
 
   // yarn ignores an empty registry or scope route.
@@ -87,7 +87,7 @@ const yarn: ManagerAdapter = {
 
   registryConfig: (cwd, fromNpmrc, sources, npmrc) =>
     (berryLoads.get(cwd) ?? isYarnBerry(cwd))
-      ? fromNpmrc
+      ? berryRegistryConfig(cwd, sources)
       : yarnRegistryConfig(cwd, fromNpmrc, sources, npmrc),
 
   ownDiscovery: (cwd) =>

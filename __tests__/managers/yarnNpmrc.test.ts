@@ -10,7 +10,6 @@ import type { RegistryConfig } from '@/types'
 import {
   mergeNpmrcLayers,
   type NpmrcSources,
-  npmNpmrcLayers,
   registryConfigFrom,
 } from '@/utils/npmrcLoader'
 import {
@@ -389,18 +388,15 @@ describe('yarn v1 .npmrc layers', () => {
       write(path.join(root(), '.yarnrc'), `registry "${A}"\n`)
       expect(route(root())).toBe(A)
       write(path.join(root(), '.yarnrc.yml'), 'nodeLinker: node-modules\n')
-      expect(route(root())).toBe('https://registry.npmjs.org/')
+      // berry's own default (#107): it reads .yarnrc.yml, never .yarnrc.
+      expect(route(root())).toBe('https://registry.yarnpkg.com')
     })
 
-    it('keeps npm layers', () => {
+    // #107: yarn 4.18.1 ignores .npmrc (probe r19), so berry has no layers.
+    it('reads no .npmrc layers', () => {
       write(path.join(root(), '.yarnrc.yml'), 'nodeLinker: node-modules\n')
-      const sources = sourcesFor()
-      const files = (layers: ReturnType<typeof npmNpmrcLayers>) =>
-        layers.map((layer) => (layer.kind === 'file' ? layer.file : 'env'))
-      const layers = yarn.npmrcLayers?.(root(), sources)
-      expect(files(layers ?? [])).toEqual(
-        files(npmNpmrcLayers(root(), sources)),
-      )
+      write(path.join(root(), '.npmrc'), `registry=${A}\n`)
+      expect(yarn.npmrcLayers?.(root(), sourcesFor())).toEqual([])
     })
   })
 })

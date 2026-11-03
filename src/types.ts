@@ -150,6 +150,29 @@ export interface YarnV1Auth {
   yarnDefault: boolean
 }
 
+/** One berry configuration that can hold credentials: the top level, a scope, or an `npmRegistries` entry. */
+export interface BerryAuthEntry {
+  /** `npmAuthToken`, sent as Bearer. */
+  token?: string
+  /** `npmAuthIdent`: `user:pass` (sent base64-encoded) or already base64. */
+  ident?: string
+  /** `npmAlwaysAuth`: send it for an unscoped package too. */
+  alwaysAuth: boolean
+}
+
+/**
+ * What yarn berry reads its credentials from, by its rule
+ * (`berryAuthorizationFor` in `registryRequest.ts`; yarn 4.18.1 probes
+ * r01-r30 in `.claude/plans/lockfile-discovery.md`).
+ */
+export interface BerryAuth {
+  top: BerryAuthEntry
+  /** `@scope` → its `npmScopes` entry. */
+  scopes: Record<string, BerryAuthEntry>
+  /** An `npmRegistries` key, one trailing `/` dropped → its entry. */
+  registries: Record<string, BerryAuthEntry>
+}
+
 /**
  * The Agent's `proxyEnv`, already resolved from .npmrc and the environment.
  * A type alias: an interface isn't assignable to http.ProxyEnv's index signature.
@@ -197,6 +220,11 @@ export interface RegistryConfig {
    * Absent for every other manager.
    */
   yarnV1Auth?: YarnV1Auth
+  /**
+   * yarn berry's credential rule (#107), which replaces `credentials` for the
+   * Authorization header. Absent for every other manager.
+   */
+  berryAuth?: BerryAuth
   /** cafile (if readable), else ca / ca[]; undefined means Node's default store */
   ca?: string[]
   strictSSL: boolean

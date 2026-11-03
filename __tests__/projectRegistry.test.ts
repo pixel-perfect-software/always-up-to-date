@@ -146,7 +146,7 @@ describe('openProject registry config from a .yarnrc', () => {
     write(path.join(tmp, '.yarnrc'), `registry "${A}"\n`)
     write(path.join(tmp, '.yarnrc.yml'), 'nodeLinker: node-modules\n')
     expect(registryFor('probe-unscoped', registryOf())).toBe(
-      'https://registry.npmjs.org/',
+      'https://registry.yarnpkg.com',
     )
   })
 })
@@ -192,7 +192,7 @@ describe('openProject registry config from a yarn workspace member', () => {
     )
 
     expect(registryFor('ms', registryOfMember())).toBe(
-      'https://registry.npmjs.org/',
+      'https://registry.yarnpkg.com',
     )
   })
 
@@ -304,5 +304,81 @@ describe('openProject registry credentials for yarn v1', () => {
     )
     expect(await authorizationFor('yarn', '@acme/probe')).toBe('Bearer U')
     expect(await authorizationFor('npm', '@acme/probe')).toBeUndefined()
+  })
+})
+
+// #107: a yarn berry run reads its registries and credentials from
+// .yarnrc.yml, by berry's rule, and no .npmrc (yarn 4.18.1, probed
+// 2026-11-03: r03, r10, r19). Before, berry kept npm's .npmrc view.
+describe('openProject registry config for yarn berry', () => {
+  let tmp: string
+  let saved: string | undefined
+  let server: TestRegistry
+  const projects: Project[] = []
+  const write = (file: string, content: string) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, content)
+  }
+  const open = () => {
+    const project = openProject(tmp, { pm: 'yarn', cache: false })
+    projects.push(project)
+    return project
+  }
+
+  beforeEach(async () => {
+    tmp = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-berry-registry-')),
+    )
+    saved = process.env.HOME
+    process.env.HOME = path.join(tmp, 'home')
+    write(
+      path.join(tmp, 'package.json'),
+      '{"name":"p","packageManager":"yarn@4.18.1"}',
+    )
+    write(path.join(tmp, 'yarn.lock'), '')
+    server = await startRegistry((req, res) => {
+      const name = decodeURIComponent((req.url ?? '/').slice(1))
+      res.setHeader('content-type', 'application/json')
+      res.end(
+        JSON.stringify({
+          name,
+          'dist-tags': { latest: '1.0.0' },
+          versions: { '1.0.0': { name, version: '1.0.0' } },
+        }),
+      )
+    })
+  })
+  afterEach(async () => {
+    for (const project of projects.splice(0)) project.registry.close()
+    await server.close()
+    if (saved === undefined) delete process.env.HOME
+    else process.env.HOME = saved
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it("routes a scope to its npmScopes registry and sends the scope's token", async () => {
+    write(
+      path.join(tmp, '.yarnrc.yml'),
+      `unsafeHttpWhitelist: ["127.0.0.1"]\nnpmScopes:\n  acme:\n    npmRegistryServer: "${server.url}"\n    npmAuthToken: S\n`,
+    )
+    const result = await open().registry.lookup('@acme/probe')
+    expect(result.ok).toBe(true)
+    expect(server.requests.map((r) => r.headers.authorization)).toEqual([
+      'Bearer S',
+    ])
+  })
+
+  it('reads no .npmrc route or token', () => {
+    write(
+      path.join(tmp, '.npmrc'),
+      `@acme:registry=${server.url}\n//127.0.0.1:${server.port}/:_authToken=N\nregistry=${server.url}\n`,
+    )
+    const config = open().registry.registryConfig()
+    expect(registryFor('@acme/probe', config)).toBe(
+      'https://registry.yarnpkg.com',
+    )
+    expect(registryFor('probe-unscoped', config)).toBe(
+      'https://registry.yarnpkg.com',
+    )
   })
 })
