@@ -17,3 +17,5 @@ testRepos/**/.pnp.*
 
 # The session handoff is local to each session, never committed.
 .claude/context/ai-context/handoff.md
+# Plans are working notes for a session, never committed.
+.claude/plans/

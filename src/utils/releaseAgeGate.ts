@@ -15,7 +15,8 @@ import type { RegistrySession } from './registry'
  * `npmMinimalAgeGate` and pnpm's `minimumReleaseAge` (one day unless set),
  * bun's `minimumReleaseAge` and npm's `min-release-age` / `before` (off
  * unless set). Verified 2026-11-03 on yarn 4.18.1, pnpm 12.16.1, bun 1.4.4
- * and npm 12.2.1 (rows in `.claude/plans/release-age-gates.md`).
+ * and npm 12.2.1 (the rows are cases in `__tests__/releaseAgeGates.test.ts`,
+ * `__tests__/utils/releaseAgeGate.test.ts` and `__tests__/managers/yarnrcYml.test.ts`).
  */
 
 /** The gate's minutes for `name`: its scope's own when the manager configures that scope, else the top level's. */
