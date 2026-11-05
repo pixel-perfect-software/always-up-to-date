@@ -446,6 +446,118 @@ describe('registry session', () => {
     })
   })
 
+  describe('a throttled run (#174)', () => {
+    const throttled: Handler = (_req, res) => {
+      res.statusCode = 429
+      res.setHeader('retry-after', '30')
+      res.end('slow down')
+    }
+    const depsDevMs = replies({
+      '/v3/systems/npm/packages/ms': { body: registryBody('ms.deps-dev') },
+    })
+    const open = (registry: TestRegistry, depsDev: TestRegistry) => {
+      const session = createRegistrySession('/project', {
+        loadConfig: () => configFor(registry.url),
+        endpoints: {
+          publicRegistries: [new URL(registry.url).origin],
+          depsDev: `${depsDev.url}v3/systems/npm/packages/`,
+        },
+      })
+      sessions.push(session)
+      return session
+    }
+
+    it('warns once, naming the host, when dist-tags answers 429 and the lookup falls back to the packument', async () => {
+      const packument = replies({
+        '/ms': { body: registryBody('ms.packument') },
+      })
+      const registry = await start((req, res) =>
+        req.url === '/-/package/ms/dist-tags'
+          ? throttled(req, res)
+          : packument(req, res),
+      )
+      const depsDev = await start(depsDevMs)
+      const session = open(registry, depsDev)
+
+      expect(await session.lookup('ms')).toMatchObject({
+        ok: true,
+        package: { latest: '2.1.3', source: 'packument' },
+      })
+      expect(logger.warn).not.toHaveBeenCalled()
+
+      session.close()
+      session.close()
+
+      expect(logger.warn).toHaveBeenCalledTimes(1)
+      const [text] = jest.mocked(logger.warn).mock.calls[0]
+      expect(text).toContain(`127.0.0.1:${registry.port} (1 request)`)
+    })
+
+    it('warns nothing when no host throttled the run', async () => {
+      const registry = await start(
+        replies({
+          '/-/package/ms/dist-tags': { body: registryBody('ms.dist-tags') },
+        }),
+      )
+      const depsDev = await start(depsDevMs)
+      const session = open(registry, depsDev)
+
+      expect(await session.lookup('ms')).toMatchObject({
+        ok: true,
+        package: { source: 'deps.dev' },
+      })
+      session.close()
+
+      expect(logger.warn).not.toHaveBeenCalled()
+    })
+
+    it('names deps.dev when deps.dev is the host that throttled', async () => {
+      const registry = await start(
+        replies({
+          '/-/package/ms/dist-tags': { body: registryBody('ms.dist-tags') },
+          '/ms': { body: registryBody('ms.packument') },
+        }),
+      )
+      const depsDev = await start(throttled)
+      const session = open(registry, depsDev)
+
+      expect(await session.lookup('ms')).toMatchObject({
+        ok: true,
+        package: { latest: '2.1.3', source: 'packument' },
+      })
+      session.close()
+
+      expect(logger.warn).toHaveBeenCalledTimes(1)
+      const [text] = jest.mocked(logger.warn).mock.calls[0]
+      expect(text).toContain(`127.0.0.1:${depsDev.port} (1 request)`)
+      expect(text).not.toContain(`127.0.0.1:${registry.port}`)
+    })
+
+    it('counts every 429 across packages', async () => {
+      const packuments = replies({
+        '/ms': { body: registryBody('ms.packument') },
+        '/ms-two': { body: registryBody('ms.packument') },
+      })
+      const registry = await start((req, res) =>
+        req.url?.includes('/dist-tags')
+          ? throttled(req, res)
+          : packuments(req, res),
+      )
+      const depsDev = await start((_req, res) => {
+        res.setHeader('content-type', 'application/json')
+        res.end(registryBody('ms.deps-dev'))
+      })
+      const session = open(registry, depsDev)
+
+      await Promise.all([session.lookup('ms'), session.lookup('ms-two')])
+      session.close()
+
+      expect(logger.warn).toHaveBeenCalledTimes(1)
+      const [text] = jest.mocked(logger.warn).mock.calls[0]
+      expect(text).toContain(`127.0.0.1:${registry.port} (2 requests)`)
+    })
+  })
+
   describe('behind a manager release-age gate (#168)', () => {
     // pnpm's: a day, and a version with no known time is let through.
     const gate: ReleaseAgeGate = {

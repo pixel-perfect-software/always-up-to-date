@@ -7,7 +7,9 @@ import {
   movingRows,
   parseHyperfine,
   renderTable,
+  throttledLines,
 } from '../../bench/report'
+import { throttledNotice } from '../../src/utils/registryRequest'
 import { readFixture } from '../fixtures'
 
 describe('parseHyperfine', () => {
@@ -190,6 +192,57 @@ describe('movingRows', () => {
     expect(() => movingRows('')).toThrow(/printed no JSON/)
     expect(() => movingRows('{}')).toThrow(/neither rows nor an error/)
     expect(() => movingRows('"ok"')).toThrow(/neither rows nor an error/)
+  })
+})
+
+describe('throttledLines', () => {
+  it('finds the notice of the warm-up and of each timed run in real --show-output', () => {
+    const lines = throttledLines(
+      readFixture('hyperfine/show-output-throttled.txt'),
+    )
+
+    expect(lines).toHaveLength(3)
+    for (const line of lines) {
+      expect(line).toMatch(
+        /Throttled by \S+ \(\d+ requests?\), so this run was slower than usual$/,
+      )
+    }
+  })
+
+  it('finds the same lines in output that carries color codes', () => {
+    const lines = throttledLines(
+      readFixture('hyperfine/show-output-throttled-color.txt'),
+    )
+
+    expect(lines).toEqual(
+      throttledLines(readFixture('hyperfine/show-output-throttled.txt')),
+    )
+    expect(lines).toHaveLength(3)
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting no escape code is left
+    for (const line of lines) expect(line).not.toMatch(/\u001b/)
+  })
+
+  it('finds nothing in the output of runs no host throttled', () => {
+    expect(
+      throttledLines(readFixture('hyperfine/show-output-clean.txt')),
+    ).toEqual([])
+  })
+
+  it('finds what throttledNotice prints, for one request, many and two hosts', () => {
+    const notices = [
+      throttledNotice({ 'registry.npmjs.org': { throttled: 1 } }),
+      throttledNotice({ 'registry.npmjs.org': { throttled: 40 } }),
+      throttledNotice({
+        'registry.npmjs.org': { throttled: 3 },
+        'api.deps.dev': { throttled: 1 },
+      }),
+    ] as string[]
+
+    for (const notice of notices) {
+      expect(throttledLines(`before\n⚠️ ${notice}\nafter\n`)).toEqual([
+        `⚠️ ${notice}`,
+      ])
+    }
   })
 })
 

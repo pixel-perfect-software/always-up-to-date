@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from 'util'
+
 /** One command's timing from hyperfine's JSON: seconds, and peak memory in bytes when it reports it. */
 export type Timing = {
   mean: number
@@ -125,6 +127,17 @@ export const movingRows = (text: string): number => {
   }
   throw new Error('update --dry-run --json printed neither rows nor an error')
 }
+
+/**
+ * The lines in what timed runs printed where autd says a host throttled the run
+ * (`throttledNotice`), one per throttled run, without color. A throttled run
+ * timed a fallback, not the path the row names (#174).
+ */
+export const throttledLines = (output: string): string[] =>
+  stripVTControlCharacters(output)
+    .split(/\r?\n/)
+    .filter((line) => /Throttled by \S+ \(\d+ requests?\)/.test(line))
+    .map((line) => line.trim())
 
 /** Megabytes (10^6 bytes), or `n/a` when hyperfine reported none. */
 export const formatMemory = (bytes: number | undefined): string =>

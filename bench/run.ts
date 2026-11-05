@@ -22,6 +22,7 @@ import {
   parseHyperfine,
   renderTable,
   type Timing,
+  throttledLines,
 } from './report'
 import {
   COOLDOWN_CONFIG,
@@ -63,7 +64,12 @@ type Row = {
   cooldownWarm: Timing
 }
 
-type Outcome = { target: Target; row: Row } | { target: Target; error: string }
+type Outcome =
+  | { target: Target; row: Row }
+  | { target: Target; status: 'failed' | 'throttled'; error: string }
+
+/** A timed run that a host throttled: its numbers are no measurement of the row (#174). */
+class ThrottledRun extends Error {}
 
 const KEEP = 'AUTD_BENCH_KEEP'
 
@@ -125,21 +131,22 @@ const assertHyperfine = async (): Promise<void> => {
 
 /**
  * Runs hyperfine in `cwd` and returns the timing of each command (argument
- * arrays), in order. hyperfine discards what the commands print, so on failure
- * each one runs once outside it and its output goes into the error.
+ * arrays), in order, with everything it printed. hyperfine discards what the
+ * commands print unless `options` says otherwise, so on failure each one runs
+ * once outside it and its output goes into the error.
  */
 const hyperfine = async (
   cwd: string,
   options: string[],
   commands: string[][],
-): Promise<Timing[]> => {
+): Promise<{ timings: Timing[]; output: string }> => {
   const out = path.join(
     fs.mkdtempSync(path.join(os.tmpdir(), 'autd-bench-hf-')),
     'result.json',
   )
   try {
     // -N: no shell around the timed command. --prepare always runs in one.
-    await runProcess(
+    const { stdout, stderr } = await runProcess(
       'hyperfine',
       [
         '-N',
@@ -150,7 +157,10 @@ const hyperfine = async (
       ],
       { cwd },
     )
-    return parseHyperfine(fs.readFileSync(out, 'utf8'))
+    return {
+      timings: parseHyperfine(fs.readFileSync(out, 'utf8')),
+      output: `${stdout}${stderr}`,
+    }
   } catch (error) {
     let detail = output(error) || String(error)
     for (const [file, ...args] of commands) {
@@ -166,6 +176,32 @@ const hyperfine = async (
   } finally {
     fs.rmSync(path.dirname(out), { recursive: true, force: true })
   }
+}
+
+/**
+ * Times `check` in `cwd`. Throws `ThrottledRun` when autd says a host throttled
+ * any run, warm-up included. `--show-output` is the one hyperfine mode that
+ * keeps every run's output with no shell around the command: `--output=<file>`
+ * keeps only the last run's.
+ */
+const timedCheck = async (
+  cwd: string,
+  measurement: string,
+  options: string[],
+  check: string[],
+): Promise<Timing> => {
+  const { timings, output: printed } = await hyperfine(
+    cwd,
+    ['--show-output', ...options],
+    [check],
+  )
+  const throttled = throttledLines(printed)
+  if (throttled.length > 0) {
+    throw new ThrottledRun(
+      `${measurement}: ${throttled.length} of its runs printed: ${throttled[0]}\nThe row's numbers are left out; run the bench again once the registry stops throttling.`,
+    )
+  }
+  return timings[0]
 }
 
 /**
@@ -272,12 +308,9 @@ const measure = async (
 
     const check = [process.execPath, cli, 'check']
 
+    const warmRuns = ['--warmup', '1', '--runs', String(runs.warm)]
     log(`${label}: check, warm`)
-    const [warm] = await hyperfine(
-      cwd,
-      ['--warmup', '1', '--runs', String(runs.warm)],
-      [check],
-    )
+    const warm = await timedCheck(cwd, 'check, warm', warmRuns, check)
 
     log(`${label}: check, cold`)
     const coldRuns = [
@@ -286,7 +319,7 @@ const measure = async (
       '--runs',
       String(runs.cold),
     ]
-    const [cold] = await hyperfine(cwd, coldRuns, [check])
+    const cold = await timedCheck(cwd, 'check, cold', coldRuns, check)
 
     // Cooldown only costs something on a row with a target, and the default
     // policy holds every exact pin: the moving config gives all of them one.
@@ -304,17 +337,23 @@ const measure = async (
     }
 
     log(`${label}: check, cold, ${targets} planned updates`)
-    const [moving] = await hyperfine(cwd, coldRuns, [check])
+    const moving = await timedCheck(cwd, 'moving, cold', coldRuns, check)
 
     log(`${label}: check, cold, cooldown 7`)
     writeConfig(COOLDOWN_CONFIG)
-    const [cooldownCold] = await hyperfine(cwd, coldRuns, [check])
+    const cooldownCold = await timedCheck(
+      cwd,
+      'cooldown 7, cold',
+      coldRuns,
+      check,
+    )
 
     log(`${label}: check, warm, cooldown 7`)
-    const [cooldownWarm] = await hyperfine(
+    const cooldownWarm = await timedCheck(
       cwd,
-      ['--warmup', '1', '--runs', String(runs.warm)],
-      [check],
+      'cooldown 7, warm',
+      warmRuns,
+      check,
     )
     return { label, warm, cold, targets, moving, cooldownCold, cooldownWarm }
   } finally {
@@ -351,8 +390,9 @@ const main = async (): Promise<void> => {
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        log(`${target}: failed`)
-        outcomes.push({ target, error: message })
+        const status = error instanceof ThrottledRun ? 'throttled' : 'failed'
+        log(`${target}: ${status}`)
+        outcomes.push({ target, status, error: message })
       }
     }
 
@@ -360,7 +400,8 @@ const main = async (): Promise<void> => {
     let startup: Timing[] | undefined
     let startupError: string | undefined
     try {
-      startup = await hyperfine(
+      // Output stays discarded: no registry is asked, so no line can say it throttled.
+      const { timings } = await hyperfine(
         os.tmpdir(),
         ['--warmup', '3', '--runs', String(STARTUP_RUNS)],
         [
@@ -368,6 +409,7 @@ const main = async (): Promise<void> => {
           [process.execPath, '-e', '0'],
         ],
       )
+      startup = timings
     } catch (error) {
       startupError = error instanceof Error ? error.message : String(error)
     }
@@ -396,7 +438,7 @@ const main = async (): Promise<void> => {
                 formatTiming(outcome.row.cold),
                 formatMemory(outcome.row.warm.peakMemory),
               ]
-            : [outcome.target, 'failed', 'failed', 'n/a'],
+            : [outcome.target, outcome.status, outcome.status, 'n/a'],
         ),
       )}\n\n`,
     )
@@ -428,11 +470,11 @@ const main = async (): Promise<void> => {
               ]
             : [
                 outcome.target,
-                'failed',
-                'failed',
-                'failed',
-                'failed',
-                'failed',
+                outcome.status,
+                outcome.status,
+                outcome.status,
+                outcome.status,
+                outcome.status,
                 'n/a',
                 'n/a',
               ],
@@ -455,7 +497,9 @@ const main = async (): Promise<void> => {
 
     const failures = outcomes.filter((outcome) => 'error' in outcome)
     for (const failure of failures) {
-      process.stderr.write(`\n${failure.target} failed:\n${failure.error}\n`)
+      process.stderr.write(
+        `\n${failure.target} ${failure.status}:\n${failure.error}\n`,
+      )
     }
     if (startupError)
       process.stderr.write(`\nstartup failed:\n${startupError}\n`)
