@@ -13,17 +13,27 @@ Four commands implemented: `init`, `check`, `update`, `help`.
 - Each command exports a function that accepts a `Command` (from Commander.js) and registers a subcommand
 - Commands are registered in `src/cli.ts` which creates the program and calls `parseAsync()`
 - Entry point chain: `src/index.ts` (shebang) -> `src/cli.ts` (program setup) -> individual commands
+- A command is two files (#109). The definition (`<name>.ts`) declares the options and exports its options type (`CheckOptions`, `UpdateOptions`); it imports only commander, `./options`, `@/managers/names` and types. Its `.action()` does `const { checkAction } = await import('./actions/check')` and calls it. The action (`actions/<name>.ts`) holds the body and imports what it needs, its options type with `import type` from the definition (no runtime cycle)
+- Why: `autd --version` then initializes only commander, the definitions and `src/managers/names.ts` (`supportedManagers`, which `--pm`'s choices use; `src/managers/index.ts` would pull in every adapter). Nothing the pipeline needs loads before an action runs
+- In an action: import leaf modules (`@/utils/logger`, `@/utils/config`), never the `@/utils` barrel; read `process.cwd()` inside the action function, not at module top; load `@inquirer/prompts` with `await import()` (it stays external in the bundle, so a static import fails the build)
+- Two guards fail when something heavy reaches the definition path: `__tests__/startup.test.ts` and the startup check in `scripts/guards.ts`, run by the build (it names the import chain). Move the import into the action; do not add the module to `STARTUP_SOURCES` or `STARTUP_PACKAGES` to make it pass (a new command's definition file is the one addition to `STARTUP_SOURCES`)
 
 ## Major Subsystem Organization
 
 ```
 commands/
   index.ts    # Re-exports check, help, init, update
-  init.ts     # Creates .always-up-to-date.json with INITIAL_CONFIG (beyondRange, rules, cooldown, debug, silent) in the nearest package.json's directory (else the cwd), where `loadConfig` reads it
-  check.ts    # Detects package manager, prints the planned report (each outdated dep under its outcome); --json prints the outdated record and doesn't plan
-  update.ts   # Detects package manager, updates packages per config rules
+  options.ts  # pmOption() (--pm, choices from supportedManagers), noCacheOption(): shared by check and update
+  init.ts     # Definition of `init`: loads actions/init
+  check.ts    # Definition of `check` (--json, --pm, --no-cache), CheckOptions: loads actions/check
+  update.ts   # Definition of `update [packages...]` (--dry-run, -i, --json, --pm, --no-cache), UpdateOptions: loads actions/update
+  help.ts     # Definition of `help`: loads actions/help
   reportFailure.ts  # Reports a failed command once (human or JSON) and sets exit code 1
-  help.ts     # Displays usage information
+  actions/    # The bodies, each loaded with await import() when its command runs
+    init.ts   # Creates .always-up-to-date.json with INITIAL_CONFIG (beyondRange, rules, cooldown, debug, silent) in the nearest package.json's directory (else the cwd), where `loadConfig` reads it
+    check.ts  # Detects package manager, prints the planned report (each outdated dep under its outcome); --json prints the outdated record and doesn't plan
+    update.ts # Detects package manager, updates packages per config rules; --dry-run, and -i (choicesByPackage, interactiveUpdate with the dynamic @inquirer/prompts import)
+    help.ts   # Displays usage information
 ```
 
 ## Architectural Patterns
