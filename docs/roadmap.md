@@ -73,6 +73,12 @@ Bun has since moved to 1.4.4: warm 0.17 s, cold 22.5 s ± 7.5 over 2 runs. Regis
 - Startup: bare `node -e 0` 39 to 41 ms, `autd --version` 126 ms, 215 modules loaded, most of
   them npm-registry-fetch's. Bundled with the registry client stubbed out: 60 ms (57 ms with
   Node's compile cache), 21 ms over bare Node.
+- Startup after #109, one esbuild bundle with the command actions loaded on demand (measured
+  2026-11-05, Node 24.22.1, macOS arm64, `hyperfine -N`, 80 runs each, medians, back to back
+  with the tsc build of `main` at 09d12a8): bare `node -e 0` 41.5 ms;
+  `autd --version` 49.8 ms (8.3 ms over bare Node; `main` 78.2 ms, 36.7 ms over); `autd help`
+  57.0 ms (15.5 ms over; `main` 78.9 ms). `require.cache` holds 2 modules, where `main` loaded 111.
+  The startup budget under Perf gates is met on this machine; #110 gates it on CI runners.
 - Cooldown at 7 days: `check` on pnpm goes from 0.23 s to 2.54 s and from 85 MB to 600 MB peak
   memory. It parses 146 MB of full packuments for the 40 packages.
 - Registry payloads for the 40: dist-tags 5.1 KB (0.69 s); abbreviated packuments 53 MB decoded,
@@ -160,7 +166,7 @@ Goal: `check` is fast on every manager and no longer depends on `<pm> outdated`.
   registry, honoring `.npmrc` auth, client certificates, CA, `strict-ssl`, proxies and retries.
   Lower the Node floor to `^22.23.0 || >=24.17.0` (agent proxy support plus the CVE-2026-48615
   fix); native `fetch` can't do per-registry client certificates or CA, and the undici
-  package costs 44 ms at startup. Bundle to one file.
+  package costs 44 ms at startup. Bundle to one file (#109).
 - The package manager is used only for apply.
 
 Done when the perf gates below pass in CI, `check` runs no `<pm> outdated` or `yarn info`, and
@@ -184,7 +190,8 @@ reported with a reason and skipped unless explicitly allowed.
 
 Goal: a machine without Node can run autd.
 
-- Bundled npm package with few runtime dependencies.
+- Bundled npm package with few runtime dependencies. Largely done by #109: `dist/index.js` is one
+  esbuild bundle and `@inquirer/prompts` is the only runtime dependency.
 - Standalone binaries via `bun build --compile`, re-signed after build (Bun 1.4.0 emits
   an invalid ad-hoc signature on arm64 macOS; `codesign --force --sign -` fixes it, a
   Developer ID is used for release and notarization). The signing identifier is

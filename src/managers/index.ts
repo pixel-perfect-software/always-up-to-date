@@ -28,10 +28,7 @@ export const adapters = {
 export const adapterFor = (name: SupportedPackageManager): ManagerAdapter =>
   adapters[name]
 
-/** Every supported manager's name, in `adapters` order. */
-export const supportedManagers = Object.keys(
-  adapters,
-) as SupportedPackageManager[]
+export { supportedManagers } from './names'
 
 export const isSupportedManager = (
   name: string,

@@ -47,9 +47,10 @@ src/
   pipeline.ts               # check / plan / update (take a Project): detect → discover → plan → apply → report for any adapter; refuseMemberApply() (#123)
   detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles; lockfiles at the root, the declaration nearest the member up to the root
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
-  commands/                 # CLI command definitions
+  commands/                 # CLI command definitions (commander, ./options and types only), options.ts (--pm, --no-cache), reportFailure.ts
+    actions/                # check.ts, update.ts, init.ts, help.ts: the action bodies, each loaded by its definition with await import() (#109)
     CLAUDE.md
-  managers/                 # One adapter per package manager (adapter.ts interface, index.ts registry)
+  managers/                 # One adapter per package manager (adapter.ts interface, index.ts registry, names.ts the manager names with no adapter import)
     CLAUDE.md
   utils/                    # Shared utilities
     CLAUDE.md
@@ -57,6 +58,11 @@ src/
     CLAUDE.md
   prGenerator/              # PR automation (stub)
     CLAUDE.md
+scripts/
+  build.mts                 # pnpm run build: empties dist/, bundles src/index.ts with esbuild into dist/index.js, fails on a warning, runs the checks in guards.ts, writes dist/third-party-licenses.txt; removes dist/ when a check fails (#109)
+  guards.ts                 # GuardError, STARTUP_SOURCES / STARTUP_PACKAGES, packageOf, checkStartup (the metafile walk), checkExternals, writeLicenses: pure, so __tests__/scripts/ imports them
+  package.json              # { "type": "module" }: Node loads guards.ts from build.mts as ESM with no MODULE_TYPELESS_PACKAGE_JSON warning (not a workspace member)
+  tsconfig.json             # Type-checks scripts/ (module nodenext, erasableSyntaxOnly, allowImportingTsExtensions); check-types runs it after the root tsc
 schema/
   config.schema.json        # JSON schema for .always-up-to-date.json (referenced via $schema)
 testRepos/                  # Integration fixtures, <manager>-<layout> (README.md); lockfiles are generated in temp copies, never committed
@@ -64,6 +70,7 @@ bench/                      # pnpm run bench: pinned/ and ranges/ (the 40-depend
 jest.integration.config.ts  # Jest config for the integration matrix (not part of pnpm test)
 __tests__/
   integration/              # pnpm run test:integration: harness.ts (copy, pin to minimum, install, run the CLI, frozenInstall, snapshotFiles, runCliExpectingFailure), lockfiles.ts (yarn v1/berry/bun rewriters), expectations.ts (derived values, expectedMemberCheck / expectedMemberPlan, per-manager overrides), matrix.ts (runMatrix, runMemberMatrix), <manager>.test.ts
+  scripts/                  # guards.test.ts (packageOf, checkStartup, checkExternals, writeLicenses on metafiles esbuild builds from temp fixtures, pnpm's .pnpm layout included), build.test.ts (the real scripts/ run by Node in a temp project: summary line, no warning, stale dist/ emptied, a failed check exits 1 and leaves no dist/)
   bench/                    # report.test.ts (hyperfine 2 JSON parsing, formatting and formatDifference, movingRows, table), targets.test.ts (selection, cold caches)
   setup.ts                  # Global test setup (console suppression, AUTD_NO_CACHE=1)
   index.test.ts             # CLI entry: a failure to start prints and exits 1
@@ -84,7 +91,7 @@ __tests__/
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, JSON error object
     registryPathToken.test.ts # A token in a registry URL path never reaches a message: the client's errors, a fake npm's stderr, debug lines and the --json error object (#131)
   detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging; from a member, the root's declaration and lockfile, the member's own first, files named from the cwd (#123)
-  startup.test.ts           # Loading the CLI never loads the registry client or reader
+  startup.test.ts           # Loading the CLI loads none of the tracked modules: no action, pipeline, project, manager, utils barrel, logger, config, semver, colorette or @inquirer/prompts, and never the registry client, reader or cache (#109; the build's startup check covers every bundled input)
   fixtures/
     registry.ts, tls/       # Local registry/proxy servers (replies() for exact url tables, registryBody() which gunzips a .body.gz, derive()); test-only TLS material (generate.sh)
     registry/               # Verbatim curl captures (.body; .body.gz over 100 KB decoded) of dist-tags, deps.dev and packuments: ms, @types/ms, mkdirp, then yarn, pnpm, dayjs, debug, express, semver, zod, axios, lodash, next, qs, typescript for #106 (packuments only for yarn and pnpm); README.md lists status, type, wire and decoded size and the checks
@@ -92,7 +99,7 @@ __tests__/
     captured.test.ts        # The captured-registry helpers: sources, asOf, latest fallback, unplanned names, installPackages
     npm/ pnpm/ yarn/        # Real captured manager stdout/stderr: apply commands and errors (pnpm update, yarn v1 update/upgrade), berry's yarn.lock for testRepos/berry-workspace (`berry-workspace.yarn.lock`, #107), a yarn v1 member's package.json (devDependencies), npm's package-lock.json for #107 (a single package, and testRepos/npm-workspace from `install --package-lock-only`)
   managers/
-    adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager
+    adapters.test.ts        # Registry: adapterFor(name), one lockfile per manager, supportedManagers equals the adapters' keys in order
     npm.test.ts, pnpm.test.ts  # npm: readLockedPackages on package-lock.json captures (member's nested copy first, links), installedFromLockfile, a workspace with no node_modules listing its members (#107); pnpm: readWorkspace (workspace detection, catalog records, CRLF), single-package update paths, member map
     yarn.test.ts            # yarn v1: upgrade descriptors, a member's rows moved with root installs and each pin in its own field (manifest restored, beyond-range spec written, yarn.lock relocked; #127), the root keeping yarn's write, v1-over-stray-.yarnrc.yml, stderr warning at debug level, failed apply
     yarnBerry.test.ts       # yarn berry on the yarn.lock capture: readBerryLock (alias, builtin patch, workspace link), native check with no yarn command (from a member too), prefersLatestInRange, in-range and beyond-range apply checked in yarn.lock, failure flags (#107)
@@ -146,11 +153,11 @@ __tests__/
 
 ## Tech Stack
 
-- **Language:** TypeScript (ES2020 target, CommonJS output)
+- **Language:** TypeScript, type-checked by `tsc` (which emits nothing) and bundled by esbuild 0.28.2 into one CommonJS file, `dist/index.js` (`scripts/build.mts`)
 - **CLI Framework:** Commander.js
 - **Package Manager:** pnpm (>=10.0.0)
 - **Node:** ^22.23.0 || >=24.17.0 (`.tool-versions` pins 24.22.1)
 - **Testing:** Jest + @swc/jest
 - **Linting/Formatting:** Biome
-- **Path Aliases:** `@/*` -> `src/*` (resolved by tsc-alias at build)
-- **Key Dependencies:** semver, colorette, @inquirer/prompts (registry metadata for cooldown comes from our own `node:https` client and `.npmrc` parser, no dependency)
+- **Path Aliases:** `@/*` -> `src/*` (resolved by esbuild from `tsconfig.json` `paths` at build)
+- **Key Dependencies:** the one runtime dependency is `@inquirer/prompts` (external, loaded by `update -i`); commander, colorette and semver are devDependencies inlined into the bundle, with their licenses in `dist/third-party-licenses.txt` (registry metadata for cooldown comes from our own `node:https` client and `.npmrc` parser, no dependency)

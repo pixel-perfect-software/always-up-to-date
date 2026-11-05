@@ -5,6 +5,7 @@ packages:
 allowBuilds:
   "@parcel/watcher": true
   "@swc/core": true
+  esbuild: false
   unrs-resolver: true
 
 catalog:
@@ -18,10 +19,10 @@ catalog:
   "@types/jest": 30.0.0
   "@types/node": 26.6.6
   "@types/semver": 7.8.0
+  esbuild: 0.28.2
   globals: 17.14.0
   jest: 30.5.2
   jest-coverage-badges: 1.1.2
-  tsc-alias: 1.9.10
   typescript: 7.0.2
 
 minimumReleaseAgeExclude:

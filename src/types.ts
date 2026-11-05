@@ -1,6 +1,7 @@
 import type { ReleaseType } from 'semver'
+import type { supportedManagers } from './managers/names'
 
-export type SupportedPackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
+export type SupportedPackageManager = (typeof supportedManagers)[number]
 
 /** One manifest's versions of an outdated package, in a workspace project. */
 export interface WorkspaceVersion {

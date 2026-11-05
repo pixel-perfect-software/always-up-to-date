@@ -53,11 +53,12 @@ jobs:
         run: pnpm test
       - name: Build project
         run: pnpm run build
-      # The unit tests run through swc; only the built CommonJS output proves it can
-      # require() the ESM-only dependencies (commander, @inquirer/prompts) on this Node.
+      # The unit tests run through swc; only the built bundle proves it starts on this
+      # Node. commander is inlined, and @inquirer/prompts loads with import() in update -i.
       - name: The built CLI starts
+        shell: bash
         run: |
-          node dist/index.js --version
+          test "$(node dist/index.js --version)" = "$(node -p "require('./package.json').version")"
           node dist/index.js help
 
   integration:

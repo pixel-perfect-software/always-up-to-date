@@ -1,26 +1,53 @@
-const mockClientLoaded = jest.fn()
+const mockLoaded = jest.fn()
+
+/** A mock factory that records the load and hands back the real module. */
+function mockTracked(name: string): unknown {
+  mockLoaded(name)
+  return jest.requireActual(name)
+}
+
+// The registry client, reader and cache load when a lookup needs them.
 jest.mock('@/utils/registryClient', () => {
-  mockClientLoaded()
+  mockLoaded('@/utils/registryClient')
   return {}
 })
-const mockReaderLoaded = jest.fn()
 jest.mock('@/utils/registryReader', () => {
-  mockReaderLoaded()
+  mockLoaded('@/utils/registryReader')
   return {}
 })
-const mockCacheLoaded = jest.fn()
 jest.mock('@/utils/registryCache', () => {
-  mockCacheLoaded()
+  mockLoaded('@/utils/registryCache')
   return {}
 })
-jest.mock('@/utils/config')
+
+// Everything a command's action needs loads when the action runs, not with the CLI.
+jest.mock('@/commands/actions/check', () =>
+  mockTracked('@/commands/actions/check'),
+)
+jest.mock('@/commands/actions/update', () =>
+  mockTracked('@/commands/actions/update'),
+)
+jest.mock('@/commands/actions/init', () =>
+  mockTracked('@/commands/actions/init'),
+)
+jest.mock('@/commands/actions/help', () =>
+  mockTracked('@/commands/actions/help'),
+)
+jest.mock('@/pipeline', () => mockTracked('@/pipeline'))
+jest.mock('@/project', () => mockTracked('@/project'))
+jest.mock('@/managers', () => mockTracked('@/managers'))
+jest.mock('@/detectPackageManager', () => mockTracked('@/detectPackageManager'))
+jest.mock('@/utils', () => mockTracked('@/utils'))
+jest.mock('@/utils/logger', () => mockTracked('@/utils/logger'))
+jest.mock('@/utils/config', () => mockTracked('@/utils/config'))
+jest.mock('semver', () => mockTracked('semver'))
+jest.mock('colorette', () => mockTracked('colorette'))
+jest.mock('@inquirer/prompts', () => mockTracked('@inquirer/prompts'))
 
 describe('startup', () => {
-  it('loads no registry client, reader or cache while the CLI loads', async () => {
+  it('loads none of the actions, the pipeline or their dependencies with the CLI', async () => {
     await import('@/cli')
 
-    expect(mockClientLoaded).not.toHaveBeenCalled()
-    expect(mockReaderLoaded).not.toHaveBeenCalled()
-    expect(mockCacheLoaded).not.toHaveBeenCalled()
+    expect(mockLoaded.mock.calls.flat()).toEqual([])
   })
 })
