@@ -27,14 +27,15 @@ All four package managers are implemented with workspace support. Yarn is one ad
   - `pinMembers?(cwd)`: optional. Whether a package moving in a workspace member goes through `applyPinned` (root installs) instead of `apply`; `splitUpdates` then pins every moving row of it. yarn v1 only (#127): its one per-member command, `workspace <name> upgrade`, resolves with the member directory's registry settings
   - `overrides(cwd)`: packages pinned by an override field the manager enforces
 - Adapters never log progress, group output, run the policy or catch failures: the pipeline does. `run` is bound to the step, so a failure is already a `StepError`
-- Adding a manager: its adapter directory, its entry in `adapters` (`index.ts`) and `SupportedPackageManager`, and fixtures in `__tests__/fixtures/<pm>/`. Nothing else changes
+- Adding a manager: its name in `supportedManagers` (`names.ts`: the `--pm` choices and the CLI's startup load it without any adapter; `SupportedPackageManager` is derived from it, so `adapters`' `satisfies` fails to compile until the adapter is there, and `adapters.test.ts` fails when the order differs), its adapter directory and its entry in `adapters` (`index.ts`), and fixtures in `__tests__/fixtures/<pm>/`. Nothing else changes
 
 ## Major Subsystem Organization
 
 ```
 managers/
   adapter.ts           # ManagerAdapter, Workspace, WorkspaceManifest, Discovery, RunManager, ApplyPlan
-  index.ts             # adapters registry (detection order), adapterFor(name)
+  index.ts             # adapters registry (detection order), adapterFor(name), isSupportedManager; re-exports supportedManagers
+  names.ts             # supportedManagers: the manager names in adapters' order, importing no adapter (the CLI's options load it at startup, #109)
   workspaces.ts        # readManifest(), packageJsonWorkspace() (npm/yarn/bun), workspacePatterns(), readWorkspaceManifests() (the member map), nearestManifestDir(), listsMember(), packageJsonWorkspaceRoot(), memberAt(), pnpmWorkspacePatterns(), pnpmProjectRoot(), pnpmWorkspaceRoot() (member runs, #123)
   npm/index.ts         # npm adapter; readLockedPackages(): installed versions from package-lock.json when there is no node_modules (#107)
   yarn/index.ts        # yarn adapter (v1 `upgrade`, berry's `install` / `up -R`), isYarnBerry

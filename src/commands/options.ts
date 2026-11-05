@@ -1,5 +1,5 @@
 import { Option } from 'commander'
-import { supportedManagers } from '@/managers'
+import { supportedManagers } from '@/managers/names'
 
 /** `--pm <manager>`: use this manager instead of detecting one. */
 export const pmOption = (): Option =>

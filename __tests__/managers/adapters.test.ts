@@ -1,4 +1,4 @@
-import { adapterFor, adapters } from '@/managers'
+import { adapterFor, adapters, supportedManagers } from '@/managers'
 
 describe('adapter registry', () => {
   it.each(['npm', 'yarn', 'pnpm', 'bun'] as const)(
@@ -11,5 +11,9 @@ describe('adapter registry', () => {
   it('gives each manager its own lockfile', () => {
     const lockfiles = Object.values(adapters).map((adapter) => adapter.lockfile)
     expect(new Set(lockfiles).size).toBe(lockfiles.length)
+  })
+
+  it('lists the manager names in registry order, which the --pm message shows', () => {
+    expect(supportedManagers).toEqual(Object.keys(adapters))
   })
 })
