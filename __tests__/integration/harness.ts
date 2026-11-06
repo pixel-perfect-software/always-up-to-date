@@ -33,7 +33,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..')
 const TEST_REPOS = path.join(REPO_ROOT, 'testRepos')
 export const CLI = path.join(REPO_ROOT, 'dist', 'index.js')
 
-export const YARN_VERSIONS = { yarn: '1.22.22', berry: '4.12.0' } as const
+export const YARN_VERSIONS = { yarn: '1.22.22', berry: '4.18.1' } as const
 
 /**
  * A comma-separated selection of `allowed` names; unset or blank selects them
