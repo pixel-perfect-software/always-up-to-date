@@ -76,6 +76,8 @@ export interface RegistryClient {
 export interface RegistryHostStats {
   /** Every response, whatever its status. */
   responses: number
+  /** The 429s among them, a retried request's each. */
+  throttled: number
   /** Bytes of 2xx bodies as received (gzip bytes when compressed). */
   bodyBytes: number
   /** The same bodies after gunzip. */
@@ -240,7 +242,7 @@ export const createRegistryClient = (
   const statsFor = (url: URL): RegistryHostStats => {
     let stats = hostStats.get(url.host)
     if (!stats) {
-      stats = { responses: 0, bodyBytes: 0, decodedBytes: 0 }
+      stats = { responses: 0, throttled: 0, bodyBytes: 0, decodedBytes: 0 }
       hostStats.set(url.host, stats)
     }
     return stats
@@ -331,6 +333,7 @@ export const createRegistryClient = (
       const status = response.statusCode ?? 0
       const stats = statsFor(url)
       stats.responses++
+      if (status === 429) stats.throttled++
       const etag = usableEtag(headerValue(response.headers.etag))
       const cacheControl = headerValue(response.headers['cache-control'])
       const age = ageOf(headerValue(response.headers.age))

@@ -27,6 +27,7 @@ import {
   RETRY_MAX_MS,
   registryFor,
   retryDelay,
+  throttledNotice,
   YARN_V1_REGISTRY,
   yarnV1AuthorizationFor,
   yarnV1RegistryKeys,
@@ -619,6 +620,44 @@ describe('retries', () => {
     for (const status of [301, 400, 401, 404]) {
       expect(isRetryableStatus(status)).toBe(false)
     }
+  })
+
+  describe('throttledNotice', () => {
+    const host = (throttled: number) => ({
+      responses: throttled,
+      throttled,
+    })
+
+    it('says nothing when no host throttled the run', () => {
+      expect(throttledNotice({})).toBeUndefined()
+      expect(
+        throttledNotice({ 'registry.npmjs.org': host(0), 'deps.dev': host(0) }),
+      ).toBeUndefined()
+    })
+
+    it('names one host with a singular count', () => {
+      expect(throttledNotice({ 'registry.npmjs.org': host(1) })).toBe(
+        'Throttled by registry.npmjs.org (1 request), so this run was slower than usual',
+      )
+    })
+
+    it('names one host with a plural count', () => {
+      expect(throttledNotice({ 'registry.npmjs.org': host(40) })).toBe(
+        'Throttled by registry.npmjs.org (40 requests), so this run was slower than usual',
+      )
+    })
+
+    it('names every throttled host and leaves out one that was not', () => {
+      expect(
+        throttledNotice({
+          'registry.npmjs.org': host(3),
+          'api.deps.dev': host(1),
+          'registry.example.com': host(0),
+        }),
+      ).toBe(
+        'Throttled by registry.npmjs.org (3 requests), api.deps.dev (1 request), so this run was slower than usual',
+      )
+    })
   })
 
   it('retries connection resets, refusals and timeouts, not DNS failures', () => {

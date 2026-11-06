@@ -282,6 +282,26 @@ export const berryAuthorizationFor = (
 export const isRetryableStatus = (status: number): boolean =>
   status === 408 || status === 420 || status === 429 || status >= 500
 
+/**
+ * What a run says when a host throttled it, naming each host and its count, or
+ * undefined when none did. The lookups fall back and the results stay correct,
+ * so only the time would show it (#174). `pnpm run bench` finds this line in
+ * what autd prints (`throttledLines`, `bench/report.ts`).
+ */
+export const throttledNotice = (
+  hosts: Record<string, { throttled: number }>,
+): string | undefined => {
+  const named = Object.entries(hosts)
+    .filter(([, { throttled }]) => throttled > 0)
+    .map(
+      ([host, { throttled }]) =>
+        `${host} (${throttled} ${throttled === 1 ? 'request' : 'requests'})`,
+    )
+  return named.length > 0
+    ? `Throttled by ${named.join(', ')}, so this run was slower than usual`
+    : undefined
+}
+
 export const isRetryableError = (error: unknown): boolean =>
   typeof error === 'object' &&
   error !== null &&

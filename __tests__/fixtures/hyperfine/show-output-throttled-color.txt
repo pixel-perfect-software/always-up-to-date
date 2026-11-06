@@ -1,0 +1,26 @@
+[34m🚀[39m [34mChecking dependencies with [1mnpm[22m[39m
+
+[1m[32mWould update[39m[22m [90m(1 package)[39m
+  [1mms[22m  [31m2.0.0[39m [90m→[39m [32m2.1.3[39m  [90mwithin range[39m
+
+1 to update
+[33m⚠️[39m [33mThrottled by registry.npmjs.org (1 request), so this run was slower than usual[39m
+[34m🚀[39m [34mChecking dependencies with [1mnpm[22m[39m
+
+[1m[32mWould update[39m[22m [90m(1 package)[39m
+  [1mms[22m  [31m2.0.0[39m [90m→[39m [32m2.1.3[39m  [90mwithin range[39m
+
+1 to update
+[33m⚠️[39m [33mThrottled by registry.npmjs.org (1 request), so this run was slower than usual[39m
+[34m🚀[39m [34mChecking dependencies with [1mnpm[22m[39m
+
+[1m[32mWould update[39m[22m [90m(1 package)[39m
+  [1mms[22m  [31m2.0.0[39m [90m→[39m [32m2.1.3[39m  [90mwithin range[39m
+
+1 to update
+[33m⚠️[39m [33mThrottled by registry.npmjs.org (1 request), so this run was slower than usual[39m
+Benchmark 1: autd check (2 runs)
+                mean     ±       σ          min     …     max
+  Wall Time    726.3 ms  ±   414.6 ms     433.1 ms  …  1019.5 ms
+  Memory        68.1 MiB ±     0.1 MiB     68.0 MiB …    68.2 MiB
+ 

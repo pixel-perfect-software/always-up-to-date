@@ -1,0 +1,26 @@
+🚀 Checking dependencies with npm
+
+Would update (1 package)
+  ms  2.0.0 → 2.1.3  within range
+
+1 to update
+⚠️ Throttled by registry.npmjs.org (1 request), so this run was slower than usual
+🚀 Checking dependencies with npm
+
+Would update (1 package)
+  ms  2.0.0 → 2.1.3  within range
+
+1 to update
+⚠️ Throttled by registry.npmjs.org (1 request), so this run was slower than usual
+🚀 Checking dependencies with npm
+
+Would update (1 package)
+  ms  2.0.0 → 2.1.3  within range
+
+1 to update
+⚠️ Throttled by registry.npmjs.org (1 request), so this run was slower than usual
+Benchmark 1: autd check (2 runs)
+                mean     ±       σ          min     …     max
+  Wall Time    455.7 ms  ±    29.2 ms     435.1 ms  …   476.3 ms
+  Memory        67.8 MiB ±     0.4 MiB     67.5 MiB …    68.0 MiB
+ 

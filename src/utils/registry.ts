@@ -11,6 +11,7 @@ import type { RegistryClient, RegistryClientOptions } from './registryClient'
 import type { RegistryReader } from './registryReader'
 import {
   type RegistryEndpoints,
+  throttledNotice,
   unusableRouteFor,
   unusableText,
 } from './registryRequest'
@@ -48,8 +49,8 @@ export interface RegistrySession {
   lookup(name: string): Promise<PackageLookup>
   /**
    * Prunes the cache when this run grew it, logs one debug line about the
-   * run, and destroys the client's agents. Safe to call twice, or when
-   * nothing was made.
+   * run, warns once when a host throttled it, and destroys the client's
+   * agents. Safe to call twice, or when nothing was made.
    */
   close(): void
 }
@@ -189,6 +190,8 @@ export const createRegistrySession = (
           diskCache.close()
           logger.debug(describeRun(diskCache))
         }
+        const throttled = throttledNotice(created?.stats() ?? {})
+        if (throttled) logger.warn(throttled)
       }
       created?.destroy()
       // A client still loading is destroyed as soon as it exists.

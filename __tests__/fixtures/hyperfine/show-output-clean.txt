@@ -1,0 +1,23 @@
+🚀 Checking dependencies with npm
+
+Would update (1 package)
+  ms  2.0.0 → 2.1.3  within range
+
+1 to update
+🚀 Checking dependencies with npm
+
+Would update (1 package)
+  ms  2.0.0 → 2.1.3  within range
+
+1 to update
+🚀 Checking dependencies with npm
+
+Would update (1 package)
+  ms  2.0.0 → 2.1.3  within range
+
+1 to update
+Benchmark 1: autd check (2 runs)
+                mean     ±       σ          min     …     max
+  Wall Time    588.4 ms  ±    11.1 ms     580.6 ms  …   596.3 ms
+  Memory        67.7 MiB ±     0.3 MiB     67.5 MiB …    67.8 MiB
+ 

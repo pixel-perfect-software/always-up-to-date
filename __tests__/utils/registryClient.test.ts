@@ -1200,6 +1200,7 @@ describe('registry client', () => {
       expect(client.stats()).toEqual({
         [`127.0.0.1:${server.port}`]: {
           responses: 1,
+          throttled: 0,
           bodyBytes: 0,
           decodedBytes: 0,
         },
@@ -1348,6 +1349,7 @@ describe('registry client', () => {
       expect(client.stats()).toEqual({
         [`127.0.0.1:${server.port}`]: {
           responses: 1,
+          throttled: 0,
           bodyBytes: zipped.length,
           decodedBytes: Buffer.byteLength(raw),
         },
@@ -1368,6 +1370,39 @@ describe('registry client', () => {
       expect(client.stats()[key]?.responses).toBe(2)
     })
 
+    it('counts each 429 as throttled, a retried one included', async () => {
+      let call = 0
+      const server = await registry((req, res) => {
+        if (call++ === 0) {
+          res.statusCode = 429
+          res.end()
+          return
+        }
+        json({ ok: true })(req, res)
+      })
+      const client = clientFor(configFrom('fetch-retries=1'))
+      await client.getJson(`${server.url}pkg`, server.url)
+      expect(client.stats()[`127.0.0.1:${server.port}`]).toMatchObject({
+        responses: 2,
+        throttled: 1,
+      })
+    })
+
+    it('does not count a 500 as throttled', async () => {
+      const server = await registry((_req, res) => {
+        res.statusCode = 500
+        res.end()
+      })
+      const client = clientFor(configFrom('fetch-retries=0'))
+      await expect(
+        client.getJson(`${server.url}pkg`, server.url),
+      ).rejects.toMatchObject({ status: 500 })
+      expect(client.stats()[`127.0.0.1:${server.port}`]).toMatchObject({
+        responses: 1,
+        throttled: 0,
+      })
+    })
+
     it('counts a 404 as a response and nothing else', async () => {
       const server = await registry((_req, res) => {
         res.statusCode = 404
@@ -1380,6 +1415,7 @@ describe('registry client', () => {
       expect(client.stats()).toEqual({
         [`127.0.0.1:${server.port}`]: {
           responses: 1,
+          throttled: 0,
           bodyBytes: 0,
           decodedBytes: 0,
         },
