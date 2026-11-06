@@ -115,8 +115,8 @@ jobs:
   perf:
     # The performance budgets (pnpm run bench:gate, bench/budgets.ts) on a real runner: one job
     # per manager, plus startup, which needs no manager and is measured once. Each leg writes
-    # its result to the job summary. For now the measure step is report-only
-    # (continue-on-error), so a red result does not fail the run; the enforcement phase removes it.
+    # its result to the job summary, and a budget confirmed over (or a measurement that failed or
+    # was throttled) fails the leg.
     # hyperfine 2 is not in apt (Ubuntu has 1.18), so it comes from the release tarball,
     # checked against a digest. Dependabot cannot update that pin: bump HYPERFINE_VERSION and
     # HYPERFINE_SHA256 together by hand (the digest is on the release page's asset).
@@ -162,9 +162,6 @@ jobs:
           echo "$RUNNER_TEMP/hyperfine" >> "$GITHUB_PATH"
       - run: pnpm install --frozen-lockfile
       - name: Measure against the budgets
-        # Report-only for now: the summary tells the truth while the job stays green.
-        # The enforcement phase of the perf-gates work removes this line.
-        continue-on-error: true
         run: pnpm run bench:gate
       - name: The bench leaves the checkout untouched
         shell: bash

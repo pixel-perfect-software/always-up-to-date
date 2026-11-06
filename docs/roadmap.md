@@ -86,6 +86,36 @@ Bun has since moved to 1.4.4: warm 0.17 s, cold 22.5 s ± 7.5 over 2 runs. Regis
   package gzipped (next 43.5 KB). Bun's cold `outdated` downloads the abbreviated packuments,
   which is its 14.8 s.
 
+### Ubuntu baseline (#110)
+
+Measured 2026-11-06 by the `perf` job, CI run 42242016530 on `main` at 192db51:
+ubuntu-latest, Node 24.22.1, `bench/pinned/`. The figures are means from the job's log, except
+the cooldown overhead, which is the difference of two medians (the budget's own measure).
+
+| Row                               | `check`, warm | `check`, cold | Cooldown overhead, cold | Peak memory, warm |
+| --------------------------------- | ------------- | ------------- | ----------------------- | ----------------- |
+| npm 11.19.1                       | 97 ms         | 0.60 s        | +15 ms                  | 80 MB             |
+| pnpm 12.16.1                      | 0.10 s        | 0.57 s        | +64 ms                  | 94 MB             |
+| yarn 1.22.22                      | 0.13 s        | 0.86 s        | +0.27 s                 | 80 MB             |
+| yarn 4.18.1 (berry, PnP)          | 0.18 s        | 0.75 s        | +48 ms                  | 95 MB             |
+| yarn 4.18.1 (berry, node-modules) | 0.11 s        | 0.72 s        | +0.20 s                 | 95 MB             |
+| bun 1.4.4                         | 88 ms         | 0.88 s        | -2 ms                   | 80 MB             |
+
+Startup (medians): `autd --version` 41 ms, bare `node -e 0` 26 ms, 15 ms over.
+
+What the runs around it showed:
+
+- Runner noise. Across seven readings that day, cold ranged from 0.50 s to 0.98 s. One first
+  attempt read 1.63 s ± 0.02 (yarn v1) and 0.76 s on the confirming attempt 30 s later; one
+  cooldown overhead read +0.50 s (berry) and +0.11 s on its confirming attempt. Cold is the
+  budget closest to its limit, so a leg can go red on a slow patch; Re-run failed jobs is the
+  remedy.
+- Startup held at +11 to +17 ms over bare Node.
+- No throttled reading and no failed install.
+- A package deps.dev lags on used to cost every warm run a request: `zustand` 5.1.0 took
+  warm from about 0.10 s to 0.19-0.30 s. PR #188 fixed that, but it has not been read on a
+  runner during a lag yet.
+
 ## Milestones
 
 Sizes are rough. Order matters more than dates.
@@ -225,6 +255,23 @@ Run hyperfine against the benchmark project on every pull request and fail above
 | `check`, warm cache              | under 0.3 s                                          |
 | Startup (`--version`)            | under 25 ms over bare `node -e 0` on the same runner |
 | Cooldown overhead, cold          | under 0.5 s                                          |
+
+Enforced by CI's `perf` job, one leg per `pnpm run bench:gate` target:
+`perf (startup)`, `perf (npm)`, `perf (pnpm)`, `perf (yarn)`, `perf (berry)`,
+`perf (berry-nm)` and `perf (bun)`.
+
+- Every value is a median, and "under" is strict: a value equal to the limit is over. There is
+  no margin.
+- A leg measures up to 3 times. A budget's value is the lower of its medians across the measured
+  attempts, so it fails only if it is over on every measured attempt; the first over reading
+  gets one confirming attempt after 30 s.
+- A throttled run (a host answered 429) is red but labelled inconclusive, not a budget failure:
+  it measured nothing. Re-run failed jobs is the remedy. A measurement that fails (an install,
+  a missing row, fewer than 3 runs in a timing) is red too, after one retry.
+- What it catches: a static eager import fails `pnpm run build` first (`checkStartup`), so the
+  startup budget is for what the build cannot see, such as an `await import()` on the startup
+  path. One read +57 ms on a runner against the 25 ms limit (PR #185, 2026-11-06).
+- It is not a required check yet; making it one is a GitHub setting.
 
 The startup budget was "under 60 ms" until 2026-10-26. Bare Node alone measured 30 ms on
 2026-10-22 and 39 to 41 ms on 2026-10-26 on the same machine, so an absolute number measured
