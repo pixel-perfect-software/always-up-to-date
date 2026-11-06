@@ -3,6 +3,36 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-11-06 — 3.5.0: cooldown and release-age gates stop downloading full registry documents, and a throttled run says so
+
+Publish times for cooldown and the release-age gates now come from deps.dev, a cached document, or a package's `modified` date, so most packages cost no full registry document. The CLI is one bundled file, and `--version` starts about 28 ms faster. autd warns when a registry throttles a run.
+
+### Added
+
+- autd warns when a registry answers 429 during a run: `⚠️ Throttled by registry.npmjs.org (40 requests), so this run was slower than usual`. The results stay correct, since autd falls back to the packument. Only the time shows it. Under `--json` the warning goes to stderr, and `silent` suppresses it ([#174](https://github.com/pixel-perfect-software/always-up-to-date/issues/174)).
+
+### Changed
+
+- Cooldown and the release-age gates no longer download a package's full document on every run ([#47](https://github.com/pixel-perfect-software/always-up-to-date/issues/47)).
+  - **deps.dev's dates:** when deps.dev doesn't list a package's `latest`, autd keeps the publish dates deps.dev does have. Before, every version came back undated.
+  - **Request limits:** a full document is requested only when a version being judged still has no date, once per package per run. The request goes through the per-host limiter and the disk cache.
+  - **Cache:** publish times never change, so a stored document that lists every version answers at any age. An authenticated entry is revalidated on every use, which costs a 304 with no body.
+  - **Fallbacks:** a cooldown fallback can no longer land on an unpublished version.
+  - **Measured:** with `depsDev: false` on 40 packages, a warm run on pnpm made no request. Before, it made 79 to 80 registry requests, one full document per target.
+- A package whose abbreviated packument says it was last modified before the gate is let through without reading its full document ([#177](https://github.com/pixel-perfect-software/always-up-to-date/issues/177), [#190](https://github.com/pixel-perfect-software/always-up-to-date/pull/190)). This applies to pnpm's, bun's and npm's release-age settings, and to npm's `before`, on public npm registries. Berry's `npmMinimalAgeGate` still reads the dates, since berry quarantines a version with no date. So does a cooldown, which keeps its exact `releaseAge`.
+  - **Measured:** `check` with `depsDev: false` on 40 packages and pnpm's default gate read 6 full documents, against 40, and sent 46 registry requests, against 80. It took 1.37 s cold, against 2.00 s, with peak memory of 534 MB, against 780 MB.
+- A fresh cached packument that lists `latest` answers without asking deps.dev again ([#188](https://github.com/pixel-perfect-software/always-up-to-date/pull/188)). Before, one package deps.dev lagged on sent a request on every warm `check`, and loaded the registry client. On `zustand`, a warm `check` took 61 ms, against 212 ms.
+- The CLI is one bundled file ([#109](https://github.com/pixel-perfect-software/always-up-to-date/issues/109)). `autd --version` loads 2 modules, against 111, and runs 8.3 ms over bare Node, against 36.7 ms. `help` is 15.5 ms over. `semver`, `commander` and `colorette` are bundled, so `@inquirer/prompts` is the one runtime dependency. The package ships `dist/third-party-licenses.txt` for the bundled ones.
+
+### Fixed
+
+- The debug output no longer calls a 304 a download ([#176](https://github.com/pixel-perfect-software/always-up-to-date/issues/176)). A revalidation logs `Revalidated the full packument of <name> for publish times (304)`, and `Reading the full packument of <name> …` appears only when a body came back. The run summary counts a stored document that answered past its TTL as `covered`.
+
+### Known issues
+
+- Cooldown with `depsDev: false` still reads each moving row's full document once, to keep `releaseAge` exact.
+- The `modified` shortcut applies to public npm registries only, so a private registry or a registry proxy keeps the full read under a release-age gate.
+
 ## 2026-11-03 — 3.4.0: yarn 2+ checks without running yarn, and autd respects the package managers' release-age gates
 
 `check` on yarn 2+ reads `yarn.lock` and the registry itself and runs no `yarn` command. Its registries and tokens come from `.yarnrc.yml`. autd no longer proposes a version a package manager won't install for its age: pnpm and yarn 2+ refuse versions under a day old by default, and npm's and bun's release-age settings are honored when set. An npm project with a lockfile but no `node_modules` can be checked. On yarn v1, registry tokens follow yarn's rules, and a workspace member's update resolves through the root's registry settings, as `yarn install` does.
