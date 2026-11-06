@@ -164,7 +164,8 @@ const validValue = (kind: CacheKind, value: unknown): boolean => {
   if (kind === 'dist-tags') return typeof value.latest === 'string'
   return (
     isVersions(value.versions) &&
-    (value.latest === undefined || typeof value.latest === 'string')
+    (value.latest === undefined || typeof value.latest === 'string') &&
+    (value.modified === undefined || typeof value.modified === 'string')
   )
 }
 

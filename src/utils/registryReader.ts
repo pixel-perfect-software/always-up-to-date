@@ -286,9 +286,16 @@ export const createRegistryReader = ({
     latest: string,
     versions: RegistryVersion[],
     source: RegistryPackage['source'],
+    modified?: string,
   ): PackageLookup => ({
     ok: true,
-    package: { name, latest, versions, source },
+    package: {
+      name,
+      latest,
+      versions,
+      source,
+      ...(modified ? { modified } : {}),
+    },
   })
 
   // Decided in the request's slot: the queued request behind it must see a
@@ -447,7 +454,17 @@ export const createRegistryReader = ({
     if (latest === undefined) {
       return fail(name, 'not-found', `${name} has no published versions`)
     }
-    return found(name, latest, withTimes(versions, depsDevList), 'packument')
+    // `modified` is trusted only from the public npm registries; the cache
+    // keeps it whatever the registry, so trusting another later needs no bump.
+    return found(
+      name,
+      latest,
+      withTimes(versions, depsDevList),
+      'packument',
+      isPublicNpmRegistry(registry, endpoints.publicRegistries)
+        ? packument.modified
+        : undefined,
+    )
   }
 
   const publicLookup = async (

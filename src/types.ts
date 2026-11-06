@@ -286,6 +286,13 @@ export interface RegistryPackage {
   /** Every version whose string is canonical semver, ascending (semver.compare). */
   versions: RegistryVersion[]
   source: 'deps.dev' | 'packument'
+  /**
+   * No listed version was published later than this. Set only from a registry
+   * whose abbreviated packument `modified` autd trusts (the public npm
+   * registries); a release-age gate that lets a version of this age through
+   * needs no publish times.
+   */
+  modified?: string
 }
 
 /**

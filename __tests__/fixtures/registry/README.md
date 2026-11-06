@@ -6,6 +6,7 @@ Wire size is the compressed size on the wire. The capture machine runs an Aikido
 
 - deps.dev and the abbreviated packument list the same versions and the same deprecated versions, and both include the dist-tags `latest`;
 - no package has had a release for months (the newest version of `ms` is from 2025-08, of `@types/ms` from 2025-01, of `mkdirp` from 2023-04);
+- every abbreviated packument carries a top-level `modified`, and `types-ms.packument.body`'s equals `time.modified` of `types-ms.packument-full.body` (#177: no listed version's time is later);
 - `mkdirp` has 25 deprecated versions of 42, and a `latest` (3.0.1) that is not deprecated;
 - `autd-no-such-package-20261026` is a 404 on registry.npmjs.org too;
 - `https://registry.yarnpkg.com/-/package/ms/dist-tags` returns a body byte-identical to `ms.dist-tags.body`.
