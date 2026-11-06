@@ -1,3 +1,4 @@
+import fs from 'fs'
 import path from 'path'
 import { type Manager, parseSelection } from '../__tests__/integration/harness'
 import type { ConfigFile } from '../src/types'
@@ -48,6 +49,41 @@ export const runsFrom = (
     throw new Error(`AUTD_BENCH_RUNS: ${value} is not a positive integer`)
   }
   return runs
+}
+
+/** `AUTD_BENCH_STARTUP`: `only` times startup and no manager, `skip` leaves it out; unset or blank times both. */
+export type StartupMode = 'include' | 'only' | 'skip'
+
+export const startupMode = (value: string | undefined): StartupMode => {
+  const mode = value?.trim()
+  if (mode === undefined || mode === '') return 'include'
+  if (mode !== 'only' && mode !== 'skip') {
+    throw new Error(`AUTD_BENCH_STARTUP: unknown mode ${mode}; use only, skip`)
+  }
+  return mode
+}
+
+/**
+ * `AUTD_BENCH_JSON`: where the machine-readable document goes, against `cwd`;
+ * unset or blank writes none. The folder must exist, so a typo fails before
+ * the run and not after it.
+ */
+export const jsonPathFrom = (
+  value: string | undefined,
+  cwd: string,
+): string | undefined => {
+  if (value === undefined || value.trim() === '') return undefined
+
+  const file = path.resolve(cwd, value)
+  if (
+    !fs.statSync(path.dirname(file), { throwIfNoEntry: false })?.isDirectory()
+  ) {
+    throw new Error(`AUTD_BENCH_JSON: the folder of ${file} does not exist`)
+  }
+  if (fs.statSync(file, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`AUTD_BENCH_JSON: ${file} is a folder`)
+  }
+  return file
 }
 
 /**

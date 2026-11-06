@@ -3,8 +3,11 @@ import {
   formatMemory,
   formatSeconds,
   formatTiming,
+  fullPackumentReads,
   hyperfineMajor,
+  medianDifference,
   movingRows,
+  parseBenchDocument,
   parseHyperfine,
   renderTable,
   throttledLines,
@@ -264,5 +267,220 @@ describe('renderTable', () => {
         '| bun 1.4.4   | 0.16 s |',
       ].join('\n'),
     )
+  })
+})
+
+describe('medianDifference', () => {
+  const timing = (median: number, mean = median * 3) => ({
+    mean,
+    stddev: 0,
+    median,
+    runs: 5,
+  })
+
+  it('subtracts the second median from the first, whatever the means say', () => {
+    expect(medianDifference(timing(0.65, 2.5), timing(0.62, 0.4))).toBeCloseTo(
+      0.03,
+      10,
+    )
+  })
+
+  it('is negative when the first is the faster', () => {
+    expect(medianDifference(timing(0.1), timing(0.35))).toBeCloseTo(-0.25, 10)
+  })
+})
+
+describe('fullPackumentReads', () => {
+  it('finds the packument autd read in full in a real debug run', () => {
+    expect(fullPackumentReads(readFixture('bench/check-debug.txt'))).toEqual([
+      'ms',
+    ])
+  })
+
+  it('lists each name once, sorted, scoped names included, without color', () => {
+    const output = [
+      '\u001b[90m  Reading the full packument of next for publish times: 1.0.0 has none\u001b[39m',
+      '  Reading the full packument of @types/ms for publish times: 2.0.0 has none',
+      '  Reading the full packument of next for publish times: 1.0.1 has none',
+    ].join('\n')
+
+    expect(fullPackumentReads(output)).toEqual(['@types/ms', 'next'])
+  })
+
+  it('ignores a 304, a failed request and a run that read none', () => {
+    const output = [
+      '  Revalidated the full packument of ms for publish times (304): 2.1.0 has none',
+      '  Failed to read the full packument of debug: timeout',
+    ].join('\n')
+
+    expect(fullPackumentReads(output)).toEqual([])
+    expect(fullPackumentReads('')).toEqual([])
+  })
+})
+
+// A parsed document the tests damage in place, structuredClone-style variants of the real capture.
+// biome-ignore lint/suspicious/noExplicitAny: the tests delete and overwrite fields the real type requires
+type Loose = Record<string, any>
+
+describe('parseBenchDocument', () => {
+  const capture: Loose = JSON.parse(readFixture('bench/document.json'))
+  const real = (): Loose => structuredClone(capture)
+
+  it('reads a real document: the environment, a measured row and the startup pair', () => {
+    const document = parseBenchDocument(readFixture('bench/document.json'))
+
+    expect(document).toMatchObject({
+      version: 1,
+      autd: '3.4.0',
+      project: 'pinned',
+      platform: 'darwin',
+    })
+    const [row] = document.rows
+    expect(row.status).toBe('measured')
+    if (row.status !== 'measured') throw new Error('unreachable')
+    expect(row.target).toBe('npm')
+    expect(row.warm.runs).toBe(5)
+    expect(row.cold.runs).toBe(3)
+    expect(row.targets).toBe(39)
+    expect(row.fullPackuments).toEqual([])
+    expect(document.startup?.status).toBe('measured')
+    if (document.startup?.status !== 'measured') throw new Error('unreachable')
+    expect(document.startup.version.runs).toBe(80)
+    expect(document.startup.version.median).toBeGreaterThan(
+      document.startup.bare.median,
+    )
+  })
+
+  it('round-trips through JSON unchanged', () => {
+    const text = readFixture('bench/document.json')
+
+    expect(JSON.parse(JSON.stringify(parseBenchDocument(text)))).toEqual(
+      JSON.parse(text),
+    )
+  })
+
+  it('reads failed and throttled rows, a failed startup and a missing one', () => {
+    const document = real()
+    document.rows = [
+      { target: 'pnpm', status: 'failed', error: 'install failed' },
+      { target: 'bun', status: 'throttled', error: 'Throttled by x' },
+    ]
+    document.startup = { status: 'failed', error: 'no hyperfine' }
+
+    expect(parseBenchDocument(JSON.stringify(document))).toMatchObject({
+      rows: [
+        { target: 'pnpm', status: 'failed', error: 'install failed' },
+        { target: 'bun', status: 'throttled' },
+      ],
+      startup: { status: 'failed', error: 'no hyperfine' },
+    })
+
+    delete document.startup
+    expect(parseBenchDocument(JSON.stringify(document)).startup).toBeUndefined()
+  })
+
+  it('keeps the packuments a debug run listed', () => {
+    const document = real()
+    document.rows[0].fullPackuments = ['next']
+
+    const [row] = parseBenchDocument(JSON.stringify(document)).rows
+    expect(row).toMatchObject({ fullPackuments: ['next'] })
+  })
+
+  it('leaves fullPackuments out of a row whose debug run failed', () => {
+    const document = real()
+    delete document.rows[0].fullPackuments
+
+    const [row] = parseBenchDocument(JSON.stringify(document)).rows
+    expect('fullPackuments' in row).toBe(false)
+  })
+
+  it.each([
+    ['not JSON', (_: Loose) => undefined, /not JSON/],
+    [
+      'a version other than 1',
+      (d: Loose) => {
+        d.version = 2
+      },
+      /version is not 1/,
+    ],
+    [
+      'rows that are not a list',
+      (d: Loose) => {
+        d.rows = {}
+      },
+      /rows is not a list/,
+    ],
+    [
+      'a missing autd version',
+      (d: Loose) => {
+        delete d.autd
+      },
+      /document\.autd is not a string/,
+    ],
+    [
+      'an unknown target',
+      (d: Loose) => {
+        d.rows[0].target = 'deno'
+      },
+      /rows\[0\]\.target is not one of/,
+    ],
+    [
+      'an unknown status',
+      (d: Loose) => {
+        d.rows[0].status = 'slow'
+      },
+      /rows\[0\]\.status is not measured, failed or throttled/,
+    ],
+    [
+      'a missing metric',
+      (d: Loose) => {
+        delete d.rows[0].cooldownCold
+      },
+      /rows\[0\]\.cooldownCold is not an object/,
+    ],
+    [
+      'a timing without a median',
+      (d: Loose) => {
+        delete d.rows[0].cold.median
+      },
+      /rows\[0\]\.cold\.median is not a number/,
+    ],
+    [
+      'a timing with a text number',
+      (d: Loose) => {
+        d.rows[0].warm.mean = '0.1'
+      },
+      /rows\[0\]\.warm\.mean is not a number/,
+    ],
+    [
+      'a failed row without its error',
+      (d: Loose) => {
+        d.rows = [{ target: 'npm', status: 'failed' }]
+      },
+      /rows\[0\]\.error is not a string/,
+    ],
+    [
+      'packuments that are not strings',
+      (d: Loose) => {
+        d.rows[0].fullPackuments = [1]
+      },
+      /fullPackuments is not a list of strings/,
+    ],
+    [
+      'a startup without its bare timing',
+      (d: Loose) => {
+        delete d.startup.bare
+      },
+      /startup\.bare is not an object/,
+    ],
+  ])('rejects %s', (_name, damage, message) => {
+    const document = real()
+    const text =
+      _name === 'not JSON'
+        ? 'nope'
+        : (damage(document), JSON.stringify(document))
+
+    expect(() => parseBenchDocument(text)).toThrow(message)
   })
 })

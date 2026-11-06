@@ -1,4 +1,5 @@
 import { stripVTControlCharacters } from 'util'
+import { TARGETS, type Target } from './targets'
 
 /** One command's timing from hyperfine's JSON: seconds, and peak memory in bytes when it reports it. */
 export type Timing = {
@@ -168,4 +169,201 @@ export const renderTable = (header: string[], rows: string[][]): string => {
     )
     .join('|')}|`
   return [line(header), divider, ...rows.map(line)].join('\n')
+}
+
+/** The difference of two medians, in seconds. Runs are not paired (separate hyperfine invocations), so this subtracts two independently taken medians; negative when `a` is the faster. */
+export const medianDifference = (a: Timing, b: Timing): number =>
+  a.median - b.median
+
+/**
+ * The names whose full packument a run read for publish times (#176): autd logs
+ * `Reading the full packument of <name> for publish times` at debug level only
+ * when a body came back. Sorted, once each, without color.
+ */
+export const fullPackumentReads = (output: string): string[] => {
+  const names = new Set<string>()
+  for (const line of stripVTControlCharacters(output).split(/\r?\n/)) {
+    const match = /Reading the full packument of (\S+) for publish times/.exec(
+      line,
+    )
+    if (match) names.add(match[1])
+  }
+  return [...names].sort()
+}
+
+/** A target that was measured. */
+export type MeasuredRow = {
+  target: Target
+  status: 'measured'
+  label: string
+  warm: Timing
+  cold: Timing
+  /** Rows the moving config plans to update: each one reaches the cooldown gate. */
+  targets: number
+  /** `MOVING_CONFIG`, cold. */
+  moving: Timing
+  /** `COOLDOWN_CONFIG`, cold. */
+  cooldownCold: Timing
+  /** `COOLDOWN_CONFIG`, warm. */
+  cooldownWarm: Timing
+  /** Packuments one untimed cooldown `check` read in full; absent when that run failed or was not made. */
+  fullPackuments?: string[]
+}
+
+/** A target that failed, or that a host throttled (#174): no numbers. */
+export type UnmeasuredRow = {
+  target: Target
+  status: 'failed' | 'throttled'
+  error: string
+}
+
+export type StartupResult =
+  | { status: 'measured'; version: Timing; bare: Timing }
+  | { status: 'failed'; error: string }
+
+/** What `AUTD_BENCH_JSON` writes. */
+export type BenchDocument = {
+  version: 1
+  autd: string
+  node: string
+  platform: string
+  arch: string
+  project: string
+  rows: (MeasuredRow | UnmeasuredRow)[]
+  startup?: StartupResult
+}
+
+const fail = (path: string, expected: string): never => {
+  throw new Error(`bench document: ${path} is not ${expected}`)
+}
+
+const stringAt = (
+  record: Record<string, unknown>,
+  key: string,
+  path: string,
+): string => {
+  const value = record[key]
+  return typeof value === 'string' ? value : fail(`${path}.${key}`, 'a string')
+}
+
+const recordAt = (
+  record: Record<string, unknown>,
+  key: string,
+  path: string,
+): Record<string, unknown> => {
+  const value = record[key]
+  return isRecord(value) ? value : fail(`${path}.${key}`, 'an object')
+}
+
+const requiredNumber = (
+  record: Record<string, unknown>,
+  key: string,
+  path: string,
+): number => numberAt(record, key) ?? fail(`${path}.${key}`, 'a number')
+
+const timingAt = (
+  record: Record<string, unknown>,
+  key: string,
+  path: string,
+): Timing => {
+  const timing = recordAt(record, key, path)
+  const at = `${path}.${key}`
+  const peak = timing.peakMemory
+  if (peak !== undefined && numberAt(timing, 'peakMemory') === undefined) {
+    fail(`${at}.peakMemory`, 'a number')
+  }
+  return {
+    mean: requiredNumber(timing, 'mean', at),
+    stddev: requiredNumber(timing, 'stddev', at),
+    median: requiredNumber(timing, 'median', at),
+    runs: requiredNumber(timing, 'runs', at),
+    peakMemory: peak === undefined ? undefined : (peak as number),
+  }
+}
+
+const rowAt = (value: unknown, index: number): MeasuredRow | UnmeasuredRow => {
+  const path = `rows[${index}]`
+  if (!isRecord(value)) return fail(path, 'an object')
+  const target = value.target
+  if (!TARGETS.some((name) => name === target)) {
+    return fail(`${path}.target`, `one of ${TARGETS.join(', ')}`)
+  }
+  const name = target as Target
+  if (value.status === 'failed' || value.status === 'throttled') {
+    return {
+      target: name,
+      status: value.status,
+      error: stringAt(value, 'error', path),
+    }
+  }
+  if (value.status !== 'measured') {
+    return fail(`${path}.status`, 'measured, failed or throttled')
+  }
+  const packuments = value.fullPackuments
+  if (
+    packuments !== undefined &&
+    !(
+      Array.isArray(packuments) &&
+      packuments.every((entry) => typeof entry === 'string')
+    )
+  ) {
+    return fail(`${path}.fullPackuments`, 'a list of strings')
+  }
+  return {
+    target: name,
+    status: 'measured',
+    label: stringAt(value, 'label', path),
+    warm: timingAt(value, 'warm', path),
+    cold: timingAt(value, 'cold', path),
+    targets: requiredNumber(value, 'targets', path),
+    moving: timingAt(value, 'moving', path),
+    cooldownCold: timingAt(value, 'cooldownCold', path),
+    cooldownWarm: timingAt(value, 'cooldownWarm', path),
+    ...(packuments === undefined
+      ? {}
+      : { fullPackuments: packuments as string[] }),
+  }
+}
+
+const startupAt = (value: unknown): StartupResult => {
+  const path = 'startup'
+  if (!isRecord(value)) return fail(path, 'an object')
+  if (value.status === 'failed') {
+    return { status: 'failed', error: stringAt(value, 'error', path) }
+  }
+  if (value.status !== 'measured') {
+    return fail(`${path}.status`, 'measured or failed')
+  }
+  return {
+    status: 'measured',
+    version: timingAt(value, 'version', path),
+    bare: timingAt(value, 'bare', path),
+  }
+}
+
+/** The document `AUTD_BENCH_JSON` wrote, checked field by field; throws a message naming the first wrong path. */
+export const parseBenchDocument = (text: string): BenchDocument => {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('bench document: not JSON')
+  }
+  if (!isRecord(parsed)) return fail('the document', 'an object')
+  if (parsed.version !== 1) {
+    return fail('version', '1')
+  }
+  if (!Array.isArray(parsed.rows)) return fail('rows', 'a list')
+  return {
+    version: 1,
+    autd: stringAt(parsed, 'autd', 'document'),
+    node: stringAt(parsed, 'node', 'document'),
+    platform: stringAt(parsed, 'platform', 'document'),
+    arch: stringAt(parsed, 'arch', 'document'),
+    project: stringAt(parsed, 'project', 'document'),
+    rows: parsed.rows.map(rowAt),
+    ...(parsed.startup === undefined
+      ? {}
+      : { startup: startupAt(parsed.startup) }),
+  }
 }
