@@ -743,7 +743,38 @@ describe('registry session', () => {
 
       expect(debugLines()).toEqual([
         expect.stringMatching(
-          /1 fresh, 0 revalidated, 0 fetched, 0 written, 0 pruned; requests: none$/,
+          /1 fresh, 0 covered, 0 revalidated, 0 fetched, 0 written, 0 pruned; requests: none$/,
+        ),
+      ])
+    })
+
+    it('counts a stale full packument that the coverage rule answers (#176)', async () => {
+      let clock = Date.parse('2026-11-05T00:00:00Z')
+      const server = await start(typesMs)
+      const open = () => {
+        const session = createRegistrySession('/project', {
+          loadConfig: () => configFor(server.url),
+          depsDev: false,
+          cache: { dir, now: () => clock },
+        })
+        sessions.push(session)
+        return session
+      }
+      const first = open()
+      await first.releaseTimes('@types/ms')
+      first.close()
+      jest.mocked(logger.debug).mockClear()
+
+      clock += 301 * 1000
+      const second = open()
+      await second.releaseTimes('@types/ms')
+      second.close()
+
+      // The abbreviated packument is past its TTL and has no ETag, so it is
+      // fetched again; the full one still lists every version it needs.
+      expect(debugLines()).toEqual([
+        expect.stringMatching(
+          /0 fresh, 1 covered, 0 revalidated, 1 fetched, 1 written, 0 pruned; requests: 127\.0\.0\.1:\d+ 1$/,
         ),
       ])
     })

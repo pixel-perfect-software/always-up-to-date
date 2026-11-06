@@ -146,11 +146,11 @@ export const createRegistrySession = (
 
   const describeRun = (cache: RegistryCache): string => {
     const stats = cache.stats()
-    const { notModified = 0, fetched = 0 } = readerStats?.() ?? {}
+    const { notModified = 0, fetched = 0, covered = 0 } = readerStats?.() ?? {}
     const hosts = Object.entries(created?.stats() ?? {}).map(
       ([host, { responses }]) => `${host} ${responses}`,
     )
-    return `registry cache ${cache.dir}: ${stats.fresh} fresh, ${notModified} revalidated, ${fetched} fetched, ${stats.written} written, ${stats.pruned} pruned; requests: ${hosts.length > 0 ? hosts.join(', ') : 'none'}`
+    return `registry cache ${cache.dir}: ${stats.fresh} fresh, ${covered} covered, ${notModified} revalidated, ${fetched} fetched, ${stats.written} written, ${stats.pruned} pruned; requests: ${hosts.length > 0 ? hosts.join(', ') : 'none'}`
   }
 
   return {

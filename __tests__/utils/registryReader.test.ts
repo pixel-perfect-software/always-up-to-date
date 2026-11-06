@@ -1613,6 +1613,12 @@ describe('registry reader', () => {
           .mock.calls.map(([line]) => String(line))
           .filter((line) => line.startsWith('Reading the full packument'))
 
+      const revalidatedLines = () =>
+        jest
+          .mocked(logger.debug)
+          .mock.calls.map(([line]) => String(line))
+          .filter((line) => line.startsWith('Revalidated the full packument'))
+
       const without = (version: string) =>
         derive<{ versions: Record<string, unknown> }>(
           'types-ms.packument-full',
@@ -1755,6 +1761,52 @@ describe('registry reader', () => {
           fullRequests(registry).map((r) => r.headers['if-none-match']),
         ).toEqual([undefined, 'W/"auth"', 'W/"auth"'])
         expect(second.reader.stats().notModified).toBe(1)
+      })
+
+      it('logs a 304 as a revalidation, since no document was read (#176)', async () => {
+        const { run } = await lagged(
+          conditional(ok('types-ms.packument-full'), 'W/"auth"'),
+          { credentials: true },
+        )
+        await gate(run().reader)
+        expect(readingLines()).toHaveLength(1)
+        expect(revalidatedLines()).toEqual([])
+
+        clock += SECOND
+        await gate(run().reader)
+
+        expect(readingLines()).toHaveLength(1)
+        expect(revalidatedLines()).toEqual([
+          'Revalidated the full packument of @types/ms for publish times (304): 2.1.0 has none',
+        ])
+      })
+
+      it('logs no read for a request that failed (#176)', async () => {
+        const { run } = await lagged(status(404))
+
+        await gate(run().reader)
+
+        expect(readingLines()).toEqual([])
+        expect(revalidatedLines()).toEqual([])
+      })
+
+      it('counts a stored document that answers past its TTL as covered, and one inside it as not (#176)', async () => {
+        const { run } = await lagged()
+        const first = run()
+        await gate(first.reader)
+        expect(first.reader.stats().covered).toBe(0)
+
+        clock += 60 * SECOND
+        const inside = run()
+        await gate(inside.reader)
+        expect(inside.reader.stats().covered).toBe(0)
+
+        clock += 301 * SECOND
+        const past = run()
+        await gate(past.reader)
+        // Once per name per run, however many times the run asks.
+        await past.reader.releaseTimes(TYPES_MS)
+        expect(past.reader.stats().covered).toBe(1)
       })
 
       it('asks again on every run when the registry said no-cache, as it does for a lookup', async () => {
