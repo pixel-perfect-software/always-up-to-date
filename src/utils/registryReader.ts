@@ -56,8 +56,12 @@ export interface RegistryReader {
     name: string,
     window?: ReleaseWindow,
   ): Promise<Record<string, string>>
-  /** What the registries answered with: 304s (revalidated) and 200 bodies the cache could store. */
-  stats(): { notModified: number; fetched: number }
+  /**
+   * What the registries answered with: 304s (revalidated) and 200 bodies the
+   * cache could store. `covered` asked nobody: a stored full packument past its
+   * TTL that listed every version `releaseTimes` needed.
+   */
+  stats(): { notModified: number; fetched: number; covered: number }
 }
 
 // deps.dev is an accelerator with a fallback: a network that blackholes it must
@@ -177,7 +181,7 @@ export const createRegistryReader = ({
   const fullRequests = new Map<string, Promise<Record<string, string>>>()
   let depsDevUsable = depsDev
   let depsDevFailures = 0
-  const counts = { notModified: 0, fetched: 0 }
+  const counts = { notModified: 0, fetched: 0, covered: 0 }
 
   const get = (
     url: string,
@@ -565,12 +569,11 @@ export const createRegistryReader = ({
     if (hit && !revalidatesEveryUse(hit)) {
       const listed = new Set(hit.value.versions.map((v) => v.version))
       if (needed.every((version) => listed.has(version))) {
+        // Inside its TTL, the cache has already counted this answer as fresh.
+        if (!hit.fresh) counts.covered++
         return timesOf(hit.value.versions)
       }
     }
-    logger.debug(
-      `Reading the full packument of ${name} for publish times: ${sample(judged)} ${judged.length === 1 ? 'has' : 'have'} none`,
-    )
     const fetched = await revalidate(
       packumentUrl(name, registry),
       registry,
@@ -584,6 +587,13 @@ export const createRegistryReader = ({
       )
       return {}
     }
+    // After the response, since only that tells a download from a 304.
+    const reason = `${sample(judged)} ${judged.length === 1 ? 'has' : 'have'} none`
+    logger.debug(
+      fetched.notModified
+        ? `Revalidated the full packument of ${name} for publish times (304): ${reason}`
+        : `Reading the full packument of ${name} for publish times: ${reason}`,
+    )
     if (!fetched.value) {
       logger.debug(
         `${new URL(registry).host} sent an unreadable document for ${name}`,
