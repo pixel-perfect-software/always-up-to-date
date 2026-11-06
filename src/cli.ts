@@ -37,6 +37,7 @@ updateCommand(program)
  */
 const run = async (): Promise<void> => {
   try {
+    await import('@inquirer/prompts')
     await program.parseAsync()
   } catch (error) {
     console.error('An error occurred while running the CLI:', error)
