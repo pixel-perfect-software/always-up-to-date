@@ -207,15 +207,23 @@ the integration matrix passes unchanged.
 
 Goal: risky updates are flagged in the plan, never applied silently.
 
-- Per-version registry document (2 to 4 KB) for candidates only: license change,
-  deprecation, engines versus the project's engines and current Node. npm's own `wanted` also
-  skips versions whose engines exclude the running Node; M3's native `wanted` doesn't yet.
-- Peer-conflict pre-check against installed packages: done in M1 (`src/utils/peers.ts`).
-- Honor pnpm's native minimum release age when present.
-- Versioned `--json` schema with reasons on every row.
+- A flagged update is held with a reason. A `latest` rule moves it anyway, with a warning, as
+  a peer conflict already does.
+- A deprecated target is flagged. The data is already in the lookup, so it costs no request.
+- Per-version registry document (0.85 to 9.4 KB in spot checks on 2026-11-06) for moving rows
+  only: it carries license, engines, deprecation and the target's own peers.
+- A license change is held. A target's own `peerDependencies` are checked against what's
+  installed. Engines are checked against the project's `engines.node`, else the running Node.
+- Whether native `wanted` should skip a version whose engines exclude the running Node is
+  decided by real-manager probes first. The roadmap used to say npm does; no run has shown it.
+- Versioned `--json`, with one array shape and a reason on every row, as one breaking change:
+  4.0.0, last in this milestone, so the signal fields only break consumers once.
+- Done elsewhere: installed packages' peer ranges in M1 (`src/utils/peers.ts`), and the
+  managers' release-age gates (#166, #168).
 
-Done when: a major bump that violates an installed peer range or changes license is
-reported with a reason and skipped unless explicitly allowed.
+Done when: an update that breaks a peer range, in either direction, or changes license is
+reported with a reason and held unless a `latest` rule allows it; a deprecated target or an
+engines mismatch is flagged the same way; `--json` has a version and a reason on every row.
 
 ### M5: Portability and distribution (small, plus validation)
 
@@ -313,3 +321,17 @@ Filed 2026-10-26, in pick-up order.
 | Cooldown fetches full packuments, unbounded concurrency, no cache                       | M3        | #47   |
 | Startup loads the whole CLI: bundle to one file                                         | M3        | #109  |
 | Perf budgets are not enforced in CI                                                     | M3        | #110  |
+
+## M4 issues
+
+Filed 2026-11-06, in pick-up order. #197, #198 and #199 depend on #196.
+
+| Gap or defect                                                                          | Milestone | Issue |
+| -------------------------------------------------------------------------------------- | --------- | ----- |
+| A deprecated target moves with no warning                                              | M4        | #195  |
+| Nothing reads a candidate version's own manifest: fetch the per-version document       | M4        | #196  |
+| A license change on an update is never reported or held                                | M4        | #197  |
+| A target's own `peerDependencies` are never checked against what's installed           | M4        | #198  |
+| A target whose `engines` exclude the project's Node moves with no warning              | M4        | #199  |
+| Native `wanted` can pick a version whose `engines` exclude the running Node            | M4        | #200  |
+| `--json` has no version, moving rows have no reason, and `check --json` isn't an array | M4        | #201  |
