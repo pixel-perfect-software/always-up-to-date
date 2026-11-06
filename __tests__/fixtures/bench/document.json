@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "autd": "3.4.0",
+  "node": "24.22.1",
+  "platform": "darwin",
+  "arch": "arm64",
+  "project": "pinned",
+  "rows": [
+    {
+      "target": "npm",
+      "status": "measured",
+      "label": "npm 11.19.1",
+      "warm": {
+        "mean": 0.08018618340000001,
+        "stddev": 0.006449877151408488,
+        "median": 0.07936891700000001,
+        "runs": 5,
+        "peakMemory": 78577664
+      },
+      "cold": {
+        "mean": 0.6713053336666667,
+        "stddev": 0.07398472916312002,
+        "median": 0.706920584,
+        "runs": 3,
+        "peakMemory": 137773056
+      },
+      "targets": 39,
+      "moving": {
+        "mean": 0.7156595280000001,
+        "stddev": 0.17680866378967613,
+        "median": 0.621468959,
+        "runs": 3,
+        "peakMemory": 138887168
+      },
+      "cooldownCold": {
+        "mean": 0.6551717920000001,
+        "stddev": 0.02444444941121377,
+        "median": 0.649541292,
+        "runs": 3,
+        "peakMemory": 137543680
+      },
+      "cooldownWarm": {
+        "mean": 0.11928333300000002,
+        "stddev": 0.002661310082146292,
+        "median": 0.11931804100000001,
+        "runs": 5,
+        "peakMemory": 94896128
+      },
+      "fullPackuments": []
+    }
+  ],
+  "startup": {
+    "status": "measured",
+    "version": {
+      "mean": 0.034758390625,
+      "stddev": 0.0012851172693116465,
+      "median": 0.034382333,
+      "runs": 80,
+      "peakMemory": 52248576
+    },
+    "bare": {
+      "mean": 0.026958389074999995,
+      "stddev": 0.001446662350524924,
+      "median": 0.026637771000000005,
+      "runs": 80,
+      "peakMemory": 44531712
+    }
+  }
+}

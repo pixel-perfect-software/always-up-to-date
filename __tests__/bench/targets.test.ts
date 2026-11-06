@@ -1,9 +1,13 @@
+import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import {
   coldCaches,
+  jsonPathFrom,
   managerOf,
   runsFrom,
   selectedTargets,
+  startupMode,
   TARGETS,
 } from '../../bench/targets'
 
@@ -92,5 +96,57 @@ describe('managerOf', () => {
     expect(managerOf('berry')).toBe('berry')
     expect(managerOf('berry-nm')).toBe('berry')
     expect(managerOf('bun')).toBe('bun')
+  })
+})
+
+describe('startupMode', () => {
+  it('times startup with the managers unless told otherwise', () => {
+    expect(startupMode(undefined)).toBe('include')
+    expect(startupMode('')).toBe('include')
+    expect(startupMode('  ')).toBe('include')
+  })
+
+  it('takes only and skip', () => {
+    expect(startupMode('only')).toBe('only')
+    expect(startupMode(' skip ')).toBe('skip')
+  })
+
+  it.each(['both', 'ONLY', 'true', '0'])('rejects %j', (value) => {
+    expect(() => startupMode(value)).toThrow(
+      `AUTD_BENCH_STARTUP: unknown mode ${value}; use only, skip`,
+    )
+  })
+})
+
+describe('jsonPathFrom', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-json-')))
+  })
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('writes no document when unset or blank', () => {
+    expect(jsonPathFrom(undefined, dir)).toBeUndefined()
+    expect(jsonPathFrom(' ', dir)).toBeUndefined()
+  })
+
+  it('resolves a relative path against the working directory', () => {
+    expect(jsonPathFrom('out.json', dir)).toBe(path.join(dir, 'out.json'))
+    expect(jsonPathFrom(path.join(dir, 'a.json'), os.tmpdir())).toBe(
+      path.join(dir, 'a.json'),
+    )
+  })
+
+  it('fails before the run when the folder is missing or the path is a folder', () => {
+    expect(() => jsonPathFrom(path.join('missing', 'out.json'), dir)).toThrow(
+      /AUTD_BENCH_JSON: the folder of .* does not exist/,
+    )
+    expect(() => jsonPathFrom(dir, os.tmpdir())).toThrow(
+      /AUTD_BENCH_JSON: .* is a folder/,
+    )
   })
 })

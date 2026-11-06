@@ -1,0 +1,11 @@
+  Using npm: package-lock.json
+  config: /tmp/project/.always-up-to-date.json; root /tmp/project
+🚀 Checking dependencies with npm
+  Looked up 1 packages in 122 ms (0 from deps.dev, 1 from a packument)
+  Reading the full packument of ms for publish times: 2.1.0, 2.1.1, 2.1.2 and 1 more have none
+
+Would update (1 package)
+  ms  2.0.0 → 2.1.3  past its range · released 2158d ago
+
+1 to update
+  registry cache /tmp/autd-cache: 0 fresh, 0 covered, 0 revalidated, 2 fetched, 2 written, 0 pruned; requests: registry.npmjs.org 2

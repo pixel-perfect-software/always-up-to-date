@@ -13,24 +13,32 @@ import {
 import type { ConfigFile } from '../src/types'
 import { runProcess } from '../src/utils/runProcess'
 import {
+  type BenchDocument,
   formatDifference,
   formatMemory,
   formatSeconds,
   formatTiming,
+  fullPackumentReads,
   hyperfineMajor,
+  type MeasuredRow,
+  medianDifference,
   movingRows,
   parseHyperfine,
   renderTable,
+  type StartupResult,
   type Timing,
   throttledLines,
+  type UnmeasuredRow,
 } from './report'
 import {
   COOLDOWN_CONFIG,
   coldCaches,
+  jsonPathFrom,
   MOVING_CONFIG,
   managerOf,
   runsFrom,
   selectedTargets,
+  startupMode,
   type Target,
 } from './targets'
 
@@ -41,7 +49,7 @@ const DIST_CLI = path.join(REPO_ROOT, 'dist', 'index.js')
 // Timed runs per measurement. Berry's warm check takes seconds and bun's cold
 // one over ten, so the counts stay small; AUTD_BENCH_RUNS replaces the check ones.
 const CHECK_RUNS = { warm: 5, cold: 3 }
-const STARTUP_RUNS = 30
+const STARTUP_RUNS = 80
 
 const YARN_PACKAGE_MANAGER = {
   yarn: `yarn@${YARN_VERSIONS.yarn}`,
@@ -50,23 +58,7 @@ const YARN_PACKAGE_MANAGER = {
 
 type Runs = { warm: number; cold: number }
 
-type Row = {
-  label: string
-  warm: Timing
-  cold: Timing
-  /** Rows the moving config plans to update: each one reaches the cooldown gate. */
-  targets: number
-  /** `MOVING_CONFIG`, cold. */
-  moving: Timing
-  /** `COOLDOWN_CONFIG`, cold. */
-  cooldownCold: Timing
-  /** `COOLDOWN_CONFIG`, warm. */
-  cooldownWarm: Timing
-}
-
-type Outcome =
-  | { target: Target; row: Row }
-  | { target: Target; status: 'failed' | 'throttled'; error: string }
+type Outcome = MeasuredRow | UnmeasuredRow
 
 /** A timed run that a host throttled: its numbers are no measurement of the row (#174). */
 class ThrottledRun extends Error {}
@@ -282,6 +274,38 @@ const copyBenchProject = (target: Target, project: string): string => {
   return cwd
 }
 
+/**
+ * One untimed cold `check` with `debug: true` on the cooldown config, and the
+ * packuments it read in full (#176). It runs outside every hyperfine
+ * measurement. A failed run logs a line and returns nothing: the diagnostic
+ * never fails the row.
+ */
+const readFullPackuments = async (
+  cli: string,
+  cwd: string,
+  label: string,
+  cacheDirs: string[],
+  writeConfig: (value: ConfigFile) => void,
+): Promise<string[] | undefined> => {
+  try {
+    log(`${label}: check, cold, cooldown 7, debug (untimed)`)
+    for (const dir of cacheDirs) {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+    writeConfig({ ...COOLDOWN_CONFIG, debug: true })
+    const { stdout, stderr } = await runProcess(
+      process.execPath,
+      [cli, 'check'],
+      { cwd },
+    )
+    return fullPackumentReads(`${stdout}\n${stderr}`)
+  } catch (error) {
+    const detail = (output(error) || String(error)).split('\n')[0]
+    log(`${label}: the debug run failed, no full packuments listed: ${detail}`)
+    return undefined
+  }
+}
+
 /** Installs the project for one target and times it; the temp copy is removed (or kept) before returning. */
 const measure = async (
   target: Target,
@@ -289,7 +313,7 @@ const measure = async (
   project: string,
   cacheRoot: string,
   runs: Runs,
-): Promise<Row> => {
+): Promise<MeasuredRow> => {
   const manager: Manager = managerOf(target)
   const restoreEnv = managerEnv(manager)
   let cwd: string | undefined
@@ -355,7 +379,25 @@ const measure = async (
       warmRuns,
       check,
     )
-    return { label, warm, cold, targets, moving, cooldownCold, cooldownWarm }
+    const fullPackuments = await readFullPackuments(
+      cli,
+      cwd,
+      label,
+      caches.dirs,
+      writeConfig,
+    )
+    return {
+      target,
+      status: 'measured',
+      label,
+      warm,
+      cold,
+      targets,
+      moving,
+      cooldownCold,
+      cooldownWarm,
+      ...(fullPackuments === undefined ? {} : { fullPackuments }),
+    }
   } finally {
     // A kept copy must not keep a bench config, failed run or not.
     if (config !== undefined) fs.rmSync(config, { force: true })
@@ -364,13 +406,46 @@ const measure = async (
   }
 }
 
+/** The startup measurement: `--version` against bare node, output discarded since no registry is asked. */
+const measureStartup = async (cli: string): Promise<StartupResult> => {
+  log('startup: --version against bare node')
+  try {
+    const { timings } = await hyperfine(
+      os.tmpdir(),
+      ['--warmup', '3', '--runs', String(STARTUP_RUNS)],
+      [
+        [process.execPath, cli, '--version'],
+        [process.execPath, '-e', '0'],
+      ],
+    )
+    return { status: 'measured', version: timings[0], bare: timings[1] }
+  } catch (error) {
+    return {
+      status: 'failed',
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+/** `full packuments: <row>: none; <row>: next, …`, or nothing when no row ran the diagnostic. */
+const fullPackumentsLine = (rows: MeasuredRow[]): string | undefined => {
+  const read = rows.filter((row) => row.fullPackuments !== undefined)
+  if (read.length === 0) return undefined
+  return `full packuments: ${read
+    .map((row) => `${row.label}: ${row.fullPackuments?.join(', ') || 'none'}`)
+    .join('; ')}`
+}
+
 const main = async (): Promise<void> => {
   if (process.platform === 'win32') {
     throw new Error('pnpm run bench runs on macOS and Linux, not Windows')
   }
-  const targets = selectedTargets(process.env.AUTD_BENCH_PM)
+  const mode = startupMode(process.env.AUTD_BENCH_STARTUP)
+  const selected = selectedTargets(process.env.AUTD_BENCH_PM)
+  const targets = mode === 'only' ? [] : selected
   const project = projectName(process.env.AUTD_BENCH_PROJECT)
   const cli = cliPath(process.env.AUTD_BENCH_CLI)
+  const jsonFile = jsonPathFrom(process.env.AUTD_BENCH_JSON, process.cwd())
   const runs: Runs = {
     warm: runsFrom(process.env.AUTD_BENCH_RUNS, CHECK_RUNS.warm),
     cold: runsFrom(process.env.AUTD_BENCH_RUNS, CHECK_RUNS.cold),
@@ -384,10 +459,7 @@ const main = async (): Promise<void> => {
     const outcomes: Outcome[] = []
     for (const target of targets) {
       try {
-        outcomes.push({
-          target,
-          row: await measure(target, cli, project, cacheRoot, runs),
-        })
+        outcomes.push(await measure(target, cli, project, cacheRoot, runs))
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         const status = error instanceof ThrottledRun ? 'throttled' : 'failed'
@@ -396,114 +468,128 @@ const main = async (): Promise<void> => {
       }
     }
 
-    log('startup: --version against bare node')
-    let startup: Timing[] | undefined
-    let startupError: string | undefined
-    try {
-      // Output stays discarded: no registry is asked, so no line can say it throttled.
-      const { timings } = await hyperfine(
-        os.tmpdir(),
-        ['--warmup', '3', '--runs', String(STARTUP_RUNS)],
-        [
-          [process.execPath, cli, '--version'],
-          [process.execPath, '-e', '0'],
-        ],
-      )
-      startup = timings
-    } catch (error) {
-      startupError = error instanceof Error ? error.message : String(error)
-    }
+    const startup = mode === 'skip' ? undefined : await measureStartup(cli)
 
     const autd = (
       await runProcess(process.execPath, [cli, '--version'], {
         cwd: os.tmpdir(),
       }).catch(() => ({ stdout: 'unknown version' }))
     ).stdout.trim()
+
+    if (jsonFile !== undefined) {
+      const document: BenchDocument = {
+        version: 1,
+        autd,
+        node: process.versions.node,
+        platform: process.platform,
+        arch: process.arch,
+        project,
+        rows: outcomes,
+        ...(startup === undefined ? {} : { startup }),
+      }
+      fs.writeFileSync(jsonFile, `${JSON.stringify(document, null, 2)}\n`)
+      log(`wrote ${jsonFile}`)
+    }
+
     process.stdout.write(
       `\nautd ${autd} (${cli}), node ${process.versions.node}, ${process.platform} ${process.arch}, project ${project}\n\n`,
     )
-    process.stdout.write(
-      `${renderTable(
-        [
-          'Manager',
-          '`autd check`, warm',
-          '`autd check`, cold',
-          'peak memory, warm',
-        ],
-        outcomes.map((outcome) =>
-          'row' in outcome
-            ? [
-                outcome.row.label,
-                formatTiming(outcome.row.warm),
-                formatTiming(outcome.row.cold),
-                formatMemory(outcome.row.warm.peakMemory),
-              ]
-            : [outcome.target, outcome.status, outcome.status, 'n/a'],
-        ),
-      )}\n\n`,
-    )
-    process.stdout.write(
-      `${renderTable(
-        [
-          'Manager',
-          'targets',
-          'moving, cold',
-          'cooldown 7, cold',
-          'cooldown overhead, cold',
-          'cooldown 7, warm',
-          'peak memory, moving cold',
-          'peak memory, cooldown 7 cold',
-        ],
-        outcomes.map((outcome) =>
-          'row' in outcome
-            ? [
-                outcome.row.label,
-                String(outcome.row.targets),
-                formatTiming(outcome.row.moving),
-                formatTiming(outcome.row.cooldownCold),
-                formatDifference(
-                  outcome.row.cooldownCold.mean - outcome.row.moving.mean,
-                ),
-                formatTiming(outcome.row.cooldownWarm),
-                formatMemory(outcome.row.moving.peakMemory),
-                formatMemory(outcome.row.cooldownCold.peakMemory),
-              ]
-            : [
-                outcome.target,
-                outcome.status,
-                outcome.status,
-                outcome.status,
-                outcome.status,
-                outcome.status,
-                'n/a',
-                'n/a',
-              ],
-        ),
-      )}\n\n`,
-    )
-    if (startup) {
-      const [version, bare] = startup
+    if (outcomes.length > 0) {
       process.stdout.write(
         `${renderTable(
-          ['Startup', 'mean'],
           [
-            ['`autd --version`', formatTiming(version)],
-            ['`node -e 0`', formatTiming(bare)],
-            ['difference', formatSeconds(version.mean - bare.mean)],
+            'Manager',
+            '`autd check`, warm',
+            '`autd check`, cold',
+            'peak memory, warm',
+          ],
+          outcomes.map((outcome) =>
+            outcome.status === 'measured'
+              ? [
+                  outcome.label,
+                  formatTiming(outcome.warm),
+                  formatTiming(outcome.cold),
+                  formatMemory(outcome.warm.peakMemory),
+                ]
+              : [outcome.target, outcome.status, outcome.status, 'n/a'],
+          ),
+        )}\n\n`,
+      )
+      process.stdout.write(
+        `${renderTable(
+          [
+            'Manager',
+            'targets',
+            'moving, cold',
+            'cooldown 7, cold',
+            'cooldown overhead, cold',
+            'cooldown 7, warm',
+            'peak memory, moving cold',
+            'peak memory, cooldown 7 cold',
+          ],
+          outcomes.map((outcome) =>
+            outcome.status === 'measured'
+              ? [
+                  outcome.label,
+                  String(outcome.targets),
+                  formatTiming(outcome.moving),
+                  formatTiming(outcome.cooldownCold),
+                  formatDifference(
+                    medianDifference(outcome.cooldownCold, outcome.moving),
+                  ),
+                  formatTiming(outcome.cooldownWarm),
+                  formatMemory(outcome.moving.peakMemory),
+                  formatMemory(outcome.cooldownCold.peakMemory),
+                ]
+              : [
+                  outcome.target,
+                  outcome.status,
+                  outcome.status,
+                  outcome.status,
+                  outcome.status,
+                  outcome.status,
+                  'n/a',
+                  'n/a',
+                ],
+          ),
+        )}\n`,
+      )
+      const packuments = fullPackumentsLine(
+        outcomes.filter((outcome) => outcome.status === 'measured'),
+      )
+      if (packuments) process.stdout.write(`\n${packuments}\n`)
+      process.stdout.write('\n')
+    }
+    if (startup?.status === 'measured') {
+      const { version, bare } = startup
+      process.stdout.write(
+        `${renderTable(
+          ['Startup', 'mean', 'median'],
+          [
+            [
+              '`autd --version`',
+              formatTiming(version),
+              formatSeconds(version.median),
+            ],
+            ['`node -e 0`', formatTiming(bare), formatSeconds(bare.median)],
+            ['difference', '', formatSeconds(medianDifference(version, bare))],
           ],
         )}\n`,
       )
     }
 
-    const failures = outcomes.filter((outcome) => 'error' in outcome)
+    const failures = outcomes.filter((outcome) => outcome.status !== 'measured')
     for (const failure of failures) {
       process.stderr.write(
         `\n${failure.target} ${failure.status}:\n${failure.error}\n`,
       )
     }
-    if (startupError)
-      process.stderr.write(`\nstartup failed:\n${startupError}\n`)
-    if (failures.length > 0 || startupError) process.exitCode = 1
+    if (startup?.status === 'failed') {
+      process.stderr.write(`\nstartup failed:\n${startup.error}\n`)
+    }
+    if (failures.length > 0 || startup?.status === 'failed') {
+      process.exitCode = 1
+    }
   } finally {
     cleanup(cacheRoot, KEEP)
   }
