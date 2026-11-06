@@ -1430,7 +1430,44 @@ describe('registry reader', () => {
           )
         })
 
-        it('asks deps.dev once more, and uses what it now lists', async () => {
+        it('asks nothing while a fresh packument lists it', async () => {
+          const { run, asked } = await cached({
+            registry: msRegistry(),
+            depsDev: replies({
+              [`${DEPS_DEV_PREFIX}ms`]: { body: lacksLatest },
+            }),
+          })
+          const first = packageOf(await run().reader.lookup('ms'))
+          expect(first.source).toBe('packument')
+          asked()
+
+          clock += 299 * SECOND
+          const second = run()
+          const result = packageOf(await second.reader.lookup('ms'))
+
+          expect(result).toEqual(first)
+          expect(asked()).toEqual({ registry: [], depsDev: [] })
+          expect(second.clientsMade()).toBe(0)
+        })
+
+        it('counts that packument entry once', async () => {
+          const { run } = await cached({
+            registry: msRegistry(),
+            depsDev: replies({
+              [`${DEPS_DEV_PREFIX}ms`]: { body: lacksLatest },
+            }),
+          })
+          await run().reader.lookup('ms')
+
+          clock += 299 * SECOND
+          const second = run()
+          await second.reader.lookup('ms')
+
+          // dist-tags, deps.dev and the packument.
+          expect(second.cache.stats().fresh).toBe(3)
+        })
+
+        it('asks deps.dev once more when the packument has gone stale, and uses what it now lists', async () => {
           const depsDevSide = switchable(
             replies({ [`${DEPS_DEV_PREFIX}ms`]: { body: lacksLatest } }),
           )
@@ -1444,12 +1481,46 @@ describe('registry reader', () => {
           asked()
           depsDevSide.use(msDepsDev())
 
-          clock += 10 * SECOND
+          clock += 301 * SECOND
           const result = packageOf(await run().reader.lookup('ms'))
 
           expect(result.source).toBe('deps.dev')
           expect(asked()).toEqual({
-            registry: [],
+            registry: ['/-/package/ms/dist-tags'],
+            depsDev: [`${DEPS_DEV_PREFIX}ms`],
+          })
+        })
+
+        it('asks deps.dev once more when the fresh packument lacks it too, as a proxy that hides fresh versions leaves it', async () => {
+          const hidden = derive<{
+            versions: Record<string, unknown>
+            'dist-tags': { latest: string }
+          }>('ms.packument', (body) => {
+            delete body.versions['2.1.3']
+            body['dist-tags'].latest = '2.1.2'
+          })
+          const { run, asked } = await cached({
+            registry: replies({
+              '/-/package/ms/dist-tags': ok('ms.dist-tags'),
+              '/ms': {
+                body: hidden,
+                type: 'application/vnd.npm.install-v1+json',
+              },
+            }),
+            depsDev: replies({
+              [`${DEPS_DEV_PREFIX}ms`]: { body: lacksLatest },
+            }),
+          })
+          await run().reader.lookup('ms')
+          asked()
+
+          clock += 10 * SECOND
+          const result = packageOf(await run().reader.lookup('ms'))
+
+          expect(result.source).toBe('packument')
+          expect(result.latest).toBe('2.1.2')
+          expect(asked()).toEqual({
+            registry: ['/ms'],
             depsDev: [`${DEPS_DEV_PREFIX}ms`],
           })
         })
