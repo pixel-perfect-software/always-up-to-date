@@ -351,12 +351,15 @@ export const createRegistryReader = ({
    * `depsDevList` is the deps.dev list the caller holds when this is the
    * fallback from a public name: the packument's version list stays, and each
    * version gets deps.dev's publish time, which an abbreviated packument has none of.
+   * `heldEntry` is the abbreviated entry the caller already read, so the cache
+   * counts it once.
    */
   const packumentLookup = async (
     name: string,
     registry: string,
     expectedLatest?: string,
     depsDevList?: readonly RegistryVersion[],
+    heldEntry?: CachedEntry<'packument'>,
   ): Promise<PackageLookup> => {
     const url = packumentUrl(name, registry)
     const host = new URL(registry).host
@@ -367,7 +370,7 @@ export const createRegistryReader = ({
       hit?.fresh &&
       (expectedLatest === undefined ||
         lists(hit.value.versions, expectedLatest))
-    const abbreviatedHit = cache?.get('packument', registry, name)
+    const abbreviatedHit = heldEntry ?? cache?.get('packument', registry, name)
     let fullHit: CachedEntry<'packument-full'> | undefined
     let fullRead = false
     const readFull = () => {
@@ -500,10 +503,19 @@ export const createRegistryReader = ({
       return packumentLookup(name, registry, undefined, firstVersions)
     }
     let versions = firstVersions
-    // A fresh deps.dev entry can be older than the release dist-tags names:
-    // ask deps.dev once more before reading a whole packument.
+    let abbreviatedHit: CachedEntry<'packument'> | undefined
+    // A fresh deps.dev entry can be older than the release dist-tags names. A
+    // fresh packument that lists it answers with no request, so one lagging
+    // package doesn't cost a warm run the client; otherwise ask deps.dev once
+    // more before reading a whole packument.
     if (depsDevHit?.fresh && versions && !lists(versions, latest)) {
-      versions = await depsDevVersions(name)
+      abbreviatedHit = cache?.get('packument', registry, name)
+      if (
+        !abbreviatedHit?.fresh ||
+        !lists(abbreviatedHit.value.versions, latest)
+      ) {
+        versions = await depsDevVersions(name)
+      }
     }
     if (versions && lists(versions, latest)) {
       return found(name, latest, versions, 'deps.dev')
@@ -513,7 +525,13 @@ export const createRegistryReader = ({
         ? `deps.dev does not list ${name}@${latest}; reading its packument`
         : `No deps.dev versions for ${name}; reading its packument`,
     )
-    return packumentLookup(name, registry, latest, versions ?? firstVersions)
+    return packumentLookup(
+      name,
+      registry,
+      latest,
+      versions ?? firstVersions,
+      abbreviatedHit,
+    )
   }
 
   const read = (name: string): Promise<PackageLookup> => {
