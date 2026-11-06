@@ -2,7 +2,8 @@
 
 Status: proposed 2026-10-23 from an analysis of v1.0.31. M0 and M1 done and closed 2026-10-23,
 released as 2.0.0. M2 done and closed 2026-10-23, released as 2.1.0 on 2026-10-24. M3 planned
-2026-10-26 from a new baseline on 2.1.0; next.
+2026-10-26 from a new baseline on 2.1.0, done and closed 2026-11-06, finished in 3.5.0 on
+2026-11-06. M4 is next.
 
 Tracking: GitHub milestones M0 through M6 at
 https://github.com/pixel-perfect-software/always-up-to-date/milestones. Pull requests
@@ -168,7 +169,7 @@ Goal: adding a manager is one adapter file plus fixtures.
 
 Done when: a new manager needs no changes outside its adapter and fixtures.
 
-### M3: Native discovery and cache (large, the speed milestone)
+### M3: Native discovery and cache (large, the speed milestone, done)
 
 Goal: `check` is fast on every manager and no longer depends on `<pm> outdated`.
 
