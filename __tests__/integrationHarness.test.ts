@@ -1,4 +1,12 @@
-import { pinWorkspaceYaml } from './integration/harness'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+
+import bun from '@/managers/bun'
+import pnpm from '@/managers/pnpm'
+import { pnpmConfigDir } from '@/managers/pnpm/npmrc'
+import { managerRegistryConfig, processSources } from '@/utils/npmrcLoader'
+import { managerEnv, pinWorkspaceYaml } from './integration/harness'
 import {
   type RangedDependency,
   rewriteBerryLock,
@@ -528,5 +536,148 @@ describe('rewriteBunLock', () => {
         dep('commander', '^11.0.0', '11.0.0', { catalog: 'default' }),
       ]),
     ).toThrow(/bun\.lock: no commander@11\.0\.0 specifier in catalog default/)
+  })
+})
+
+// #175: the bench and the matrix ran pnpm and bun against the developer's
+// global files. Each test plays the developer's machine in a temp directory
+// (never a real home), then asks the real loader what the manager sees.
+describe('managerEnv', () => {
+  const REGISTRY = '//registry.npmjs.org/'
+  const touched = ['XDG_CONFIG_HOME', 'LOCALAPPDATA'] as const
+  let before: Record<string, string | undefined>
+  let restore: (() => void) | undefined
+  let developer: string
+  let project: string
+
+  beforeEach(() => {
+    before = Object.fromEntries(touched.map((k) => [k, process.env[k]]))
+    developer = fs.realpathSync.native(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-dev-machine-')),
+    )
+    project = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-dev-project-'))
+  })
+
+  afterEach(() => {
+    restore?.()
+    restore = undefined
+    for (const k of touched) {
+      if (before[k] === undefined) delete process.env[k]
+      else process.env[k] = before[k]
+    }
+    fs.rmSync(developer, { recursive: true, force: true })
+    fs.rmSync(project, { recursive: true, force: true })
+  })
+
+  const write = (file: string, content: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, content)
+  }
+
+  const authTokens = (adapter: typeof pnpm | typeof bun): string[] =>
+    Object.entries(
+      managerRegistryConfig(adapter, project, processSources()).credentials,
+    )
+      .filter(([prefix]) => prefix === REGISTRY)
+      .map(([, credentials]) => credentials.authToken ?? '')
+
+  it('hides the developer auth.ini under XDG_CONFIG_HOME from pnpm', () => {
+    process.env.XDG_CONFIG_HOME = developer
+    write(
+      path.join(developer, 'pnpm', 'auth.ini'),
+      '//registry.npmjs.org/:_authToken=dev-token\n',
+    )
+    expect(authTokens(pnpm)).toEqual(['dev-token'])
+
+    restore = managerEnv('pnpm')
+
+    expect(authTokens(pnpm)).not.toContain('dev-token')
+  })
+
+  it("hides the developer auth.ini in pnpm's default global directory", () => {
+    delete process.env.XDG_CONFIG_HOME
+    // Windows takes its global directory from LOCALAPPDATA, not HOME.
+    process.env.LOCALAPPDATA = path.join(developer, 'local')
+    write(
+      path.join(pnpmConfigDir(project, processSources()), 'auth.ini'),
+      '//registry.npmjs.org/:_authToken=dev-token\n',
+    )
+    expect(authTokens(pnpm)).toEqual(['dev-token'])
+
+    restore = managerEnv('pnpm')
+
+    expect(authTokens(pnpm)).not.toContain('dev-token')
+  })
+
+  it("keeps the developer's global minimumReleaseAge out of pnpm's release-age gate", () => {
+    process.env.XDG_CONFIG_HOME = developer
+    write(path.join(developer, 'pnpm', 'config.yaml'), 'minimumReleaseAge: 5\n')
+    const gate = () =>
+      managerRegistryConfig(pnpm, project, processSources()).releaseAgeGate
+    expect(gate()?.minutes).toBe(5)
+
+    restore = managerEnv('pnpm')
+
+    expect(gate()?.minutes).toBe(1440)
+  })
+
+  it("hides the developer's registry mirror in $XDG_CONFIG_HOME/.bunfig.toml from bun", () => {
+    process.env.XDG_CONFIG_HOME = developer
+    write(
+      path.join(developer, '.bunfig.toml'),
+      '[install]\nregistry = "https://dev-mirror.example/"\n',
+    )
+    const registry = () =>
+      managerRegistryConfig(bun, project, processSources()).registry
+    expect(registry()).toContain('dev-mirror.example')
+
+    restore = managerEnv('bun')
+
+    expect(registry()).not.toContain('dev-mirror.example')
+  })
+
+  it("hides the developer's registry mirror in $HOME/.bunfig.toml from bun", () => {
+    delete process.env.XDG_CONFIG_HOME
+    write(
+      path.join(process.env.HOME as string, '.bunfig.toml'),
+      '[install]\nregistry = "https://dev-mirror.example/"\n',
+    )
+    const registry = () =>
+      managerRegistryConfig(bun, project, processSources()).registry
+    try {
+      expect(registry()).toContain('dev-mirror.example')
+
+      restore = managerEnv('bun')
+
+      expect(registry()).not.toContain('dev-mirror.example')
+    } finally {
+      fs.rmSync(path.join(process.env.HOME as string, '.bunfig.toml'), {
+        force: true,
+      })
+    }
+  })
+
+  it('puts XDG_CONFIG_HOME back and removes its scratch directory on restore', () => {
+    process.env.XDG_CONFIG_HOME = developer
+    const done = managerEnv('pnpm')
+    const scratch = process.env.XDG_CONFIG_HOME as string
+    expect(scratch).not.toBe(developer)
+    expect(fs.existsSync(scratch)).toBe(true)
+
+    done()
+
+    expect(process.env.XDG_CONFIG_HOME).toBe(developer)
+    expect(fs.existsSync(scratch)).toBe(false)
+  })
+
+  it('leaves XDG_CONFIG_HOME unset on restore when it was unset', () => {
+    delete process.env.XDG_CONFIG_HOME
+    const done = managerEnv('pnpm')
+    const scratch = String(process.env.XDG_CONFIG_HOME)
+
+    done()
+
+    expect(process.env.XDG_CONFIG_HOME).toBeUndefined()
+    expect(fs.existsSync(scratch)).toBe(false)
   })
 })

@@ -161,7 +161,8 @@ Documentation registry, loaded with this file:
 
 - Test framework: Jest with `@swc/jest` as the transform
 - Tests located in `__tests__/` directory (mirrors `src/` structure)
-- Global setup: `__tests__/setup.ts` (suppresses console output unless `DEBUG` env is set; sets `AUTD_NO_CACHE=1`, so no test touches the developer's cache folder; the integration harness drops it and isolates with `AUTD_CACHE_DIR` in its scratch directory)
+- Global setup: `__tests__/setup.ts` (suppresses console output unless `DEBUG` env is set; sets `AUTD_NO_CACHE=1`, so no test touches the developer's cache folder; the integration harness drops it and isolates with `AUTD_CACHE_DIR` in its scratch directory). The integration config loads it too, so the matrix also runs in its empty `HOME`; the bench doesn't load it
+- `managerEnv` (`__tests__/integration/harness.ts`) is what isolates the matrix and the bench from a developer's manager config: `npm_config_userconfig` at an empty file, and `XDG_CONFIG_HOME` at its scratch directory, which moves pnpm's global `auth.ini` and `config.yaml` and bun's global bunfig away (#175). A token in `auth.ini` takes a different cache path, so a pnpm row would measure something npm's and bun's don't. In the bench, `~/.yarnrc.yml` still applies: only `HOME` moves it, which moves Corepack's cache too
 - Test timeout: 15 seconds
 - Uses ESM transform for TypeScript
 - Mock cleanup: `clearMocks` and `restoreMocks` enabled

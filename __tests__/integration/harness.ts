@@ -71,10 +71,15 @@ export const selectedManagers = (
  *
  * npm's user config points at an empty file, so a developer's `~/.npmrc`
  * (save-exact, save-prefix, a registry mirror) can't change the results; pnpm
- * reads it too. yarn's and bun's own home config (`~/.yarnrc.yml`,
- * `~/.bunfig.toml`) is not isolated. pnpm gets a store of its own in the temp
- * directory (pnpm 12 reads `pnpm_config_store_dir`, not `npm_config_store_dir`):
- * its installs would otherwise fill the global store, which CI may save in its
+ * and bun read it too. `XDG_CONFIG_HOME` points at the temp directory, which
+ * moves pnpm's global directory (`auth.ini`: a registry token, which takes a
+ * different cache path; `config.yaml`: routes, `minimumReleaseAge`) and bun's
+ * global bunfig off the developer's (#175). yarn berry's `~/.yarnrc.yml` is not
+ * isolated in the bench: only `HOME` moves it, which moves Corepack's cache too,
+ * so each yarn row would download yarn again (the matrix runs in the test
+ * setup's empty `HOME`). pnpm gets a store of its own in the temp directory
+ * (pnpm 12 reads `pnpm_config_store_dir`, not `npm_config_store_dir`): its
+ * installs would otherwise fill the global store, which CI may save in its
  * cache. autd gets a cache folder of its own in it too (`AUTD_CACHE_DIR`), and
  * the test setup's `AUTD_NO_CACHE` is dropped so the matrix runs with the cache on.
  */
@@ -98,6 +103,7 @@ export const managerEnv = (manager: Manager): (() => void) => {
     YARN_ENABLE_TELEMETRY: '0',
     YARN_ENABLE_SCRIPTS: 'false',
     npm_config_userconfig: userConfig,
+    XDG_CONFIG_HOME: scratch,
     ...(manager === 'pnpm'
       ? { pnpm_config_store_dir: path.join(scratch, 'pnpm-store') }
       : {}),
