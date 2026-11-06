@@ -90,7 +90,7 @@ jobs:
         with:
           node-version-file: .tool-versions
           cache: pnpm
-      # yarn 1.22.22 / 4.12.0 come from each testRepo's packageManager, through Corepack.
+      # yarn 1.22.22 / 4.18.1 come from each testRepo's packageManager, through Corepack.
       # Only yarn's shims, so pnpm stays the version set up above.
       - name: Enable yarn through Corepack
         if: matrix.pm == 'yarn' || matrix.pm == 'berry'

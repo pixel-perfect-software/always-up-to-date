@@ -23,7 +23,7 @@ import { runProcess } from '@/utils'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
-// A real capture: yarn 4.12.0 (the repo's packageManager, through Corepack)
+// A real capture: yarn 4.12.0 (then the repo's packageManager, through Corepack)
 // `install` on testRepos/berry-workspace, with packages/b also declaring
 // `@autd/a: workspace:*`, `m: npm:ms@^2.0.0` and the devDependency
 // `resolve: ^1.22.0` (a builtin patch), 2026-11-03.
