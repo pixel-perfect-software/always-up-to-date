@@ -225,3 +225,156 @@ describe('withReleaseAgeGate', () => {
     expect(read).toHaveBeenCalled()
   })
 })
+
+// #177: a package's `modified` (no listed version is later) answers a gate that
+// lets a version with no time through, so no publish times are read.
+describe('withReleaseAgeGate and the packument modified (#177)', () => {
+  const MODIFIED = '2025-09-08T19:56:54.242Z'
+  const modifiedAt = Date.parse(MODIFIED)
+  const DAY = 1440
+  const allowed = (overrides: Partial<ReleaseAgeGate> = {}): ReleaseAgeGate =>
+    gate({ setting: 'minimumReleaseAge', missingTime: 'allowed', ...overrides })
+  const lookupWith = (modified: string | undefined): PackageLookup => ({
+    ok: true,
+    package: {
+      ...capturedPackage('ms', { source: 'packument' }),
+      ...(modified ? { modified } : {}),
+    },
+  })
+  const times = {
+    '2.1.2': '2019-06-06T17:31:55Z',
+    '2.1.3': '2020-12-08T13:54:35Z',
+  }
+  const ask = async (
+    lookup: PackageLookup,
+    active: ReleaseAgeGate,
+    at: number,
+  ) => {
+    const calls: string[] = []
+    const base = {
+      lookup: async (_name: string) => lookup,
+      releaseTimes: async (name: string) => {
+        calls.push(name)
+        return times
+      },
+    }
+    const result = await withReleaseAgeGate(
+      base,
+      () => active,
+      () => at,
+    ).lookup('ms')
+    return { calls, result }
+  }
+
+  it.each([
+    ['well past the gate', modifiedAt + 3 * DAY * 60_000, []],
+    ['exactly at the gate (inclusive)', modifiedAt + DAY * 60_000, []],
+    ['a millisecond inside the gate', modifiedAt + DAY * 60_000 - 1, ['ms']],
+    ['inside the gate', modifiedAt + 60 * 60_000, ['ms']],
+  ] as const)('minimumReleaseAge, %s', async (_label, at, calls) => {
+    const lookup = lookupWith(MODIFIED)
+    const { calls: asked, result } = await ask(
+      lookup,
+      allowed({ minutes: DAY }),
+      at,
+    )
+
+    expect(asked).toEqual(calls)
+    expect(result).toEqual(lookup)
+  })
+
+  it('still judges a version with a time, whatever modified says', async () => {
+    const at = modifiedAt + 3 * DAY * 60_000
+    const pkg = capturedPackage('ms', { source: 'packument' })
+    const { calls, result } = await ask(
+      {
+        ok: true,
+        package: {
+          ...pkg,
+          modified: MODIFIED,
+          versions: pkg.versions.map((v) =>
+            v.version === '2.1.3'
+              ? { ...v, publishedAt: new Date(at - 60 * 60_000).toISOString() }
+              : v,
+          ),
+        },
+      },
+      allowed({ minutes: DAY }),
+      at,
+    )
+
+    expect(calls).toEqual([])
+    expect(result).toMatchObject({ ok: true, package: { latest: '2.1.2' } })
+    expect(
+      result.ok && result.package.versions.map((v) => v.version),
+    ).not.toContain('2.1.3')
+  })
+
+  it('reads times under a gate that holds a version with no time, whatever modified says', async () => {
+    const { calls } = await ask(
+      lookupWith(MODIFIED),
+      gate({ minutes: DAY }),
+      modifiedAt + 30 * DAY * 60_000,
+    )
+    expect(calls).toEqual(['ms'])
+  })
+
+  it.each([
+    ['before modified', '2025-01-01T00:00:00.000Z', ['ms']],
+    ['at modified', MODIFIED, []],
+    ['after modified', '2026-01-01T00:00:00.000Z', []],
+  ])("npm's before, %s", async (_label, notAfter, calls) => {
+    const { calls: asked } = await ask(
+      lookupWith(MODIFIED),
+      allowed({ minutes: 0, notAfter }),
+      modifiedAt + 30 * DAY * 60_000,
+    )
+    expect(asked).toEqual(calls)
+  })
+
+  it('reads times when there is no modified, or it is unparseable or in the future', async () => {
+    const at = modifiedAt + 30 * DAY * 60_000
+    for (const modified of [undefined, 'soon', '2999-01-01T00:00:00.000Z']) {
+      const { calls } = await ask(
+        lookupWith(modified),
+        allowed({ minutes: DAY }),
+        at,
+      )
+      expect(calls).toEqual(['ms'])
+    }
+  })
+
+  it('asks nothing of a lookup that carries every time, as before', async () => {
+    const { calls } = await ask(
+      { ok: true, package: capturedPackage('ms') },
+      allowed({ minutes: DAY }),
+      modifiedAt,
+    )
+    expect(calls).toEqual([])
+  })
+
+  it('uses the scope minutes of the package', async () => {
+    const lookup: PackageLookup = {
+      ok: true,
+      package: {
+        ...capturedPackage('types-ms', { source: 'packument' }),
+        name: '@acme/ms',
+        modified: MODIFIED,
+      },
+    }
+    const calls: string[] = []
+    const base = {
+      lookup: async (_name: string) => lookup,
+      releaseTimes: async (name: string) => {
+        calls.push(name)
+        return {}
+      },
+    }
+    await withReleaseAgeGate(
+      base,
+      () => allowed({ minutes: 0, scopes: { '@acme': DAY } }),
+      () => modifiedAt + 60_000,
+    ).lookup('@acme/ms')
+    expect(calls).toEqual(['@acme/ms'])
+  })
+})

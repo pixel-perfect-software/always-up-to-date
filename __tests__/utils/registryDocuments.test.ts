@@ -237,6 +237,50 @@ describe('parsePackument', () => {
     expect(versions.filter((v) => v.publishedAt)).toHaveLength(14)
   })
 
+  describe('modified (#177)', () => {
+    it.each([
+      ['ms', '2025-09-08T19:56:54.242Z'],
+      ['types-ms', '2026-10-04T08:50:16.855Z'],
+      ['mkdirp', '2026-07-17T17:10:12.862Z'],
+    ])('reads the abbreviated capture of %s', (name, modified) => {
+      expect(parsePackument(json(`${name}.packument`))?.modified).toBe(modified)
+    })
+
+    it('is an upper bound on every version time of the full capture, and equals its time.modified', () => {
+      const full = json('types-ms.packument-full') as {
+        time: Record<string, string>
+      }
+      const abbreviated = parsePackument(json('types-ms.packument'))
+      const bound = Date.parse(abbreviated?.modified as string)
+
+      expect(abbreviated?.modified).toBe(full.time.modified)
+      const times = parsePackument(full)?.versions.map((v) => v.publishedAt)
+      expect(times?.filter(Boolean).length).toBeGreaterThan(0)
+      for (const published of times ?? []) {
+        if (published) expect(Date.parse(published)).toBeLessThanOrEqual(bound)
+      }
+    })
+
+    it('is absent from a full document, whose bound is time.modified', () => {
+      expect(
+        parsePackument(json('types-ms.packument-full'))?.modified,
+      ).toBeUndefined()
+    })
+
+    it.each([
+      ['a non-date string', 'yesterday'],
+      ['a number', 1760000000000],
+      ['null', null],
+    ])('is absent for %s', (_label, value) => {
+      const body = JSON.parse(
+        derive<{ modified: unknown }>('ms.packument', (doc) => {
+          doc.modified = value
+        }),
+      )
+      expect(parsePackument(body)?.modified).toBeUndefined()
+    })
+  })
+
   it('leaves latest out when dist-tags has none that is valid', () => {
     expect(
       parsePackument({

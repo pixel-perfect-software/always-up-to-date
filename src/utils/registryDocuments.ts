@@ -46,6 +46,8 @@ export const parseDepsDevPackage = (
 
 export interface ParsedPackument {
   latest?: string
+  /** The document's top-level `modified` (abbreviated packuments only; a full one has `time.modified`). */
+  modified?: string
   versions: RegistryVersion[]
 }
 
@@ -73,8 +75,10 @@ export const parsePackument = (body: unknown): ParsedPackument | undefined => {
   }
   const tags = body['dist-tags']
   const latest = isRecord(tags) ? tags.latest : undefined
+  const modified = timestamp(body.modified)
   return {
     ...(isCanonical(latest) ? { latest } : {}),
+    ...(modified ? { modified } : {}),
     versions: versions.sort(byVersion),
   }
 }
