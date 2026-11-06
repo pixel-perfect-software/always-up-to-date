@@ -82,11 +82,15 @@ describe('CI workflow', () => {
     expect(workflow).toMatch(/^\s+run: pnpm run test:integration\s*$/m)
   })
 
-  it('runs the perf gate per target, report-only for now', () => {
+  it('enforces the perf gate per target', () => {
     expect(workflow).toMatch(
       /target: \[ ?startup, npm, pnpm, yarn, berry, berry-nm, bun ?\]/,
     )
     expect(workflow).toMatch(/^\s+run: pnpm run bench:gate\s*$/m)
+    // A red result must fail the leg: nothing in the job may swallow it.
+    const perfJob = /^ {2}perf:\n((?:(?: {4}.*)?\n)+)/m.exec(workflow)?.[1]
+    expect(perfJob).toMatch(/run: pnpm run bench:gate/)
+    expect(perfJob).not.toMatch(/continue-on-error/)
     expect(workflow).toMatch(
       /AUTD_BENCH_GATE_TARGET: \$\{\{ matrix\.target \}\}/,
     )
