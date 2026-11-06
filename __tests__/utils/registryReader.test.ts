@@ -483,6 +483,105 @@ describe('registry reader', () => {
     })
   })
 
+  describe('modified (#177)', () => {
+    it('is on a public registry lookup read from its packument, and the cache holds it', async () => {
+      const dir = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-reader-modified-')),
+      )
+      try {
+        const cache = createRegistryCache({ dir })
+        const { registry, reader } = await setup(
+          { registry: msRegistry() },
+          { depsDev: false, cache },
+        )
+
+        const result = packageOf(await reader.lookup('ms'))
+
+        expect(result.modified).toBe('2025-09-08T19:56:54.242Z')
+        expect(cache.get('packument', registry.url, 'ms')?.value.modified).toBe(
+          '2025-09-08T19:56:54.242Z',
+        )
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('is absent for a registry autd does not trust, while the cache still holds it', async () => {
+      const dir = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-reader-modified-')),
+      )
+      try {
+        const mirror = await start(
+          replies({ '/mirror/ms': packument('ms.packument') }),
+        )
+        const registryConfig = configFor(`${mirror.url}mirror/`)
+        const client = createRegistryClient(registryConfig)
+        clients.push(client)
+        const cache = createRegistryCache({ dir })
+        const own = createRegistryReader({
+          registryConfig,
+          client: async () => client,
+          depsDev: true,
+          endpoints: {
+            publicRegistries: ['https://registry.npmjs.org'],
+            depsDev: 'http://127.0.0.1:1/',
+          },
+          cache,
+        })
+
+        const result = packageOf(await own.lookup('ms'))
+
+        expect(result.modified).toBeUndefined()
+        expect(
+          cache.get('packument', `${mirror.url}mirror/`, 'ms')?.value.modified,
+        ).toBe('2025-09-08T19:56:54.242Z')
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('is absent for a scope routed to another registry', async () => {
+      const corp = await start(
+        replies({ '/@corp%2fpkg': packument('types-ms.packument') }),
+      )
+      const { registry, depsDev, registryConfig } = await setup({
+        registry: msRegistry(),
+      })
+      const scoped: RegistryConfig = {
+        ...registryConfig,
+        scopedRegistries: { '@corp': corp.url },
+      }
+      const client = createRegistryClient(scoped)
+      clients.push(client)
+      const own = createRegistryReader({
+        registryConfig: scoped,
+        client: async () => client,
+        depsDev: true,
+        endpoints: {
+          publicRegistries: [new URL(registry.url).origin],
+          depsDev: `${depsDev.url}v3/systems/npm/packages/`,
+        },
+      })
+
+      expect(packageOf(await own.lookup('@corp/pkg')).modified).toBeUndefined()
+    })
+
+    it('is absent when the packument is a full document', async () => {
+      const { reader } = await setup(
+        {
+          registry: replies({
+            '/@types%2fms': { body: registryBody('types-ms.packument-full') },
+          }),
+        },
+        { depsDev: false },
+      )
+
+      expect(packageOf(await reader.lookup('@types/ms')).modified).toBe(
+        undefined,
+      )
+    })
+  })
+
   describe('other registries', () => {
     it('reads a name with one abbreviated GET and never asks deps.dev', async () => {
       const mirror = await start(

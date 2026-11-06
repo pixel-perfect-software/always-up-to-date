@@ -515,6 +515,29 @@ describe('unreadable entries are misses', () => {
     expect(cache.get('packument', REGISTRY, 'pkg')?.fresh).toBe(true)
   })
 
+  it('reads an entry stored without modified, and one with it (#177)', () => {
+    const { cache, file } = stored()
+    rewrite(file, (entry) => {
+      const value = entry.value as Record<string, unknown>
+      value.modified = '2026-10-04T08:50:16.855Z'
+    })
+    expect(cache.get('packument', REGISTRY, 'pkg')?.value.modified).toBe(
+      '2026-10-04T08:50:16.855Z',
+    )
+    rewrite(file, (entry) => {
+      delete (entry.value as Record<string, unknown>).modified
+    })
+    expect(cache.get('packument', REGISTRY, 'pkg')?.fresh).toBe(true)
+  })
+
+  it('misses an entry whose modified is not a string (#177)', () => {
+    const { cache, file } = stored()
+    rewrite(file, (entry) => {
+      ;(entry.value as Record<string, unknown>).modified = 7
+    })
+    expect(cache.get('packument', REGISTRY, 'pkg')).toBeUndefined()
+  })
+
   it('misses a truncated gzip', () => {
     const { cache, file } = stored()
     const data = fs.readFileSync(file)

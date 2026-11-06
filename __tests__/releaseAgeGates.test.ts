@@ -244,4 +244,43 @@ describe('check under each manager’s gate', () => {
       latest: expected,
     })
   })
+
+  // #177: a packument's `modified` skips the publish-time read only on the
+  // public npm registries. This registry (not one) serves an abbreviated
+  // document with a long-past `modified`, and a full one whose `time` makes
+  // 1.0.2 an hour old: the gate must still hold 1.0.2.
+  it('does not trust a modified from a registry that is not public npm (#177)', async () => {
+    await server.close()
+    const hourAgo = new Date(Date.now() - 60 * 60_000).toISOString()
+    const versions = Object.fromEntries(
+      ['1.0.0', '1.0.1', '1.0.2'].map((v) => [
+        v,
+        { name: 'probe', version: v },
+      ]),
+    )
+    server = await startRegistry((req, res) => {
+      res.setHeader('content-type', 'application/json')
+      const abbreviated = String(req.headers.accept).includes('install-v1')
+      res.end(
+        JSON.stringify({
+          name: 'probe',
+          'dist-tags': { latest: '1.0.2' },
+          versions,
+          ...(abbreviated
+            ? { modified: '2020-03-01T00:00:00.000Z' }
+            : {
+                time: {
+                  '1.0.0': '2020-01-01T00:00:00.000Z',
+                  '1.0.1': '2020-02-01T00:00:00.000Z',
+                  '1.0.2': hourAgo,
+                },
+              }),
+        }),
+      )
+    })
+
+    expect(
+      await wantedWith('pnpm', { '.npmrc': 'registry=REGISTRY\n' }),
+    ).toEqual({ wanted: '1.0.1', latest: '1.0.1' })
+  })
 })

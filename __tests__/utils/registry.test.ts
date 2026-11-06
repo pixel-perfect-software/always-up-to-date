@@ -6,14 +6,17 @@ import path from 'path'
 import type { ManagerAdapter } from '@/managers/adapter'
 import bun from '@/managers/bun'
 import pnpm from '@/managers/pnpm'
-import type { RegistryConfig, ReleaseAgeGate } from '@/types'
+import type { PackageLookup, RegistryConfig, ReleaseAgeGate } from '@/types'
 import logger from '@/utils/logger'
 import { managerRegistryConfig, type NpmrcSources } from '@/utils/npmrcLoader'
 import { createRegistrySession, type RegistrySession } from '@/utils/registry'
+import { createRegistryCache } from '@/utils/registryCache'
 import type { RegistryClient } from '@/utils/registryClient'
+import { type ParsedPackument, parsePackument } from '@/utils/registryDocuments'
 import { ABBREVIATED_ACCEPT } from '@/utils/registryRequest'
 import { withReleaseAgeGate } from '@/utils/releaseAgeGate'
 import {
+  conditional,
   derive,
   type Handler,
   registryBody,
@@ -567,7 +570,11 @@ describe('registry session', () => {
       exempt: [],
       missingTime: 'allowed',
     }
-    const NOW = Date.parse('2026-11-03T00:00:00Z')
+    // Inside the gate of @types/ms's `modified` (2026-10-04T08:50:16.855Z), so
+    // the shortcut of #177 does not apply and the full packument is read.
+    const NOW = Date.parse('2026-10-04T09:00:00Z')
+    // Three days past that `modified`: every version clears the gate.
+    const LATER = Date.parse('2026-10-07T09:00:00Z')
 
     it('reads the full packument once for a lookup deps.dev lags on, and never again for the lookup or the cooldown', async () => {
       const registry = await start((req, res) =>
@@ -623,6 +630,153 @@ describe('registry session', () => {
       expect(again).toEqual(first)
       expect(times['2.1.0']).toBe(FULL_2_1_0)
       expect(registry.requests).toHaveLength(before)
+    })
+
+    describe('the packument modified (#177)', () => {
+      const gatedSession = async (
+        handler: Handler,
+        options: {
+          public?: boolean
+          now?: number
+          cache?: { dir: string; now: () => number }
+        } = {},
+      ) => {
+        const registry = await start(handler)
+        const session = createRegistrySession('/project', {
+          loadConfig: () => configFor(registry.url),
+          depsDev: false,
+          endpoints: {
+            publicRegistries:
+              options.public === false ? [] : [new URL(registry.url).origin],
+            depsDev: 'http://127.0.0.1:1/',
+          },
+          cache: options.cache,
+        })
+        sessions.push(session)
+        const gated = withReleaseAgeGate(
+          session,
+          () => gate,
+          () => options.now ?? LATER,
+        )
+        const accepts = () =>
+          registry.requests
+            .filter((r) => r.url === '/@types%2fms')
+            .map((r) => r.headers.accept)
+        return { registry, gated, accepts }
+      }
+      const versionsOf = (lookup: PackageLookup) =>
+        lookup.ok ? lookup.package.versions.map((v) => v.version) : []
+
+      it('asks only the abbreviated packument for a package modified before the gate', async () => {
+        const { gated, accepts } = await gatedSession(typesMs)
+
+        const result = await gated.lookup('@types/ms')
+
+        expect(result).toMatchObject({ ok: true, package: { latest: '2.1.0' } })
+        expect(accepts()).toEqual([ABBREVIATED_ACCEPT])
+      })
+
+      it('reads the full packument when it was modified inside the gate', async () => {
+        const { gated, accepts } = await gatedSession(typesMs, { now: NOW })
+
+        await gated.lookup('@types/ms')
+
+        expect(accepts()).toEqual([ABBREVIATED_ACCEPT, 'application/json'])
+      })
+
+      it('trusts nothing from a registry that is not public npm, and gates to the same versions', async () => {
+        const trusted = await gatedSession(typesMs)
+        const other = await gatedSession(typesMs, { public: false })
+
+        const fromTrusted = await trusted.gated.lookup('@types/ms')
+        const fromOther = await other.gated.lookup('@types/ms')
+
+        expect(other.accepts()).toEqual([
+          ABBREVIATED_ACCEPT,
+          'application/json',
+        ])
+        expect(trusted.accepts()).toEqual([ABBREVIATED_ACCEPT])
+        expect(versionsOf(fromOther)).toEqual(versionsOf(fromTrusted))
+        expect(fromOther.ok && fromOther.package.latest).toBe(
+          fromTrusted.ok && fromTrusted.package.latest,
+        )
+      })
+
+      it('still reads the full packument once for a cooldown window after the shortcut', async () => {
+        const { gated, accepts } = await gatedSession(typesMs)
+
+        await gated.lookup('@types/ms')
+        const times = await gated.releaseTimes('@types/ms', {
+          current: '0.7.34',
+          target: '2.1.0',
+        })
+        await gated.releaseTimes('@types/ms', {
+          current: '0.7.34',
+          target: '2.1.0',
+        })
+
+        expect(times['2.1.0']).toBe(FULL_2_1_0)
+        expect(accepts()).toEqual([ABBREVIATED_ACCEPT, 'application/json'])
+      })
+
+      it('reads the full packument when a 304 revalidates an entry stored without modified', async () => {
+        const dir = path.join(
+          fs.realpathSync(
+            fs.mkdtempSync(path.join(os.tmpdir(), 'autd-session-')),
+          ),
+          'cache',
+        )
+        try {
+          const registry = await start(
+            conditional(
+              { body: registryBody('types-ms.packument') },
+              '"abbreviated"',
+            ),
+          )
+          const stored = parsePackument(
+            JSON.parse(registryBody('types-ms.packument')),
+          ) as ParsedPackument
+          const { modified: _dropped, ...older } = stored
+          const writer = createRegistryCache({ dir, now: () => 0 })
+          writer.put('packument', registry.url, '@types/ms', older, {
+            authenticated: false,
+            etag: '"abbreviated"',
+          })
+          writer.close()
+          const session = createRegistrySession('/project', {
+            loadConfig: () => configFor(registry.url),
+            depsDev: false,
+            endpoints: {
+              publicRegistries: [new URL(registry.url).origin],
+              depsDev: 'http://127.0.0.1:1/',
+            },
+            cache: { dir, now: () => 3_600_000 },
+          })
+          sessions.push(session)
+          // The server answers the full document for any other Accept.
+          registry.requests.length = 0
+
+          const gated = withReleaseAgeGate(
+            session,
+            () => gate,
+            () => LATER,
+          )
+          const result = await gated.lookup('@types/ms')
+
+          expect(result.ok).toBe(true)
+          expect(
+            registry.requests.map((r) => [
+              r.headers.accept,
+              r.headers['if-none-match'],
+            ]),
+          ).toEqual([
+            [ABBREVIATED_ACCEPT, '"abbreviated"'],
+            ['application/json', undefined],
+          ])
+        } finally {
+          fs.rmSync(path.dirname(dir), { recursive: true, force: true })
+        }
+      })
     })
   })
 

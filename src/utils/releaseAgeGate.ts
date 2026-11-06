@@ -7,6 +7,7 @@ import type {
   ReleaseAgeGate,
   ReleaseWindow,
 } from '@/types'
+import logger from './logger'
 import type { RegistrySession } from './registry'
 
 /**
@@ -86,6 +87,38 @@ export const exemptionOf = (
 const isActive = (name: string, gate: ReleaseAgeGate): boolean =>
   gateMinutesFor(name, gate) > 0 || gate.notAfter !== undefined
 
+/** Whether a version published at `at` is old enough: at least `minutes` before `now`, and not after `notAfter`. */
+const clearsAge = (
+  at: number,
+  minutes: number,
+  gate: ReleaseAgeGate,
+  now: number,
+): boolean => {
+  if (gate.notAfter !== undefined && at > Date.parse(gate.notAfter)) {
+    return false
+  }
+  return (now - at) / 60_000 >= minutes
+}
+
+/**
+ * Whether the package's `modified` (no listed version is later) clears the
+ * gate, so every version passes with no publish time: a time-less version is
+ * allowed only where the manager lets one through. Never under a gate that
+ * holds a version with no time (berry, #166).
+ */
+const clearedByModified = (
+  pkg: RegistryPackage,
+  gate: ReleaseAgeGate,
+  now: number,
+): boolean => {
+  if (gate.missingTime !== 'allowed' || pkg.modified === undefined) return false
+  const at = Date.parse(pkg.modified)
+  return (
+    !Number.isNaN(at) &&
+    clearsAge(at, gateMinutesFor(pkg.name, gate), gate, now)
+  )
+}
+
 /**
  * Whether the gate lets `version` through: exempt, or published at least its
  * minutes before `now` and not after its `notAfter`. A version with no known
@@ -102,10 +135,7 @@ const passes = (
   if (isExempt(name, version, gate.exempt)) return true
   const at = published === undefined ? Number.NaN : Date.parse(published)
   if (Number.isNaN(at)) return gate.missingTime === 'allowed'
-  if (gate.notAfter !== undefined && at > Date.parse(gate.notAfter)) {
-    return false
-  }
-  return (now - at) / 60_000 >= minutes
+  return clearsAge(at, minutes, gate, now)
 }
 
 /**
@@ -173,9 +203,16 @@ export const withReleaseAgeGate = <
     const active = gate()
     if (!result.ok || !active || !isActive(name, active)) return result
     const pkg = result.package
-    const times = pkg.versions.every((v) => v.publishedAt)
-      ? {}
-      : await session.releaseTimes(name)
+    const untimed = pkg.versions.some((v) => !v.publishedAt)
+    // `modified` answers only for the versions with no time; one with a time
+    // is still judged by it.
+    const cleared = untimed && clearedByModified(pkg, active, now())
+    if (cleared) {
+      logger.debug(
+        `No publish times needed for ${name}: last modified ${pkg.modified}, past ${active.setting}`,
+      )
+    }
+    const times = untimed && !cleared ? await session.releaseTimes(name) : {}
     const gated = gatePackage(pkg, active, times, now())
     if (gated) return { ok: true, package: gated }
     return {
