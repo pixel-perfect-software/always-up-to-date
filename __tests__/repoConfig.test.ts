@@ -81,6 +81,16 @@ describe('CI workflow', () => {
     expect(workflow).toMatch(/pm: \[ ?npm, pnpm, yarn, berry, bun ?\]/)
     expect(workflow).toMatch(/^\s+run: pnpm run test:integration\s*$/m)
   })
+
+  it('runs the perf gate per target, report-only for now', () => {
+    expect(workflow).toMatch(
+      /target: \[ ?startup, npm, pnpm, yarn, berry, berry-nm, bun ?\]/,
+    )
+    expect(workflow).toMatch(/^\s+run: pnpm run bench:gate\s*$/m)
+    expect(workflow).toMatch(
+      /AUTD_BENCH_GATE_TARGET: \$\{\{ matrix\.target \}\}/,
+    )
+  })
 })
 
 describe('integration matrix', () => {
