@@ -123,6 +123,25 @@ describe('openProject', () => {
   })
 
   describe('registry config', () => {
+    // registryConfigFrom falls back to the environment for `proxy`, so a
+    // developer's or a sandbox's proxy variables would land in the expected
+    // value. Every case of them is set aside for each test, then put back.
+    let proxyEnv: Record<string, string>
+
+    beforeEach(() => {
+      proxyEnv = {}
+      for (const [key, value] of Object.entries(process.env)) {
+        if (value === undefined || !/^((https?|no)_)?proxy$/i.test(key))
+          continue
+        proxyEnv[key] = value
+        delete process.env[key]
+      }
+    })
+
+    afterEach(() => {
+      Object.assign(process.env, proxyEnv)
+    })
+
     const openWith = (pm: 'pnpm' | 'npm') => {
       jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
       jest.mocked(detectPackageManager).mockReturnValue(pm)
