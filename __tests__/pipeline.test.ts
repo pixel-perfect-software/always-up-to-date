@@ -266,6 +266,71 @@ describe('pipeline', () => {
     })
   })
 
+  describe("a target's peers without node_modules (#198)", () => {
+    // npm 11.19.1 `install --package-lock-only` of react 17.0.2 and
+    // react-redux 8.1.3: the lockfile records react at 17.0.2.
+    it('holds a target whose peer the lockfile records outside its range', async () => {
+      fs.rmSync(path.join(cwd, 'node_modules'), { recursive: true })
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({
+          name: 'peers-no-node-modules',
+          dependencies: { react: '17.0.2', 'react-redux': '8.1.3' },
+        }),
+      )
+      fs.copyFileSync(
+        path.join(
+          __dirname,
+          'fixtures/npm/peers-no-node-modules.package-lock.json',
+        ),
+        path.join(cwd, 'package-lock.json'),
+      )
+      const known: Record<string, VersionManifest> = {
+        'react-redux@9.2.0': capturedManifest(
+          'react-redux',
+          '9.2.0',
+          'react-redux.9.2.0.manifest',
+        ),
+        'react-redux@8.1.3': capturedManifest(
+          'react-redux',
+          '8.1.3',
+          'react-redux.8.1.3.manifest',
+        ),
+        'react@17.0.2': {
+          ...capturedManifest('react', '18.3.1', 'react.18.3.1.manifest'),
+          version: '17.0.2',
+        },
+      }
+      const project = projectFor(
+        npm,
+        cwd,
+        { beyondRange: 'major' },
+        {
+          ...fakeRegistry(),
+          versionManifest: async (name, version) => known[`${name}@${version}`],
+        },
+      )
+
+      const results = await plan(project, {
+        'react-redux': {
+          name: 'react-redux',
+          current: '8.1.3',
+          wanted: '8.1.3',
+          latest: '9.2.0',
+        },
+      })
+
+      expect(results).toEqual([
+        expect.objectContaining({
+          name: 'react-redux',
+          updated: false,
+          reason:
+            'peer conflict: react-redux@9.2.0 needs react ^18.0 || ^19 (installed 17.0.2)',
+        }),
+      ])
+    })
+  })
+
   describe('a package the manager leaves in place', () => {
     const install = (name: string, version: string) =>
       installPackages(cwd, '.', { [name]: version })

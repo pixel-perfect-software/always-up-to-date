@@ -944,7 +944,7 @@ describe('filterPackages', () => {
       expect(result).toMatchObject({ updated: true, target: '2.0.0' })
       expect(mockLogger.default.warn).toHaveBeenCalledTimes(1)
       expect(mockLogger.default.warn).toHaveBeenCalledWith(
-        'No version manifest for target ua-parser-js@2.0.0: they move without a license check',
+        'No version manifest for target ua-parser-js@2.0.0: they move without license or peer checks',
       )
       // Nothing to compare against, so the current version is not read.
       expect(asked).toEqual(['ua-parser-js@2.0.0'])
@@ -964,7 +964,7 @@ describe('filterPackages', () => {
         'ua-parser-js@2.0.0',
       ])
       expect(mockLogger.default.warn).toHaveBeenCalledWith(
-        'No version manifest for installed ua-parser-js@1.0.39: they move without a license check',
+        'No version manifest for installed ua-parser-js@1.0.39: they move without license or peer checks',
       )
     })
 
@@ -1915,6 +1915,258 @@ describe('filterPackages', () => {
       const { withinRange, beyondRange, manifests } = filter.split(results)
 
       expect(manifests).toEqual([{ path: '.', withinRange, beyondRange }])
+    })
+  })
+})
+
+describe("a target's own peers (#198)", () => {
+  const NOW = Date.parse('2026-04-29T12:00:00Z')
+  const daysAgo = (days: number) =>
+    new Date(NOW - days * 24 * 60 * 60 * 1000).toISOString()
+  const REDUX_9 = capturedManifest(
+    'react-redux',
+    '9.2.0',
+    'react-redux.9.2.0.manifest',
+  )
+  const REACT_18 = capturedManifest('react', '18.3.1', 'react.18.3.1.manifest')
+  const REACT_RANGE = '^18.0 || ^19'
+  const PEER_CONFLICT = `peer conflict: react-redux@9.2.0 needs react ${REACT_RANGE} (installed 17.0.2)`
+
+  const reduxRow = {
+    name: 'react-redux',
+    current: '8.1.3',
+    wanted: '9.2.0',
+    latest: '9.2.0',
+  }
+  const reactRow = {
+    name: 'react',
+    current: '17.0.2',
+    wanted: '18.3.1',
+    latest: '18.3.1',
+  }
+  const known: Record<string, VersionManifest | undefined> = {
+    'react-redux@9.2.0': REDUX_9,
+    'react@18.3.1': REACT_18,
+  }
+  const manifests =
+    (answers: Record<string, VersionManifest | undefined> = known) =>
+    async (name: string, version: string) =>
+      answers[`${name}@${version}`]
+
+  beforeEach(() => {
+    mockLogger.default.warn.mockClear()
+    mockLogger.default.debug.mockClear()
+  })
+
+  /** A plan with the given installed versions (`rowKey` → version) and rules. */
+  const plan = (
+    rows: Parameters<typeof makeOutdated>[0] | Record<string, PackageInfo>,
+    {
+      installed = {},
+      config = {},
+      answers = known,
+      options = {},
+    }: {
+      installed?: Record<string, string>
+      config?: Partial<AlwaysUpToDateConfig>
+      answers?: Record<string, VersionManifest | undefined>
+      options?: Parameters<ReturnType<typeof loadFilterWithConfig>>[1]
+    } = {},
+  ) => {
+    const filter = loadFilterWithConfig(config, {
+      versionManifest: manifests(answers),
+      releaseTimes: {
+        'react-redux': { '9.2.0': daysAgo(1), '9.1.2': daysAgo(60) },
+      },
+      deprecated: {},
+    })
+    return filter(Array.isArray(rows) ? makeOutdated(rows) : rows, {
+      installed: () => installed,
+      now: NOW,
+      ...options,
+    })
+  }
+
+  it('holds a target whose peer is left outside its range, naming the range and the installed version', async () => {
+    const [result] = await plan([reduxRow], { installed: { react: '17.0.2' } })
+
+    expect(result).toMatchObject({
+      updated: false,
+      target: undefined,
+      reason: PEER_CONFLICT,
+    })
+  })
+
+  it('does not hold it when the peer moves into range in the same run', async () => {
+    const results = await plan([reduxRow, reactRow])
+
+    expect(results.map((r) => [r.name, r.updated])).toEqual([
+      ['react-redux', true],
+      ['react', true],
+    ])
+    expect(results.every((r) => r.warning === undefined)).toBe(true)
+  })
+
+  it('holds the dependent too when a rule keeps its peer back', async () => {
+    const results = await plan([reduxRow, reactRow], {
+      config: { rules: { react: 'hold' } },
+    })
+
+    expect(results.find((r) => r.name === 'react-redux')).toMatchObject({
+      updated: false,
+      reason: PEER_CONFLICT,
+    })
+  })
+
+  it('moves it under a latest rule, with the text as a warning, once', async () => {
+    const [result] = await plan([reduxRow], {
+      config: { rules: { 'react-redux': 'latest' } },
+      installed: { react: '17.0.2' },
+    })
+
+    expect(result).toMatchObject({
+      updated: true,
+      target: '9.2.0',
+      warning: PEER_CONFLICT,
+    })
+  })
+
+  it('judges an installed optional peer, and lets an absent one through', async () => {
+    const withReact = { react: '18.3.1' }
+
+    const [absent] = await plan([reduxRow], { installed: withReact })
+    expect(absent).toMatchObject({ updated: true, target: '9.2.0' })
+
+    const [old] = await plan([reduxRow], {
+      installed: { ...withReact, redux: '4.2.1' },
+    })
+    expect(old).toMatchObject({
+      updated: false,
+      reason:
+        'peer conflict: react-redux@9.2.0 needs redux ^5.0.0 (installed 4.2.1)',
+    })
+  })
+
+  it('lets a missing required peer through with a debug line, once', async () => {
+    const [result] = await plan([reduxRow])
+
+    expect(result).toMatchObject({ updated: true, target: '9.2.0' })
+    const lines = mockLogger.default.debug.mock.calls
+      .map(([line]) => line)
+      .filter((line) => line.includes("which isn't installed"))
+    expect(lines).toEqual([
+      `react-redux@9.2.0 needs react ${REACT_RANGE}, which isn't installed; left to the manager`,
+    ])
+  })
+
+  it("skips a peer that isn't a semver range", async () => {
+    const [result] = await plan([reduxRow], {
+      answers: {
+        'react-redux@9.2.0': {
+          ...REDUX_9,
+          peerDependencies: { react: 'workspace:*' },
+        },
+      },
+      installed: { react: '17.0.2' },
+    })
+
+    expect(result).toMatchObject({ updated: true })
+    expect(mockLogger.default.debug).toHaveBeenCalledWith(
+      'peer react workspace:* of react-redux@9.2.0 is not a semver range; not checked',
+    )
+  })
+
+  it('judges a prerelease peer as satisfying its range', async () => {
+    const [result] = await plan([reduxRow], {
+      installed: { react: '19.0.0-rc.1' },
+    })
+
+    expect(result).toMatchObject({ updated: true })
+  })
+
+  it('moves a row whose version document is unknown, and lists it in the one warning', async () => {
+    const [result] = await plan([reduxRow], {
+      answers: {},
+      installed: { react: '17.0.2' },
+    })
+
+    expect(result).toMatchObject({ updated: true, target: '9.2.0' })
+    expect(mockLogger.default.warn).toHaveBeenCalledWith(
+      'No version manifest for target react-redux@9.2.0: they move without license or peer checks',
+    )
+  })
+
+  describe('in a workspace', () => {
+    const entries = (
+      rows: {
+        name: string
+        workspace: string
+        current: string
+        wanted?: string
+      }[],
+    ) =>
+      foldWorkspaceEntries(
+        rows.map((row) => ({
+          ...row,
+          wanted: row.wanted ?? (row.name === 'react' ? '18.3.1' : '9.2.0'),
+          latest: row.name === 'react' ? '18.3.1' : '9.2.0',
+        })),
+      )
+
+    it("uses the member's own row for the peer over the root's", async () => {
+      const results = await plan(
+        entries([
+          { name: 'react-redux', workspace: 'packages/a', current: '8.1.3' },
+          { name: 'react', workspace: '.', current: '17.0.2' },
+          // The member pins react at 17.0.2 (its own row is not moving).
+          {
+            name: 'react',
+            workspace: 'packages/a',
+            current: '17.0.2',
+            wanted: '17.0.2',
+          },
+        ]),
+      )
+
+      expect(
+        results.find(
+          (r) => r.name === 'react-redux' && r.workspace === 'packages/a',
+        ),
+      ).toMatchObject({ updated: false, reason: PEER_CONFLICT })
+    })
+
+    it("uses the root's row when the member has none", async () => {
+      const results = await plan(
+        entries([
+          { name: 'react-redux', workspace: 'packages/a', current: '8.1.3' },
+          { name: 'react', workspace: '.', current: '17.0.2' },
+        ]),
+      )
+
+      expect(results.find((r) => r.name === 'react-redux')).toMatchObject({
+        updated: true,
+        target: '9.2.0',
+      })
+    })
+  })
+
+  it("checks a cooldown fallback's own document", async () => {
+    const fallback: VersionManifest = {
+      ...REDUX_9,
+      version: '9.1.2',
+      peerDependencies: { react: '^18.0' },
+    }
+    const [result] = await plan([reduxRow], {
+      config: { cooldown: 7 },
+      answers: { 'react-redux@9.1.2': fallback },
+      installed: { react: '17.0.2' },
+      options: { declared: declaring('react-redux', '^8 || ^9') },
+    })
+
+    expect(result).toMatchObject({
+      updated: false,
+      reason:
+        'peer conflict: react-redux@9.1.2 needs react ^18.0 (installed 17.0.2)',
     })
   })
 })

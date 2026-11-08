@@ -72,10 +72,13 @@ interface InstalledEntry {
  * `package.json` with a version: a workspace member's own `node_modules` is
  * read first, since the manager may nest a copy there; the root's holds the
  * hoisted one. In a single-package project that is the root's only.
+ * `declaredOnly: false` reads a package the manifest doesn't declare too (a
+ * peer, #198).
  */
 function* scanInstalled(
   cwd: string,
   rows: { name: string; workspace?: string }[],
+  { declaredOnly = true }: { declaredOnly?: boolean } = {},
 ): Generator<InstalledEntry> {
   const declaredBy = new Map<string, Set<string>>()
   const declaredIn = (dir: string): Set<string> => {
@@ -94,7 +97,7 @@ function* scanInstalled(
 
   for (const row of rows) {
     const dir = path.join(cwd, row.workspace ?? '.')
-    if (!declaredIn(dir).has(row.name)) continue
+    if (declaredOnly && !declaredIn(dir).has(row.name)) continue
     const lookups = dir === cwd ? [cwd] : [dir, cwd]
     for (const base of lookups) {
       const entry = path.join(base, 'node_modules', row.name)
@@ -120,11 +123,16 @@ function* scanInstalled(
 export const readInstalledPackages = (
   cwd: string,
   rows: { name: string; workspace?: string }[],
-  { links = true }: { links?: boolean } = {},
+  {
+    links = true,
+    declaredOnly = true,
+  }: { links?: boolean; declaredOnly?: boolean } = {},
 ): Record<string, InstalledPackage> => {
   let root: string | undefined
   const installed: Record<string, InstalledPackage> = {}
-  for (const { row, entry, version } of scanInstalled(cwd, rows)) {
+  for (const { row, entry, version } of scanInstalled(cwd, rows, {
+    declaredOnly,
+  })) {
     if (links) root ??= safeRealpath(cwd)
     installed[rowKey(row)] = {
       version,
@@ -155,11 +163,12 @@ export const readInstalledManifests = (
 export const readInstalledVersions = (
   cwd: string,
   rows: { name: string; workspace?: string }[],
+  options: { declaredOnly?: boolean } = {},
 ): Record<string, string> =>
   Object.fromEntries(
-    Object.entries(readInstalledPackages(cwd, rows, { links: false })).map(
-      ([key, found]) => [key, found.version],
-    ),
+    Object.entries(
+      readInstalledPackages(cwd, rows, { links: false, ...options }),
+    ).map(([key, found]) => [key, found.version]),
   )
 
 /**

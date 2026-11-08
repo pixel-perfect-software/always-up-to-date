@@ -15,7 +15,11 @@ import {
 } from './cooldown'
 import type { DeclaredDependency } from './dependencySpecs'
 import { formatAgeDays } from './duration'
-import { readInstalledManifests, rowKey } from './installed'
+import {
+  readInstalledManifests,
+  readInstalledVersions,
+  rowKey,
+} from './installed'
 import { sameLicense } from './license'
 import logger from './logger'
 import type { ControllingOverride } from './overrides'
@@ -61,6 +65,16 @@ interface FilterPackagesOptions {
     name: string
     workspace?: string
   }) => Pick<DeclaredDependency, 'name' | 'spec'> | undefined
+  /**
+   * The installed version of each package a moving target needs as a peer
+   * (#198), by `rowKey`, asked once per plan with a `{ name, workspace }` for
+   * every (peer, manifest) pair. Any installed package counts, declared or
+   * not (peers are often hoisted). Default: `node_modules`; the pipeline
+   * passes the lockfile's reader where the manager's lockfile stands in for it.
+   */
+  installed?: (
+    rows: { name: string; workspace?: string }[],
+  ) => Record<string, string>
 }
 
 /**
@@ -99,8 +113,9 @@ const heldFor = (result: UpdateResult, reason: string): UpdateResult => ({
 
 /**
  * Holds targets an installed package's peer range excludes. A range declared
- * by a package that is itself moving in this run doesn't count: its new
- * version's peers can't be known offline. Holding one package can expose a
+ * by a package that is itself moving in this run doesn't count here: those
+ * are the new version's peers, which `targetPeerConflict` checks from the
+ * version document (#198). Holding one package can expose a
  * conflict for another, so this repeats until nothing changes. A `latest`
  * rule still moves, with the conflict as a warning.
  */
@@ -134,6 +149,90 @@ const holdPeerConflicts = (
 
     if (!changed) return current
   }
+}
+
+/** What `targetPeerConflict` judges a target's peers against. */
+interface TargetPeers {
+  manifests: TargetManifests
+  /** Installed versions of the peers, by `rowKey`. */
+  installed: Record<string, string>
+  lookupName: (row: UpdateResult) => string
+}
+
+/**
+ * The first peer of a moving row's target (its own version document, #198)
+ * that the plan leaves outside the declared range, worded as the reason:
+ * `peer conflict: react-redux@9.2.0 needs react ^18.0 || ^19 (installed
+ * 17.0.2)`. The version a peer is left at is its row's target when that row
+ * moves, else its current version, else (no row) the installed one. From a
+ * workspace member, the member's row comes first, then the root's, as the
+ * manager hoists a peer to the root; which of the two a member resolves is
+ * a guess. A peer that isn't installed is fine: optional, or (with a debug
+ * line, once) left to the manager, which installs it; an installed optional
+ * peer must satisfy its range. A range `semver` can't read (`workspace:*`)
+ * isn't checked.
+ */
+const targetPeerConflict = (
+  row: UpdateResult,
+  rows: readonly UpdateResult[],
+  { manifests, installed, lookupName }: TargetPeers,
+  noted: Set<string>,
+): string | undefined => {
+  const { target } = row
+  if (!row.updated || !target) return undefined
+  const manifest = targetManifestOf(manifests, row, lookupName)
+  if (!manifest) return undefined
+  const name = lookupName(row)
+  const workspace = row.workspace ?? '.'
+  const note = (message: string) => {
+    if (noted.has(message)) return
+    noted.add(message)
+    logger.debug(message)
+  }
+
+  const plannedFor = (
+    peer: string,
+    where: string,
+  ): { version: string; moving: boolean } | undefined => {
+    const found = rows.find(
+      (r) => r.name === peer && (r.workspace ?? '.') === where,
+    )
+    if (!found) return undefined
+    if (found.updated && found.target) {
+      return { version: found.target, moving: true }
+    }
+    return found.current === 'missing'
+      ? undefined
+      : { version: found.current, moving: false }
+  }
+
+  for (const [peer, range] of Object.entries(manifest.peerDependencies)) {
+    if (peer === name) continue
+    if (semver.validRange(range) === null) {
+      note(
+        `peer ${peer} ${range} of ${name}@${target} is not a semver range; not checked`,
+      )
+      continue
+    }
+    const planned =
+      plannedFor(peer, workspace) ??
+      (workspace === '.' ? undefined : plannedFor(peer, '.'))
+    const version =
+      planned?.version ??
+      installed[rowKey({ name: peer, workspace: row.workspace })]
+    if (version === undefined) {
+      if (!manifest.optionalPeers.includes(peer)) {
+        note(
+          `${name}@${target} needs ${peer} ${range}, which isn't installed; left to the manager`,
+        )
+      }
+      continue
+    }
+    if (semver.valid(version) === null) continue
+    if (semver.satisfies(version, range, { includePrerelease: true })) continue
+    return `peer conflict: ${name}@${target} needs ${peer} ${range} (${planned?.moving ? 'moving to' : 'installed'} ${version})`
+  }
+  return undefined
 }
 
 /**
@@ -406,8 +505,8 @@ const holdLicenseChanges = async (
 }
 
 /**
- * A pass that judges each moving row by its target's own manifest (#197-#199:
- * license, `engines.node`, peers): it holds or warns, never moves a row. An
+ * A pass that judges each moving row by its target's own manifest (#199:
+ * `engines.node`; license and peers are judged elsewhere): it holds or warns, never moves a row. An
  * unknown manifest (undefined) is a state each pass decides for itself.
  */
 type ManifestPass = (
@@ -421,7 +520,7 @@ type ManifestPass = (
 
 /**
  * The manifest passes, in order. #196 reads the manifests and holds nothing
- * on them; #197-#199 add their passes here.
+ * on them; #199 adds its synchronous pass here (license, #197, is async and called directly; the target peers, #198, are checked inside `settle`).
  */
 const MANIFEST_PASSES: readonly ManifestPass[] = []
 
@@ -526,14 +625,33 @@ const filterPackages = async (
   // A peer hold can hold a package's other rows (holdTogether), and a row
   // held for any reason stops counting as moving for the peer check, so
   // both repeat until nothing changes. Each only ever holds, so this ends.
-  const settle = (rows: UpdateResult[]): UpdateResult[] => {
+  // With `targetPeers` (#198) a moving target's own peers are checked too,
+  // after the installed ones. A row under a `latest` rule isn't held by
+  // them; it gets its warning once the plan is stable, so a peer that stops
+  // moving leaves no stale "moving to".
+  const noted = new Set<string>()
+  const settle = (
+    rows: UpdateResult[],
+    targetPeers?: TargetPeers,
+  ): UpdateResult[] => {
     let current = rows
     for (;;) {
-      const next = holdTogether(
-        peers ? holdPeerConflicts(current, peers, policy) : current,
-      )
+      const peered = peers ? holdPeerConflicts(current, peers, policy) : current
+      const checked = targetPeers
+        ? peered.map((row) => {
+            if (policy.ruleFor(row.name) === 'latest') return row
+            const conflict = targetPeerConflict(row, peered, targetPeers, noted)
+            return conflict ? heldFor(row, conflict) : row
+          })
+        : peered
+      const next = holdTogether(checked)
       if (next.every((row, i) => row.updated === current[i].updated)) {
-        return next
+        if (!targetPeers) return next
+        return next.map((row) => {
+          if (policy.ruleFor(row.name) !== 'latest') return row
+          const conflict = targetPeerConflict(row, next, targetPeers, noted)
+          return conflict ? withWarning(row, conflict) : row
+        })
       }
       current = next
     }
@@ -563,11 +681,39 @@ const filterPackages = async (
       lookupName,
       cwd,
     })
+    const passed = MANIFEST_PASSES.reduce(
+      (current, pass) => pass(current, { manifests, lookupName, policy }),
+      licensed.rows,
+    )
+    // Every peer a moving target needs: the plan's own rows answer for most,
+    // the installed copies for the rest.
+    // No manifests read (a session that can't): nothing to check.
+    const peerRows =
+      manifests.size === 0
+        ? []
+        : passed.flatMap((row) => {
+            const manifest = targetManifestOf(manifests, row, lookupName)
+            return manifest
+              ? Object.keys(manifest.peerDependencies).map((name) => ({
+                  name,
+                  ...(row.workspace === undefined
+                    ? {}
+                    : { workspace: row.workspace }),
+                }))
+              : []
+          })
+    const readInstalled =
+      options.installed ??
+      ((asked) => readInstalledVersions(cwd, asked, { declaredOnly: false }))
     const settled = settle(
-      MANIFEST_PASSES.reduce(
-        (current, pass) => pass(current, { manifests, lookupName, policy }),
-        licensed.rows,
-      ),
+      passed,
+      manifests.size === 0
+        ? undefined
+        : {
+            manifests,
+            installed: peerRows.length > 0 ? readInstalled(peerRows) : {},
+            lookupName,
+          },
     )
     const listed = (keys: string[]): string =>
       `${keys.slice(0, 10).join(', ')}${keys.length > 10 ? ` and ${keys.length - 10} more` : ''}`
@@ -578,7 +724,7 @@ const filterPackages = async (
     ].filter(Boolean)
     if (missing.length > 0) {
       logger.warn(
-        `No version manifest for ${missing.join('; ')}: they move without a license check`,
+        `No version manifest for ${missing.join('; ')}: they move without license or peer checks`,
       )
     }
     return settled

@@ -3,12 +3,14 @@ import os from 'os'
 import path from 'path'
 import yarn from '@/managers/yarn'
 import { readBerryLock } from '@/managers/yarn/berry'
-import { check, update } from '@/pipeline'
+import { check, plan, update } from '@/pipeline'
 import type { OutdatedEntry } from '@/types'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 import {
+  capturedManifest,
   capturedRegistry,
   exitError,
+  fakeRegistry,
   projectFor,
   readFixture,
 } from '../fixtures'
@@ -134,6 +136,48 @@ describe('yarn berry', () => {
       ).toEqual({})
       fs.rmSync(path.join(cwd, 'yarn.lock'))
       expect(readBerryLock(cwd, [{ name: 'ms', workspace: '.' }])).toEqual({})
+    })
+  })
+
+  describe("a target's peers (#198)", () => {
+    it("are judged against yarn.lock's versions, from the workspace that declares them", async () => {
+      writeCaptured()
+      const ms = capturedManifest('ms', '2.1.3', 'ms.2.1.3.manifest')
+      const project = projectFor(
+        yarn,
+        cwd,
+        {},
+        {
+          ...fakeRegistry(),
+          versionManifest: async (name, version) =>
+            name === 'ms' && version === '2.1.3'
+              ? { ...ms, peerDependencies: { chalk: '^5.0.0' } }
+              : undefined,
+        },
+      )
+
+      const results = await plan(project, {
+        ms: {
+          name: 'ms',
+          current: '2.1.2',
+          wanted: '2.1.3',
+          latest: '2.1.3',
+          workspaces: [
+            { path: 'packages/a', current: '2.1.2', wanted: '2.1.3' },
+          ],
+        },
+      })
+
+      expect(results).toEqual([
+        expect.objectContaining({
+          name: 'ms',
+          workspace: 'packages/a',
+          updated: false,
+          // packages/a declares chalk ^4.0.0, which yarn.lock locks at 4.1.2.
+          reason:
+            'peer conflict: ms@2.1.3 needs chalk ^5.0.0 (installed 4.1.2)',
+        }),
+      ])
     })
   })
 
