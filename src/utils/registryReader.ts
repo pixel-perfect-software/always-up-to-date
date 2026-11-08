@@ -717,8 +717,12 @@ export const createRegistryReader = ({
     const host = new URL(registry).host
     const key = `${name}@${version}`
     const hit = cache?.get('manifest', registry, key)
+    // deps.dev indexes only public packages: if the lookup came from it, the
+    // manifest is the same for everyone, whoever asked (Q1, as for dist-tags),
+    // so a token on the request doesn't stop it being stored and reused.
+    const sameForEveryone = looked.package.source === 'deps.dev'
     let manifest: VersionManifest
-    if (hit && !revalidatesEveryUse(hit)) {
+    if (hit && !revalidatesEveryUse(hit, sameForEveryone)) {
       // Inside its TTL, the cache has already counted this answer as fresh.
       if (!hit.fresh) counts.covered++
       manifest = hit.value
@@ -743,7 +747,9 @@ export const createRegistryReader = ({
         return undefined
       }
       manifest = fetched.value
-      cache?.put('manifest', registry, key, manifest, fetched.meta)
+      cache?.put('manifest', registry, key, manifest, fetched.meta, {
+        sameForEveryone,
+      })
     }
     const { deprecatedReason: _stored, ...rest } = manifest
     return {

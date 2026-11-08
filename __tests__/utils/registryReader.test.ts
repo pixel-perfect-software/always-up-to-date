@@ -2491,10 +2491,10 @@ describe('registry reader', () => {
         )
       })
 
-      it('revalidates an authenticated entry every run, and a 304 serves it', async () => {
+      it('revalidates an authenticated entry every run when deps.dev does not vouch for the package, and a 304 serves it', async () => {
         const { registry, run } = await cached(
           { registry: msAnd(conditional(manifestReply(), '"m1"')) },
-          { credentials: true },
+          { depsDev: false, credentials: true },
         )
         const first = await run().reader.versionManifest('ms', '2.1.3')
         clock += 30 * DAY
@@ -2512,12 +2512,12 @@ describe('registry reader', () => {
         expect(second.reader.stats().covered).toBe(0)
       })
 
-      it('keeps no authenticated manifest that has no ETag (npmjs sends none), so each run asks again', async () => {
+      it('keeps no authenticated manifest without an ETag when deps.dev does not vouch for the package, so each run asks again', async () => {
         const { run, asked } = await cached(
           {
             registry: msAnd(manifestReply({ 'cache-control': 'max-age=300' })),
           },
-          { credentials: true },
+          { depsDev: false, credentials: true },
         )
         await run().reader.versionManifest('ms', '2.1.3')
         expect(filesIn('manifest')).toEqual([])
@@ -2540,11 +2540,31 @@ describe('registry reader', () => {
         expect(manifestAsked(asked().registry)).toEqual(['/ms/2.1.3'])
       })
 
+      it('keeps an authenticated manifest of a package deps.dev lists, as npmjs answers it, and reuses it with no request', async () => {
+        const { run, asked } = await cached(
+          {
+            registry: msAnd(manifestReply({ 'cache-control': 'max-age=300' })),
+          },
+          { credentials: true },
+        )
+        const first = await run().reader.versionManifest('ms', '2.1.3')
+        expect(filesIn('manifest')).toHaveLength(1)
+        asked()
+
+        clock += 30 * DAY
+        const second = run()
+        expect(await second.reader.versionManifest('ms', '2.1.3')).toEqual(
+          first,
+        )
+        expect(manifestAsked(asked().registry)).toEqual([])
+        expect(second.reader.stats().covered).toBe(1)
+      })
+
       it('never falls back to a stored entry it must revalidate when the request fails', async () => {
         const registry = switchable(msAnd(conditional(manifestReply(), '"m1"')))
         const { run } = await cached(
           { registry: registry.handler },
-          { credentials: true },
+          { depsDev: false, credentials: true },
         )
         await run().reader.versionManifest('ms', '2.1.3')
         registry.use(msAnd(status(500)))
