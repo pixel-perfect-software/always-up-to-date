@@ -25,6 +25,7 @@ import {
 } from './installed'
 import { sameLicense } from './license'
 import logger from './logger'
+import { fitRunningNode } from './nodeFit'
 import type { ControllingOverride } from './overrides'
 import { type PeerRequirement, readInstalledPeers } from './peers'
 import type { RegistrySession } from './registry'
@@ -86,6 +87,13 @@ interface FilterPackagesOptions {
   node?: string | null
   /** What `node` is called in a reason (`pnpm nodeVersion`); default `running node`. */
   nodeLabel?: string
+  /**
+   * The manager installs a version its Node runs over a newer one whose
+   * `engines.node` excludes it (`ManagerAdapter.skipsEnginesExcluded`, npm,
+   * #200): an in-range row whose target needs another Node moves to the
+   * newest version below it that fits (`fitRunningNode`). Default false.
+   */
+  skipsEnginesExcluded?: boolean
 }
 
 /**
@@ -752,11 +760,48 @@ const filterPackages = async (
     const moving = settle(
       await holdDeprecated(rows, registry, policy, lookupName),
     )
-    const manifests = await readTargetManifests(moving, {
+    const read = await readTargetManifests(moving, {
       registry,
       lookupName,
     })
-    const licensed = await holdLicenseChanges(moving, manifests, {
+    const node = options.node === undefined ? runningNode() : options.node
+    // npm installs the newest version its Node runs (#200): retarget a row
+    // whose target it would skip, before the passes below judge the target.
+    const { rows: fitted, manifests } = options.skipsEnginesExcluded
+      ? await fitRunningNode(moving, {
+          node,
+          manifests: read,
+          registry,
+          lookupName,
+          rangeOf: (row) => {
+            const spec = declared?.({
+              name: row.name,
+              workspace: row.workspace,
+            })?.spec
+            return spec && 'range' in spec ? spec.range : undefined
+          },
+          cooldownOf: cooldownActive
+            ? async (row, version) => {
+                const type = stepType(row.current, version)
+                if (cooldownDaysFor(config.cooldown, type) <= 0) {
+                  return { gated: false, ageDays: undefined }
+                }
+                const times = await registry.releaseTimes(lookupName(row), {
+                  current: row.current,
+                  target: row.target as string,
+                })
+                const { gated, ageDays } = evaluateCooldown(
+                  times[version],
+                  type,
+                  config.cooldown,
+                  now,
+                )
+                return { gated, ageDays }
+              }
+            : undefined,
+        })
+      : { rows: moving, manifests: read }
+    const licensed = await holdLicenseChanges(fitted, manifests, {
       registry,
       policy,
       lookupName,
@@ -765,7 +810,7 @@ const filterPackages = async (
     const passes: readonly ManifestPass[] = [
       enginesPass({
         cwd,
-        node: options.node === undefined ? runningNode() : options.node,
+        node,
         nodeLabel: options.nodeLabel,
       }),
     ]

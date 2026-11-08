@@ -11,6 +11,8 @@ import type { RegistryPackage } from '@/types'
  * Prereleases follow semver's default: one satisfies a range only when a
  * comparator with the same `[major, minor, patch]` names a prerelease.
  * Undefined when no published version satisfies the range.
+ * It ignores `engines.node` (discovery has no per-version manifests): npm's
+ * preference for a version its Node runs is applied in the plan (#200).
  */
 export const wantedVersion = (
   range: string,

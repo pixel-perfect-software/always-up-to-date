@@ -150,3 +150,20 @@ Same method as the cache headers above; `ms/2.1.3` (the `Date` header read 2026-
 | Verdaccio 6.11.1 `/<name>/<version>`, local | none                        | strong, `"<32 hex>"` | none  | `Accept-Encoding`         | the ETag gets 304                       |
 
 Verdaccio 6.11.1 (a private registry, with an `npmjs` uplink) answered `/ms/2.1.3`, `/@types%2fms/2.1.0` and `/@types/ms/2.1.0` with 200 `application/json; charset=utf-8` (7009 B, 1673 B, 1673 B; the `@types` bodies are the same); its body adds `_id` and `maintainers`. GitHub Packages and Artifactory were not tried.
+
+## Engines walk-back (#200, 2026-11-08)
+
+Captured for #200 with the same curl shape (`curl --compressed -sS -H 'Accept: application/json'`, HTTP/2, HTTP 200, `application/json`, no credentials, the Aikido TLS proxy in the path). Each body parses as a record whose `name` and `version` equal the request; none has `deprecated`, and `license` is `"Apache-2.0"`.
+
+- `typescript.5.1.6`, `5.1.5` and `5.1.3`: `engines.node` is `">=14.17"`. `typescript.5.0.4`: `engines.node` is `">=12.20"`. With running Node `12.22.12`, range `>=5.0.0 <5.2.0` and current 5.0.2, `wanted` is 5.1.6 and the walk below it goes 5.1.5 (excluded), 5.1.3 (excluded), 5.0.4 (fits).
+- The plan named "the committed `typescript` packument capture" for the version list. No such packument is committed (the #106 captures hold packuments only for yarn and pnpm), so the list comes from the committed deps.dev capture, `typescript.deps-dev.body.gz`: it lists 5.0.2, 5.0.3, 5.0.4, 5.1.3, 5.1.5 and 5.1.6, none deprecated. 5.1.4 was never published.
+- Derived, not captured: the invalid-range variant (`typescript` 5.1.6 with `engines.node` `"not a range"`) is made at test time, never committed: `derive<{ engines: { node: string } }>('typescript.5.1.6.manifest.body', (body) => { body.engines.node = 'not a range' })`. Only the `engines` field differs from the capture.
+- Derived, not captured: `__tests__/enginesWalk.test.ts` serves a `typescript` abbreviated packument made at test time from `typescript.deps-dev.body.gz` (the version list cut to 5.0.2, 5.0.3, 5.0.4, 5.1.3, 5.1.5 and 5.1.6, `dist-tags.latest` 5.1.6, each version only `name` and `version`), because no typescript packument is committed. Only the list of versions matters to that test.
+- The probe of npm 12.2.2 against a local Verdaccio 6.11.1 (the `autd-engines-*` packages) is recorded on the issue, not here; it needs no fixture.
+
+| File                             | Request                               | Status | Content type       | Wire size | Decoded size | gz  |
+| -------------------------------- | ------------------------------------- | ------ | ------------------ | --------- | ------------ | --- |
+| `typescript.5.1.6.manifest.body` | `registry.npmjs.org/typescript/5.1.6` | 200    | `application/json` | 1744 B    | 3859 B       | no  |
+| `typescript.5.1.5.manifest.body` | `registry.npmjs.org/typescript/5.1.5` | 200    | `application/json` | 1741 B    | 3859 B       | no  |
+| `typescript.5.1.3.manifest.body` | `registry.npmjs.org/typescript/5.1.3` | 200    | `application/json` | 1740 B    | 3859 B       | no  |
+| `typescript.5.0.4.manifest.body` | `registry.npmjs.org/typescript/5.0.4` | 200    | `application/json` | 2499 B    | 4825 B       | no  |

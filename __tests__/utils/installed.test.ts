@@ -245,6 +245,28 @@ describe('checkApplied', () => {
     ])
   })
 
+  it('wants an engines walk-back installed exactly (#200)', () => {
+    // 5.0.4 is the version npm's Node runs; 5.1.6 is the wanted one it skipped.
+    const walked = row({
+      name: 'typescript',
+      current: '5.0.2',
+      wanted: '5.1.6',
+      latest: '5.1.6',
+      target: '5.0.4',
+    })
+    expect(checkApplied([walked], { typescript: '5.0.4' }, 'npm')).toEqual([
+      walked,
+    ])
+    expect(checkApplied([walked], { typescript: '5.1.6' }, 'npm')).toEqual([
+      {
+        ...walked,
+        target: undefined,
+        updated: false,
+        reason: 'not applied by npm (installed 5.1.6)',
+      },
+    ])
+  })
+
   it('keeps a row with no installed version to check', () => {
     const rows = [row()]
     expect(checkApplied(rows, {}, 'npm')).toEqual(rows)

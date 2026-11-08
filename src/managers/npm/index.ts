@@ -156,6 +156,10 @@ const npm: ManagerAdapter = {
 
   pinning: () => ({ install: ['install'] }),
 
+  // #200: npm-pick-manifest prefers a version whose `engines.node` fits the
+  // running Node (probed on npm 12.2.2 and 11.19.1, 2026-11-08).
+  skipsEnginesExcluded: () => true,
+
   releaseAgeGate: (_cwd, _sources, npmrc) => npmReleaseAgeGate(npmrc.values),
 
   // #107: a project with package-lock.json and no node_modules (never
