@@ -315,6 +315,27 @@ describe('Logger', () => {
       )
     })
 
+    it('names the version npm skipped for the Node, and keeps the row under update (#200)', () => {
+      logger.report(
+        [
+          moved('typescript', {
+            current: '5.0.2',
+            wanted: '5.1.6',
+            latest: '5.1.6',
+            target: '5.0.4',
+            reason: 'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+          }),
+        ],
+        'npm',
+        'plan',
+      )
+      const lines = printed()
+      expect(lines).toContain(
+        '  typescript  5.0.2 → 5.0.4  within range; 5.1.6 needs node >=14.17 (running node 12.22.12)',
+      )
+      expect(lines.join('\n')).not.toContain('Held by engines.node')
+    })
+
     it('counts three or more manifests instead of listing them', () => {
       logger.report(
         ['.', 'a', 'b'].map((workspace) =>

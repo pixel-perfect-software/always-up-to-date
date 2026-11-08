@@ -94,6 +94,10 @@ const noteFor = (
         reason.startsWith('cooldown: ')
           ? reason.replace(/^cooldown: /, '').replace(/requires /, 'needs ')
           : undefined,
+        // npm's engines preference (#200): the version the target needed Node for.
+        reason.startsWith('engines: ')
+          ? reason.replace(/^engines: /, '')
+          : undefined,
         result.warning,
       ]
       return notes.filter(Boolean).join('; ')

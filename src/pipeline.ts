@@ -137,6 +137,8 @@ export const plan = (
     ...(nodeVersion
       ? { node: nodeVersion, nodeLabel: `${adapter.name} nodeVersion` }
       : { node: runningNode() }),
+    // npm installs the newest version its Node runs (#200).
+    skipsEnginesExcluded: adapter.skipsEnginesExcluded?.(root) ?? false,
     // The peers of a target (#198): the lockfile stands in for node_modules
     // where the adapter says so.
     ...(locked

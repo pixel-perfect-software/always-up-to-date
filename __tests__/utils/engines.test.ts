@@ -1,7 +1,7 @@
 import {
   declaredNodeRange,
   enginesHold,
-  excludesNode,
+  npmAcceptsNode,
   runningNode,
 } from '@/utils/engines'
 
@@ -117,10 +117,26 @@ describe('enginesHold', () => {
   })
 })
 
-describe('excludesNode', () => {
-  it('is the same rule without the text', () => {
-    expect(excludesNode('>=99', { running: '24.22.1' })).toBe(true)
-    expect(excludesNode('>=20', { running: '24.22.1' })).toBe(false)
-    expect(excludesNode('>=20', { declared: '>=18', running: null })).toBe(true)
+describe('npmAcceptsNode (#200)', () => {
+  it('accepts a target with no engines.node', () => {
+    expect(npmAcceptsNode(undefined, '12.22.12')).toBe(true)
+  })
+
+  it('accepts a range the Node satisfies and refuses one it does not', () => {
+    expect(npmAcceptsNode('>=12.20', '12.22.12')).toBe(true)
+    expect(npmAcceptsNode('>=14.17', '12.22.12')).toBe(false)
+  })
+
+  it('accepts a universal range', () => {
+    expect(npmAcceptsNode('*', '12.22.12')).toBe(true)
+  })
+
+  it('judges a prerelease Node with includePrerelease, as npm does', () => {
+    expect(npmAcceptsNode('>=22.0.0 <23', '22.1.0-rc.1')).toBe(true)
+  })
+
+  it('refuses an invalid range, where enginesHold lets it through', () => {
+    expect(npmAcceptsNode('not a range', '12.22.12')).toBe(false)
+    expect(enginesHold('not a range', { running: '12.22.12' })).toBeUndefined()
   })
 })

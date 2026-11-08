@@ -69,6 +69,20 @@ export const enginesHold = (
     : `engines: needs node ${target} (${runningLabel} ${running})`
 }
 
-/** Whether `targetRange` excludes the project's Node (what #200 asks of each candidate). */
-export const excludesNode = (targetRange: string, side: NodeSide): boolean =>
-  enginesHold(targetRange, side) !== undefined
+/**
+ * Whether npm installs a version whose `engines.node` is `enginesNode` on
+ * `node` (#200): npm-install-checks 9's `checkEngine`, `semver.satisfies(node,
+ * range, { includePrerelease: true })`. No `engines.node` passes, and an
+ * invalid range fails. That last part is deliberately not `enginesHold`'s
+ * rule, which lets an invalid target range through: autd holds only on a
+ * range it can read, but npm prefers a version it can judge fit.
+ */
+export const npmAcceptsNode = (
+  enginesNode: string | undefined,
+  node: string,
+): boolean =>
+  enginesNode === undefined ||
+  semver.satisfies(node, enginesNode.trim(), { includePrerelease: true })
+
+/** A target's `engines.node` as the reasons show it: as written, trimmed. */
+export const shownRange = (range: string): string => range.trim()

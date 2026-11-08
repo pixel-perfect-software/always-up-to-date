@@ -2389,6 +2389,161 @@ describe('engines.node (#199)', () => {
   })
 })
 
+describe('npm engines walk-back (#200)', () => {
+  const TS_AS_OF = '2023-07-01T00:00:00Z'
+  const TS_CAPTURES: Record<string, string> = {
+    '5.1.6': 'typescript.5.1.6.manifest',
+    '5.1.5': 'typescript.5.1.5.manifest',
+    '5.1.3': 'typescript.5.1.3.manifest',
+    '5.0.4': 'typescript.5.0.4.manifest',
+  }
+  const tsRow = {
+    name: 'typescript',
+    current: '5.0.2',
+    wanted: '5.1.6',
+    latest: '5.1.6',
+  }
+  let cwd: string
+
+  beforeEach(() => {
+    cwd = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-engines-walk-')),
+    )
+    fs.writeFileSync(
+      path.join(cwd, 'package.json'),
+      JSON.stringify({ dependencies: { typescript: '>=5.0.0 <5.2.0' } }),
+    )
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  const plan = async (
+    config: Partial<AlwaysUpToDateConfig> = {},
+    {
+      skipsEnginesExcluded = true,
+      node = '12.22.12',
+      releaseTimes,
+      now,
+    }: {
+      skipsEnginesExcluded?: boolean
+      node?: string
+      releaseTimes?: Record<string, string>
+      now?: number
+    } = {},
+  ) => {
+    const reads: string[] = []
+    const session = capturedRegistry(['typescript'], { asOf: TS_AS_OF })
+    await session.lookup('typescript')
+    const filter = loadFilterWithConfig(config, {
+      lookedUp: session.lookedUp,
+      releaseTimes: releaseTimes ? { typescript: releaseTimes } : undefined,
+      versionManifest: async (name, version) => {
+        // The license pass reads the installed version's manifest too (#197);
+        // the walk's reads are the ones above `current`.
+        if (version !== tsRow.current) reads.push(`${name}@${version}`)
+        return TS_CAPTURES[version]
+          ? capturedManifest(name, version, TS_CAPTURES[version])
+          : undefined
+      },
+    })
+    const results = await filter(makeOutdated([tsRow]), {
+      cwd,
+      node,
+      installed: () => ({}),
+      skipsEnginesExcluded,
+      now,
+      declared: () => ({
+        name: 'typescript',
+        spec: { range: '>=5.0.0 <5.2.0' },
+      }),
+    })
+    return { results, reads, filter }
+  }
+
+  it('moves to the version npm installs when the target needs a newer Node', async () => {
+    const { results, reads } = await plan()
+
+    expect(results[0]).toMatchObject({
+      updated: true,
+      target: '5.0.4',
+      wanted: '5.1.6',
+      updateType: 'patch',
+      reason: 'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+    })
+    expect(reads).toEqual([
+      'typescript@5.1.6',
+      'typescript@5.1.5',
+      'typescript@5.1.3',
+      'typescript@5.0.4',
+    ])
+  })
+
+  it('sends no extra read, and holds the target, without the capability', async () => {
+    const { results, reads } = await plan({}, { skipsEnginesExcluded: false })
+
+    expect(reads).toEqual(['typescript@5.1.6'])
+    expect(results[0]).toMatchObject({
+      updated: false,
+      reason: 'engines: needs node >=14.17 (running node 12.22.12)',
+    })
+  })
+
+  it('adds nothing when the target fits', async () => {
+    const { results, reads } = await plan({}, { node: '24.22.1' })
+
+    expect(reads).toEqual(['typescript@5.1.6'])
+    expect(results[0]).toMatchObject({ updated: true, target: '5.1.6' })
+  })
+
+  it('keeps the target, which the engines hold then holds, when nothing fits', async () => {
+    const { results } = await plan({}, { node: '10.0.0' })
+
+    expect(results[0]).toMatchObject({
+      updated: false,
+      reason: 'engines: needs node >=14.17 (running node 10.0.0)',
+    })
+  })
+
+  it('gives the license and engines passes the fit, not the old target', async () => {
+    const { results } = await plan({ rules: { typescript: 'latest' } })
+
+    // The fit passes #199 unwarned; a pass on the old target would warn.
+    expect(results[0]).toMatchObject({ target: '5.0.4', updated: true })
+    expect(results[0].warning).toBeUndefined()
+  })
+
+  it('takes releaseAge from the fit under a cooldown', async () => {
+    const now = Date.parse('2024-01-01T00:00:00Z')
+    const times = {
+      '5.1.6': '2023-06-01T00:00:00Z',
+      '5.0.4': '2023-04-01T00:00:00Z',
+    }
+    const { results } = await plan(
+      { cooldown: 7 },
+      { releaseTimes: times, now },
+    )
+
+    expect(results[0].target).toBe('5.0.4')
+    expect(results[0].releaseAge).toBeCloseTo(
+      (now - Date.parse(times['5.0.4'])) / 86_400_000,
+    )
+  })
+
+  it('pins the walked row and leaves it out of the names npm updates', async () => {
+    const { results, filter } = await plan()
+
+    expect(filter.split(results)).toMatchObject({
+      names: [],
+      withinRange: [],
+      pinned: [
+        { path: '.', name: 'typescript', version: '5.0.4', beyondRange: false },
+      ],
+    })
+  })
+})
+
 describe('withWarning', () => {
   const row = {
     name: 'p',

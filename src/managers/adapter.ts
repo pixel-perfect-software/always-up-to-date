@@ -127,6 +127,15 @@ export interface ManagerAdapter {
    * Default true; yarn berry resolves to the highest (#107).
    */
   prefersLatestInRange?(cwd: string): boolean
+  /**
+   * Whether the manager installs the newest in-range version whose
+   * `engines.node` fits its Node, over a newer one that excludes it (#200).
+   * Default false: pnpm and bun install the highest satisfying version
+   * whatever the engines (probed 2026-11-07), and yarn v1 and berry were not
+   * verified. npm: npm-pick-manifest's `engineOk` sort; npm 12.2.2 and 11.19.1
+   * agree. Takes `cwd` because the yarn adapter serves v1 and berry.
+   */
+  skipsEnginesExcluded?(cwd: string): boolean
   /** Writes the specs the manager does not write itself, then runs its update commands. */
   apply(
     run: RunManager,
