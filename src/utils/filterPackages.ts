@@ -14,6 +14,7 @@ import {
 } from './cooldown'
 import type { DeclaredDependency } from './dependencySpecs'
 import { formatAgeDays } from './duration'
+import logger from './logger'
 import type { ControllingOverride } from './overrides'
 import { type PeerRequirement, readInstalledPeers } from './peers'
 import type { RegistrySession } from './registry'
@@ -28,11 +29,14 @@ interface FilterPackagesOptions {
   targetPackages?: string[]
   cwd?: string
   /**
-   * Where the cooldown gate reads publish times, and (`lookup`, when given)
-   * which versions are deprecated; only asked when cooldown is on.
+   * Where the cooldown gate reads publish times and (`lookup`, when given)
+   * which versions are deprecated; only asked when cooldown is on. A moving
+   * row's target is checked for deprecation (#195) in `lookedUp`, the
+   * session's own lookups, which never sends a request; without it, or for a
+   * name the session never looked up, nothing is held as deprecated.
    */
   registry: Pick<RegistrySession, 'releaseTimes'> &
-    Partial<Pick<RegistrySession, 'lookup'>>
+    Partial<Pick<RegistrySession, 'lookup' | 'lookedUp'>>
   now?: number
   /** Packages pinned by an override the manager enforces; without it no package is held for one. */
   overrides?: Record<string, ControllingOverride>
@@ -58,6 +62,32 @@ const stepType = (from: string, to: string): ReleaseType | null =>
   semver.valid(from) && semver.valid(to) ? semver.diff(from, to) : null
 
 /**
+ * A moving row's warnings, one after another; the same one is never added
+ * twice. A message can hold `; ` itself (a registry's deprecation text), so
+ * it is matched whole, between separators, not split.
+ */
+export const withWarning = (
+  result: UpdateResult,
+  message: string,
+): UpdateResult =>
+  result.warning !== undefined &&
+  `; ${result.warning}; `.includes(`; ${message}; `)
+    ? result
+    : {
+        ...result,
+        warning: result.warning ? `${result.warning}; ${message}` : message,
+      }
+
+/** A moving row held for `reason`: no target, and its step is `current → latest`. */
+const heldFor = (result: UpdateResult, reason: string): UpdateResult => ({
+  ...result,
+  target: undefined,
+  updated: false,
+  updateType: stepType(result.current, result.latest),
+  reason,
+})
+
+/**
  * Holds targets an installed package's peer range excludes. A range declared
  * by a package that is itself moving in this run doesn't count: its new
  * version's peers can't be known offline. Holding one package can expose a
@@ -76,7 +106,7 @@ const holdPeerConflicts = (
 
     current = current.map((result) => {
       const { name, target } = result
-      if (!result.updated || !target || result.warning) return result
+      if (!result.updated || !target) return result
 
       const conflict = (peers.get(name) ?? []).find(
         (peer) =>
@@ -86,18 +116,10 @@ const holdPeerConflicts = (
       if (!conflict) return result
 
       const message = `peer conflict: ${conflict.name}@${conflict.version} needs ${name} ${conflict.range}`
-      if (policy.ruleFor(name) === 'latest') {
-        return { ...result, warning: message }
-      }
+      if (policy.ruleFor(name) === 'latest') return withWarning(result, message)
 
       changed = true
-      return {
-        ...result,
-        target: undefined,
-        updated: false,
-        updateType: stepType(result.current, result.latest),
-        reason: message,
-      }
+      return heldFor(result, message)
     })
 
     if (!changed) return current
@@ -187,6 +209,78 @@ const cooledOffVersion = (
     if (!evaluation.gated) return { version, ageDays: evaluation.ageDays }
   }
   return undefined
+}
+
+/** The most of a registry's message a report row shows. */
+const MESSAGE_LIMIT = 400
+
+/**
+ * A registry's deprecation message on one line, as it lands in a terminal
+ * row: line breaks, other control characters (an escape sequence's ESC among
+ * them), zero-width and bidirectional formatting characters (which can make
+ * a row read as something else) and runs of spaces become one space, and a
+ * message past `MESSAGE_LIMIT` characters is cut with `…`.
+ */
+const oneLine = (text: string): string => {
+  const line = text
+    .replace(
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+      /[\s\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g,
+      ' ',
+    )
+    .trim()
+  return line.length > MESSAGE_LIMIT
+    ? `${line.slice(0, MESSAGE_LIMIT).trimEnd()}…`
+    : line
+}
+
+/**
+ * Holds a moving row whose target the registry marks deprecated
+ * (`deprecated: <message>`, #195); a `latest` rule moves it anyway, with the
+ * message as a warning. When the installed version carries the same
+ * deprecation, the move takes on nothing it doesn't have, so it goes ahead
+ * with the warning: holding would keep an older deprecated version (every
+ * next 14.0.x, for one). It judges the final target, so it runs after the cooldown, whose
+ * fallbacks are never deprecated. It reads only the session's own lookups.
+ */
+const holdDeprecated = async (
+  results: UpdateResult[],
+  registry: FilterPackagesOptions['registry'],
+  policy: UpdatePolicy,
+  lookupName: (row: UpdateResult) => string,
+): Promise<UpdateResult[]> => {
+  const { lookedUp } = registry
+  if (!lookedUp) return results
+  return Promise.all(
+    results.map(async (result) => {
+      const { target, current } = result
+      if (!result.updated || !target) return result
+      const name = lookupName(result)
+      const found = await lookedUp(name)
+      if (!found) {
+        logger.debug(
+          `No lookup of ${name} in this session; its deprecation isn't checked`,
+        )
+        return result
+      }
+      if (!found.ok) return result
+      const { versions } = found.package
+      const deprecation = versions.find((v) => v.version === target)
+      if (!deprecation?.deprecated) return result
+
+      const message = oneLine(deprecation.deprecatedReason ?? '')
+      const reason = `deprecated: ${message || 'no message given'}`
+      // The installed version carries the same deprecation, so the move takes
+      // on nothing new; a different message is a new reason, and holds.
+      const installed = versions.find((v) => v.version === current)
+      const sameAsInstalled =
+        installed?.deprecated === true &&
+        oneLine(installed.deprecatedReason ?? '') === message
+      return sameAsInstalled || policy.ruleFor(result.name) === 'latest'
+        ? withWarning(result, reason)
+        : heldFor(result, reason)
+    }),
+  )
 }
 
 /** Versions the registry marks deprecated, when the session can say. */
@@ -305,7 +399,16 @@ const filterPackages = async (
 
   const results = settle(initialResults)
 
-  if (!cooldownActive) return results
+  // A row is keyed by its manifest key; an alias's versions are its target's.
+  const lookupName = (row: UpdateResult): string =>
+    declared?.({ name: row.name, workspace: row.workspace })?.name ?? row.name
+
+  // Every pass below judges the final target, so it runs after the cooldown,
+  // and a hold there is settled again.
+  const signals = async (rows: UpdateResult[]) =>
+    settle(await holdDeprecated(rows, registry, policy, lookupName))
+
+  if (!cooldownActive) return signals(results)
 
   const gated = await Promise.all(
     results.map(async (result) => {
@@ -370,7 +473,7 @@ const filterPackages = async (
       return { ...result, releaseAge: evaluation.ageDays }
     }),
   )
-  return settle(gated)
+  return signals(settle(gated))
 }
 
 /**

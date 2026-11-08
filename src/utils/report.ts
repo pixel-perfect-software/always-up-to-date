@@ -10,6 +10,7 @@ export type Outcome =
   | 'rule'
   | 'override'
   | 'peer'
+  | 'deprecated'
   | 'together'
   | 'other'
 
@@ -22,6 +23,7 @@ const ORDER: Outcome[] = [
   'rule',
   'override',
   'peer',
+  'deprecated',
   'together',
   'other',
 ]
@@ -39,6 +41,7 @@ export const outcomeOf = (result: UpdateResult): Outcome | undefined => {
   }
   if (reason.startsWith('controlled by ')) return 'override'
   if (reason.startsWith('peer conflict: ')) return 'peer'
+  if (reason.startsWith('deprecated: ')) return 'deprecated'
   if (reason.startsWith('held with ')) return 'together'
   return 'other'
 }
@@ -97,6 +100,8 @@ const noteFor = (
     }
     case 'rule':
       return reason === 'held by rule' ? 'rule "hold"' : 'rule "followRange"'
+    case 'deprecated':
+      return reason.replace(/^deprecated: /, '')
     case 'not-applied':
       return reason.replace(/^not applied by \S+ \((.*)\)$/, '$1')
     default:

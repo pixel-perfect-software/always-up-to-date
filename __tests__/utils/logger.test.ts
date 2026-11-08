@@ -344,12 +344,29 @@ describe('Logger', () => {
       )
     })
 
+    it('shows a deprecated target with the registry message (#195)', () => {
+      logger.report(
+        [
+          held('lodash', 'deprecated: Bad release. Please use 4.17.21.', {
+            current: '4.17.21',
+            latest: '4.18.0',
+          }),
+        ],
+        'npm',
+        'plan',
+      )
+      expect(printed()[1]).toBe(
+        '  lodash  4.17.21 → 4.18.0  Bad release. Please use 4.17.21.',
+      )
+    })
+
     it.each([
       ['controlled by overrides (^1.0.0)', 'Held by an override'],
       [
         'peer conflict: react-dom@18.3.1 needs react ^18.3.1',
         'Held by a peer conflict',
       ],
+      ['deprecated: Bad release.', 'Held as deprecated'],
       ['held with packages/a (held by rule)', 'Held with another manifest'],
       ['outside the range (rule followRange)', 'Held by a rule'],
       ['invalid version (current x, latest y)', 'Not updated'],

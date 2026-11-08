@@ -338,6 +338,22 @@ describe('registry session', () => {
       expect(server.requests.map((r) => r.url)).toEqual(['/ms'])
     })
 
+    it('answers lookedUp only with what the session already looked up, asking nothing (#195)', async () => {
+      const server = await msServer()
+      const session = createRegistrySession('/project', {
+        loadConfig: () => configFor(server.url),
+        depsDev: false,
+      })
+      sessions.push(session)
+
+      expect(session.lookedUp('ms')).toBeUndefined()
+      const looked = await session.lookup('ms')
+
+      expect(await session.lookedUp('ms')).toBe(looked)
+      expect(session.lookedUp('mkdirp')).toBeUndefined()
+      expect(server.requests.map((r) => r.url)).toEqual(['/ms'])
+    })
+
     it('shares the client and the config load with releaseTimes', async () => {
       const server = await msServer()
       const loadConfig = jest.fn(() => configFor(server.url))

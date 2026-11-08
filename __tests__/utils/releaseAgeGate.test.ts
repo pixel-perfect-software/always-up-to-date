@@ -162,6 +162,17 @@ describe('withReleaseAgeGate', () => {
     expect(base.calls).toEqual([])
   })
 
+  it('answers lookedUp with the gated lookup, once it was made (#195)', async () => {
+    const base = session({ ok: true, package: capturedPackage('ms') }, {})
+    const gated = withReleaseAgeGate(base, () => gate(), now)
+
+    expect(gated.lookedUp('ms')).toBeUndefined()
+    const looked = await gated.lookup('ms')
+
+    expect(await gated.lookedUp('ms')).toBe(looked)
+    expect(looked.ok && looked.package.latest).toBe('2.1.2')
+  })
+
   it('fills times a packument lacks from the full packument', async () => {
     const base = session(
       { ok: true, package: capturedPackage('ms', { source: 'packument' }) },
