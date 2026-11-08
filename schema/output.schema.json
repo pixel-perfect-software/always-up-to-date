@@ -1,0 +1,197 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/schema/output.schema.json",
+  "title": "Always Up To Date --json output",
+  "description": "The one JSON document `autd check --json`, `autd update --dry-run --json` and `autd update --json` print on stdout: a plan document with rows, or an error document. Within version 1, fields and reason codes may be added; consumers branch on `outcome`.",
+  "oneOf": [
+    { "$ref": "#/definitions/planDocument" },
+    { "$ref": "#/definitions/errorDocument" }
+  ],
+  "definitions": {
+    "planDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "autd",
+        "command",
+        "phase",
+        "manager",
+        "member",
+        "rows"
+      ],
+      "description": "The planned (or applied) rows of a run.",
+      "properties": {
+        "version": { "const": 1, "description": "The format's version." },
+        "autd": {
+          "type": "string",
+          "description": "The version of autd that printed the document."
+        },
+        "command": {
+          "enum": ["check", "update"],
+          "description": "The command that printed the document."
+        },
+        "phase": {
+          "enum": ["plan", "applied"],
+          "description": "\"plan\" for check and update --dry-run; \"applied\" once update has run, also when nothing moved."
+        },
+        "manager": {
+          "enum": ["npm", "yarn", "pnpm", "bun"],
+          "description": "The package manager the run used."
+        },
+        "member": {
+          "type": ["string", "null"],
+          "description": "The workspace member the run started from, relative to the workspace root; null outside a member run."
+        },
+        "rows": {
+          "type": "array",
+          "description": "One row per package and manifest, in the plan's order. Empty when nothing is outdated.",
+          "items": { "$ref": "#/definitions/row" }
+        }
+      }
+    },
+    "errorDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "autd", "command", "error"],
+      "description": "What a failed command prints; the exit code is 1.",
+      "properties": {
+        "version": { "const": 1, "description": "The format's version." },
+        "autd": {
+          "type": "string",
+          "description": "The version of autd that printed the document."
+        },
+        "command": {
+          "enum": ["check", "update"],
+          "description": "The command that failed."
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["step", "message", "manifestWritten"],
+          "description": "The failure.",
+          "properties": {
+            "step": {
+              "enum": ["detect", "discover", "apply", null],
+              "description": "The pipeline step that failed; null for a failure outside a step, such as a malformed config."
+            },
+            "message": { "type": "string", "description": "What went wrong." },
+            "manifestWritten": {
+              "type": "boolean",
+              "description": "True when a package.json was already rewritten when the package manager failed; check it against the lockfile before committing."
+            }
+          }
+        }
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "workspace",
+        "current",
+        "wanted",
+        "latest",
+        "target",
+        "updateType",
+        "outcome",
+        "reason",
+        "warnings",
+        "releaseAgeDays"
+      ],
+      "description": "One dependency in one manifest.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The package name, as the manifest names it (an npm: alias keeps its key)."
+        },
+        "workspace": {
+          "type": "string",
+          "description": "The manifest's directory relative to the project root; \".\" for the root and for a single-package project."
+        },
+        "current": {
+          "type": ["string", "null"],
+          "description": "The installed version; null when the dependency is not installed."
+        },
+        "wanted": {
+          "type": "string",
+          "description": "The highest version the manifest's range allows."
+        },
+        "latest": {
+          "type": "string",
+          "description": "The registry's latest version."
+        },
+        "target": {
+          "type": ["string", "null"],
+          "description": "The version the row moves to; null when it is held."
+        },
+        "updateType": {
+          "enum": [
+            "major",
+            "premajor",
+            "minor",
+            "preminor",
+            "patch",
+            "prepatch",
+            "prerelease",
+            null
+          ],
+          "description": "The semver step from current to the target (to latest when held); null when it cannot be derived."
+        },
+        "outcome": {
+          "enum": ["update", "held", "not-applied", "not-targeted"],
+          "description": "\"update\": the row moves (or moved). \"held\": the plan leaves it, see reason. \"not-applied\": update ran, but the manager left it below its target. \"not-targeted\": left out because update named other packages."
+        },
+        "reason": { "$ref": "#/definitions/reason" },
+        "warnings": {
+          "type": "array",
+          "description": "Problems the row moved despite (a \"latest\" rule over a peer conflict); empty when there are none.",
+          "items": { "$ref": "#/definitions/reason" }
+        },
+        "releaseAgeDays": {
+          "type": ["number", "null"],
+          "description": "The age in days of the release the cooldown judged; null when nothing judged the row."
+        }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "description": "Why a row moves or is held.",
+      "properties": {
+        "code": {
+          "enum": [
+            "within-range",
+            "past-range",
+            "rule-latest",
+            "cooldown-fallback",
+            "engines-fallback",
+            "invalid-version",
+            "not-installed",
+            "not-newer",
+            "rule-hold",
+            "rule-follow-range",
+            "outside-range",
+            "override",
+            "peer-conflict",
+            "target-peers",
+            "cooldown",
+            "deprecated",
+            "license-change",
+            "engines",
+            "held-with",
+            "not-applied",
+            "not-targeted"
+          ],
+          "description": "A stable code. Moving: within-range, past-range, rule-latest, cooldown-fallback, engines-fallback. Held: invalid-version, not-installed, not-newer, rule-hold, rule-follow-range, outside-range, override, peer-conflict, target-peers, cooldown, deprecated, license-change, engines, held-with. After apply or not asked for: not-applied, not-targeted. Within version 1, codes may be added in 4.x without a version bump: branch on outcome, and treat an unknown code like its outcome."
+        },
+        "message": {
+          "type": "string",
+          "description": "The human-readable text, as the report shows it. Not stable; do not parse it."
+        }
+      }
+    }
+  }
+}

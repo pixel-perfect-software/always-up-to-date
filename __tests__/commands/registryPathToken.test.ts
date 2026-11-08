@@ -86,7 +86,7 @@ describe('a registry path token in a manager', () => {
         },
       })
     } catch (error) {
-      reportFailure(error, true)
+      reportFailure(error, { json: true, command: 'check' })
     } finally {
       project.registry.close()
     }

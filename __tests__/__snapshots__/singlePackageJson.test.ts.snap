@@ -2,888 +2,1848 @@
 
 exports[`bun single-package JSON beyondRange major check 1`] = `
 "{
-  "dj": {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23"
-  },
-  "express": {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0"
-  },
-  "semver": {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5"
-  },
-  "zod": {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7"
-  }
+  "version": 1,
+  "autd": "<package version>",
+  "command": "check",
+  "phase": "plan",
+  "manager": "bun",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
 }"
 `;
 
 exports[`bun single-package JSON beyondRange major plan 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "target": "1.11.23",
-    "updateType": "patch",
-    "updated": true
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "target": "5.3.0",
-    "updateType": "major",
-    "updated": true
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "target": "4.6.7",
-    "updateType": "major",
-    "updated": true
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "plan",
+  "manager": "bun",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`bun single-package JSON beyondRange major update 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "target": "1.11.23",
-    "updateType": "patch",
-    "updated": true
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "target": "5.3.0",
-    "updateType": "major",
-    "updated": true
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "target": "4.6.7",
-    "updateType": "major",
-    "updated": true
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "applied",
+  "manager": "bun",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`bun single-package JSON default config check 1`] = `
 "{
-  "dj": {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23"
-  },
-  "express": {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0"
-  },
-  "semver": {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5"
-  },
-  "zod": {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7"
-  }
+  "version": 1,
+  "autd": "<package version>",
+  "command": "check",
+  "phase": "plan",
+  "manager": "bun",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
 }"
 `;
 
 exports[`bun single-package JSON default config plan 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "updateType": "patch",
-    "updated": false,
-    "reason": "patch beyond the range"
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "plan",
+  "manager": "bun",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`bun single-package JSON default config update 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "updateType": "patch",
-    "updated": false,
-    "reason": "patch beyond the range"
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "applied",
+  "manager": "bun",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`npm single-package JSON beyondRange major check 1`] = `
 "{
-  "dj": {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23"
-  },
-  "express": {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0"
-  },
-  "semver": {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5"
-  },
-  "zod": {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7"
-  }
+  "version": 1,
+  "autd": "<package version>",
+  "command": "check",
+  "phase": "plan",
+  "manager": "npm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
 }"
 `;
 
 exports[`npm single-package JSON beyondRange major plan 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "target": "1.11.23",
-    "updateType": "patch",
-    "updated": true
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "target": "5.3.0",
-    "updateType": "major",
-    "updated": true
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "target": "4.6.7",
-    "updateType": "major",
-    "updated": true
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "plan",
+  "manager": "npm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`npm single-package JSON beyondRange major update 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "target": "1.11.23",
-    "updateType": "patch",
-    "updated": true
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "target": "5.3.0",
-    "updateType": "major",
-    "updated": true
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "target": "4.6.7",
-    "updateType": "major",
-    "updated": true
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "applied",
+  "manager": "npm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`npm single-package JSON default config check 1`] = `
 "{
-  "dj": {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23"
-  },
-  "express": {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0"
-  },
-  "semver": {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5"
-  },
-  "zod": {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7"
-  }
+  "version": 1,
+  "autd": "<package version>",
+  "command": "check",
+  "phase": "plan",
+  "manager": "npm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
 }"
 `;
 
 exports[`npm single-package JSON default config plan 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "updateType": "patch",
-    "updated": false,
-    "reason": "patch beyond the range"
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "plan",
+  "manager": "npm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`npm single-package JSON default config update 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "updateType": "patch",
-    "updated": false,
-    "reason": "patch beyond the range"
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "applied",
+  "manager": "npm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`pnpm single-package JSON beyondRange major check 1`] = `
 "{
-  "dj": {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23"
-  },
-  "express": {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0"
-  },
-  "semver": {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5"
-  },
-  "zod": {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7"
-  }
+  "version": 1,
+  "autd": "<package version>",
+  "command": "check",
+  "phase": "plan",
+  "manager": "pnpm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
 }"
 `;
 
 exports[`pnpm single-package JSON beyondRange major plan 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "target": "1.11.23",
-    "updateType": "patch",
-    "updated": true
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "target": "5.3.0",
-    "updateType": "major",
-    "updated": true
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "target": "4.6.7",
-    "updateType": "major",
-    "updated": true
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "plan",
+  "manager": "pnpm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`pnpm single-package JSON beyondRange major update 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "target": "1.11.23",
-    "updateType": "patch",
-    "updated": true
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "target": "5.3.0",
-    "updateType": "major",
-    "updated": true
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "target": "4.6.7",
-    "updateType": "major",
-    "updated": true
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "applied",
+  "manager": "pnpm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`pnpm single-package JSON default config check 1`] = `
 "{
-  "dj": {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23"
-  },
-  "express": {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0"
-  },
-  "semver": {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5"
-  },
-  "zod": {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7"
-  }
+  "version": 1,
+  "autd": "<package version>",
+  "command": "check",
+  "phase": "plan",
+  "manager": "pnpm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
 }"
 `;
 
 exports[`pnpm single-package JSON default config plan 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "updateType": "patch",
-    "updated": false,
-    "reason": "patch beyond the range"
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "plan",
+  "manager": "pnpm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`pnpm single-package JSON default config update 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "updateType": "patch",
-    "updated": false,
-    "reason": "patch beyond the range"
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "applied",
+  "manager": "pnpm",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`yarn single-package JSON beyondRange major check 1`] = `
 "{
-  "dj": {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23"
-  },
-  "express": {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0"
-  },
-  "semver": {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5"
-  },
-  "zod": {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7"
-  }
+  "version": 1,
+  "autd": "<package version>",
+  "command": "check",
+  "phase": "plan",
+  "manager": "yarn",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
 }"
 `;
 
 exports[`yarn single-package JSON beyondRange major plan 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "target": "1.11.23",
-    "updateType": "patch",
-    "updated": true
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "target": "5.3.0",
-    "updateType": "major",
-    "updated": true
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "target": "4.6.7",
-    "updateType": "major",
-    "updated": true
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "plan",
+  "manager": "yarn",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`yarn single-package JSON beyondRange major update 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "target": "1.11.23",
-    "updateType": "patch",
-    "updated": true
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "target": "5.3.0",
-    "updateType": "major",
-    "updated": true
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "target": "7.8.5",
-    "updateType": "minor",
-    "updated": true
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "target": "4.6.7",
-    "updateType": "major",
-    "updated": true
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "applied",
+  "manager": "yarn",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": "1.11.23",
+      "updateType": "patch",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": "5.3.0",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": "7.8.5",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": "4.6.7",
+      "updateType": "major",
+      "outcome": "update",
+      "reason": {
+        "code": "past-range",
+        "message": "past its range, \\"beyondRange\\": \\"major\\""
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`yarn single-package JSON default config check 1`] = `
 "{
-  "dj": {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23"
-  },
-  "express": {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0"
-  },
-  "semver": {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5"
-  },
-  "zod": {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7"
-  }
+  "version": 1,
+  "autd": "<package version>",
+  "command": "check",
+  "phase": "plan",
+  "manager": "yarn",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
 }"
 `;
 
 exports[`yarn single-package JSON default config plan 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "updateType": "patch",
-    "updated": false,
-    "reason": "patch beyond the range"
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "plan",
+  "manager": "yarn",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;
 
 exports[`yarn single-package JSON default config update 1`] = `
-"[
-  {
-    "name": "dj",
-    "current": "1.11.9",
-    "wanted": "1.11.9",
-    "latest": "1.11.23",
-    "updateType": "patch",
-    "updated": false,
-    "reason": "patch beyond the range"
-  },
-  {
-    "name": "express",
-    "current": "4.22.3",
-    "wanted": "4.22.3",
-    "latest": "5.3.0",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  },
-  {
-    "name": "semver",
-    "current": "7.6.3",
-    "wanted": "7.6.3",
-    "latest": "7.8.5",
-    "updateType": "minor",
-    "updated": false,
-    "reason": "minor beyond the range"
-  },
-  {
-    "name": "zod",
-    "current": "3.25.76",
-    "wanted": "3.25.76",
-    "latest": "4.6.7",
-    "updateType": "major",
-    "updated": false,
-    "reason": "major beyond the range"
-  }
-]"
+"{
+  "version": 1,
+  "autd": "<package version>",
+  "command": "update",
+  "phase": "applied",
+  "manager": "yarn",
+  "member": null,
+  "rows": [
+    {
+      "name": "dj",
+      "workspace": ".",
+      "current": "1.11.9",
+      "wanted": "1.11.9",
+      "latest": "1.11.23",
+      "target": null,
+      "updateType": "patch",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "patch beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "express",
+      "workspace": ".",
+      "current": "4.22.3",
+      "wanted": "4.22.3",
+      "latest": "5.3.0",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "semver",
+      "workspace": ".",
+      "current": "7.6.3",
+      "wanted": "7.6.3",
+      "latest": "7.8.5",
+      "target": null,
+      "updateType": "minor",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "minor beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    },
+    {
+      "name": "zod",
+      "workspace": ".",
+      "current": "3.25.76",
+      "wanted": "3.25.76",
+      "latest": "4.6.7",
+      "target": null,
+      "updateType": "major",
+      "outcome": "held",
+      "reason": {
+        "code": "outside-range",
+        "message": "major beyond the range"
+      },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}"
 `;

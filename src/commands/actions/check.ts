@@ -1,5 +1,6 @@
-import { check } from '@/pipeline'
+import { check, findOutdated, plan } from '@/pipeline'
 import { openProject, type Project } from '@/project'
+import { planDocument, printJson } from '@/utils/jsonDocument'
 import logger from '@/utils/logger'
 import type { CheckOptions } from '../check'
 import reportFailure from '../reportFailure'
@@ -15,10 +16,26 @@ export const checkAction = async (options: CheckOptions): Promise<void> => {
       cache: options.cache,
     })
 
-    const result = await check(project, { report: !options.json })
-    if (options.json) console.log(JSON.stringify(result, null, 2))
+    if (!options.json) {
+      await check(project)
+      return
+    }
+
+    // The same rows `update --dry-run --json` prints: only a planned row has a reason.
+    const outdated = await findOutdated(project)
+    const results =
+      Object.keys(outdated).length > 0 ? await plan(project, outdated) : []
+    printJson(
+      planDocument({
+        command: 'check',
+        phase: 'plan',
+        manager: project.adapter.name,
+        member: project.member?.path,
+        results,
+      }),
+    )
   } catch (error) {
-    reportFailure(error, options.json)
+    reportFailure(error, { json: options.json, command: 'check' })
   } finally {
     project?.registry.close()
   }

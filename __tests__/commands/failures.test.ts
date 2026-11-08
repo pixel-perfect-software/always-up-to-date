@@ -23,7 +23,9 @@ import { StepError } from '@/stepError'
 import { loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
 import { createRegistrySession } from '@/utils/registry'
+import packageJson from '../../package.json'
 import { fakeRegistry } from '../fixtures'
+import { validateOutput } from '../fixtures/outputSchema'
 
 const applyFailed = new StepError(
   'apply',
@@ -103,7 +105,11 @@ describe('command failures', () => {
     const output = await run('update', '--json', 'dayjs')
 
     expect(process.exitCode).toBe(1)
+    validateOutput(JSON.parse(output))
     expect(JSON.parse(output)).toEqual({
+      version: 1,
+      autd: packageJson.version,
+      command: 'update',
       error: {
         step: 'apply',
         message: 'Command execution failed: Error: ERR_PNPM_IGNORED_BUILDS',
@@ -118,6 +124,7 @@ describe('command failures', () => {
     const output = await run('update', '--dry-run', '--json')
 
     expect(process.exitCode).toBe(1)
+    validateOutput(JSON.parse(output))
     expect(JSON.parse(output).error).toMatchObject({
       step: 'discover',
       manifestWritten: false,
@@ -125,12 +132,16 @@ describe('command failures', () => {
   })
 
   it('check --json reports a discovery failure as JSON', async () => {
-    pipeline.check.mockRejectedValue(discoverFailed)
+    pipeline.findOutdated.mockRejectedValue(discoverFailed)
 
     const output = await run('check', '--json')
 
     expect(process.exitCode).toBe(1)
-    expect(JSON.parse(output).error.step).toBe('discover')
+    validateOutput(JSON.parse(output))
+    expect(JSON.parse(output)).toMatchObject({
+      command: 'check',
+      error: { step: 'discover' },
+    })
   })
 
   it('check reports a missing package manager as a detect failure', async () => {
@@ -144,6 +155,7 @@ describe('command failures', () => {
     const output = await run('check', '--json')
 
     expect(process.exitCode).toBe(1)
+    validateOutput(JSON.parse(output))
     expect(JSON.parse(output).error).toMatchObject({
       step: 'detect',
       message: expect.stringContaining(
@@ -182,8 +194,16 @@ describe('command failures', () => {
       const output = await run(...args)
 
       expect(process.exitCode).toBe(1)
+      validateOutput(JSON.parse(output))
       expect(JSON.parse(output)).toEqual({
-        error: { message: configFailed.message, manifestWritten: false },
+        version: 1,
+        autd: packageJson.version,
+        command: args[0],
+        error: {
+          step: null,
+          message: configFailed.message,
+          manifestWritten: false,
+        },
       })
       expect(stdout).toHaveLength(1)
     },

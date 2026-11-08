@@ -6,11 +6,11 @@ import {
 } from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import type { UpdateResult } from '@/types'
+import { planDocument, printJson } from '@/utils/jsonDocument'
 import logger from '@/utils/logger'
 import { workspaceLabel } from '@/utils/workspaceRows'
 import reportFailure from '../reportFailure'
 import type { UpdateOptions } from '../update'
-import { legacyRow } from './legacyRow'
 
 /** What `autd update` does; `../update.ts` loads it when the command runs. */
 export const updateAction = async (
@@ -40,10 +40,18 @@ export const updateAction = async (
     const results = await runUpdate(project, { targetPackages })
 
     if (options.json) {
-      console.log(JSON.stringify(results.map(legacyRow), null, 2))
+      printJson(
+        planDocument({
+          command: 'update',
+          phase: 'applied',
+          manager: project.adapter.name,
+          member: project.member?.path,
+          results,
+        }),
+      )
     }
   } catch (error) {
-    reportFailure(error, options.json)
+    reportFailure(error, { json: options.json, command: 'update' })
   } finally {
     project?.registry.close()
   }
@@ -56,17 +64,24 @@ const dryRun = async (
 ) => {
   const outdatedPackages = await findOutdated(project)
 
-  if (Object.keys(outdatedPackages).length === 0) {
-    if (json) console.log(JSON.stringify([], null, 2))
-    return
-  }
-
-  const results = await plan(project, outdatedPackages, targetPackages)
+  const results =
+    Object.keys(outdatedPackages).length > 0
+      ? await plan(project, outdatedPackages, targetPackages)
+      : []
 
   if (json) {
-    console.log(JSON.stringify(results.map(legacyRow), null, 2))
+    printJson(
+      planDocument({
+        command: 'update',
+        phase: 'plan',
+        manager: project.adapter.name,
+        member: project.member?.path,
+        results,
+      }),
+    )
     return
   }
+  if (results.length === 0) return
 
   logger.report(results, project.adapter.name, 'plan', {
     member: project.member?.path,

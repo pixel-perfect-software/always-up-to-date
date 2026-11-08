@@ -17,6 +17,8 @@ import updateCommand from '@/commands/update'
 import { check, findOutdated, plan, update } from '@/pipeline'
 import type { PackageInfo, UpdateResult } from '@/types'
 import logger from '@/utils/logger'
+import packageJson from '../../package.json'
+import { validateOutput } from '../fixtures/outputSchema'
 import { reasonFor } from '../fixtures/reasons'
 
 /**
@@ -38,14 +40,38 @@ const results: UpdateResult[] = [
     current: '1.11.9',
     wanted: '1.11.9',
     latest: '1.11.23',
+    target: '1.11.23',
     updateType: 'patch',
     updated: true,
     reason: reasonFor('within range'),
   },
 ]
 
-/** What `--json` prints for them: a moving row's reason is not part of 3.x's rows. */
-const printed = results.map(({ reason: _reason, ...rest }) => rest)
+/** What `--json` prints for them. */
+const rows = [
+  {
+    name: 'dayjs',
+    workspace: '.',
+    current: '1.11.9',
+    wanted: '1.11.9',
+    latest: '1.11.23',
+    target: '1.11.23',
+    updateType: 'patch',
+    outcome: 'update',
+    reason: { code: 'within-range', message: 'within range' },
+    warnings: [],
+    releaseAgeDays: null,
+  },
+]
+const document = (command: 'check' | 'update', phase: 'plan' | 'applied') => ({
+  version: 1,
+  autd: packageJson.version,
+  command,
+  phase,
+  manager: 'npm',
+  member: null,
+  rows,
+})
 
 const fakePipeline = {
   check: async () => {
@@ -97,27 +123,44 @@ describe('--json output', () => {
     updateCommand(program)
   })
 
-  it('update --dry-run --json prints only JSON on stdout', async () => {
-    expect(JSON.parse(await run('update', '--dry-run', '--json'))).toEqual(
-      printed,
+  const printedDocument = async (...args: string[]) => {
+    const parsed = JSON.parse(await run(...args))
+    validateOutput(parsed)
+    return parsed
+  }
+
+  it('update --dry-run --json prints only the plan document on stdout', async () => {
+    expect(await printedDocument('update', '--dry-run', '--json')).toEqual(
+      document('update', 'plan'),
     )
   })
 
-  it('update --json prints only JSON on stdout', async () => {
-    expect(JSON.parse(await run('update', '--json'))).toEqual(printed)
+  it('update --json prints only the applied document on stdout', async () => {
+    expect(await printedDocument('update', '--json')).toEqual(
+      document('update', 'applied'),
+    )
   })
 
-  it('update --dry-run --json prints [] when nothing is outdated', async () => {
+  it('update --dry-run --json prints rows: [] when nothing is outdated', async () => {
     jest.mocked(findOutdated).mockImplementationOnce(async () => {
       logger.allUpToDate()
       return {}
     })
 
-    expect(JSON.parse(await run('update', '--dry-run', '--json'))).toEqual([])
+    expect(await printedDocument('update', '--dry-run', '--json')).toEqual({
+      ...document('update', 'plan'),
+      rows: [],
+    })
   })
 
-  it('check --json prints only JSON on stdout', async () => {
-    expect(JSON.parse(await run('check', '--json'))).toEqual(outdated)
+  it('check --json prints the rows update --dry-run --json prints', async () => {
+    const checked = await printedDocument('check', '--json')
+    stdout = []
+    const planned = await printedDocument('update', '--dry-run', '--json')
+
+    expect(checked).toEqual(document('check', 'plan'))
+    expect(checked.rows).toEqual(planned.rows)
+    expect(check).not.toHaveBeenCalled()
   })
 
   it('sends warnings to stderr instead of dropping them', async () => {

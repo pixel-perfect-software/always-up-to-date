@@ -20,7 +20,10 @@ const checkCommand = (program: Command) =>
   program
     .command('check')
     .description('Check the dependencies of the project.')
-    .option('--json', 'Output results as JSON')
+    .option(
+      '--json',
+      'Output a versioned JSON document (schema/output.schema.json)',
+    )
     .addOption(pmOption())
     .addOption(noCacheOption())
     .action(async (options: CheckOptions) => {

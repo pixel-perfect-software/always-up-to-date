@@ -12,6 +12,8 @@ import {
   renderTable,
   throttledLines,
 } from '../../bench/report'
+import type { UpdateResult } from '../../src/types'
+import { errorDocument, planDocument } from '../../src/utils/jsonDocument'
 import { throttledNotice } from '../../src/utils/registryRequest'
 import { readFixture } from '../fixtures'
 
@@ -124,69 +126,106 @@ describe('formatting', () => {
 })
 
 describe('movingRows', () => {
-  const row = (fields: object): object => ({
+  const result = (fields: Partial<UpdateResult>): UpdateResult => ({
     name: 'ms',
     current: '2.0.0',
     wanted: '2.0.0',
     latest: '2.1.3',
     updateType: 'minor',
+    updated: false,
+    reason: { code: 'outside-range', message: 'minor beyond the range' },
     ...fields,
   })
+  const document = (results: UpdateResult[]): string =>
+    JSON.stringify(
+      planDocument({
+        command: 'update',
+        phase: 'plan',
+        manager: 'npm',
+        results,
+      }),
+    )
+  const moving = (name: string, target: string): UpdateResult =>
+    result({
+      name,
+      target,
+      updated: true,
+      reason: { code: 'within-range', message: 'within range' },
+    })
 
   it('counts the rows that move', () => {
-    const rows = [
-      row({ name: 'ms', target: '2.1.3', updated: true }),
-      row({ name: 'debug', target: '4.4.3', updated: true }),
-    ]
-
-    expect(movingRows(JSON.stringify(rows))).toBe(2)
+    expect(
+      movingRows(document([moving('ms', '2.1.3'), moving('debug', '4.4.3')])),
+    ).toBe(2)
   })
 
   it('leaves out the rows that are held or not targeted', () => {
     const rows = [
-      row({ name: 'ms', target: '2.1.3', updated: true }),
-      row({
+      moving('ms', '2.1.3'),
+      result({
         name: 'debug',
-        updated: false,
-        reason: 'cooldown: released 2d ago, requires 7d',
+        reason: {
+          code: 'cooldown',
+          message: 'cooldown: released 2d ago, requires 7d',
+        },
       }),
-      row({ name: 'semver', updated: false, reason: 'not targeted' }),
+      result({
+        name: 'semver',
+        reason: { code: 'not-targeted', message: 'not targeted' },
+      }),
     ]
 
-    expect(movingRows(JSON.stringify(rows))).toBe(1)
+    expect(movingRows(document(rows))).toBe(1)
   })
 
   it('counts a cooldown fallback, which moves below its target', () => {
+    const fallback = result({
+      name: 'debug',
+      target: '4.4.1',
+      updated: true,
+      reason: {
+        code: 'cooldown-fallback',
+        message: 'cooldown: 4.4.3 released 2d ago, requires 7d',
+      },
+    })
+
+    expect(movingRows(document([fallback]))).toBe(1)
+  })
+
+  it('counts none in a document without rows', () => {
+    expect(movingRows(document([]))).toBe(0)
+  })
+
+  it('still counts the rows of a 3.x array, for a build from before 4.0', () => {
     const rows = [
-      row({
-        name: 'debug',
-        target: '4.4.1',
-        updated: true,
-        reason: 'cooldown: 4.4.3 released 2d ago, requires 7d',
-      }),
+      { name: 'ms', target: '2.1.3', updated: true },
+      { name: 'debug', updated: false, reason: 'cooldown: released 2d ago' },
     ]
 
     expect(movingRows(JSON.stringify(rows))).toBe(1)
-  })
-
-  it('counts none in an empty list', () => {
     expect(movingRows('[]')).toBe(0)
   })
 
   it('throws autd’s message for the error document a failed run prints', () => {
-    const failure = {
-      error: {
-        step: 'discover',
-        message: 'Could not look up 2 packages',
-        manifestWritten: false,
-      },
-    }
+    const failure = errorDocument('update', {
+      step: 'discover',
+      message: 'Could not look up 2 packages',
+      manifestWritten: false,
+    })
 
     expect(() => movingRows(JSON.stringify(failure))).toThrow(
       'Failed during discover: Could not look up 2 packages',
     )
     expect(() =>
-      movingRows(JSON.stringify({ error: { message: 'Bad config' } })),
+      movingRows(
+        JSON.stringify(
+          errorDocument('update', {
+            step: null,
+            message: 'Bad config',
+            manifestWritten: false,
+          }),
+        ),
+      ),
     ).toThrow('Bad config')
   })
 

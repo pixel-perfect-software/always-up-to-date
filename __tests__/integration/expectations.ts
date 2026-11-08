@@ -10,20 +10,15 @@ import type { Manager } from './harness'
 
 export type Layout = 'single' | 'workspace' | 'catalogs'
 
-export interface CheckRecord {
-  current: string
-  wanted: string
-  workspaces?: { path: string; current: string; wanted: string }[]
-}
-
+/** A row of the `--json` document (#201), reduced to the fields that do not drift with `latest`. */
 export interface PlanRow {
   name: string
-  workspace?: string
+  workspace: string
   current: string
   wanted: string
-  target?: string
-  updated: boolean
-  reason?: unknown
+  target: string | null
+  outcome: string
+  reason: { code: string; message: unknown }
 }
 
 export const isWorkspaceLayout = (layout: Layout): boolean =>
@@ -34,64 +29,9 @@ const heldBeyondRange = expect.stringMatching(
   /^(patch|minor|major) beyond the range$/,
 )
 
-/** `check --json`, projected to the fields that do not drift with `latest`. */
-export const expectedCheck = (layout: Layout): Record<string, CheckRecord> => {
-  if (!isWorkspaceLayout(layout)) {
-    return {
-      chalk: { current: '4.0.0', wanted: '4.1.2' },
-      commander: { current: '11.0.0', wanted: '11.1.0' },
-      dayjs: { current: '1.11.9', wanted: '1.11.9' },
-      debug: { current: '4.3.1', wanted: '4.3.7' },
-      kleur: { current: '3.0.0', wanted: '3.0.3' },
-      ms: { current: '2.1.1', wanted: '2.1.3' },
-    }
-  }
-  const at = (path: string, current: string, wanted: string) => ({
-    path,
-    current,
-    wanted,
-  })
-  return {
-    chalk: {
-      current: '4.0.0',
-      wanted: '4.1.2',
-      workspaces: [at('packages/a', '4.0.0', '4.1.2')],
-    },
-    commander: {
-      current: '11.0.0',
-      wanted: '11.1.0',
-      workspaces: [at('packages/b', '11.0.0', '11.1.0')],
-    },
-    dayjs: {
-      current: '1.11.9',
-      wanted: '1.11.9',
-      workspaces: [at('.', '1.11.9', '1.11.9')],
-    },
-    debug: {
-      current: '4.3.1',
-      wanted: '4.3.7',
-      workspaces: [at('packages/b', '4.3.1', '4.3.7')],
-    },
-    // The root's ~2.1.1 moves; packages/a pins 2.1.2, which is already its wanted.
-    ms: {
-      current: '2.1.1',
-      wanted: '2.1.3',
-      workspaces: [
-        at('.', '2.1.1', '2.1.3'),
-        at('packages/a', '2.1.2', '2.1.2'),
-      ],
-    },
-    kleur: {
-      current: '3.0.0',
-      wanted: '3.0.3',
-      workspaces: [at('packages/b', '3.0.0', '3.0.3')],
-    },
-  }
-}
-
 const row = (
   name: string,
-  workspace: string | undefined,
+  workspace: string,
   current: string,
   wanted: string,
   target?: string,
@@ -102,8 +42,9 @@ const row = (
         workspace,
         current,
         wanted,
-        updated: false,
-        reason: heldBeyondRange,
+        target: null,
+        outcome: 'held',
+        reason: { code: 'outside-range', message: heldBeyondRange },
       }
     : {
         name,
@@ -111,11 +52,11 @@ const row = (
         current,
         wanted,
         target,
-        updated: true,
-        reason: undefined,
+        outcome: 'update',
+        reason: { code: 'within-range', message: 'within range' },
       }
 
-/** `update --dry-run --json`: sorted by name, then workspace. */
+/** `check --json` and `update --dry-run --json` print the same rows: sorted by name, then workspace. */
 export const expectedPlan = (layout: Layout): PlanRow[] =>
   isWorkspaceLayout(layout)
     ? [
@@ -128,12 +69,12 @@ export const expectedPlan = (layout: Layout): PlanRow[] =>
         row('ms', 'packages/a', '2.1.2', '2.1.2'),
       ]
     : [
-        row('chalk', undefined, '4.0.0', '4.1.2', '4.1.2'),
-        row('commander', undefined, '11.0.0', '11.1.0', '11.1.0'),
-        row('dayjs', undefined, '1.11.9', '1.11.9'),
-        row('debug', undefined, '4.3.1', '4.3.7', '4.3.7'),
-        row('kleur', undefined, '3.0.0', '3.0.3', '3.0.3'),
-        row('ms', undefined, '2.1.1', '2.1.3', '2.1.3'),
+        row('chalk', '.', '4.0.0', '4.1.2', '4.1.2'),
+        row('commander', '.', '11.0.0', '11.1.0', '11.1.0'),
+        row('dayjs', '.', '1.11.9', '1.11.9'),
+        row('debug', '.', '4.3.1', '4.3.7', '4.3.7'),
+        row('kleur', '.', '3.0.0', '3.0.3', '3.0.3'),
+        row('ms', '.', '2.1.1', '2.1.3', '2.1.3'),
       ]
 
 /**
@@ -183,31 +124,7 @@ export const rewritesCatalogRanges = (manager: Manager): boolean =>
 export type Member = 'packages/a' | 'packages/b'
 
 /**
- * `check --json` from a member (#123): the packages of that member's manifest
- * only, each with that manifest's row as the record's own `current` and
- * `wanted` and the one member in `workspaces`. Derived from the root run's
- * expectation, so the two cannot drift apart.
- */
-export const expectedMemberCheck = (
-  layout: Layout,
-  member: Member,
-): Record<string, CheckRecord> =>
-  Object.fromEntries(
-    Object.entries(expectedCheck(layout)).flatMap(([name, record]) => {
-      const own = record.workspaces?.find((w) => w.path === member)
-      return own
-        ? [
-            [
-              name,
-              { current: own.current, wanted: own.wanted, workspaces: [own] },
-            ],
-          ]
-        : []
-    }),
-  )
-
-/**
- * `update --dry-run --json` from a member, with `beyondRange: "patch"` set in
+ * `check --json` and `update --dry-run --json` from a member (#123), with `beyondRange: "patch"` set in
  * the member's own config (the matrix writes it for packages/a): that
  * member's rows of the root run's plan, except that packages/a's pinned
  * `ms 2.1.2` may move a patch past its range, to the latest, 2.1.3.
@@ -217,6 +134,12 @@ export const expectedMemberPlan = (layout: Layout, member: Member): PlanRow[] =>
     .filter((planned) => planned.workspace === member)
     .map((planned) =>
       member === 'packages/a' && planned.name === 'ms'
-        ? row('ms', member, '2.1.2', '2.1.2', '2.1.3')
+        ? {
+            ...row('ms', member, '2.1.2', '2.1.2', '2.1.3'),
+            reason: {
+              code: 'past-range',
+              message: 'past its range, "beyondRange": "patch"',
+            },
+          }
         : planned,
     )

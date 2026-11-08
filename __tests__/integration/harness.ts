@@ -5,6 +5,7 @@ import semver from 'semver'
 import { stripVTControlCharacters } from 'util'
 import { toPosix } from '@/managers/workspaces'
 import { runProcess } from '@/utils/runProcess'
+import { validateOutput } from '../fixtures/outputSchema'
 import { type ProxyRecord, startProxy } from '../fixtures/registry'
 import {
   type RangedDependency,
@@ -541,7 +542,11 @@ export const assertBuilt = (): void => {
   }
 }
 
-/** Runs the built CLI in `cwd` and parses what it prints on stdout. */
+/**
+ * Runs the built CLI in `cwd` and parses what it prints on stdout. Every
+ * document must validate against schema/output.schema.json (#201), so the
+ * schema is checked against the real binary on every manager.
+ */
 export const runCli = async (cwd: string, args: string[]): Promise<unknown> => {
   const command = `autd ${args.join(' ')} in ${cwd}`
   let result: { stdout: string; stderr: string }
@@ -553,13 +558,16 @@ export const runCli = async (cwd: string, args: string[]): Promise<unknown> => {
       `${command} failed\nstdout: ${failure.stdout ?? ''}\nstderr: ${stripVTControlCharacters(failure.stderr ?? '')}`,
     )
   }
+  let document: unknown
   try {
-    return JSON.parse(result.stdout)
+    document = JSON.parse(result.stdout)
   } catch {
     throw new Error(
       `${command} printed no JSON\nstdout: ${result.stdout}\nstderr: ${stripVTControlCharacters(result.stderr)}`,
     )
   }
+  validateOutput(document)
+  return document
 }
 
 /** Runs `fn` with the PATH key (found case-insensitively, as `prependPath` does) pointing at an empty directory. */
@@ -606,7 +614,9 @@ export const runCliExpectingFailure = (
       if (failure.code !== 1) {
         throw new Error(`${command} exited with ${String(failure.code)}`)
       }
-      return JSON.parse(failure.stdout ?? '')
+      const document: unknown = JSON.parse(failure.stdout ?? '')
+      validateOutput(document)
+      return document
     }
     throw new Error(`${command} exited 0, expected 1`)
   })

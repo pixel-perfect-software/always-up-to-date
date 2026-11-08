@@ -1,9 +1,6 @@
 import fs from 'fs'
 import path from 'path'
 import {
-  type CheckRecord,
-  expectedCheck,
-  expectedMemberCheck,
   expectedMemberPlan,
   expectedPlan,
   FLOORS,
@@ -35,46 +32,36 @@ import {
 
 type Maps = Record<string, Record<string, string>>
 
+interface Document {
+  version: number
+  command: string
+  phase: string
+  manager: string
+  member: string | null
+  rows: (PlanRow & { latest: string })[]
+}
+
+/** The document the CLI printed (it already validated against the schema). */
+const documentOf = (printed: unknown): Document => printed as Document
+
 /** autd's rows, reduced to the fields the matrix pins and sorted by name, then workspace. */
-const projectRows = (rows: unknown): PlanRow[] =>
-  (rows as (PlanRow & { latest: string })[])
-    .map(({ name, workspace, current, wanted, target, updated, reason }) => ({
-      name,
-      workspace,
-      current,
-      wanted,
-      target,
-      updated,
-      reason,
-    }))
+const projectRows = (printed: unknown): PlanRow[] =>
+  documentOf(printed)
+    .rows.map(
+      ({ name, workspace, current, wanted, target, outcome, reason }) => ({
+        name,
+        workspace,
+        current,
+        wanted,
+        target,
+        outcome,
+        reason: { code: reason.code, message: reason.message },
+      }),
+    )
     .sort(
       (a, b) =>
-        a.name.localeCompare(b.name) ||
-        (a.workspace ?? '').localeCompare(b.workspace ?? ''),
+        a.name.localeCompare(b.name) || a.workspace.localeCompare(b.workspace),
     )
-
-const projectCheck = (
-  record: unknown,
-  layout: Layout,
-): Record<string, CheckRecord> =>
-  Object.fromEntries(
-    Object.entries(record as Record<string, CheckRecord>).map(
-      ([name, { current, wanted, workspaces }]) => [
-        name,
-        isWorkspaceLayout(layout)
-          ? {
-              current,
-              wanted,
-              workspaces: workspaces?.map(({ path, current, wanted }) => ({
-                path,
-                current,
-                wanted,
-              })),
-            }
-          : { current, wanted },
-      ],
-    ),
-  )
 
 /**
  * The describe/it bodies shared by every manager: one `describe` per repo of
@@ -116,13 +103,18 @@ export const runMatrix = (manager: Manager): void => {
 
         // Every manager is read natively (berry too since #107: yarn.lock and
         // .yarnrc.yml), so check needs no manager on PATH.
-        it('check --json reports the installed minimums against the wanted maxima', async () => {
-          expect(
-            projectCheck(
-              await runCliWithoutManagers(cwd, ['check', '--json']),
-              layout,
-            ),
-          ).toEqual(expectedCheck(layout))
+        it('check --json plans the moves and holds the pins', async () => {
+          const printed = documentOf(
+            await runCliWithoutManagers(cwd, ['check', '--json']),
+          )
+          expect(printed).toMatchObject({
+            version: 1,
+            command: 'check',
+            phase: 'plan',
+            manager: manager === 'berry' ? 'yarn' : manager,
+            member: null,
+          })
+          expect(projectRows(printed)).toEqual(expectedPlan(layout))
         })
 
         // The repeat is answered from autd's cache, and a proxy that records
@@ -158,7 +150,7 @@ export const runMatrix = (manager: Manager): void => {
         it('update --json applies the plan', async () => {
           const rows = projectRows(await runCli(cwd, ['update', '--json']))
           expect(rows).toEqual(expectedPlan(layout))
-          moved = rows.filter((r) => r.updated)
+          moved = rows.filter((r) => r.outcome === 'update')
         })
 
         it('leaves the manifests as the manager rewrites them', () => {
@@ -198,41 +190,33 @@ export const runMatrix = (manager: Manager): void => {
         })
 
         it('check --json afterwards lists no moved package below its target and keeps the pins', async () => {
-          const record = (await runCli(cwd, ['check', '--json'])) as Record<
-            string,
-            CheckRecord
-          >
+          const rows = documentOf(await runCli(cwd, ['check', '--json'])).rows
 
-          // Every workspace the record names is one of the repo's manifests:
-          // a format change shows up here instead of as a silent skip below.
+          // Every row names one of the repo's manifests: a format change
+          // shows up here instead of as a silent skip below.
           const manifestPaths = Object.keys(readDependencies(cwd))
-          for (const entry of Object.values(record)) {
-            for (const { path } of entry.workspaces ?? []) {
-              expect(manifestPaths).toContain(path)
-            }
+          for (const { workspace } of rows) {
+            expect(manifestPaths).toContain(workspace)
           }
 
-          // A moved package is either gone from the record (no longer
+          // A moved package is either gone from the rows (no longer
           // outdated) or, where it is listed, at its target.
           for (const { name, workspace, target } of moved) {
-            const entry = record[name]
-            if (!entry) continue
-            const row = entry.workspaces
-              ? entry.workspaces.find((w) => w.path === workspace)
-              : entry
-            if (row)
-              expect({ name, current: row.current }).toEqual({
+            const found = rows.find(
+              (r) => r.name === name && r.workspace === workspace,
+            )
+            if (found)
+              expect({ name, current: found.current }).toEqual({
                 name,
                 current: target,
               })
           }
 
-          expect(record.dayjs.current).toBe('1.11.9')
+          const at = (name: string, workspace: string) =>
+            rows.find((r) => r.name === name && r.workspace === workspace)
+          expect(at('dayjs', '.')?.current).toBe('1.11.9')
           if (isWorkspaceLayout(layout)) {
-            expect(
-              record.ms.workspaces?.find((w) => w.path === 'packages/a')
-                ?.current,
-            ).toBe('2.1.2')
+            expect(at('ms', 'packages/a')?.current).toBe('2.1.2')
           }
         })
       })
@@ -284,34 +268,40 @@ export const runMemberMatrix = (manager: Manager): void => {
         it.each(['packages/a', 'packages/a/src'])(
           'check --json from %s lists packages/a only',
           async (from) => {
-            expect(
-              projectCheck(await check(dir(from), ['check', '--json']), layout),
-            ).toEqual(expectedMemberCheck(layout, 'packages/a'))
+            const printed = documentOf(
+              await check(dir(from), ['check', '--json']),
+            )
+            expect(printed.member).toBe('packages/a')
+            expect(projectRows(printed)).toEqual(
+              expectedMemberPlan(layout, 'packages/a'),
+            )
           },
         )
 
         it('check --json from packages/b lists commander, debug and kleur', async () => {
-          const record = projectCheck(
+          const rows = projectRows(
             await check(dir('packages/b'), ['check', '--json']),
-            layout,
           )
-          expect(record).toEqual(expectedMemberCheck(layout, 'packages/b'))
-          expect(Object.keys(record)).toEqual(['commander', 'debug', 'kleur'])
+          expect(rows).toEqual(expectedMemberPlan(layout, 'packages/b'))
+          expect(rows.map((r) => r.name)).toEqual([
+            'commander',
+            'debug',
+            'kleur',
+          ])
         })
 
         if (manager === 'berry') {
           it('check --json --pm yarn from packages/a takes the same path', async () => {
             expect(
-              projectCheck(
+              projectRows(
                 await runCli(dir('packages/a'), [
                   'check',
                   '--json',
                   '--pm',
                   'yarn',
                 ]),
-                layout,
               ),
-            ).toEqual(expectedMemberCheck(layout, 'packages/a'))
+            ).toEqual(expectedMemberPlan(layout, 'packages/a'))
           })
         }
 
@@ -334,9 +324,12 @@ export const runMemberMatrix = (manager: Manager): void => {
               'update',
               '--json',
             ])) as {
+              version: number
+              command: string
               error: { step: string; message: string; manifestWritten: boolean }
             }
 
+            expect(output).toMatchObject({ version: 1, command: 'update' })
             expect(output.error.step).toBe('apply')
             expect(output.error.manifestWritten).toBe(false)
             expect(output.error.message).toContain(`run autd update in ${cwd}`)
