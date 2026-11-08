@@ -944,7 +944,7 @@ describe('filterPackages', () => {
       expect(result).toMatchObject({ updated: true, target: '2.0.0' })
       expect(mockLogger.default.warn).toHaveBeenCalledTimes(1)
       expect(mockLogger.default.warn).toHaveBeenCalledWith(
-        'No version manifest for ua-parser-js@2.0.0: they move without a license check',
+        'No version manifest for target ua-parser-js@2.0.0: they move without a license check',
       )
       // Nothing to compare against, so the current version is not read.
       expect(asked).toEqual(['ua-parser-js@2.0.0'])
@@ -964,7 +964,7 @@ describe('filterPackages', () => {
         'ua-parser-js@2.0.0',
       ])
       expect(mockLogger.default.warn).toHaveBeenCalledWith(
-        'No version manifest for ua-parser-js@1.0.39: they move without a license check',
+        'No version manifest for installed ua-parser-js@1.0.39: they move without a license check',
       )
     })
 

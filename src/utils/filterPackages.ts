@@ -314,8 +314,10 @@ const shownLicense = (license: string | undefined): string => {
  * license comes from `node_modules` when the installed copy is that version,
  * else from its own manifest (one request per name and version). A row
  * whose target manifest or current manifest is unknown moves unchecked, and
- * is returned in `unchecked` as `name@version`. Without a registry that can
- * read manifests, nothing is judged.
+ * is returned in `unchecked` as `name@version`, the target's and the
+ * installed version's apart, since a registry problem and a version the
+ * registry no longer lists are fixed differently. Without a registry that
+ * can read manifests, nothing is judged.
  */
 const holdLicenseChanges = async (
   rows: UpdateResult[],
@@ -331,20 +333,29 @@ const holdLicenseChanges = async (
     lookupName: (row: UpdateResult) => string
     cwd: string
   },
-): Promise<{ rows: UpdateResult[]; unchecked: string[] }> => {
+): Promise<{
+  rows: UpdateResult[]
+  unchecked: { targets: string[]; installed: string[] }
+}> => {
   const { versionManifest } = registry
-  if (!versionManifest) return { rows, unchecked: [] }
+  if (!versionManifest)
+    return { rows, unchecked: { targets: [], installed: [] } }
   // A `missing` or non-semver current has no license to compare.
   const moving = rows.filter(
     (row) => row.updated && row.target && semver.valid(row.current),
   )
-  const unchecked = new Set<string>()
+  const targets = new Set<string>()
+  const installedUnknown = new Set<string>()
+  const unchecked = () => ({
+    targets: [...targets],
+    installed: [...installedUnknown],
+  })
   const judged = moving.filter((row) => {
     if (targetManifestOf(manifests, row, lookupName)) return true
-    unchecked.add(`${lookupName(row)}@${row.target}`)
+    targets.add(`${lookupName(row)}@${row.target}`)
     return false
   })
-  if (judged.length === 0) return { rows, unchecked: [...unchecked] }
+  if (judged.length === 0) return { rows, unchecked: unchecked() }
 
   const installed = readInstalledManifests(cwd, judged)
   const read = new Map<string, Promise<VersionManifest | undefined>>()
@@ -375,7 +386,7 @@ const holdLicenseChanges = async (
       if (!target) return
       const current = await currentOf(row)
       if (!current.known) {
-        unchecked.add(`${lookupName(row)}@${row.current}`)
+        installedUnknown.add(`${lookupName(row)}@${row.current}`)
         return
       }
       if (sameLicense(current.license, target.license)) return
@@ -390,7 +401,7 @@ const holdLicenseChanges = async (
   )
   return {
     rows: rows.map((row) => held.get(row) ?? row),
-    unchecked: [...unchecked],
+    unchecked: unchecked(),
   }
 }
 
@@ -558,11 +569,16 @@ const filterPackages = async (
         licensed.rows,
       ),
     )
-    if (licensed.unchecked.length > 0) {
-      const listed = licensed.unchecked.slice(0, 10).join(', ')
-      const more = licensed.unchecked.length - 10
+    const listed = (keys: string[]): string =>
+      `${keys.slice(0, 10).join(', ')}${keys.length > 10 ? ` and ${keys.length - 10} more` : ''}`
+    const { targets, installed } = licensed.unchecked
+    const missing = [
+      targets.length > 0 ? `target ${listed(targets)}` : undefined,
+      installed.length > 0 ? `installed ${listed(installed)}` : undefined,
+    ].filter(Boolean)
+    if (missing.length > 0) {
       logger.warn(
-        `No version manifest for ${listed}${more > 0 ? ` and ${more} more` : ''}: they move without a license check`,
+        `No version manifest for ${missing.join('; ')}: they move without a license check`,
       )
     }
     return settled
