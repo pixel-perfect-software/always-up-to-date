@@ -31,7 +31,7 @@ commands/
   reportFailure.ts  # Reports a failed command once (human or JSON) and sets exit code 1
   actions/    # The bodies, each loaded with await import() when its command runs
     init.ts   # Creates .always-up-to-date.json with INITIAL_CONFIG (beyondRange, rules, cooldown, debug, silent) in the nearest package.json's directory (else the cwd), where `loadConfig` reads it
-    check.ts  # Detects package manager, prints the planned report (each outdated dep under its outcome); --json prints the outdated record and doesn't plan
+    check.ts  # Detects package manager, prints the planned report (each outdated dep under its outcome); --json plans (`findOutdated`, `plan`) and prints the plan document
     update.ts # Detects package manager, updates packages per config rules; --dry-run, and -i (choicesByPackage, interactiveUpdate with the dynamic @inquirer/prompts import)
     help.ts   # Displays usage information
 ```
@@ -53,7 +53,7 @@ commands/
 
 #### `check`
 
-- `--json` - Output raw JSON instead of formatted display: a `Record<name, PackageInfo>`. In a workspace project each value is `{ name, current, wanted, latest, workspaces: [{ path, current, wanted }] }`, one `workspaces` element per manifest declaring the package (root `'.'` first, then by path); top-level `current`/`wanted` repeat the root's, else the first member's. Manager pass-through fields are dropped in workspace projects. Human output adds a gray workspace column (`(root)` or the path). From a workspace member the record covers that member's manifest only: its packages, `current` / `wanted` from that manifest, and the one member in `workspaces` (its path relative to the root)
+- `--json` - Print the plan document (`planDocument`, `command: 'check'`, `phase: 'plan'`): the rows `update --dry-run --json` prints, planned with `findOutdated` then `plan`, so it reads the moving targets' version manifests (cached). One row per package and manifest (`workspace` is `'.'` for the root and in a single package); from a member the rows cover that member's manifest and `member` holds its path
 
 #### `update [packages...]`
 
@@ -61,17 +61,17 @@ commands/
 - From a workspace member (#123) `update` that writes is refused: plain, by name and `-i` all call `refuseMemberApply(project)` (`src/pipeline.ts`), which throws an `apply` `StepError` (`manifestWritten: false`) naming the workspace root, before any discovery, registry lookup, manager subprocess or prompt. `--json` prints the usual error object. A pnpm directory with its own `pnpm-workspace.yaml` and a directory no root lists are projects of their own and update normally
 - `--dry-run` - Preview without making changes (also from a member, where it plans that member's manifest only): the report `check` prints, for the targeted packages (`findOutdated`, then `plan`, then `logger.report(…, 'plan', { member })`, `member` being the member's path from a member run)
 - `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). The checklist has one choice per package, listing its manifests in a workspace project; targeting stays by name. Discovery runs once: the checklist's `check` result is passed to `update(project, { targetPackages: selected, discovered })`
-- `--json` - Output `UpdateResult[]` as JSON (one row per package and manifest; in a workspace project each row has `workspace`, `'.'` for the root) (`[]` when nothing is outdated, including with `--dry-run`). Conflicts with `--interactive`
+- `--json` - Print the plan document: `phase: 'plan'` with `--dry-run`, `'applied'` after `update` has run; the same row shape as `check` (`rows` is `[]` when nothing is outdated). Conflicts with `--interactive`
 
 ### JSON output
 
-With `--json`, stdout carries exactly one JSON document. The action calls `logger.setJsonOutput(true)` before anything else: progress output is dropped, and errors, warnings and debug lines go to stderr. All human-facing output must go through `logger`; a bare `console.log` anywhere on the command path breaks `--json`.
+With `--json`, stdout carries exactly one versioned JSON document (#201): a plan document `{ version: 1, autd, command, phase, manager, member, rows }` or an error document, built by `src/utils/jsonDocument.ts` (`planDocument`, `errorDocument`, `printJson`; described by `schema/output.schema.json`) and loaded by the actions and `reportFailure` only, never by a definition. A row is `{ name, workspace, current, wanted, latest, target, updateType, outcome, reason: { code, message }, warnings, releaseAgeDays }`; see the root `CLAUDE.md` for the fields. The action calls `logger.setJsonOutput(true)` before anything else: progress output is dropped, and errors, warnings and debug lines go to stderr. All human-facing output must go through `logger`; a bare `console.log` anywhere on the command path breaks `--json`.
 
 ### Failures
 
-`check` and `update` wrap their whole action and hand any error to `reportFailure()` (`reportFailure.ts`), which sets `process.exitCode = 1` and reports once:
+`check` and `update` wrap their whole action and hand any error to `reportFailure(error, { json, command })` (`reportFailure.ts`), which sets `process.exitCode = 1` and reports once:
 - human mode: `Failed during <step>: <message>`, plus a warning when `package.json` was already rewritten
-- `--json`: `{ "error": { "step", "message", "manifestWritten" } }` on stdout, never `[]`
+- `--json`: the error document `{ version: 1, autd, command, error: { step, message, manifestWritten } }` on stdout, never `rows: []`; `step` is `null` outside a step (a malformed config)
 
 `step` comes from a `StepError` (`src/stepError.ts`): `detect` (no lockfile), `discover` (an unreadable manifest, nothing installed, a failed registry lookup), `apply` (the manager's update/install failed). Managers must let these propagate; catching and returning `[]` turns a failure into "nothing to update" with exit 0.
 
