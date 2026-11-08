@@ -162,6 +162,31 @@ describe('withReleaseAgeGate', () => {
     expect(base.calls).toEqual([])
   })
 
+  it('forwards versionManifest to the session ungated: the target already passed the gate (#196)', async () => {
+    const asked: string[] = []
+    const manifest = {
+      name: 'ms',
+      version: '2.1.3',
+      license: 'MIT',
+      peerDependencies: {},
+      optionalPeers: [],
+      deprecated: false,
+    }
+    const base = {
+      ...session({ ok: true, package: capturedPackage('ms') }, {}),
+      versionManifest: async (name: string, version: string) => {
+        asked.push(`${name}@${version}`)
+        return manifest
+      },
+    }
+    // 2.1.3 is an hour old: the gate holds it in a lookup, not here.
+    const gated = withReleaseAgeGate(base, () => gate(), now)
+
+    expect(await gated.versionManifest('ms', '2.1.3')).toBe(manifest)
+    expect(asked).toEqual(['ms@2.1.3'])
+    expect(base.calls).toEqual([])
+  })
+
   it('answers lookedUp with the gated lookup, once it was made (#195)', async () => {
     const base = session({ ok: true, package: capturedPackage('ms') }, {})
     const gated = withReleaseAgeGate(base, () => gate(), now)

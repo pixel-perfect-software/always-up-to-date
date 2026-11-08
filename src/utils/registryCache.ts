@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import zlib from 'zlib'
-import type { RegistryVersion } from '@/types'
+import type { RegistryVersion, VersionManifest } from '@/types'
 import { isRecord } from './isRecord'
 import logger from './logger'
 import { type NpmrcSources, nonEmpty } from './npmrcLoader'
@@ -17,6 +17,7 @@ export const TTL_SECONDS = {
   'deps.dev': 3600,
   packument: 300,
   'packument-full': 300,
+  manifest: 300,
 } as const
 
 export type CacheKind = keyof typeof TTL_SECONDS
@@ -26,6 +27,8 @@ export interface CacheValues {
   'deps.dev': RegistryVersion[]
   packument: ParsedPackument
   'packument-full': ParsedPackument
+  /** Keyed `<name>@<version>` (#196). */
+  manifest: VersionManifest
 }
 
 export interface CachedEntry<K extends CacheKind> {
@@ -158,10 +161,26 @@ const isVersion = (value: unknown): boolean =>
 const isVersions = (value: unknown): boolean =>
   Array.isArray(value) && value.every(isVersion)
 
+const optionalString = (value: unknown): boolean =>
+  value === undefined || typeof value === 'string'
+
+const isManifest = (value: Record<string, unknown>): boolean =>
+  typeof value.name === 'string' &&
+  typeof value.version === 'string' &&
+  optionalString(value.license) &&
+  optionalString(value.enginesNode) &&
+  isRecord(value.peerDependencies) &&
+  Object.values(value.peerDependencies).every((r) => typeof r === 'string') &&
+  Array.isArray(value.optionalPeers) &&
+  value.optionalPeers.every((peer) => typeof peer === 'string') &&
+  typeof value.deprecated === 'boolean' &&
+  optionalString(value.deprecatedReason)
+
 const validValue = (kind: CacheKind, value: unknown): boolean => {
   if (kind === 'deps.dev') return isVersions(value)
   if (!isRecord(value)) return false
   if (kind === 'dist-tags') return typeof value.latest === 'string'
+  if (kind === 'manifest') return isManifest(value)
   return (
     isVersions(value.versions) &&
     (value.latest === undefined || typeof value.latest === 'string') &&

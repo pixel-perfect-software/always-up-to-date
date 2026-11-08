@@ -1,0 +1,149 @@
+jest.mock('@/utils/logger')
+
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import { check, plan } from '@/pipeline'
+import { openProject, type Project } from '@/project'
+import { installPackages, isolateNpmConfig } from './fixtures'
+import {
+  type Reply,
+  registryBody,
+  replies,
+  startRegistry,
+  type TestRegistry,
+} from './fixtures/registry'
+
+// #196: the plan reads each moving target's own manifest, through the real
+// session, reader and disk cache, from a local registry serving the captures
+// of `__tests__/fixtures/registry/`. Nothing holds on them yet; these pin
+// which requests go out.
+
+const packument = (name: string): Reply => ({
+  body: registryBody(name),
+  type: 'application/vnd.npm.install-v1+json',
+})
+const manifest = (name: string): Reply => ({ body: registryBody(name) })
+
+/** A request for one version's manifest: `/<name>/<version>`, a scope's slash escaped. */
+const isManifestUrl = (url: string): boolean =>
+  /^\/(@[^/]+%2f)?[^/]+\/[^/]+$/.test(url)
+
+let tmp: string
+const at = (...parts: string[]) => path.join(tmp, ...parts)
+const write = (file: string, content: string) => {
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, content)
+}
+
+describe('version manifests in the plan (#196)', () => {
+  let server: TestRegistry
+  let saved: NodeJS.ProcessEnv
+  let restoreNpm: () => void
+  const projects: Project[] = []
+
+  beforeEach(async () => {
+    tmp = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-manifests-')),
+    )
+    saved = { ...process.env }
+    restoreNpm = isolateNpmConfig(at('npm-config'))
+    process.env.XDG_CONFIG_HOME = at('xdg')
+    // The cache is on, in a folder of the test's own.
+    delete process.env.AUTD_NO_CACHE
+    process.env.AUTD_CACHE_DIR = at('cache')
+    server = await startRegistry(
+      replies({
+        '/ms': packument('ms.packument'),
+        '/@types%2fms': packument('types-ms.packument'),
+        '/ms/2.1.3': manifest('ms.2.1.3.manifest'),
+        '/@types%2fms/2.1.0': manifest('types-ms.2.1.0.manifest'),
+      }),
+    )
+    write(at('.npmrc'), `registry=${server.url}\n`)
+    // Exact pins, held by the default policy and moved by beyondRange.
+    write(
+      at('package.json'),
+      JSON.stringify({
+        name: 'p',
+        dependencies: { ms: '2.1.2', '@types/ms': '0.7.34' },
+      }),
+    )
+    installPackages(tmp, '.', { ms: '2.1.2', '@types/ms': '0.7.34' })
+  })
+  afterEach(async () => {
+    for (const project of projects.splice(0)) project.registry.close()
+    await server.close()
+    restoreNpm()
+    for (const key of Object.keys(process.env)) delete process.env[key]
+    Object.assign(process.env, saved)
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  const open = (config: Record<string, unknown> = {}) => {
+    write(at('.always-up-to-date.json'), JSON.stringify(config))
+    const project = openProject(tmp, { pm: 'npm' })
+    projects.push(project)
+    return project
+  }
+  const manifestRequests = () =>
+    server.requests.map((r) => r.url).filter(isManifestUrl)
+
+  it('sends none for check --json, which never plans', async () => {
+    const project = open({ beyondRange: 'major' })
+
+    const outdated = await check(project, { report: false })
+
+    expect(Object.keys(outdated).sort()).toEqual(['@types/ms', 'ms'])
+    expect(manifestRequests()).toEqual([])
+  })
+
+  it('sends none for a check whose every row is held', async () => {
+    const project = open()
+
+    await check(project)
+
+    expect(server.requests.length).toBeGreaterThan(0)
+    expect(manifestRequests()).toEqual([])
+  })
+
+  it('sends one per moving target, none for a second plan, and none from a new session on the same cache', async () => {
+    const first = open({ beyondRange: 'major' })
+    const outdated = await check(first, { report: false })
+
+    const results = await plan(first, outdated)
+    expect(
+      results.filter((r) => r.updated).map((r) => [r.name, r.target]),
+    ).toEqual([
+      ['@types/ms', '2.1.0'],
+      ['ms', '2.1.3'],
+    ])
+    await plan(first, outdated)
+    expect(manifestRequests().sort()).toEqual([
+      '/@types%2fms/2.1.0',
+      '/ms/2.1.3',
+    ])
+    first.registry.close()
+    server.requests.splice(0)
+
+    const second = open({ beyondRange: 'major' })
+    await plan(second, await check(second, { report: false }))
+    expect(manifestRequests()).toEqual([])
+    expect(
+      fs.readdirSync(path.join(at('cache'), 'v1', 'manifest')),
+    ).toHaveLength(2)
+  })
+
+  it("sends a scoped package's request with npm's credentials for its registry", async () => {
+    write(
+      at('.npmrc'),
+      `registry=${server.url}\n//127.0.0.1:${server.port}/:_authToken=TOK\n`,
+    )
+    const project = open({ beyondRange: 'major' })
+
+    await plan(project, await check(project, { report: false }))
+
+    const sent = server.requests.find((r) => r.url === '/@types%2fms/2.1.0')
+    expect(sent?.headers.authorization).toBe('Bearer TOK')
+  })
+})

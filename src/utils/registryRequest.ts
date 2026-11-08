@@ -29,6 +29,13 @@ export const registryFor = (name: string, config: RegistryConfig): string => {
 export const packumentUrl = (name: string, registry: string): string =>
   `${registry.trim().replace(/\/?$/, '')}/${name.replace('/', '%2f')}`
 
+/** One version's own manifest (#196); the version escaped, so `+build` metadata survives. */
+export const versionManifestUrl = (
+  name: string,
+  version: string,
+  registry: string,
+): string => `${packumentUrl(name, registry)}/${encodeURIComponent(version)}`
+
 /**
  * The `//host[:port]/path/` prefixes .npmrc could scope credentials to for a
  * URL, longest first, ending at `//host/`.

@@ -465,6 +465,98 @@ describe('registry session', () => {
     })
   })
 
+  describe('versionManifest (#196)', () => {
+    const msWithManifest: Handler = (req, res) =>
+      replies({
+        '/ms': { body: registryBody('ms.packument') },
+        '/ms/2.1.3': { body: registryBody('ms.2.1.3.manifest') },
+      })(req, res)
+
+    it('loads and reads nothing before the call, then reads through the reader', async () => {
+      const server = await start(msWithManifest)
+      const loadConfig = jest.fn(() => configFor(server.url))
+      const session = createRegistrySession('/project', {
+        loadConfig,
+        depsDev: false,
+      })
+      sessions.push(session)
+      expect(loadConfig).not.toHaveBeenCalled()
+
+      expect(await session.versionManifest('ms', '2.1.3')).toMatchObject({
+        name: 'ms',
+        version: '2.1.3',
+        license: 'MIT',
+      })
+      expect(server.requests.map((r) => r.url)).toEqual(['/ms', '/ms/2.1.3'])
+    })
+
+    it('sends nothing for a package routed through a registry the manager cannot use', async () => {
+      const server = await start(msWithManifest)
+      const session = sessionFor(
+        configFor(server.url, {
+          unusable: {
+            scopes: {
+              '@acme': {
+                key: '@acme:registry',
+                value: 'ftp://x/',
+                source: '.npmrc',
+                reason: 'not http(s)',
+              },
+            },
+          },
+        }),
+      )
+
+      expect(await session.versionManifest('@acme/ui', '1.0.0')).toBeUndefined()
+      expect(server.requests).toEqual([])
+      expect(
+        jest
+          .mocked(logger.debug)
+          .mock.calls.some(([line]) =>
+            String(line).startsWith('Not asking for @acme/ui@1.0.0: '),
+          ),
+      ).toBe(true)
+    })
+
+    it('resolves undefined when the reader throws', async () => {
+      const session = createRegistrySession('/project', {
+        loadConfig: () => {
+          throw new Error('broken view')
+        },
+      })
+      sessions.push(session)
+
+      await expect(
+        session.versionManifest('ms', '2.1.3'),
+      ).resolves.toBeUndefined()
+    })
+
+    it('still warns at close when the manifest request was throttled', async () => {
+      const server = await start((req, res) => {
+        if (req.url === '/ms/2.1.3') {
+          res.statusCode = 429
+          res.setHeader('retry-after', '30')
+          res.end('slow down')
+          return
+        }
+        msWithManifest(req, res)
+      })
+      const session = createRegistrySession('/project', {
+        loadConfig: () => configFor(server.url),
+        depsDev: false,
+      })
+      sessions.push(session)
+
+      expect(await session.versionManifest('ms', '2.1.3')).toBeUndefined()
+      session.close()
+
+      expect(logger.warn).toHaveBeenCalledTimes(1)
+      expect(jest.mocked(logger.warn).mock.calls[0][0]).toContain(
+        `127.0.0.1:${server.port} (1 request)`,
+      )
+    })
+  })
+
   describe('a throttled run (#174)', () => {
     const throttled: Handler = (_req, res) => {
       res.statusCode = 429

@@ -2,6 +2,7 @@ import {
   parseDepsDevPackage,
   parseDistTags,
   parsePackument,
+  parseVersionManifest,
 } from '@/utils/registryDocuments'
 import { derive, registryBody } from '../fixtures/registry'
 
@@ -297,5 +298,272 @@ describe('parsePackument', () => {
     ['no versions', { 'dist-tags': { latest: '1.0.0' } }],
   ])('returns undefined for %s', (_label, body) => {
     expect(parsePackument(body)).toBeUndefined()
+  })
+})
+
+describe('parseVersionManifest (#196)', () => {
+  const manifest = (name: string, version: string, capture: string) =>
+    parseVersionManifest(json(`${capture}.manifest`), { name, version })
+
+  it.each([
+    [
+      'ms',
+      '2.1.3',
+      'ms.2.1.3',
+      {
+        license: 'MIT',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: false,
+      },
+    ],
+    [
+      '@types/ms',
+      '2.1.0',
+      'types-ms.2.1.0',
+      {
+        license: 'MIT',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: false,
+      },
+    ],
+    [
+      'mkdirp',
+      '0.3.0',
+      'mkdirp.0.3.0',
+      {
+        license: 'MIT/X11',
+        enginesNode: '*',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: true,
+        deprecatedReason:
+          'Legacy versions of mkdirp are no longer supported. Please update to mkdirp 1.x. (Note that the API surface has changed to use Promises in 1.x.)',
+      },
+    ],
+    [
+      'mkdirp',
+      '3.0.1',
+      'mkdirp.3.0.1',
+      {
+        license: 'MIT',
+        enginesNode: '>=10',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: false,
+      },
+    ],
+    [
+      'mkdirp',
+      '0.5.6',
+      'mkdirp.0.5.6',
+      {
+        license: 'MIT',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: false,
+      },
+    ],
+    [
+      'react-redux',
+      '9.2.0',
+      'react-redux.9.2.0',
+      {
+        license: 'MIT',
+        peerDependencies: {
+          react: '^18.0 || ^19',
+          redux: '^5.0.0',
+          '@types/react': '^18.2.25 || ^19',
+        },
+        optionalPeers: ['@types/react', 'redux'],
+        deprecated: false,
+      },
+    ],
+    [
+      'ms',
+      '0.1.0',
+      'ms.0.1.0',
+      {
+        enginesNode: '*',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: false,
+      },
+    ],
+    [
+      'async',
+      '0.2.10',
+      'async.0.2.10',
+      {
+        license: 'MIT',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: false,
+      },
+    ],
+    [
+      'minimatch',
+      '0.2.14',
+      'minimatch.0.2.14',
+      {
+        license: 'MIT',
+        enginesNode: '*',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: true,
+        deprecatedReason:
+          'Please update to minimatch 3.0.2 or higher to avoid a RegExp DoS issue',
+      },
+    ],
+  ])('reads %s@%s from its capture', (name, version, capture, expected) => {
+    expect(manifest(name, version, capture)).toEqual({
+      name,
+      version,
+      ...expected,
+    })
+  })
+
+  it("is undefined for the registry's 404 body, a JSON string", () => {
+    expect(
+      manifest(
+        'ms',
+        '0.0.0-autd-no-such-version',
+        'ms.0.0.0-autd-no-such-version',
+      ),
+    ).toBeUndefined()
+  })
+
+  it.each([
+    ['a number', 3],
+    ['null', null],
+    ['an array', [json('ms.2.1.3.manifest')]],
+  ])('is undefined for %s', (_label, body) => {
+    expect(
+      parseVersionManifest(body, { name: 'ms', version: '2.1.3' }),
+    ).toBeUndefined()
+  })
+
+  it('is undefined when the name or version is not the one asked for', () => {
+    const body = json('ms.2.1.3.manifest')
+    expect(
+      parseVersionManifest(body, { name: 'mkdirp', version: '2.1.3' }),
+    ).toBeUndefined()
+    expect(
+      parseVersionManifest(body, { name: 'ms', version: '2.1.2' }),
+    ).toBeUndefined()
+  })
+
+  it('keeps only string peer ranges, and optional peers with or without one', () => {
+    const body = derive<{
+      peerDependencies: Record<string, unknown>
+      peerDependenciesMeta: Record<string, unknown>
+    }>('react-redux.9.2.0.manifest', (b) => {
+      b.peerDependencies.redux = 5
+      b.peerDependencies['@types/react'] = null
+      b.peerDependenciesMeta['meta-only'] = { optional: true }
+      b.peerDependenciesMeta.react = { optional: false }
+      b.peerDependenciesMeta.odd = 'optional'
+    })
+    expect(
+      parseVersionManifest(JSON.parse(body), {
+        name: 'react-redux',
+        version: '9.2.0',
+      }),
+    ).toMatchObject({
+      peerDependencies: { react: '^18.0 || ^19' },
+      optionalPeers: ['@types/react', 'meta-only', 'redux'],
+    })
+  })
+
+  it('joins a licenses array of several entries as an SPDX OR', () => {
+    const body = derive<{ licenses: Array<{ type: string; url: string }> }>(
+      'async.0.2.10.manifest',
+      (b) => {
+        b.licenses.push({ type: 'Apache-2.0', url: 'https://example.test/' })
+      },
+    )
+    expect(
+      parseVersionManifest(JSON.parse(body), {
+        name: 'async',
+        version: '0.2.10',
+      })?.license,
+    ).toBe('(MIT OR Apache-2.0)')
+  })
+
+  // On ms 2.1.3, which has `license: "MIT"` and no `licenses`.
+  it.each([
+    ['no license for a blank one', { license: '  ' }, undefined],
+    ['a license trimmed', { license: ' MIT ' }, 'MIT'],
+    [
+      'no license for an object without a type',
+      { license: { url: 'x' } },
+      undefined,
+    ],
+    ['no license for a number', { license: 3 }, undefined],
+  ])('reads %s', (_label, edit, expected) => {
+    const body = derive<Record<string, unknown>>('ms.2.1.3.manifest', (b) => {
+      Object.assign(b, edit)
+    })
+    expect(
+      parseVersionManifest(JSON.parse(body), { name: 'ms', version: '2.1.3' })
+        ?.license,
+    ).toBe(expected)
+  })
+
+  // On async 0.2.10, which has `licenses: [{ type: "MIT" }]` and no `license`.
+  it.each([
+    ['license over licenses', { license: 'ISC' }, 'ISC'],
+    ['licenses when license is blank', { license: '' }, 'MIT'],
+    [
+      'no license for a licenses array of strings',
+      { licenses: ['MIT'] },
+      undefined,
+    ],
+    ['no license for an empty licenses array', { licenses: [] }, undefined],
+  ])('reads %s', (_label, edit, expected) => {
+    const body = derive<Record<string, unknown>>(
+      'async.0.2.10.manifest',
+      (b) => {
+        Object.assign(b, edit)
+      },
+    )
+    expect(
+      parseVersionManifest(JSON.parse(body), {
+        name: 'async',
+        version: '0.2.10',
+      })?.license,
+    ).toBe(expected)
+  })
+
+  it('treats an empty deprecated string as not deprecated, as npm does', () => {
+    const body = derive<Record<string, unknown>>('ms.2.1.3.manifest', (b) => {
+      b.deprecated = ''
+    })
+    expect(
+      parseVersionManifest(JSON.parse(body), { name: 'ms', version: '2.1.3' }),
+    ).toMatchObject({ deprecated: false })
+    expect(
+      parseVersionManifest(JSON.parse(body), { name: 'ms', version: '2.1.3' }),
+    ).not.toHaveProperty('deprecatedReason')
+  })
+
+  it.each([
+    ['an array', ['node >= 10']],
+    ['a node range that is not a string', { node: 10 }],
+    ['an empty node range', { node: '' }],
+  ])('has no enginesNode for engines as %s', (_label, engines) => {
+    const body = derive<Record<string, unknown>>(
+      'mkdirp.3.0.1.manifest',
+      (b) => {
+        b.engines = engines
+      },
+    )
+    expect(
+      parseVersionManifest(JSON.parse(body), {
+        name: 'mkdirp',
+        version: '3.0.1',
+      }),
+    ).not.toHaveProperty('enginesNode')
   })
 })
