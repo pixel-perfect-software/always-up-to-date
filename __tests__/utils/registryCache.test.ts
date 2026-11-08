@@ -18,7 +18,10 @@ import {
   type RegistryCache,
   TTL_SECONDS,
 } from '@/utils/registryCache'
-import { parseDepsDevPackage } from '@/utils/registryDocuments'
+import {
+  parseDepsDevPackage,
+  parseVersionManifest,
+} from '@/utils/registryDocuments'
 import { registryBody } from '../fixtures/registry'
 
 const REGISTRY = 'https://registry.npmjs.org/'
@@ -50,6 +53,16 @@ const PUBLIC = { cacheControl: 'public, max-age=300', authenticated: false }
 
 const versions = (...list: string[]): RegistryVersion[] =>
   list.map((version) => ({ version, deprecated: false }))
+
+/** The parsed capture of react-redux 9.2.0's own manifest (#196): peers and optional peers. */
+const REACT_REDUX = (() => {
+  const parsed = parseVersionManifest(
+    JSON.parse(registryBody('react-redux.9.2.0.manifest')),
+    { name: 'react-redux', version: '9.2.0' },
+  )
+  if (!parsed) throw new Error('the react-redux capture no longer parses')
+  return parsed
+})()
 
 /** An entry no gzip shrinks: about 6 KB on disk, so two 4 KiB blocks. */
 const bulky = (seed: number): CacheValues['packument'] => ({
@@ -332,6 +345,7 @@ describe('round trips', () => {
       },
     ],
     'packument-full': [REGISTRY, { versions: versions('1.0.0') }],
+    manifest: [REGISTRY, REACT_REDUX],
   }
 
   it.each(Object.keys(cases) as CacheKind[])(
@@ -658,6 +672,85 @@ describe('unreadable entries are misses', () => {
     expect(cache.get('dist-tags', REGISTRY, 'pkg')).toBeUndefined()
   })
 
+  describe('a manifest value (#196)', () => {
+    const storedManifest = () => {
+      const cache = open()
+      cache.put('manifest', REGISTRY, 'react-redux@9.2.0', REACT_REDUX, PUBLIC)
+      const [name] = entryFiles(cache, 'manifest')
+      return { cache, file: path.join(kindDir(cache, 'manifest'), name ?? '') }
+    }
+
+    it('reads with every optional field, and without them', () => {
+      const { cache, file } = storedManifest()
+      const full = {
+        ...REACT_REDUX,
+        enginesNode: '>=18',
+        deprecated: true,
+        deprecatedReason: 'old',
+      }
+      rewrite(file, (entry) => {
+        entry.value = full
+      })
+      expect(
+        cache.get('manifest', REGISTRY, 'react-redux@9.2.0')?.value,
+      ).toEqual(full)
+      const bare = {
+        name: 'ms',
+        version: '0.1.0',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: false,
+      }
+      rewrite(file, (entry) => {
+        entry.value = bare
+      })
+      expect(
+        cache.get('manifest', REGISTRY, 'react-redux@9.2.0')?.value,
+      ).toEqual(bare)
+    })
+
+    const { name: _name, ...nameless } = REACT_REDUX
+    const { deprecated: _deprecated, ...undecided } = REACT_REDUX
+    it.each<[string, unknown]>([
+      ['no name', nameless],
+      ['a version that is not a string', { ...REACT_REDUX, version: 9 }],
+      [
+        'a license that is not a string',
+        { ...REACT_REDUX, license: { type: 'MIT' } },
+      ],
+      [
+        'an enginesNode that is not a string',
+        { ...REACT_REDUX, enginesNode: 10 },
+      ],
+      [
+        'peers that are not a record',
+        { ...REACT_REDUX, peerDependencies: ['react'] },
+      ],
+      [
+        'a peer range that is not a string',
+        { ...REACT_REDUX, peerDependencies: { react: 18 } },
+      ],
+      [
+        'optional peers that are not strings',
+        { ...REACT_REDUX, optionalPeers: [1] },
+      ],
+      ['no deprecated', undecided],
+      [
+        'a deprecated reason that is not a string',
+        { ...REACT_REDUX, deprecatedReason: true },
+      ],
+      ['a packument instead', { versions: versions('9.2.0') }],
+    ])('misses %s', (_label, value) => {
+      const { cache, file } = storedManifest()
+      rewrite(file, (entry) => {
+        entry.value = value
+      })
+      expect(
+        cache.get('manifest', REGISTRY, 'react-redux@9.2.0'),
+      ).toBeUndefined()
+    })
+  })
+
   it('misses an entry path that is a directory', () => {
     const { cache, file } = stored()
     fs.rmSync(file)
@@ -701,6 +794,7 @@ describe('separation', () => {
     cache.put('deps.dev', REGISTRY, 'pkg', versions('1.0.0'), PUBLIC)
     cache.put('packument', REGISTRY, 'pkg', { versions: [] }, PUBLIC)
     cache.put('packument-full', REGISTRY, 'pkg', { versions: [] }, PUBLIC)
+    cache.put('manifest', REGISTRY, 'pkg', REACT_REDUX, PUBLIC)
     for (const kind of Object.keys(TTL_SECONDS) as CacheKind[])
       expect(entryFiles(cache, kind)).toHaveLength(1)
     expect(cache.get('deps.dev', REGISTRY, 'pkg')?.value).toEqual(
@@ -776,8 +870,13 @@ describe('a token in the registry path', () => {
       { authenticated: true },
       { sameForEveryone: true },
     )
+    cache.put('manifest', registry, 'react-redux@9.2.0', REACT_REDUX, {
+      authenticated: true,
+      etag: '"m"',
+    })
+    expect(entryFiles(cache, 'manifest')).toHaveLength(1)
     const files = walk(cache.dir)
-    expect(files.length).toBeGreaterThan(2)
+    expect(files.length).toBeGreaterThan(3)
     for (const file of files) {
       const text = file.endsWith('.gz')
         ? zlib.gunzipSync(fs.readFileSync(file)).toString()
@@ -941,6 +1040,30 @@ describe('pruning', () => {
     ).size
     return Math.ceil(size / 4096) * 4096
   }
+
+  it('walks manifest entries too (#196), oldest first across kinds', () => {
+    const maxBytes = 64 * 1024
+    const cache = open({ maxBytes })
+    for (let index = 0; index < 20; index++) {
+      clock += 1000
+      cache.put(
+        'manifest',
+        REGISTRY,
+        `pkg@1.0.${index}`,
+        {
+          ...REACT_REDUX,
+          deprecated: true,
+          deprecatedReason: crypto.randomBytes(6000).toString('hex'),
+        },
+        PUBLIC,
+      )
+    }
+    for (let index = 0; index < 5; index++) putBulky(cache, index)
+    cache.close()
+    expect(cache.stats().pruned).toBeGreaterThan(0)
+    expect(entryFiles(cache, 'manifest').length).toBeLessThan(20)
+    expect(entryFiles(cache, 'packument')).toHaveLength(5)
+  })
 
   it('deletes the oldest down to 80% of the cap', () => {
     const maxBytes = 64 * 1024

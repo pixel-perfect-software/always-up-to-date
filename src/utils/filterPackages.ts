@@ -18,6 +18,7 @@ import logger from './logger'
 import type { ControllingOverride } from './overrides'
 import { type PeerRequirement, readInstalledPeers } from './peers'
 import type { RegistrySession } from './registry'
+import { readTargetManifests, type TargetManifests } from './targetManifests'
 import updateChecker, {
   policyFromConfig,
   type UpdatePolicy,
@@ -33,10 +34,12 @@ interface FilterPackagesOptions {
    * which versions are deprecated; only asked when cooldown is on. A moving
    * row's target is checked for deprecation (#195) in `lookedUp`, the
    * session's own lookups, which never sends a request; without it, or for a
-   * name the session never looked up, nothing is held as deprecated.
+   * name the session never looked up, nothing is held as deprecated. Each
+   * target still moving after that has its own manifest read
+   * (`versionManifest`, #196); without it, none is.
    */
   registry: Pick<RegistrySession, 'releaseTimes'> &
-    Partial<Pick<RegistrySession, 'lookup' | 'lookedUp'>>
+    Partial<Pick<RegistrySession, 'lookup' | 'lookedUp' | 'versionManifest'>>
   now?: number
   /** Packages pinned by an override the manager enforces; without it no package is held for one. */
   overrides?: Record<string, ControllingOverride>
@@ -283,6 +286,26 @@ const holdDeprecated = async (
   )
 }
 
+/**
+ * A pass that judges each moving row by its target's own manifest (#197-#199:
+ * license, `engines.node`, peers): it holds or warns, never moves a row. An
+ * unknown manifest (undefined) is a state each pass decides for itself.
+ */
+type ManifestPass = (
+  rows: UpdateResult[],
+  context: {
+    manifests: TargetManifests
+    lookupName: (row: UpdateResult) => string
+    policy: UpdatePolicy
+  },
+) => UpdateResult[]
+
+/**
+ * The manifest passes, in order. #196 reads the manifests and holds nothing
+ * on them; #197-#199 add their passes here.
+ */
+const MANIFEST_PASSES: readonly ManifestPass[] = []
+
 /** Versions the registry marks deprecated, when the session can say. */
 const deprecatedVersions = async (
   registry: FilterPackagesOptions['registry'],
@@ -404,9 +427,24 @@ const filterPackages = async (
     declared?.({ name: row.name, workspace: row.workspace })?.name ?? row.name
 
   // Every pass below judges the final target, so it runs after the cooldown,
-  // and a hold there is settled again.
-  const signals = async (rows: UpdateResult[]) =>
-    settle(await holdDeprecated(rows, registry, policy, lookupName))
+  // and a hold there is settled again. The deprecation pass reads only what
+  // discovery looked up; the manifests (#196) are read for the rows still
+  // moving once it has settled, so a held row costs no request.
+  const signals = async (rows: UpdateResult[]) => {
+    const moving = settle(
+      await holdDeprecated(rows, registry, policy, lookupName),
+    )
+    const manifests = await readTargetManifests(moving, {
+      registry,
+      lookupName,
+    })
+    return settle(
+      MANIFEST_PASSES.reduce(
+        (current, pass) => pass(current, { manifests, lookupName, policy }),
+        moving,
+      ),
+    )
+  }
 
   if (!cooldownActive) return signals(results)
 

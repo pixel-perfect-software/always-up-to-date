@@ -84,3 +84,39 @@ Captured for #108 with `curl --compressed -D`, no credentials, no `.npmrc`, `Acc
 | api.deps.dev `/v3/systems/npm/packages/<name>`   | `public, max-age=3600` | none                                                    | none        | `Accept-Encoding`         | no ETag to send                         |
 
 The dist-tags answers carry only a `__cf_bm` cookie, no validator and no freshness header, so a cache of them is TTL-only. Packuments carry both, and a conditional request is answered with 304.
+
+## Version manifests (2026-11-07)
+
+Captured for #196: a version's own manifest, `GET <registry>/<name>/<version>`, which carries `license`, `engines`, `peerDependencies`, `peerDependenciesMeta` and `deprecated`, none of which the abbreviated packument has for most versions. `curl --compressed`, `Accept: application/json`, no credentials, no `.npmrc`; the Aikido TLS proxy is in the path. A scoped name is requested with `%2f`, as `packumentUrl` writes it. Header files are not kept.
+
+- `@types%2fms/2.1.0` and the unescaped `@types/ms/2.1.0` returned byte-identical bodies (`cmp`), so the `%2f` form is safe on npmjs.
+- Each manifest's `name` and `version` equal the request. Where the committed abbreviated packument lists the same version (`ms`, `mkdirp`, `@types/ms`), its `engines` and `deprecated` equal the manifest's; the abbreviated document omits `license` and `peerDependencies`, so nothing in the manifest was lost or added by the proxy for those fields.
+- `mkdirp.0.3.0`: `license` is `"MIT/X11"` (not SPDX), `engines.node` is `"*"`, `deprecated` is a string. `mkdirp.3.0.1`: `engines.node` is `">=10"`. `mkdirp.0.5.6`: no `engines`, not deprecated. `ms.0.1.0`: no `license`, `engines.node` is `"*"`. `ms.2.1.3` and `types-ms.2.1.0`: `license` `"MIT"`, no `engines` (`@types/ms` has `peerDependencies: {}`).
+- `react-redux.9.2.0`: `peerDependencies` `react`, `redux`, `@types/react`; `peerDependenciesMeta` marks `redux` and `@types/react` `optional: true`.
+- Legacy license forms are real captures: `async.0.2.10` has `licenses: [{ "type": "MIT", "url": … }]` and no `license`; `minimatch.0.2.14` has `license: { "type": "MIT", "url": … }`.
+- The 404 for a version the package lacks is `"version not found: <version>"`, a JSON string, `application/json`.
+- Not captured: a manifest with a `licenses` array of several entries. Variants for it come from `derive` on `async.0.2.10`.
+
+| File                                          | Request                                            | Status | Content type       | Wire size | Decoded size | gz  |
+| --------------------------------------------- | -------------------------------------------------- | ------ | ------------------ | --------- | ------------ | --- |
+| `ms.2.1.3.manifest.body`                      | `registry.npmjs.org/ms/2.1.3`                      | 200    | `application/json` | 2538 B    | 5200 B       | no  |
+| `types-ms.2.1.0.manifest.body`                | `registry.npmjs.org/@types%2fms/2.1.0`             | 200    | `application/json` | 853 B     | 1397 B       | no  |
+| `mkdirp.0.3.0.manifest.body`                  | `registry.npmjs.org/mkdirp/0.3.0`                  | 200    | `application/json` | 798 B     | 1270 B       | no  |
+| `mkdirp.3.0.1.manifest.body`                  | `registry.npmjs.org/mkdirp/3.0.1`                  | 200    | `application/json` | 2120 B    | 3564 B       | no  |
+| `mkdirp.0.5.6.manifest.body`                  | `registry.npmjs.org/mkdirp/0.5.6`                  | 200    | `application/json` | 2492 B    | 4629 B       | no  |
+| `react-redux.9.2.0.manifest.body`             | `registry.npmjs.org/react-redux/9.2.0`             | 200    | `application/json` | 1635 B    | 3549 B       | no  |
+| `ms.0.1.0.manifest.body`                      | `registry.npmjs.org/ms/0.1.0`                      | 200    | `application/json` | 578 B     | 847 B        | no  |
+| `async.0.2.10.manifest.body`                  | `registry.npmjs.org/async/0.2.10`                  | 200    | `application/json` | 748 B     | 1218 B       | no  |
+| `minimatch.0.2.14.manifest.body`              | `registry.npmjs.org/minimatch/0.2.14`              | 200    | `application/json` | 760 B     | 1290 B       | no  |
+| `ms.0.0.0-autd-no-such-version.manifest.body` | `registry.npmjs.org/ms/0.0.0-autd-no-such-version` | 404    | `application/json` | 47 B      | 47 B         | no  |
+
+### Cache headers of the manifest endpoint
+
+Same method as the cache headers above; `ms/2.1.3` (the `Date` header read 2026-11-08 02:01 GMT).
+
+| Endpoint                                    | `Cache-Control`             | `ETag`               | `Age` | `Vary`                    | `If-None-Match`                         |
+| ------------------------------------------- | --------------------------- | -------------------- | ----- | ------------------------- | --------------------------------------- |
+| registry.npmjs.org `/<name>/<version>`      | `max-age=300` (no `public`) | none                 | none  | `accept-encoding, accept` | no ETag to send; a made-up one gets 200 |
+| Verdaccio 6.11.1 `/<name>/<version>`, local | none                        | strong, `"<32 hex>"` | none  | `Accept-Encoding`         | the ETag gets 304                       |
+
+Verdaccio 6.11.1 (a private registry, with an `npmjs` uplink) answered `/ms/2.1.3`, `/@types%2fms/2.1.0` and `/@types/ms/2.1.0` with 200 `application/json; charset=utf-8` (7009 B, 1673 B, 1673 B; the `@types` bodies are the same); its body adds `_id` and `maintainers`. GitHub Packages and Artifactory were not tried.

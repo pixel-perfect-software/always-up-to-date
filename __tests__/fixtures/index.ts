@@ -62,6 +62,8 @@ export const fakeRegistry = (
     lookup: unexpected,
     // Nothing was looked up: what a session answers before discovery.
     lookedUp: () => undefined,
+    // No document known (#196): a state every manifest signal tolerates.
+    versionManifest: async () => undefined,
     close: () => undefined,
     ...overrides,
   }

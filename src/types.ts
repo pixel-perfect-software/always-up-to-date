@@ -296,6 +296,33 @@ export interface RegistryPackage {
 }
 
 /**
+ * A version's own manifest, `GET <registry>/<name>/<version>` (#196),
+ * normalized for the policy signals that judge a target by it (#197-#199).
+ */
+export interface VersionManifest {
+  name: string
+  version: string
+  /**
+   * `license` as published, trimmed (SPDX or not); a legacy `{ type }` gives
+   * its type, and `licenses: [{ type }, …]` its one type or `(A OR B)`. Absent
+   * when there is none or it is unreadable.
+   */
+  license?: string
+  /** `engines.node`, when a non-empty string. */
+  enginesNode?: string
+  /** String-valued entries only. */
+  peerDependencies: Record<string, string>
+  /** Names with `peerDependenciesMeta[name].optional === true`, a range or not, sorted. */
+  optionalPeers: string[]
+  /**
+   * The lookup's deprecation of this version (fresher than a stored manifest)
+   * once the reader returns it; the manifest's own in the parser's output.
+   */
+  deprecated: boolean
+  deprecatedReason?: string
+}
+
+/**
  * The versions a cooldown judges for a row moving from `current` to `target`:
  * above `current`, up to and including `target`. Only a version in this window
  * is worth a full packument when the lookup has no publish time for it.

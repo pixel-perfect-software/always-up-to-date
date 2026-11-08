@@ -1,5 +1,5 @@
 import semver from 'semver'
-import type { RegistryVersion } from '@/types'
+import type { RegistryVersion, VersionManifest } from '@/types'
 import { isRecord } from './isRecord'
 
 const isCanonical = (version: unknown): version is string =>
@@ -80,5 +80,81 @@ export const parsePackument = (body: unknown): ParsedPackument | undefined => {
     ...(isCanonical(latest) ? { latest } : {}),
     ...(modified ? { modified } : {}),
     versions: versions.sort(byVersion),
+  }
+}
+
+const trimmed = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  const text = value.trim()
+  return text === '' ? undefined : text
+}
+
+/** A legacy license entry, `{ type, url }`: its type. */
+const licenseType = (value: unknown): string | undefined =>
+  isRecord(value) ? trimmed(value.type) : undefined
+
+/**
+ * `license` (a string, or the legacy `{ type }`), else the legacy `licenses`
+ * array: one type as is, several as an SPDX `OR`. Never parsed as SPDX.
+ */
+const licenseOf = (body: Record<string, unknown>): string | undefined => {
+  const own = trimmed(body.license) ?? licenseType(body.license)
+  if (own) return own
+  if (!Array.isArray(body.licenses)) return undefined
+  const types = [
+    ...new Set(
+      (body.licenses as unknown[])
+        .map(licenseType)
+        .filter((type) => type !== undefined),
+    ),
+  ]
+  if (types.length <= 1) return types[0]
+  return `(${types.join(' OR ')})`
+}
+
+/**
+ * One version's manifest (`GET <registry>/<name>/<version>`, #196), or
+ * undefined unless it is a record naming that version of that package (a
+ * registry's 404 body is a JSON string). Non-string peer ranges are dropped;
+ * an empty `deprecated` string is not deprecated, as npm reads it.
+ */
+export const parseVersionManifest = (
+  body: unknown,
+  expected: { name: string; version: string },
+): VersionManifest | undefined => {
+  if (
+    !isRecord(body) ||
+    body.name !== expected.name ||
+    body.version !== expected.version
+  )
+    return undefined
+  const license = licenseOf(body)
+  const enginesNode = isRecord(body.engines)
+    ? trimmed(body.engines.node)
+    : undefined
+  const peerDependencies: Record<string, string> = {}
+  if (isRecord(body.peerDependencies)) {
+    for (const [peer, range] of Object.entries(body.peerDependencies)) {
+      if (typeof range === 'string') peerDependencies[peer] = range
+    }
+  }
+  const meta = isRecord(body.peerDependenciesMeta)
+    ? body.peerDependenciesMeta
+    : {}
+  const optionalPeers = Object.entries(meta)
+    .filter(([, entry]) => isRecord(entry) && entry.optional === true)
+    .map(([peer]) => peer)
+    .sort()
+  const { deprecated } = body
+  const reason = typeof deprecated === 'string' ? deprecated : undefined
+  return {
+    name: expected.name,
+    version: expected.version,
+    ...(license ? { license } : {}),
+    ...(enginesNode ? { enginesNode } : {}),
+    peerDependencies,
+    optionalPeers,
+    deprecated: deprecated === true || Boolean(reason),
+    ...(reason ? { deprecatedReason: reason } : {}),
   }
 }

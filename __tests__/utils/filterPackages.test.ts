@@ -31,6 +31,8 @@ interface LoadOpts {
   deprecated?: Record<string, string[]>
   /** What the session looked up, as the plan's `lookedUp` reads it (#195). */
   lookedUp?: RegistrySession['lookedUp']
+  /** Given, the registry answers `versionManifest` with it (#196). */
+  versionManifest?: RegistrySession['versionManifest']
 }
 
 const DEFAULTS = {
@@ -94,6 +96,9 @@ function loadFilterWithConfig(
           lookedUp: deprecatedLookup,
         }),
         ...(opts.lookedUp && { lookedUp: opts.lookedUp }),
+        ...(opts.versionManifest && {
+          versionManifest: opts.versionManifest,
+        }),
       },
       ...options,
     })
@@ -638,6 +643,163 @@ describe('filterPackages', () => {
 
       expect(result).toMatchObject({ updated: true, target: '4.4.3' })
       expect(result.warning).toBeUndefined()
+    })
+  })
+
+  describe("targets' own manifests (#196)", () => {
+    const NOW = Date.parse('2026-04-29T12:00:00Z')
+    const daysAgo = (days: number) =>
+      new Date(NOW - days * 24 * 60 * 60 * 1000).toISOString()
+    /** A recording `versionManifest` that knows no document. */
+    const recording = () => {
+      const asked: string[] = []
+      const versionManifest = jest.fn(async (name: string, version: string) => {
+        asked.push(`${name}@${version}`)
+        return undefined
+      })
+      return { asked, versionManifest }
+    }
+
+    it('asks nothing when no row moves', async () => {
+      const { asked, versionManifest } = recording()
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      const results = await filter(
+        makeOutdated([
+          { name: 'pinned', current: '1.0.0', latest: '2.0.0' },
+          { name: 'other', current: '1.0.0', latest: '1.0.1' },
+        ]),
+      )
+
+      expect(results.every((r) => !r.updated)).toBe(true)
+      expect(asked).toEqual([])
+    })
+
+    it('asks once per moving target, with cooldown off, and changes no result', async () => {
+      const { asked, versionManifest } = recording()
+      const outdated = makeOutdated([
+        { name: 'foo', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        { name: 'bar', current: '2.0.0', latest: '3.0.0' },
+      ])
+      const without = await loadFilterWithConfig({ beyondRange: 'major' })(
+        outdated,
+      )
+      const filter = loadFilterWithConfig(
+        { beyondRange: 'major' },
+        { versionManifest },
+      )
+
+      const results = await filter(outdated)
+
+      expect(asked.sort()).toEqual(['bar@3.0.0', 'foo@1.0.1'])
+      expect(results).toEqual(without)
+    })
+
+    it('asks once for a package two manifests move to the same target', async () => {
+      const { asked, versionManifest } = recording()
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      const results = await filter(
+        foldWorkspaceEntries([
+          {
+            name: 'foo',
+            workspace: '.',
+            current: '1.0.0',
+            wanted: '1.0.2',
+            latest: '1.0.2',
+          },
+          {
+            name: 'foo',
+            workspace: 'packages/a',
+            current: '1.0.1',
+            wanted: '1.0.2',
+            latest: '1.0.2',
+          },
+        ]),
+      )
+
+      expect(results.map((r) => r.updated)).toEqual([true, true])
+      expect(asked).toEqual(['foo@1.0.2'])
+    })
+
+    it("asks about an alias's target, by the name discovery looked up", async () => {
+      const { asked, versionManifest } = recording()
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      await filter(
+        makeOutdated([
+          { name: 'my-ms', current: '2.1.2', wanted: '2.1.3', latest: '2.1.3' },
+        ]),
+        { declared: declaring('ms', '^2.1.2') },
+      )
+
+      expect(asked).toEqual(['ms@2.1.3'])
+    })
+
+    it('asks about the cooldown fallback, not the target it replaced', async () => {
+      const { asked, versionManifest } = recording()
+      const filter = loadFilterWithConfig(
+        { cooldown: 7, beyondRange: 'major' },
+        {
+          releaseTimes: {
+            foo: { '2.0.0': daysAgo(30), '2.1.0': daysAgo(1) },
+          },
+          versionManifest,
+        },
+      )
+
+      const [result] = await filter(
+        makeOutdated([{ name: 'foo', current: '1.0.0', latest: '2.1.0' }]),
+        { now: NOW },
+      )
+
+      expect(result.target).toBe('2.0.0')
+      expect(asked).toEqual(['foo@2.0.0'])
+    })
+
+    it('never asks about a row held by a rule, a peer, a deprecation or the cooldown, or one not targeted', async () => {
+      const { asked, versionManifest } = recording()
+      const filter = loadFilterWithConfig(
+        { rules: { ruled: 'hold' }, cooldown: 7 },
+        {
+          installedPeers: {
+            peered: [{ name: 'host', version: '1.0.0', range: '~1.0.0' }],
+          },
+          releaseTimes: {
+            fresh: { '1.0.1': daysAgo(1) },
+            dep: { '1.0.1': daysAgo(30) },
+            moving: { '1.0.1': daysAgo(30) },
+          },
+          deprecated: { dep: ['1.0.1'] },
+          versionManifest,
+        },
+      )
+      const row = (name: string) => ({
+        name,
+        current: '1.0.0',
+        wanted: '1.0.1',
+        latest: '1.0.1',
+      })
+
+      const results = await filter(
+        makeOutdated([
+          row('ruled'),
+          { ...row('peered'), wanted: '1.1.0', latest: '1.1.0' },
+          row('fresh'),
+          row('dep'),
+          row('skipped'),
+          row('moving'),
+        ]),
+        {
+          now: NOW,
+          targetPackages: ['ruled', 'peered', 'fresh', 'dep', 'moving'],
+        },
+      )
+
+      expect(results.filter((r) => r.updated).map((r) => r.name)).toEqual([
+        'moving',
+      ])
+      expect(asked).toEqual(['moving@1.0.1'])
     })
   })
 

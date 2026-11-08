@@ -28,6 +28,7 @@ import {
   registryFor,
   retryDelay,
   throttledNotice,
+  versionManifestUrl,
   YARN_V1_REGISTRY,
   yarnV1AuthorizationFor,
   yarnV1RegistryKeys,
@@ -59,6 +60,132 @@ describe('packumentUrl', () => {
     expect(packumentUrl('@corp/pkg', ' https://host.test/ ')).toBe(
       'https://host.test/@corp%2fpkg',
     )
+  })
+})
+
+describe('versionManifestUrl (#196)', () => {
+  it('adds the version to the packument URL', () => {
+    expect(
+      versionManifestUrl('ms', '2.1.3', 'https://registry.npmjs.org/'),
+    ).toBe('https://registry.npmjs.org/ms/2.1.3')
+  })
+
+  it('escapes only the slash of a scoped name, as the packument does', () => {
+    expect(
+      versionManifestUrl('@types/ms', '2.1.0', 'https://registry.npmjs.org/'),
+    ).toBe('https://registry.npmjs.org/@types%2fms/2.1.0')
+  })
+
+  it('keeps a registry path, with or without its trailing slash', () => {
+    expect(
+      versionManifestUrl('ms', '2.1.3', 'https://host.test/npm/repo/'),
+    ).toBe('https://host.test/npm/repo/ms/2.1.3')
+    expect(
+      versionManifestUrl('ms', '2.1.3', 'https://host.test/npm/repo'),
+    ).toBe('https://host.test/npm/repo/ms/2.1.3')
+  })
+
+  it('escapes build metadata', () => {
+    expect(
+      versionManifestUrl('ms', '1.0.0+build.1', 'https://registry.npmjs.org/'),
+    ).toBe('https://registry.npmjs.org/ms/1.0.0%2Bbuild.1')
+  })
+
+  describe('credentials on it follow each manager’s rule', () => {
+    const B = 'http://127.0.0.1:4872/'
+    const manifestOf = (name: string, registry: string) =>
+      new URL(versionManifestUrl(name, '1.0.0', registry))
+
+    it("npm's longest prefix (pnpm and bun through credentials too), as for the packument", () => {
+      const registry = `${B}npm/repo/`
+      const credentials = {
+        '//127.0.0.1:4872/': { authToken: 'HOST' },
+        '//127.0.0.1:4872/npm/repo/': { authToken: 'REPO' },
+      }
+      for (const name of ['ms', '@acme/probe']) {
+        const found = credentialsFor(
+          manifestOf(name, registry),
+          registry,
+          credentials,
+        )
+        expect(found).toEqual({ authToken: 'REPO' })
+        expect(found).toEqual(
+          credentialsFor(new URL(packumentUrl(name, registry)), registry, {
+            ...credentials,
+          }),
+        )
+      }
+    })
+
+    it("yarn v1's scoped-or-always-auth rule", () => {
+      const auth = (options: YarnV1Auth['options']) => ({
+        options,
+        yarnDefault: false,
+      })
+      expect(
+        yarnV1AuthorizationFor(manifestOf('@acme/probe', B), B, {
+          registry: 'https://registry.npmjs.org/',
+          scopedRegistries: { '@acme': B },
+          yarnV1Auth: auth({ _authToken: 'U' }),
+        }),
+      ).toBe('Bearer U')
+      const hostToken = { '//127.0.0.1:4872/:_authToken': 'T' }
+      expect(
+        yarnV1AuthorizationFor(manifestOf('probe', B), B, {
+          registry: B,
+          scopedRegistries: {},
+          yarnV1Auth: auth(hostToken),
+        }),
+      ).toBeUndefined()
+      expect(
+        yarnV1AuthorizationFor(manifestOf('probe', B), B, {
+          registry: B,
+          scopedRegistries: {},
+          yarnV1Auth: auth({ ...hostToken, 'always-auth': true }),
+        }),
+      ).toBe('Bearer T')
+    })
+
+    it("berry's scope, npmRegistries and npmAlwaysAuth rule", () => {
+      const registry = 'http://127.0.0.1:4902'
+      const none = { alwaysAuth: false }
+      const berry = (
+        auth: Partial<BerryAuth>,
+        scopedRegistries: Record<string, string> = {},
+      ) => ({
+        registry,
+        scopedRegistries,
+        berryAuth: { top: none, scopes: {}, registries: {}, ...auth },
+      })
+      expect(
+        berryAuthorizationFor(
+          manifestOf('@acme/probe', registry),
+          registry,
+          berry(
+            { scopes: { '@acme': { token: 'S', alwaysAuth: false } } },
+            { '@acme': registry },
+          ),
+        ),
+      ).toBe('Bearer S')
+      const entry = (alwaysAuth: boolean) =>
+        berry({
+          registries: { '//127.0.0.1:4902': { token: 'R', alwaysAuth } },
+        })
+      expect(
+        berryAuthorizationFor(
+          manifestOf('probe', registry),
+          registry,
+          entry(false),
+        ),
+      ).toBeUndefined()
+      expect(
+        berryAuthorizationFor(
+          manifestOf('probe', registry),
+          registry,
+          entry(true),
+        ),
+      ).toBe('Bearer R')
+    })
   })
 })
 

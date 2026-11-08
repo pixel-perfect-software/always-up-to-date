@@ -5,6 +5,7 @@ import type {
   RegistryPackage,
   RegistryVersion,
   ReleaseWindow,
+  VersionManifest,
 } from '@/types'
 import { createLimiter } from './limiter'
 import logger from './logger'
@@ -15,6 +16,7 @@ import {
   parseDepsDevPackage,
   parseDistTags,
   parsePackument,
+  parseVersionManifest,
 } from './registryDocuments'
 import {
   ABBREVIATED_ACCEPT,
@@ -28,6 +30,7 @@ import {
   type RegistryEndpoints,
   registryFor,
   revalidatesEveryUse,
+  versionManifestUrl,
 } from './registryRequest'
 
 export interface RegistryReaderOptions {
@@ -57,9 +60,20 @@ export interface RegistryReader {
     window?: ReleaseWindow,
   ): Promise<Record<string, string>>
   /**
+   * One version's own manifest (#196): license, engines, peers. Asked only for
+   * a version the name's lookup lists, once per name and version per reader,
+   * failures included. Never rejects: a failed, missing or unreadable document
+   * is undefined, with a debug line. Its deprecation is the lookup's.
+   */
+  versionManifest(
+    name: string,
+    version: string,
+  ): Promise<VersionManifest | undefined>
+  /**
    * What the registries answered with: 304s (revalidated) and 200 bodies the
    * cache could store. `covered` asked nobody: a stored full packument past its
-   * TTL that listed every version `releaseTimes` needed.
+   * TTL that listed every version `releaseTimes` needed, or a stored version
+   * manifest past its TTL.
    */
   stats(): { notModified: number; fetched: number; covered: number }
 }
@@ -680,5 +694,90 @@ export const createRegistryReader = ({
     return times
   }
 
-  return { lookup, releaseTimes, stats: () => ({ ...counts }) }
+  /**
+   * npm never republishes a version, so a stored manifest answers whatever its
+   * age, as a full packument covering the versions asked about does. What the
+   * registry said about reuse still holds: an authenticated entry, and one
+   * stored under `private`, `no-cache` or `max-age=0`, is asked again with its
+   * ETag every time (a 304 costs no body); `freshFor` keeps no such answer
+   * without an ETag. The lookup's deprecation replaces the document's, which a
+   * stored entry can hold stale.
+   */
+  const readManifest = async (
+    name: string,
+    version: string,
+  ): Promise<VersionManifest | undefined> => {
+    if (!isValidPackageName(name) || semver.valid(version) !== version)
+      return undefined
+    const looked = await lookup(name)
+    if (!looked.ok) return undefined
+    const listed = looked.package.versions.find((v) => v.version === version)
+    if (!listed) return undefined
+    const registry = registryFor(name, registryConfig)
+    const host = new URL(registry).host
+    const key = `${name}@${version}`
+    const hit = cache?.get('manifest', registry, key)
+    let manifest: VersionManifest
+    if (hit && !revalidatesEveryUse(hit)) {
+      // Inside its TTL, the cache has already counted this answer as fresh.
+      if (!hit.fresh) counts.covered++
+      manifest = hit.value
+    } else {
+      const fetched = await revalidate(
+        versionManifestUrl(name, version, registry),
+        registry,
+        'application/json',
+        hit,
+        (body) => parseVersionManifest(body, { name, version }),
+      )
+      if (!fetched.ok) {
+        logger.debug(
+          fetched.status === 404
+            ? `${key} has no manifest on ${host}`
+            : `Failed to read the manifest of ${key}: ${fetched.message}`,
+        )
+        return undefined
+      }
+      if (!fetched.value) {
+        logger.debug(`${host} sent an unreadable manifest for ${key}`)
+        return undefined
+      }
+      manifest = fetched.value
+      cache?.put('manifest', registry, key, manifest, fetched.meta)
+    }
+    const { deprecatedReason: _stored, ...rest } = manifest
+    return {
+      ...rest,
+      deprecated: listed.deprecated,
+      ...(listed.deprecatedReason
+        ? { deprecatedReason: listed.deprecatedReason }
+        : {}),
+    }
+  }
+
+  const manifests = new Map<string, Promise<VersionManifest | undefined>>()
+  const versionManifest = (
+    name: string,
+    version: string,
+  ): Promise<VersionManifest | undefined> => {
+    const key = `${name}@${version}`
+    let request = manifests.get(key)
+    if (!request) {
+      request = readManifest(name, version).catch((error: unknown) => {
+        logger.debug(
+          `Failed to read the manifest of ${key}: ${messageOf(error)}`,
+        )
+        return undefined
+      })
+      manifests.set(key, request)
+    }
+    return request
+  }
+
+  return {
+    lookup,
+    releaseTimes,
+    versionManifest,
+    stats: () => ({ ...counts }),
+  }
 }

@@ -3,6 +3,7 @@ import type {
   RegistryConfig,
   ReleaseWindow,
   UnusableRegistry,
+  VersionManifest,
 } from '@/types'
 import logger from './logger'
 import { loadRegistryConfig, processSources } from './npmrcLoader'
@@ -53,6 +54,17 @@ export interface RegistrySession {
    * deprecation (#195) from what discovery looked up in the same session.
    */
   lookedUp(name: string): Promise<PackageLookup> | undefined
+  /**
+   * One version's own manifest (#196: license, `engines.node`, peers), for a
+   * version the name's lookup lists, from the registry the manager resolves
+   * it from, through the reader's limiter and cache; once per name and
+   * version per run. Never rejects: a refused route, a failure or an
+   * unreadable document is undefined, with a debug line.
+   */
+  versionManifest(
+    name: string,
+    version: string,
+  ): Promise<VersionManifest | undefined>
   /**
    * Prunes the cache when this run grew it, logs one debug line about the
    * run, warns once when a host throttled it, and destroys the client's
@@ -198,6 +210,23 @@ export const createRegistrySession = (
           }`,
         )
         return {}
+      }
+    },
+    versionManifest: async (name, version) => {
+      try {
+        const bad = unusableRouteFor(name, registryConfig())
+        if (bad) {
+          logger.debug(`Not asking for ${name}@${version}: ${refusal(bad)}`)
+          return undefined
+        }
+        return await (await readerOnce()).versionManifest(name, version)
+      } catch (error) {
+        logger.debug(
+          `Failed to read the manifest of ${name}@${version}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+        return undefined
       }
     },
     close: () => {

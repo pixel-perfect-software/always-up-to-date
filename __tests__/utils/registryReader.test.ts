@@ -11,6 +11,7 @@ import {
   createRegistryClient,
   type RegistryClient,
 } from '@/utils/registryClient'
+import { parseVersionManifest } from '@/utils/registryDocuments'
 import {
   createRegistryReader,
   type RegistryReader,
@@ -1377,6 +1378,249 @@ describe('registry reader', () => {
     })
   })
 
+  describe('versionManifest (#196)', () => {
+    const manifestOf = (capture: string) => ({ body: registryBody(capture) })
+    const MS_2_1_3 = parseVersionManifest(
+      JSON.parse(registryBody('ms.2.1.3.manifest')),
+      { name: 'ms', version: '2.1.3' },
+    )
+    /** `ms`'s dist-tags and packument, plus its version manifests by version. */
+    const msWith = (manifests: Record<string, Reply | Handler>): Handler => {
+      const base = msRegistry()
+      return (req, res) => {
+        const version = req.url?.startsWith('/ms/')
+          ? req.url.slice('/ms/'.length)
+          : undefined
+        const answer = version === undefined ? undefined : manifests[version]
+        if (answer === undefined) return base(req, res)
+        if (typeof answer === 'function') return answer(req, res)
+        return replies({ [req.url ?? '']: answer })(req, res)
+      }
+    }
+    const manifestRequests = (server: TestRegistry): string[] =>
+      server.requests
+        .map((r) => r.url)
+        .filter((url) => /^\/(@[^/]+%2f)?[^/]+\/[^/]+$/.test(url))
+    const debugLines = (): string[] =>
+      jest.mocked(logger.debug).mock.calls.map(([line]) => String(line))
+
+    it('reads a listed version with one request', async () => {
+      const { registry, reader } = await setup({
+        registry: msWith({ '2.1.3': manifestOf('ms.2.1.3.manifest') }),
+      })
+
+      expect(await reader.versionManifest('ms', '2.1.3')).toEqual(MS_2_1_3)
+      expect(manifestRequests(registry)).toEqual(['/ms/2.1.3'])
+      expect(
+        registry.requests.find((r) => r.url === '/ms/2.1.3')?.headers.accept,
+      ).toBe('application/json')
+    })
+
+    it('asks once per name and version, concurrent or later', async () => {
+      const { registry, reader } = await setup({
+        registry: msWith({
+          '2.1.3': manifestOf('ms.2.1.3.manifest'),
+          '0.1.0': manifestOf('ms.0.1.0.manifest'),
+        }),
+      })
+
+      const [first, second, other] = await Promise.all([
+        reader.versionManifest('ms', '2.1.3'),
+        reader.versionManifest('ms', '2.1.3'),
+        reader.versionManifest('ms', '0.1.0'),
+      ])
+      const later = await reader.versionManifest('ms', '2.1.3')
+
+      expect(second).toBe(first)
+      expect(later).toBe(first)
+      expect(other).toMatchObject({ version: '0.1.0', enginesNode: '*' })
+      expect(manifestRequests(registry).sort()).toEqual([
+        '/ms/0.1.0',
+        '/ms/2.1.3',
+      ])
+    })
+
+    it('remembers a failure for the run, with a debug line', async () => {
+      const { registry, reader } = await setup({
+        registry: msWith({ '2.1.3': status500 }),
+      })
+
+      expect(await reader.versionManifest('ms', '2.1.3')).toBeUndefined()
+      expect(await reader.versionManifest('ms', '2.1.3')).toBeUndefined()
+      expect(manifestRequests(registry)).toEqual(['/ms/2.1.3'])
+      expect(
+        debugLines().some((line) =>
+          line.startsWith('Failed to read the manifest of ms@2.1.3: '),
+        ),
+      ).toBe(true)
+    })
+
+    it('is undefined for a 404, whose body is a JSON string', async () => {
+      const { registry, reader } = await setup({
+        registry: msWith({
+          '2.1.3': {
+            status: 404,
+            body: registryBody('ms.0.0.0-autd-no-such-version.manifest'),
+          },
+        }),
+      })
+
+      expect(await reader.versionManifest('ms', '2.1.3')).toBeUndefined()
+      expect(debugLines()).toContain(
+        `ms@2.1.3 has no manifest on 127.0.0.1:${registry.port}`,
+      )
+    })
+
+    it.each([
+      ['a JSON string', registryBody('ms.0.0.0-autd-no-such-version.manifest')],
+      ['another version', registryBody('ms.0.1.0.manifest')],
+    ])('is undefined for a 200 that is %s', async (_label, body) => {
+      const { registry, reader } = await setup({
+        registry: msWith({ '2.1.3': { body } }),
+      })
+
+      expect(await reader.versionManifest('ms', '2.1.3')).toBeUndefined()
+      expect(debugLines()).toContain(
+        `127.0.0.1:${registry.port} sent an unreadable manifest for ms@2.1.3`,
+      )
+    })
+
+    it('asks nothing for a version the lookup does not list', async () => {
+      const { registry, reader } = await setup({ registry: msWith({}) })
+
+      expect(await reader.versionManifest('ms', '9.9.9')).toBeUndefined()
+      expect(manifestRequests(registry)).toEqual([])
+    })
+
+    it('asks nothing when the lookup failed', async () => {
+      const { registry, reader } = await setup({
+        registry: replies({}),
+        depsDev: replies({}),
+      })
+
+      expect(await reader.versionManifest('ms', '2.1.3')).toBeUndefined()
+      expect(manifestRequests(registry)).toEqual([])
+    })
+
+    it.each([
+      ['an invalid name', '../ms', '2.1.3'],
+      ['a version that is not semver', 'ms', 'latest'],
+      ['a version that is not canonical', 'ms', 'v2.1.3'],
+    ])('asks nothing at all for %s', async (_label, name, version) => {
+      const { registry, depsDev, reader } = await setup({
+        registry: msWith({}),
+      })
+
+      expect(await reader.versionManifest(name, version)).toBeUndefined()
+      expect(registry.requests).toEqual([])
+      expect(depsDev.requests).toEqual([])
+    })
+
+    it("escapes a scoped name's slash and sends the registry's credentials", async () => {
+      const registry = await start(
+        replies({
+          [PACKUMENT_URL]: packument('types-ms.packument'),
+          [`${PACKUMENT_URL}/2.1.0`]: manifestOf('types-ms.2.1.0.manifest'),
+        }),
+      )
+      const config = configFor(registry.url, {
+        credentials: {
+          [`//127.0.0.1:${registry.port}/`]: { authToken: 'TOK' },
+        },
+      })
+      const client = createRegistryClient(config)
+      clients.push(client)
+      const reader = createRegistryReader({
+        registryConfig: config,
+        client: async () => client,
+        depsDev: false,
+      })
+
+      expect(await reader.versionManifest(TYPES_MS, '2.1.0')).toEqual({
+        name: TYPES_MS,
+        version: '2.1.0',
+        license: 'MIT',
+        peerDependencies: {},
+        optionalPeers: [],
+        deprecated: false,
+      })
+      const sent = registry.requests.find(
+        (r) => r.url === `${PACKUMENT_URL}/2.1.0`,
+      )
+      expect(sent?.headers.authorization).toBe('Bearer TOK')
+    })
+
+    it("takes the lookup's deprecation over the manifest's", async () => {
+      const staleManifest = derive<Record<string, unknown>>(
+        'ms.2.1.3.manifest',
+        (body) => {
+          body.deprecated = 'the manifest says so'
+        },
+      )
+      const deprecatedByDepsDev = derive<{
+        versions: Array<{
+          versionKey: { version: string }
+          isDeprecated?: boolean
+          deprecatedReason?: string
+        }>
+      }>('ms.deps-dev', (body) => {
+        for (const v of body.versions) {
+          if (v.versionKey.version === '0.1.0') {
+            v.isDeprecated = true
+            v.deprecatedReason = 'deps.dev says so'
+          }
+        }
+      })
+      const { reader } = await setup({
+        registry: msWith({
+          '2.1.3': { body: staleManifest },
+          '0.1.0': manifestOf('ms.0.1.0.manifest'),
+        }),
+        depsDev: replies({
+          [`${DEPS_DEV_PREFIX}ms`]: { body: deprecatedByDepsDev },
+        }),
+      })
+
+      const live = await reader.versionManifest('ms', '2.1.3')
+      expect(live?.deprecated).toBe(false)
+      expect(live).not.toHaveProperty('deprecatedReason')
+      expect(await reader.versionManifest('ms', '0.1.0')).toMatchObject({
+        deprecated: true,
+        deprecatedReason: 'deps.dev says so',
+      })
+    })
+
+    it('keeps no more than maxSockets manifest requests in flight to one host', async () => {
+      const versions = ['0.1.0', '0.2.0', '0.3.0', '0.4.0', '0.5.0', '0.6.0']
+      const slow: Handler = (req, res) => {
+        const version = req.url?.slice('/ms/'.length) ?? ''
+        setTimeout(() => {
+          res.setHeader('content-type', 'application/json')
+          res.end(
+            derive<Record<string, unknown>>('ms.0.1.0.manifest', (body) => {
+              body.version = version
+            }),
+          )
+        }, 20)
+      }
+      const { registry, reader } = await setup(
+        {
+          registry: msWith(Object.fromEntries(versions.map((v) => [v, slow]))),
+        },
+        { config: { maxSockets: 2 } },
+      )
+      await reader.lookup('ms')
+      registry.peak = 0
+
+      const read = await Promise.all(
+        versions.map((v) => reader.versionManifest('ms', v)),
+      )
+
+      expect(read.map((m) => m?.version)).toEqual(versions)
+      expect(registry.peak).toBe(2)
+    })
+  })
+
   describe('with the disk cache', () => {
     const START = Date.UTC(2026, 9, 27)
     const SECOND = 1000
@@ -2159,6 +2403,156 @@ describe('registry reader', () => {
 
         expect(asked().registry).toEqual(['/ms'])
         expect(registry.requests).toEqual([])
+      })
+    })
+
+    describe('version manifests (#196)', () => {
+      const DAY = 24 * 60 * 60 * SECOND
+      const manifestReply = (headers: Record<string, string> = {}): Reply => ({
+        body: registryBody('ms.2.1.3.manifest'),
+        headers,
+      })
+      /** `ms`'s lookup documents, and `handler` for `/ms/2.1.3`. */
+      const msAnd = (manifest: Reply | Handler): Handler => {
+        const base = msRegistry()
+        const answer =
+          typeof manifest === 'function'
+            ? manifest
+            : replies({ '/ms/2.1.3': manifest })
+        return (req, res) => (req.url === '/ms/2.1.3' ? answer : base)(req, res)
+      }
+      const manifestAsked = (urls: string[]) =>
+        urls.filter((url) => url === '/ms/2.1.3')
+
+      it('answers a later run from the entry however old it is, as covered', async () => {
+        const { run, asked } = await cached({
+          registry: msAnd(manifestReply({ 'cache-control': 'max-age=300' })),
+        })
+        const first = await run().reader.versionManifest('ms', '2.1.3')
+        expect(manifestAsked(asked().registry)).toEqual(['/ms/2.1.3'])
+        expect(filesIn('manifest')).toHaveLength(1)
+
+        clock += 30 * DAY
+        const second = run()
+        expect(await second.reader.versionManifest('ms', '2.1.3')).toEqual(
+          first,
+        )
+        expect(manifestAsked(asked().registry)).toEqual([])
+        expect(second.reader.stats().covered).toBe(1)
+      })
+
+      it('answers inside the TTL without counting it covered', async () => {
+        const { run, asked } = await cached({
+          registry: msAnd(manifestReply()),
+        })
+        await run().reader.versionManifest('ms', '2.1.3')
+        asked()
+
+        clock += 10 * SECOND
+        const second = run()
+        await second.reader.versionManifest('ms', '2.1.3')
+        expect(asked()).toEqual({ registry: [], depsDev: [] })
+        expect(second.reader.stats().covered).toBe(0)
+      })
+
+      it("takes a later lookup's deprecation over the stored manifest's", async () => {
+        const depsDev = switchable(msDepsDev())
+        const { run } = await cached({
+          registry: msAnd(manifestReply()),
+          depsDev: depsDev.handler,
+        })
+        expect(
+          (await run().reader.versionManifest('ms', '2.1.3'))?.deprecated,
+        ).toBe(false)
+
+        depsDev.use(
+          replies({
+            [`${DEPS_DEV_PREFIX}ms`]: {
+              body: derive<{
+                versions: Array<{
+                  versionKey: { version: string }
+                  isDeprecated?: boolean
+                  deprecatedReason?: string
+                }>
+              }>('ms.deps-dev', (body) => {
+                for (const v of body.versions) {
+                  if (v.versionKey.version === '2.1.3') {
+                    v.isDeprecated = true
+                    v.deprecatedReason = 'use 3'
+                  }
+                }
+              }),
+            },
+          }),
+        )
+        clock += 2 * 3600 * SECOND
+        expect(await run().reader.versionManifest('ms', '2.1.3')).toMatchObject(
+          { deprecated: true, deprecatedReason: 'use 3' },
+        )
+      })
+
+      it('revalidates an authenticated entry every run, and a 304 serves it', async () => {
+        const { registry, run } = await cached(
+          { registry: msAnd(conditional(manifestReply(), '"m1"')) },
+          { credentials: true },
+        )
+        const first = await run().reader.versionManifest('ms', '2.1.3')
+        clock += 30 * DAY
+        const second = run()
+        expect(await second.reader.versionManifest('ms', '2.1.3')).toEqual(
+          first,
+        )
+
+        expect(
+          registry.requests
+            .filter((r) => r.url === '/ms/2.1.3')
+            .map((r) => r.headers['if-none-match']),
+        ).toEqual([undefined, '"m1"'])
+        expect(second.reader.stats().notModified).toBeGreaterThanOrEqual(1)
+        expect(second.reader.stats().covered).toBe(0)
+      })
+
+      it('keeps no authenticated manifest that has no ETag (npmjs sends none), so each run asks again', async () => {
+        const { run, asked } = await cached(
+          {
+            registry: msAnd(manifestReply({ 'cache-control': 'max-age=300' })),
+          },
+          { credentials: true },
+        )
+        await run().reader.versionManifest('ms', '2.1.3')
+        expect(filesIn('manifest')).toEqual([])
+        asked()
+
+        clock += SECOND
+        await run().reader.versionManifest('ms', '2.1.3')
+        expect(manifestAsked(asked().registry)).toEqual(['/ms/2.1.3'])
+      })
+
+      it('stores nothing under no-store', async () => {
+        const { run, asked } = await cached({
+          registry: msAnd(manifestReply({ 'cache-control': 'no-store' })),
+        })
+        await run().reader.versionManifest('ms', '2.1.3')
+        expect(filesIn('manifest')).toEqual([])
+        asked()
+
+        await run().reader.versionManifest('ms', '2.1.3')
+        expect(manifestAsked(asked().registry)).toEqual(['/ms/2.1.3'])
+      })
+
+      it('never falls back to a stored entry it must revalidate when the request fails', async () => {
+        const registry = switchable(msAnd(conditional(manifestReply(), '"m1"')))
+        const { run } = await cached(
+          { registry: registry.handler },
+          { credentials: true },
+        )
+        await run().reader.versionManifest('ms', '2.1.3')
+        registry.use(msAnd(status(500)))
+
+        clock += SECOND
+        expect(
+          await run().reader.versionManifest('ms', '2.1.3'),
+        ).toBeUndefined()
       })
     })
 
