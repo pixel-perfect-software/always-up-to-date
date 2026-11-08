@@ -47,7 +47,7 @@ Past the range in package.json (5 packages)
 16 to update · 1 held by cooldown · 5 past the range
 ```
 
-`check` prints the same report, and `update` prints it once more after the package manager has run, with what it actually installed. Every package shows up once, under what happened to it: updated, left in place by the package manager, held by cooldown, past its range, or held by a rule, an override or a peer conflict.
+`check` prints the same report, and `update` prints it once more after the package manager has run, with what it actually installed. Every package shows up once, under what happened to it: updated, left in place by the package manager, held by cooldown, past its range, or held by a rule, an override, a peer conflict, a deprecation or a license change.
 
 What happens to each kind of spec:
 
@@ -195,7 +195,7 @@ It holds derived version lists only, never a registry document, a header or anyt
 
 ## 🩺 Troubleshooting
 
-- **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)` or `peer conflict: …`. After `autd update`, a package your manager was asked to move but left where it was is listed under "left in place by …" and reported with `"updated": false` and `not applied by npm (installed …)`. npm does this to a package another dependency pins exactly, and to a workspace member's copy it dedupes onto the root's. In a workspace, `held with <path> (…)` means the same package is held in that manifest, so its other manifests wait for it.
+- **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)`, `peer conflict: …`, `deprecated: …` or `license change: MIT → AGPL-3.0-or-later`. After `autd update`, a package your manager was asked to move but left where it was is listed under "left in place by …" and reported with `"updated": false` and `not applied by npm (installed …)`. npm does this to a package another dependency pins exactly, and to a workspace member's copy it dedupes onto the root's. In a workspace, `held with <path> (…)` means the same package is held in that manifest, so its other manifests wait for it.
 - **`check` or `update` exits 1.** The message names the step that failed (`detect`, `discover` or `apply`) and says whether package.json was already written. Set `"debug": true` to see each package-manager command and its stderr.
 - **"No package manager detected".** package.json declares no manager and there's no lockfile in the current directory (from a workspace member: no package.json from the member's up to the workspace root's declares one, and the workspace root has no lockfile). Set `"packageManager"`, pass `--pm`, or run your package manager's install first.
 - **`cooldown` holds a package with `release date unknown`.** autd couldn't read that version's publish time from the registry. It reads `.npmrc` the way npm does: registries and scoped registries, per-registry auth, `ca` / `cafile` / `strict-ssl`, `https-proxy` / `proxy` / `noproxy`, `fetch-retries`, `fetch-timeout` and `maxsockets`. SOCKS proxies aren't supported. Set `"debug": true` to see the request that failed.

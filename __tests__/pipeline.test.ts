@@ -3,7 +3,9 @@ import os from 'os'
 import path from 'path'
 import npm from '@/managers/npm'
 import { check, plan, update } from '@/pipeline'
+import type { VersionManifest } from '@/types'
 import {
+  capturedManifest,
   capturedRegistry,
   fakeRegistry,
   installPackages,
@@ -214,6 +216,53 @@ describe('pipeline', () => {
       ])
       // Discovery's lookups only: the plan asked for nothing.
       expect(asked).toEqual(['lodash'])
+    })
+  })
+
+  describe('a license check without node_modules (#197)', () => {
+    it("asks for the locked version's manifest once, and for its target's", async () => {
+      fs.rmSync(path.join(cwd, 'node_modules'), { recursive: true })
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({ name: 'project', dependencies: { ms: '2.1.1' } }),
+      )
+      fs.copyFileSync(
+        path.join(__dirname, 'fixtures/npm/no-node-modules.package-lock.json'),
+        path.join(cwd, 'package-lock.json'),
+      )
+      const known: Record<string, VersionManifest> = {
+        'ms@2.1.1': capturedManifest('ms', '2.1.1', 'ms.2.1.1.manifest'),
+        'ms@2.1.3': capturedManifest('ms', '2.1.3', 'ms.2.1.3.manifest'),
+      }
+      const asked: string[] = []
+      const project = projectFor(
+        npm,
+        cwd,
+        { beyondRange: 'patch' },
+        {
+          ...registryFor('ms'),
+          versionManifest: async (name, version) => {
+            asked.push(`${name}@${version}`)
+            return known[`${name}@${version}`]
+          },
+        },
+      )
+
+      const results = await plan(
+        project,
+        await check(project, { report: false }),
+      )
+
+      expect(results).toEqual([
+        expect.objectContaining({
+          name: 'ms',
+          current: '2.1.1',
+          target: '2.1.3',
+          updated: true,
+        }),
+      ])
+      expect(asked.sort()).toEqual(['ms@2.1.1', 'ms@2.1.3'])
+      expect(logger.warn).not.toHaveBeenCalled()
     })
   })
 

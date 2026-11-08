@@ -4,9 +4,11 @@ import path from 'path'
 import type { UpdateResult } from '@/types'
 import {
   checkApplied,
+  readInstalledManifests,
   readInstalledPackages,
   readInstalledVersions,
 } from '@/utils/installed'
+import { installCaptured } from '../fixtures'
 
 describe('readInstalledVersions', () => {
   let cwd: string
@@ -442,5 +444,75 @@ describe('readInstalledPackages link detection cost', () => {
         (found) => found.linked,
       ),
     ).toEqual([false, false, false])
+  })
+})
+
+describe('readInstalledManifests (#197)', () => {
+  let cwd: string
+  const writeJson = (file: string, value: unknown) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify(value))
+  }
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-installed-lic-'))
+    writeJson(path.join(cwd, 'package.json'), {
+      dependencies: { ms: '~2.1.1' },
+      workspaces: ['packages/*'],
+    })
+    writeJson(path.join(cwd, 'packages/a/package.json'), {
+      name: '@ws/a',
+      dependencies: { ms: '2.1.2', mkdirp: '^0.3.0' },
+    })
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it("reads a member's nested copy first, then the root's, with the license", () => {
+    installCaptured(cwd, '.', 'ms', 'ms.2.1.3.manifest')
+    installCaptured(cwd, 'packages/a', 'ms', 'ms.0.1.0.manifest')
+
+    expect(
+      readInstalledManifests(cwd, [
+        { name: 'ms', workspace: '.' },
+        { name: 'ms', workspace: 'packages/a' },
+        { name: 'mkdirp', workspace: 'packages/a' },
+      ]),
+    ).toEqual({
+      '.:ms': { version: '2.1.3', license: 'MIT' },
+      'packages/a:ms': { version: '0.1.0' },
+    })
+  })
+
+  it("falls back to the root's copy and follows a pnpm-style symlink", () => {
+    installCaptured(
+      cwd,
+      'node_modules/.pnpm/mkdirp@0.3.0',
+      'mkdirp',
+      'mkdirp.0.3.0.manifest',
+    )
+    fs.symlinkSync(
+      path.join(cwd, 'node_modules/.pnpm/mkdirp@0.3.0/node_modules/mkdirp'),
+      path.join(cwd, 'node_modules/mkdirp'),
+      'junction',
+    )
+
+    expect(
+      readInstalledManifests(cwd, [
+        { name: 'mkdirp', workspace: 'packages/a' },
+      ]),
+    ).toEqual({
+      'packages/a:mkdirp': { version: '0.3.0', license: 'MIT/X11' },
+    })
+  })
+
+  it('leaves out a name the manifest does not declare', () => {
+    installCaptured(cwd, '.', 'debug', 'ms.2.1.3.manifest')
+
+    expect(
+      readInstalledManifests(cwd, [{ name: 'debug', workspace: '.' }]),
+    ).toEqual({})
   })
 })

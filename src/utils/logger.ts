@@ -68,6 +68,11 @@ const SECTIONS: Record<
     summary: () => 'held as deprecated',
     color: cyan,
   },
+  license: {
+    heading: () => 'Held for a license change',
+    summary: () => 'held for a license change',
+    color: cyan,
+  },
   together: {
     heading: () => 'Held with another manifest',
     summary: () => 'held with another manifest',

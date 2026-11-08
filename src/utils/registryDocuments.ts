@@ -1,6 +1,7 @@
 import semver from 'semver'
 import type { RegistryVersion, VersionManifest } from '@/types'
 import { isRecord } from './isRecord'
+import { licenseField } from './license'
 
 const isCanonical = (version: unknown): version is string =>
   typeof version === 'string' && semver.valid(version) === version
@@ -89,29 +90,6 @@ const trimmed = (value: unknown): string | undefined => {
   return text === '' ? undefined : text
 }
 
-/** A legacy license entry, `{ type, url }`: its type. */
-const licenseType = (value: unknown): string | undefined =>
-  isRecord(value) ? trimmed(value.type) : undefined
-
-/**
- * `license` (a string, or the legacy `{ type }`), else the legacy `licenses`
- * array: one type as is, several as an SPDX `OR`. Never parsed as SPDX.
- */
-const licenseOf = (body: Record<string, unknown>): string | undefined => {
-  const own = trimmed(body.license) ?? licenseType(body.license)
-  if (own) return own
-  if (!Array.isArray(body.licenses)) return undefined
-  const types = [
-    ...new Set(
-      (body.licenses as unknown[])
-        .map(licenseType)
-        .filter((type) => type !== undefined),
-    ),
-  ]
-  if (types.length <= 1) return types[0]
-  return `(${types.join(' OR ')})`
-}
-
 /**
  * One version's manifest (`GET <registry>/<name>/<version>`, #196), or
  * undefined unless it is a record naming that version of that package (a
@@ -128,7 +106,7 @@ export const parseVersionManifest = (
     body.version !== expected.version
   )
     return undefined
-  const license = licenseOf(body)
+  const license = licenseField(body)
   const enginesNode = isRecord(body.engines)
     ? trimmed(body.engines.node)
     : undefined

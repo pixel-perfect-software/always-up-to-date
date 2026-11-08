@@ -5,8 +5,9 @@ import os from 'os'
 import path from 'path'
 import { check, plan } from '@/pipeline'
 import { openProject, type Project } from '@/project'
-import { installPackages, isolateNpmConfig } from './fixtures'
+import { isolateNpmConfig } from './fixtures'
 import {
+  derive,
   type Reply,
   registryBody,
   replies,
@@ -35,6 +36,15 @@ const write = (file: string, content: string) => {
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, content)
 }
+
+/** A captured manifest with its version replaced, as `node_modules/<name>/package.json`. */
+const installAt = (name: string, capture: string, version: string) =>
+  write(
+    at('node_modules', name, 'package.json'),
+    derive(capture, (body: { version: string }) => {
+      body.version = version
+    }),
+  )
 
 describe('version manifests in the plan (#196)', () => {
   let server: TestRegistry
@@ -69,7 +79,10 @@ describe('version manifests in the plan (#196)', () => {
         dependencies: { ms: '2.1.2', '@types/ms': '0.7.34' },
       }),
     )
-    installPackages(tmp, '.', { ms: '2.1.2', '@types/ms': '0.7.34' })
+    // The installed copies are the captured manifests at the declared pins,
+    // so their licenses are real (installPackages would read as none, #197).
+    installAt('ms', 'ms.2.1.3.manifest', '2.1.2')
+    installAt('@types/ms', 'types-ms.2.1.0.manifest', '0.7.34')
   })
   afterEach(async () => {
     for (const project of projects.splice(0)) project.registry.close()
@@ -132,6 +145,43 @@ describe('version manifests in the plan (#196)', () => {
     expect(
       fs.readdirSync(path.join(at('cache'), 'v1', 'manifest')),
     ).toHaveLength(2)
+  })
+
+  it("reads the current version's manifest once when nothing is installed (#197)", async () => {
+    fs.rmSync(at('node_modules'), { recursive: true })
+    write(
+      at('package.json'),
+      JSON.stringify({ name: 'project', dependencies: { ms: '2.1.1' } }),
+    )
+    fs.copyFileSync(
+      path.join(__dirname, 'fixtures/npm/no-node-modules.package-lock.json'),
+      at('package-lock.json'),
+    )
+    await server.close()
+    server = await startRegistry(
+      replies({
+        '/ms': packument('ms.packument'),
+        '/ms/2.1.3': manifest('ms.2.1.3.manifest'),
+        '/ms/2.1.1': manifest('ms.2.1.1.manifest'),
+      }),
+    )
+    write(at('.npmrc'), `registry=${server.url}\n`)
+    const first = open({ beyondRange: 'major' })
+    const outdated = await check(first, { report: false })
+
+    const results = await plan(first, outdated)
+    await plan(first, outdated)
+
+    expect(results).toEqual([
+      expect.objectContaining({ name: 'ms', target: '2.1.3', updated: true }),
+    ])
+    expect(manifestRequests().sort()).toEqual(['/ms/2.1.1', '/ms/2.1.3'])
+    first.registry.close()
+    server.requests.splice(0)
+
+    const second = open({ beyondRange: 'major' })
+    await plan(second, await check(second, { report: false }))
+    expect(manifestRequests()).toEqual([])
   })
 
   it("sends a scoped package's request with npm's credentials for its registry", async () => {

@@ -110,6 +110,21 @@ Captured for #196: a version's own manifest, `GET <registry>/<name>/<version>`, 
 | `minimatch.0.2.14.manifest.body`              | `registry.npmjs.org/minimatch/0.2.14`              | 200    | `application/json` | 760 B     | 1290 B       | no  |
 | `ms.0.0.0-autd-no-such-version.manifest.body` | `registry.npmjs.org/ms/0.0.0-autd-no-such-version` | 404    | `application/json` | 47 B      | 47 B         | no  |
 
+### Licenses (2026-11-07)
+
+Captured for #197 with the same curl shape (HTTP/2, `content-encoding: gzip`, no `content-length`, so no wire size). Each body parses as a record whose `name` and `version` equal the request.
+
+- `ua-parser-js.1.0.39`: `license` `"MIT"`. `ua-parser-js.2.0.0`: `license` `"AGPL-3.0-or-later"`. A real move that changes the license, which the plan's tests hold.
+- `ms.2.1.1`: `license` `"MIT"`; the version in `fixtures/npm/no-node-modules.package-lock.json`.
+- `pako.2.1.0`: `license` `"(MIT AND Zlib)"`, a real compound expression with outer parentheses.
+
+| File                                | Request                                  | Status | Content type       | Decoded size | gz  |
+| ----------------------------------- | ---------------------------------------- | ------ | ------------------ | ------------ | --- |
+| `ua-parser-js.1.0.39.manifest.body` | `registry.npmjs.org/ua-parser-js/1.0.39` | 200    | `application/json` | 9614 B       | no  |
+| `ua-parser-js.2.0.0.manifest.body`  | `registry.npmjs.org/ua-parser-js/2.0.0`  | 200    | `application/json` | 11770 B      | no  |
+| `ms.2.1.1.manifest.body`            | `registry.npmjs.org/ms/2.1.1`            | 200    | `application/json` | 1483 B       | no  |
+| `pako.2.1.0.manifest.body`          | `registry.npmjs.org/pako/2.1.0`          | 200    | `application/json` | 3422 B       | no  |
+
 ### Cache headers of the manifest endpoint
 
 Same method as the cache headers above; `ms/2.1.3` (the `Date` header read 2026-11-08 02:01 GMT).
