@@ -14,6 +14,7 @@ import {
 } from './cooldown'
 import type { DeclaredDependency } from './dependencySpecs'
 import { formatAgeDays } from './duration'
+import logger from './logger'
 import type { ControllingOverride } from './overrides'
 import { type PeerRequirement, readInstalledPeers } from './peers'
 import type { RegistrySession } from './registry'
@@ -60,9 +61,17 @@ interface FilterPackagesOptions {
 const stepType = (from: string, to: string): ReleaseType | null =>
   semver.valid(from) && semver.valid(to) ? semver.diff(from, to) : null
 
-/** A moving row's warnings, one after another; the same one is never added twice. */
-const withWarning = (result: UpdateResult, message: string): UpdateResult =>
-  result.warning?.split('; ').includes(message)
+/**
+ * A moving row's warnings, one after another; the same one is never added
+ * twice. A message can hold `; ` itself (a registry's deprecation text), so
+ * it is matched whole, between separators, not split.
+ */
+export const withWarning = (
+  result: UpdateResult,
+  message: string,
+): UpdateResult =>
+  result.warning !== undefined &&
+  `; ${result.warning}; `.includes(`; ${message}; `)
     ? result
     : {
         ...result,
@@ -202,22 +211,36 @@ const cooledOffVersion = (
   return undefined
 }
 
+/** The most of a registry's message a report row shows. */
+const MESSAGE_LIMIT = 400
+
 /**
- * A registry's deprecation message on one line: line breaks, other control
- * characters (an escape sequence's ESC among them) and runs of spaces become
- * one space, since it lands in a terminal row.
+ * A registry's deprecation message on one line, as it lands in a terminal
+ * row: line breaks, other control characters (an escape sequence's ESC among
+ * them), zero-width and bidirectional formatting characters (which can make
+ * a row read as something else) and runs of spaces become one space, and a
+ * message past `MESSAGE_LIMIT` characters is cut with `…`.
  */
-const oneLine = (text: string): string =>
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
-  text.replace(/[\s\u0000-\u001f\u007f-\u009f]+/g, ' ').trim()
+const oneLine = (text: string): string => {
+  const line = text
+    .replace(
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+      /[\s\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g,
+      ' ',
+    )
+    .trim()
+  return line.length > MESSAGE_LIMIT
+    ? `${line.slice(0, MESSAGE_LIMIT).trimEnd()}…`
+    : line
+}
 
 /**
  * Holds a moving row whose target the registry marks deprecated
  * (`deprecated: <message>`, #195); a `latest` rule moves it anyway, with the
- * message as a warning. When the installed version is deprecated too, the
- * move takes on nothing it doesn't have, so it goes ahead with the warning:
- * holding would keep an older deprecated version (every next 14.0.x, for
- * one). It judges the final target, so it runs after the cooldown, whose
+ * message as a warning. When the installed version carries the same
+ * deprecation, the move takes on nothing it doesn't have, so it goes ahead
+ * with the warning: holding would keep an older deprecated version (every
+ * next 14.0.x, for one). It judges the final target, so it runs after the cooldown, whose
  * fallbacks are never deprecated. It reads only the session's own lookups.
  */
 const holdDeprecated = async (
@@ -232,19 +255,28 @@ const holdDeprecated = async (
     results.map(async (result) => {
       const { target, current } = result
       if (!result.updated || !target) return result
-      const found = await lookedUp(lookupName(result))
-      if (!found?.ok) return result
+      const name = lookupName(result)
+      const found = await lookedUp(name)
+      if (!found) {
+        logger.debug(
+          `No lookup of ${name} in this session; its deprecation isn't checked`,
+        )
+        return result
+      }
+      if (!found.ok) return result
       const { versions } = found.package
       const deprecation = versions.find((v) => v.version === target)
       if (!deprecation?.deprecated) return result
 
-      const reason = `deprecated: ${
-        oneLine(deprecation.deprecatedReason ?? '') || 'no message given'
-      }`
-      const installedDeprecated = versions.some(
-        (v) => v.version === current && v.deprecated,
-      )
-      return installedDeprecated || policy.ruleFor(result.name) === 'latest'
+      const message = oneLine(deprecation.deprecatedReason ?? '')
+      const reason = `deprecated: ${message || 'no message given'}`
+      // The installed version carries the same deprecation, so the move takes
+      // on nothing new; a different message is a new reason, and holds.
+      const installed = versions.find((v) => v.version === current)
+      const sameAsInstalled =
+        installed?.deprecated === true &&
+        oneLine(installed.deprecatedReason ?? '') === message
+      return sameAsInstalled || policy.ruleFor(result.name) === 'latest'
         ? withWarning(result, reason)
         : heldFor(result, reason)
     }),

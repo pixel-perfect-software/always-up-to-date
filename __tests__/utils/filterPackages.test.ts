@@ -1,6 +1,7 @@
 import type { AlwaysUpToDateConfig, PackageInfo } from '@/types'
 import type filterPackagesType from '@/utils/filterPackages'
 import type { splitUpdates as splitUpdatesType } from '@/utils/filterPackages'
+import { withWarning } from '@/utils/filterPackages'
 import type { RegistrySession } from '@/utils/registry'
 import { wantedVersion } from '@/utils/wanted'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
@@ -29,7 +30,7 @@ interface LoadOpts {
   /** Deprecated versions per package; given, the registry answers `lookup`. */
   deprecated?: Record<string, string[]>
   /** What the session looked up, as the plan's `lookedUp` reads it (#195). */
-  lookedUp?: RegistrySession['lookup']
+  lookedUp?: RegistrySession['lookedUp']
 }
 
 const DEFAULTS = {
@@ -540,6 +541,76 @@ describe('filterPackages', () => {
       )
 
       expect(result.reason).toBe('deprecated: use q [31minstead [0m')
+    })
+
+    /** A lookup listing 1.0.0 and 1.0.1, each deprecated with the message given (undefined: not deprecated). */
+    const twoVersions =
+      (installed: string | undefined, target: string | undefined) =>
+      async (name: string) => ({
+        ok: true as const,
+        package: {
+          name,
+          latest: '1.0.1',
+          source: 'packument' as const,
+          versions: [
+            {
+              version: '1.0.0',
+              deprecated: installed !== undefined,
+              ...(installed && { deprecatedReason: installed }),
+            },
+            {
+              version: '1.0.1',
+              deprecated: target !== undefined,
+              ...(target && { deprecatedReason: target }),
+            },
+          ],
+        },
+      })
+    const pMoving = makeOutdated([
+      { name: 'p', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+    ])
+
+    it('holds a target deprecated for another reason than the installed version', async () => {
+      const filter = loadFilterWithConfig(
+        {},
+        { lookedUp: twoVersions('upgrade to 2.x', 'use bar instead') },
+      )
+
+      const [result] = await filter(pMoving)
+
+      expect(result).toMatchObject({
+        updated: false,
+        reason: 'deprecated: use bar instead',
+      })
+    })
+
+    it('drops bidirectional and zero-width characters and cuts a long message', async () => {
+      const filter = loadFilterWithConfig(
+        {},
+        {
+          lookedUp: twoVersions(
+            undefined,
+            `use \u202eq\u202c\u200b instead ${'x'.repeat(500)}`,
+          ),
+        },
+      )
+
+      const [result] = await filter(pMoving)
+
+      expect(result.reason).toBe(
+        `deprecated: ${`use q instead ${'x'.repeat(500)}`.slice(0, 400)}…`,
+      )
+    })
+
+    it('says in a debug line when the session never looked the name up', async () => {
+      const filter = loadFilterWithConfig({}, { lookedUp: () => undefined })
+
+      const [result] = await filter(pMoving)
+
+      expect(result).toMatchObject({ updated: true, target: '1.0.1' })
+      expect(mockLogger.default.debug).toHaveBeenCalledWith(
+        "No lookup of p in this session; its deprecation isn't checked",
+      )
     })
 
     it('says so when the registry gives no message', async () => {
@@ -1392,5 +1463,26 @@ describe('filterPackages', () => {
 
       expect(manifests).toEqual([{ path: '.', withinRange, beyondRange }])
     })
+  })
+})
+
+describe('withWarning', () => {
+  const row = {
+    name: 'p',
+    current: '1.0.0',
+    wanted: '1.0.1',
+    latest: '1.0.1',
+    target: '1.0.1',
+    updateType: 'patch' as const,
+    updated: true,
+  }
+
+  it('adds a message holding "; " once, however often it is added (#195)', () => {
+    const message = 'deprecated: use q; see the changelog'
+    const once = withWarning(row, message)
+
+    expect(withWarning(withWarning(once, 'peer conflict: x'), message)).toEqual(
+      { ...row, warning: `${message}; peer conflict: x` },
+    )
   })
 })
