@@ -49,6 +49,16 @@ describe('readInstalledVersions', () => {
     })
   })
 
+  it('reads a hoisted package the manifest does not declare with declaredOnly: false (a peer, #198)', () => {
+    manifest({ dependencies: { 'react-redux': '9.2.0' } })
+    install('node_modules/react', { name: 'react', version: '17.0.2' })
+
+    expect(readInstalledVersions(cwd, [{ name: 'react' }])).toEqual({})
+    expect(
+      readInstalledVersions(cwd, [{ name: 'react' }], { declaredOnly: false }),
+    ).toEqual({ react: '17.0.2' })
+  })
+
   it('reads a scoped package', () => {
     manifest({ dependencies: { '@types/node': '^20.0.0' } })
     install('node_modules/@types/node', {

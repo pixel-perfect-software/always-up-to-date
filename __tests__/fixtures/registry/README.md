@@ -97,18 +97,20 @@ Captured for #196: a version's own manifest, `GET <registry>/<name>/<version>`, 
 - The 404 for a version the package lacks is `"version not found: <version>"`, a JSON string, `application/json`.
 - Not captured: a manifest with a `licenses` array of several entries. Variants for it come from `derive` on `async.0.2.10`.
 
-| File                                          | Request                                            | Status | Content type       | Wire size | Decoded size | gz  |
-| --------------------------------------------- | -------------------------------------------------- | ------ | ------------------ | --------- | ------------ | --- |
-| `ms.2.1.3.manifest.body`                      | `registry.npmjs.org/ms/2.1.3`                      | 200    | `application/json` | 2538 B    | 5200 B       | no  |
-| `types-ms.2.1.0.manifest.body`                | `registry.npmjs.org/@types%2fms/2.1.0`             | 200    | `application/json` | 853 B     | 1397 B       | no  |
-| `mkdirp.0.3.0.manifest.body`                  | `registry.npmjs.org/mkdirp/0.3.0`                  | 200    | `application/json` | 798 B     | 1270 B       | no  |
-| `mkdirp.3.0.1.manifest.body`                  | `registry.npmjs.org/mkdirp/3.0.1`                  | 200    | `application/json` | 2120 B    | 3564 B       | no  |
-| `mkdirp.0.5.6.manifest.body`                  | `registry.npmjs.org/mkdirp/0.5.6`                  | 200    | `application/json` | 2492 B    | 4629 B       | no  |
-| `react-redux.9.2.0.manifest.body`             | `registry.npmjs.org/react-redux/9.2.0`             | 200    | `application/json` | 1635 B    | 3549 B       | no  |
-| `ms.0.1.0.manifest.body`                      | `registry.npmjs.org/ms/0.1.0`                      | 200    | `application/json` | 578 B     | 847 B        | no  |
-| `async.0.2.10.manifest.body`                  | `registry.npmjs.org/async/0.2.10`                  | 200    | `application/json` | 748 B     | 1218 B       | no  |
-| `minimatch.0.2.14.manifest.body`              | `registry.npmjs.org/minimatch/0.2.14`              | 200    | `application/json` | 760 B     | 1290 B       | no  |
-| `ms.0.0.0-autd-no-such-version.manifest.body` | `registry.npmjs.org/ms/0.0.0-autd-no-such-version` | 404    | `application/json` | 47 B      | 47 B         | no  |
+| File                                          | Request                                            | Status | Content type       | Wire size    | Decoded size | gz  |
+| --------------------------------------------- | -------------------------------------------------- | ------ | ------------------ | ------------ | ------------ | --- |
+| `ms.2.1.3.manifest.body`                      | `registry.npmjs.org/ms/2.1.3`                      | 200    | `application/json` | 2538 B       | 5200 B       | no  |
+| `types-ms.2.1.0.manifest.body`                | `registry.npmjs.org/@types%2fms/2.1.0`             | 200    | `application/json` | 853 B        | 1397 B       | no  |
+| `mkdirp.0.3.0.manifest.body`                  | `registry.npmjs.org/mkdirp/0.3.0`                  | 200    | `application/json` | 798 B        | 1270 B       | no  |
+| `mkdirp.3.0.1.manifest.body`                  | `registry.npmjs.org/mkdirp/3.0.1`                  | 200    | `application/json` | 2120 B       | 3564 B       | no  |
+| `mkdirp.0.5.6.manifest.body`                  | `registry.npmjs.org/mkdirp/0.5.6`                  | 200    | `application/json` | 2492 B       | 4629 B       | no  |
+| `react-redux.9.2.0.manifest.body`             | `registry.npmjs.org/react-redux/9.2.0`             | 200    | `application/json` | 1635 B       | 3549 B       | no  |
+| `react.18.3.1.manifest.body`                  | `registry.npmjs.org/react/18.3.1`                  | 200    | `application/json` | not recorded | 1687 B       | no  |
+| `react-redux.8.1.3.manifest.body`             | `registry.npmjs.org/react-redux/8.1.3`             | 200    | `application/json` | not recorded | 4809 B       | no  |
+| `ms.0.1.0.manifest.body`                      | `registry.npmjs.org/ms/0.1.0`                      | 200    | `application/json` | 578 B        | 847 B        | no  |
+| `async.0.2.10.manifest.body`                  | `registry.npmjs.org/async/0.2.10`                  | 200    | `application/json` | 748 B        | 1218 B       | no  |
+| `minimatch.0.2.14.manifest.body`              | `registry.npmjs.org/minimatch/0.2.14`              | 200    | `application/json` | 760 B        | 1290 B       | no  |
+| `ms.0.0.0-autd-no-such-version.manifest.body` | `registry.npmjs.org/ms/0.0.0-autd-no-such-version` | 404    | `application/json` | 47 B         | 47 B         | no  |
 
 ### Licenses (2026-11-07)
 

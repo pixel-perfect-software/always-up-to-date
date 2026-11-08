@@ -61,6 +61,7 @@ describe('sameLicense (#197)', () => {
     ['GPL-2.0+ OR MIT', 'MIT OR GPL-2.0-or-later'],
     ['SEE LICENSE IN LICENSE', 'SEE LICENSE IN LICENSE.md'],
     ['See License in LICENCE', 'SEE LICENSE IN LICENSE.md'],
+    ['(SEE LICENSE IN LICENSE.md)', 'SEE LICENSE IN LICENSE'],
     ['(A OR B) AND C', '(A OR B) AND C'],
   ])('%j and %j are the same', (a, b) => {
     expect(sameLicense(a, b)).toBe(true)

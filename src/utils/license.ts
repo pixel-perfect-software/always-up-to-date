@@ -57,8 +57,8 @@ const GNU_ID = /(^|[\s()])((?:A|L)?GPL-(?:2\.0|2\.1|3\.0))(\+?)(?=$|[\s()])/g
  */
 export const normalizeLicense = (text: string): string => {
   let value = text.replace(/\s+/g, ' ').trim()
-  if (/^SEE LICEN[CS]E IN\b/i.test(value)) return 'SEE LICENSE IN'
   while (wrapped(value)) value = value.slice(1, -1).trim()
+  if (/^SEE LICEN[CS]E IN\b/i.test(value)) return 'SEE LICENSE IN'
   value = value
     .toUpperCase()
     .replace(

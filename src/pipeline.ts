@@ -121,6 +121,7 @@ export const plan = (
   outdated: Record<string, PackageInfo>,
   targetPackages?: string[],
 ): Promise<UpdateResult[]> => {
+  const locked = adapter.installedFromLockfile?.(root)
   // Read only when the cooldown checks a target, once.
   let catalogs: Catalogs | undefined
   return filterPackages(outdated, {
@@ -129,6 +130,19 @@ export const plan = (
     cwd: root,
     registry,
     overrides: adapter.overrides(root),
+    // The peers of a target (#198): the lockfile stands in for node_modules
+    // where the adapter says so.
+    ...(locked
+      ? {
+          installed: (rows) =>
+            Object.fromEntries(
+              Object.entries(locked.read(root, rows)).map(([key, found]) => [
+                key,
+                found.version,
+              ]),
+            ),
+        }
+      : {}),
     declared: ({ name, workspace = '.' }) => {
       catalogs ??= adapter.readWorkspace(root).catalogs
       return declaredDependency(root, workspace, name, catalogs)
