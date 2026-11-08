@@ -91,21 +91,23 @@ const discover = async (
   return { outdated, workspace }
 }
 
-/** The outdated packages, without a report: dry-run and interactive plan their own. */
+/**
+ * The outdated packages, without a report: `check --json`, dry-run and
+ * interactive plan their own.
+ */
 export const findOutdated = async (
   project: Project,
 ): Promise<Record<string, PackageInfo>> => (await discover(project)).outdated
 
 /**
- * The outdated packages. The human report plans them first, so each one
- * shows what `update` would do with it and why; `--json` skips the plan.
+ * The outdated packages, with the human report: it plans them first, so each
+ * one shows what `update` would do with it and why.
  */
 export const check = async (
   project: Project,
-  { report = true }: { report?: boolean } = {},
 ): Promise<Record<string, PackageInfo>> => {
   const found = await findOutdated(project)
-  if (report && Object.keys(found).length > 0) {
+  if (Object.keys(found).length > 0) {
     logger.report(await plan(project, found), project.adapter.name, 'plan', {
       member: project.member?.path,
     })

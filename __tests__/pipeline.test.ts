@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import npm from '@/managers/npm'
-import { check, plan, update } from '@/pipeline'
+import { check, findOutdated, plan, update } from '@/pipeline'
 import type { VersionManifest } from '@/types'
 import {
   capturedManifest,
@@ -253,10 +253,7 @@ describe('pipeline', () => {
         },
       )
 
-      const results = await plan(
-        project,
-        await check(project, { report: false }),
-      )
+      const results = await plan(project, await findOutdated(project))
 
       expect(results).toEqual([
         expect.objectContaining({

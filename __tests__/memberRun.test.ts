@@ -5,7 +5,7 @@ import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
-import { check, plan, update } from '@/pipeline'
+import { check, findOutdated, plan, update } from '@/pipeline'
 import {
   capturedRegistry,
   installPackages,
@@ -85,7 +85,7 @@ describe.each(ADAPTERS)('a member run with $pm', ({ adapter }) => {
 
   it('plans rows that carry the member path', async () => {
     const p = project()
-    const rows = await plan(p, await check(p, { report: false }))
+    const rows = await plan(p, await findOutdated(p))
 
     expect(rows.map((row) => [row.name, row.workspace])).toEqual([
       ['dayjs', 'packages/b'],
