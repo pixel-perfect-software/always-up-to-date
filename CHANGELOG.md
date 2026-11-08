@@ -3,6 +3,28 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-11-08 — 3.6.0: autd holds updates that are deprecated, change the license, break a peer, or need a newer Node
+
+`check` and `update` now hold a target that carries a warning sign, and print the reason. Each hold shows in its own section of the report. A `latest` rule still moves the package and puts the reason in the row's `warning`. The `--json` shape is unchanged: the new holds are `reason` text, and the `warning` field already existed. Reading a target's own manifest costs one registry request per package that would move, answered from the cache afterwards. `check --json` sends none.
+
+### Added
+
+- A target the registry marks deprecated is held as `deprecated: <message>` ([#195](https://github.com/pixel-perfect-software/always-up-to-date/issues/195)). If the installed version carries the same message, the row moves with the message as a warning, since holding would keep you on a version with the same deprecation. A different message holds. For example, `npm update` moves `next` 14.0.0 to 14.0.4 although every 14.0.x is deprecated, and autd now does the same.
+- A target whose license differs from the installed version's is held as `license change: MIT → AGPL-3.0-or-later` ([#197](https://github.com/pixel-perfect-software/always-up-to-date/issues/197)). Case, whitespace, outer parentheses, operand order in a flat `OR` or `AND`, GNU's deprecated ids (`GPL-3.0` and `GPL-3.0-only`) and the file named by `SEE LICENSE IN` are not a change. `MIT/X11` against `MIT` is. A package whose manifest can't be read moves, and one warning lists it.
+- A target whose own `peerDependencies` the plan leaves unmet is held as `peer conflict: react-redux@9.3.1 needs react ^18.0 || ^19 (installed 17.0.2)` ([#198](https://github.com/pixel-perfect-software/always-up-to-date/issues/198)). Each peer is judged against the version the plan leaves it at. Before, only the other direction was checked: an installed package's peer range on a moving package. With no `node_modules`, neither direction ran for npm's lockfile or berry's PnP. The target direction now reads the lockfile there. This matches npm's `ERESOLVE` and is stricter than pnpm and bun.
+- A target whose `engines.node` excludes the project's Node is held as `engines: needs node >=22.12.0 (the project declares >=18)` ([#199](https://github.com/pixel-perfect-software/always-up-to-date/issues/199)). The project's Node is the `engines.node` in its `package.json` (a member's own, else the root's). When none is declared, it is the running Node, or `nodeVersion` from `pnpm-workspace.yaml` under pnpm. No manager judges by the project's declared range, so that part is autd's own check.
+
+### Changed
+
+- Under npm, a row whose in-range target needs another Node moves to the newest version npm would install ([#200](https://github.com/pixel-perfect-software/always-up-to-date/issues/200)). The reason reads `engines: 1.2.0 needs node >=99 (running node 24.22.1)`. Before, autd proposed 1.2.0 and reported `not applied by npm (installed 1.1.0)`. The walk tries at most 5 candidates, and `update` installs the chosen version exactly and restores the range. pnpm and bun install the highest version whatever the engines, so they keep the old plan, and the new engines hold covers them. yarn is untested.
+- Each hold has its own section in the report (**Held as deprecated**, **Held for a license change**, **Held by engines.node**), and the peer-conflict section now includes the target's own peers.
+
+### Known issues
+
+- The installed-package peer check still can't see peers without `node_modules`.
+- yarn v1 and berry are untested for npm's engines preference, so they keep the old plan.
+- Nested parenthesised license expressions are compared as written, so a reordered one shows as a hold that a `latest` rule clears.
+
 ## 2026-11-06 — 3.5.0: cooldown and release-age gates stop downloading full registry documents, and a throttled run says so
 
 Publish times for cooldown and the release-age gates now come from deps.dev, a cached document, or a package's `modified` date, so most packages cost no full registry document. The CLI is one bundled file, and `--version` starts about 28 ms faster. autd warns when a registry throttles a run.
