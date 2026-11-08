@@ -188,7 +188,8 @@ export const gatePackage = (
  * without `time`, and no deps.dev time to add) come from `releaseTimes` for
  * every version, through the reader's limiter and cache; a version still
  * without one passes only where the manager lets it. `gate` is read on the
- * first lookup, so opening a project reads nothing.
+ * first lookup, so opening a project reads nothing. Each name is gated once
+ * per session, and `lookedUp` returns that answer (#195).
  */
 export const withReleaseAgeGate = <
   S extends Pick<RegistrySession, 'lookup' | 'releaseTimes'>,
@@ -196,9 +197,11 @@ export const withReleaseAgeGate = <
   session: S,
   gate: () => ReleaseAgeGate | undefined,
   now: () => number = Date.now,
-): S => ({
-  ...session,
-  lookup: async (name: string): Promise<PackageLookup> => {
+): S & Pick<RegistrySession, 'lookedUp'> => {
+  // Each name's gated answer, so a repeat (the plan's `lookedUp`, #195) sees
+  // the versions discovery saw.
+  const lookups = new Map<string, Promise<PackageLookup>>()
+  const gatedLookup = async (name: string): Promise<PackageLookup> => {
     const result = await session.lookup(name)
     const active = gate()
     if (!result.ok || !active || !isActive(name, active)) return result
@@ -223,20 +226,32 @@ export const withReleaseAgeGate = <
         ? `no version passes ${active.setting} (published before ${active.notAfter}${gateMinutesFor(name, active) > 0 ? ` and ${gateMinutesFor(name, active)} minutes old` : ''})`
         : `every version is younger than ${active.setting} (${gateMinutesFor(name, active)} minutes)`,
     }
-  },
-  releaseTimes: async (
-    name: string,
-    window?: ReleaseWindow,
-  ): Promise<Record<string, string>> => {
-    const times = await session.releaseTimes(name, window)
-    const active = gate()
-    if (!active || !isActive(name, active)) return times
-    const minutes = gateMinutesFor(name, active)
-    const at = now()
-    return Object.fromEntries(
-      Object.entries(times).filter(([version, published]) =>
-        passes(name, version, published, minutes, active, at),
-      ),
-    )
-  },
-})
+  }
+  return {
+    ...session,
+    lookup: (name: string): Promise<PackageLookup> => {
+      let request = lookups.get(name)
+      if (!request) {
+        request = gatedLookup(name)
+        lookups.set(name, request)
+      }
+      return request
+    },
+    lookedUp: (name: string) => lookups.get(name),
+    releaseTimes: async (
+      name: string,
+      window?: ReleaseWindow,
+    ): Promise<Record<string, string>> => {
+      const times = await session.releaseTimes(name, window)
+      const active = gate()
+      if (!active || !isActive(name, active)) return times
+      const minutes = gateMinutesFor(name, active)
+      const at = now()
+      return Object.fromEntries(
+        Object.entries(times).filter(([version, published]) =>
+          passes(name, version, published, minutes, active, at),
+        ),
+      )
+    },
+  }
+}

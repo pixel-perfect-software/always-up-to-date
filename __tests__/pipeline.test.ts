@@ -171,6 +171,52 @@ describe('pipeline', () => {
     })
   })
 
+  describe('a deprecated target (#195)', () => {
+    // lodash 4.18.0 was `latest` for a day, until 4.18.1 replaced it.
+    const LODASH_DAY = { asOf: '2026-04-01T00:00:00Z' }
+
+    it("holds it with the registry's message, from discovery's lookup, by an alias's target too", async () => {
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({
+          dependencies: { lodash: '4.17.21', l: 'npm:lodash@4.17.21' },
+        }),
+      )
+      installPackages(cwd, '.', { lodash: '4.17.21', l: '4.17.21' })
+      const captured = capturedRegistry(['lodash'], LODASH_DAY)
+      const asked: string[] = []
+      const project = projectFor(
+        npm,
+        cwd,
+        { beyondRange: 'minor' },
+        {
+          ...captured,
+          lookup: (name) => {
+            asked.push(name)
+            return captured.lookup(name)
+          },
+        },
+      )
+
+      const results = await plan(project, await check(project))
+
+      expect(results).toEqual([
+        expect.objectContaining({
+          name: 'l',
+          updated: false,
+          reason: 'deprecated: Bad release. Please use lodash@4.17.21 instead.',
+        }),
+        expect.objectContaining({
+          name: 'lodash',
+          updated: false,
+          reason: 'deprecated: Bad release. Please use lodash@4.17.21 instead.',
+        }),
+      ])
+      // Discovery's lookups only: the plan asked for nothing.
+      expect(asked).toEqual(['lodash'])
+    })
+  })
+
   describe('a package the manager leaves in place', () => {
     const install = (name: string, version: string) =>
       installPackages(cwd, '.', { [name]: version })

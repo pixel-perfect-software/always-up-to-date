@@ -63,6 +63,11 @@ const SECTIONS: Record<
     summary: () => 'held by a peer conflict',
     color: cyan,
   },
+  deprecated: {
+    heading: () => 'Held as deprecated',
+    summary: () => 'held as deprecated',
+    color: cyan,
+  },
   together: {
     heading: () => 'Held with another manifest',
     summary: () => 'held with another manifest',

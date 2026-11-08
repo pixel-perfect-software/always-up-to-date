@@ -8,6 +8,7 @@ import type { Project } from '@/project'
 import type {
   AlwaysUpToDateConfig,
   OutdatedEntry,
+  PackageLookup,
   RegistryPackage,
 } from '@/types'
 import { DEFAULT_CONFIG } from '@/utils/config'
@@ -59,6 +60,8 @@ export const fakeRegistry = (
     client: unexpected,
     releaseTimes: unexpected,
     lookup: unexpected,
+    // Nothing was looked up: what a session answers before discovery.
+    lookedUp: () => undefined,
     close: () => undefined,
     ...overrides,
   }
@@ -132,14 +135,15 @@ export const capturedPackage = (
 /**
  * A registry session whose `lookup` answers from the captures and rejects
  * for any other name, so a test that asks for a package it didn't plan for
- * fails loudly.
+ * fails loudly. Like a real session it keeps each answer, which `lookedUp`
+ * returns (the plan's deprecations, #195).
  */
 export const capturedRegistry = (
   names: string[],
   options: CapturedPackageOptions = {},
   overrides: Partial<RegistrySession> = {},
-): RegistrySession =>
-  fakeRegistry({
+): RegistrySession => {
+  const base = fakeRegistry({
     lookup: async (name) => {
       if (!names.includes(name)) {
         throw new Error(`no registry capture was planned for ${name}`)
@@ -148,6 +152,20 @@ export const capturedRegistry = (
     },
     ...overrides,
   })
+  const looked = new Map<string, Promise<PackageLookup>>()
+  return {
+    ...base,
+    lookup: (name) => {
+      let answer = looked.get(name)
+      if (!answer) {
+        answer = base.lookup(name)
+        looked.set(name, answer)
+      }
+      return answer
+    },
+    lookedUp: overrides.lookedUp ?? ((name) => looked.get(name)),
+  }
+}
 
 /**
  * Writes `node_modules/<name>/package.json` under `cwd/dir` ('.' is the

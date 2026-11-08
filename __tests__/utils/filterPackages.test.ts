@@ -1,8 +1,15 @@
 import type { AlwaysUpToDateConfig, PackageInfo } from '@/types'
 import type filterPackagesType from '@/utils/filterPackages'
 import type { splitUpdates as splitUpdatesType } from '@/utils/filterPackages'
+import type { RegistrySession } from '@/utils/registry'
+import { wantedVersion } from '@/utils/wanted'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
-import { WORKSPACE_ENTRIES } from '../fixtures'
+import {
+  type CapturedPackageOptions,
+  capturedPackage,
+  capturedRegistry,
+  WORKSPACE_ENTRIES,
+} from '../fixtures'
 
 const mockLogger = {
   __esModule: true,
@@ -21,6 +28,8 @@ interface LoadOpts {
   >
   /** Deprecated versions per package; given, the registry answers `lookup`. */
   deprecated?: Record<string, string[]>
+  /** What the session looked up, as the plan's `lookedUp` reads it (#195). */
+  lookedUp?: RegistrySession['lookup']
 }
 
 const DEFAULTS = {
@@ -56,6 +65,18 @@ function loadFilterWithConfig(
     filter = loaded.default
     split = loaded.splitUpdates
   })
+  const deprecatedLookup = async (name: string) => ({
+    ok: true as const,
+    package: {
+      name,
+      latest: '',
+      source: 'packument' as const,
+      versions: Object.keys(opts.releaseTimes?.[name] ?? {}).map((version) => ({
+        version,
+        deprecated: opts.deprecated?.[name]?.includes(version) ?? false,
+      })),
+    },
+  })
   const run = (
     outdated: Record<string, PackageInfo>,
     options: Omit<
@@ -68,22 +89,10 @@ function loadFilterWithConfig(
       registry: {
         releaseTimes,
         ...(opts.deprecated && {
-          lookup: async (name: string) => ({
-            ok: true as const,
-            package: {
-              name,
-              latest: '',
-              source: 'packument' as const,
-              versions: Object.keys(opts.releaseTimes?.[name] ?? {}).map(
-                (version) => ({
-                  version,
-                  deprecated:
-                    opts.deprecated?.[name]?.includes(version) ?? false,
-                }),
-              ),
-            },
-          }),
+          lookup: deprecatedLookup,
+          lookedUp: deprecatedLookup,
         }),
+        ...(opts.lookedUp && { lookedUp: opts.lookedUp }),
       },
       ...options,
     })
@@ -401,6 +410,163 @@ describe('filterPackages', () => {
         warning:
           'peer conflict: @tanstack/react-query@4.29.5 needs react ^16.8.0 || ^17.0.0 || ^18.0.0',
       })
+    })
+  })
+
+  describe('deprecated targets (#195)', () => {
+    /** One outdated package as discovery reads it from its capture. */
+    const outdatedFrom = (
+      name: string,
+      range: string,
+      current: string,
+      options: CapturedPackageOptions = {},
+    ): Record<string, PackageInfo> => {
+      const pkg = capturedPackage(name, options)
+      return {
+        [name]: {
+          name,
+          current,
+          wanted: wantedVersion(range, pkg) ?? current,
+          latest: pkg.latest,
+        },
+      }
+    }
+    const DEBUG_REDOS =
+      'Debug versions >=3.2.0 <3.2.7 || >=4 <4.3.1 have a low-severity ReDos regression when used in a Node.js environment. It is recommended you upgrade to 3.2.7 or 4.3.1. (https://github.com/visionmedia/debug/issues/797)'
+    const LODASH_BAD_RELEASE = 'Bad release. Please use lodash@4.17.21 instead.'
+    // lodash 4.18.0 was `latest` for a day, until 4.18.1 replaced it.
+    const LODASH_DAY = { asOf: '2026-04-01T00:00:00Z' }
+
+    it('moves to a deprecated target from a deprecated installed version, with a warning', async () => {
+      // Every debug 4.1.x is deprecated, so ~4.1.0 can only want 4.1.1, and
+      // holding would keep 4.1.0, which carries the same deprecation.
+      const outdated = outdatedFrom('debug', '~4.1.0', '4.1.0')
+      expect(outdated.debug.wanted).toBe('4.1.1')
+      const filter = loadFilterWithConfig(
+        {},
+        { lookedUp: capturedRegistry(['debug']).lookup },
+      )
+
+      const [result] = await filter(outdated)
+
+      expect(result).toMatchObject({
+        updated: true,
+        target: '4.1.1',
+        warning: `deprecated: ${DEBUG_REDOS}`,
+      })
+    })
+
+    it('holds a deprecated latest that beyondRange would move to', async () => {
+      const outdated = outdatedFrom('lodash', '4.17.21', '4.17.21', LODASH_DAY)
+      expect(outdated.lodash.latest).toBe('4.18.0')
+      const filter = loadFilterWithConfig(
+        { beyondRange: 'minor' },
+        { lookedUp: capturedRegistry(['lodash'], LODASH_DAY).lookup },
+      )
+
+      const [result] = await filter(outdated)
+
+      expect(result).toMatchObject({
+        updated: false,
+        target: undefined,
+        reason: `deprecated: ${LODASH_BAD_RELEASE}`,
+      })
+    })
+
+    it('moves a deprecated target under a latest rule, with a warning', async () => {
+      const filter = loadFilterWithConfig(
+        { rules: { lodash: 'latest' } },
+        { lookedUp: capturedRegistry(['lodash'], LODASH_DAY).lookup },
+      )
+
+      const [result] = await filter(
+        outdatedFrom('lodash', '^4.17.21', '4.17.21', LODASH_DAY),
+      )
+
+      expect(result).toMatchObject({
+        updated: true,
+        target: '4.18.0',
+        warning: `deprecated: ${LODASH_BAD_RELEASE}`,
+      })
+    })
+
+    it('keeps a peer conflict warning beside the deprecation', async () => {
+      const filter = loadFilterWithConfig(
+        { rules: { lodash: 'latest' } },
+        {
+          lookedUp: capturedRegistry(['lodash'], LODASH_DAY).lookup,
+          installedPeers: {
+            lodash: [{ name: 'x', version: '1.0.0', range: '~4.17.0' }],
+          },
+        },
+      )
+
+      const [result] = await filter(
+        outdatedFrom('lodash', '^4.17.21', '4.17.21', LODASH_DAY),
+      )
+
+      expect(result.warning).toBe(
+        `peer conflict: x@1.0.0 needs lodash ~4.17.0; deprecated: ${LODASH_BAD_RELEASE}`,
+      )
+    })
+
+    it('puts a message with line breaks and escape codes on one plain line', async () => {
+      const filter = loadFilterWithConfig(
+        {},
+        {
+          lookedUp: async (name) => ({
+            ok: true,
+            package: {
+              name,
+              latest: '1.0.1',
+              source: 'packument',
+              versions: [
+                { version: '1.0.0', deprecated: false },
+                {
+                  version: '1.0.1',
+                  deprecated: true,
+                  deprecatedReason: 'use q\r\n\u001b[31minstead\u001b[0m ',
+                },
+              ],
+            },
+          }),
+        },
+      )
+
+      const [result] = await filter(
+        makeOutdated([
+          { name: 'p', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
+      )
+
+      expect(result.reason).toBe('deprecated: use q [31minstead [0m')
+    })
+
+    it('says so when the registry gives no message', async () => {
+      const filter = loadFilterWithConfig(
+        {},
+        { deprecated: { p: ['1.0.1'] }, releaseTimes: { p: { '1.0.1': '' } } },
+      )
+
+      const [result] = await filter(
+        makeOutdated([
+          { name: 'p', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+        ]),
+      )
+
+      expect(result.reason).toBe('deprecated: no message given')
+    })
+
+    it('moves a target that is not deprecated, with no warning', async () => {
+      const filter = loadFilterWithConfig(
+        {},
+        { lookedUp: capturedRegistry(['debug']).lookup },
+      )
+
+      const [result] = await filter(outdatedFrom('debug', '^4.1.0', '4.1.0'))
+
+      expect(result).toMatchObject({ updated: true, target: '4.4.3' })
+      expect(result.warning).toBeUndefined()
     })
   })
 

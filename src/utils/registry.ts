@@ -48,6 +48,12 @@ export interface RegistrySession {
    */
   lookup(name: string): Promise<PackageLookup>
   /**
+   * The lookup this session has already made for `name`, else undefined. It
+   * never sends a request or loads the reader: the plan reads a target's
+   * deprecation (#195) from what discovery looked up in the same session.
+   */
+  lookedUp(name: string): Promise<PackageLookup> | undefined
+  /**
    * Prunes the cache when this run grew it, logs one debug line about the
    * run, warns once when a host throttled it, and destroys the client's
    * agents. Safe to call twice, or when nothing was made.
@@ -108,6 +114,9 @@ export const createRegistrySession = (
     return clientRequest
   }
 
+  // Every name's lookup, as the session answered it; `lookedUp` reads them.
+  const lookups = new Map<string, Promise<PackageLookup>>()
+
   // The reader (and the cache, if asked for) load with the first lookup, not with the CLI.
   const readerOnce = (): Promise<RegistryReader> => {
     reader ??= Promise.all([
@@ -157,13 +166,21 @@ export const createRegistrySession = (
     registryConfig,
     unusableRoute: (name) => unusableRouteFor(name, registryConfig()),
     client,
-    lookup: async (name) => {
-      const bad = unusableRouteFor(name, registryConfig())
-      if (bad) {
-        return { ok: false, name, kind: 'invalid', reason: refusal(bad) }
+    lookup: (name) => {
+      let request = lookups.get(name)
+      if (!request) {
+        request = (async (): Promise<PackageLookup> => {
+          const bad = unusableRouteFor(name, registryConfig())
+          if (bad) {
+            return { ok: false, name, kind: 'invalid', reason: refusal(bad) }
+          }
+          return (await readerOnce()).lookup(name)
+        })()
+        lookups.set(name, request)
       }
-      return (await readerOnce()).lookup(name)
+      return request
     },
+    lookedUp: (name) => lookups.get(name),
     releaseTimes: async (name, window) => {
       const bad = unusableRouteFor(name, registryConfig())
       if (bad) {
