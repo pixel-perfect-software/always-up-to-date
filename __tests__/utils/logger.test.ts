@@ -387,7 +387,41 @@ describe('Logger', () => {
       expect(lines.at(-1)).toContain('1 held for a license change')
     })
 
+    it('shows an engines hold after a license change, with both ranges (#199)', () => {
+      logger.report(
+        [
+          held(
+            'commander',
+            'engines: needs node >=20 (the project declares >=18)',
+            {
+              current: '13.1.0',
+              latest: '14.0.0',
+            },
+          ),
+          held('ua-parser-js', 'license change: MIT → ISC', {
+            current: '1.0.39',
+            latest: '2.0.0',
+          }),
+        ],
+        'npm',
+        'plan',
+      )
+      const lines = printed()
+      expect(lines).toContain('\nHeld by engines.node (1 package)')
+      expect(
+        lines.indexOf('\nHeld for a license change (1 package)'),
+      ).toBeLessThan(lines.indexOf('\nHeld by engines.node (1 package)'))
+      expect(lines).toContain(
+        '  commander     13.1.0 → 14.0.0  needs node >=20 (the project declares >=18)',
+      )
+      expect(lines.at(-1)).toContain('held by engines.node')
+    })
+
     it.each([
+      [
+        'engines: needs node >=20 (running node 18.0.0)',
+        'Held by engines.node',
+      ],
       ['license change: MIT → ISC', 'Held for a license change'],
       ['controlled by overrides (^1.0.0)', 'Held by an override'],
       [

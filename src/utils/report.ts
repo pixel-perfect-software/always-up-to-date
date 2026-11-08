@@ -12,6 +12,7 @@ export type Outcome =
   | 'peer'
   | 'deprecated'
   | 'license'
+  | 'engines'
   | 'together'
   | 'other'
 
@@ -26,6 +27,7 @@ const ORDER: Outcome[] = [
   'peer',
   'deprecated',
   'license',
+  'engines',
   'together',
   'other',
 ]
@@ -45,6 +47,7 @@ export const outcomeOf = (result: UpdateResult): Outcome | undefined => {
   if (reason.startsWith('peer conflict: ')) return 'peer'
   if (reason.startsWith('deprecated: ')) return 'deprecated'
   if (reason.startsWith('license change: ')) return 'license'
+  if (reason.startsWith('engines: ')) return 'engines'
   if (reason.startsWith('held with ')) return 'together'
   return 'other'
 }
@@ -107,6 +110,8 @@ const noteFor = (
       return reason.replace(/^deprecated: /, '')
     case 'license':
       return reason.replace(/^license change: /, '')
+    case 'engines':
+      return reason.replace(/^engines: /, '')
     case 'not-applied':
       return reason.replace(/^not applied by \S+ \((.*)\)$/, '$1')
     default:

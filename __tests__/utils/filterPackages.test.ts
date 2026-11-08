@@ -944,7 +944,7 @@ describe('filterPackages', () => {
       expect(result).toMatchObject({ updated: true, target: '2.0.0' })
       expect(mockLogger.default.warn).toHaveBeenCalledTimes(1)
       expect(mockLogger.default.warn).toHaveBeenCalledWith(
-        'No version manifest for target ua-parser-js@2.0.0: they move without license or peer checks',
+        'No version manifest for target ua-parser-js@2.0.0: they move without license, peer or engines checks',
       )
       // Nothing to compare against, so the current version is not read.
       expect(asked).toEqual(['ua-parser-js@2.0.0'])
@@ -964,7 +964,7 @@ describe('filterPackages', () => {
         'ua-parser-js@2.0.0',
       ])
       expect(mockLogger.default.warn).toHaveBeenCalledWith(
-        'No version manifest for installed ua-parser-js@1.0.39: they move without license or peer checks',
+        'No version manifest for installed ua-parser-js@1.0.39: they move without license, peer or engines checks',
       )
     })
 
@@ -2092,7 +2092,7 @@ describe("a target's own peers (#198)", () => {
 
     expect(result).toMatchObject({ updated: true, target: '9.2.0' })
     expect(mockLogger.default.warn).toHaveBeenCalledWith(
-      'No version manifest for target react-redux@9.2.0: they move without license or peer checks',
+      'No version manifest for target react-redux@9.2.0: they move without license, peer or engines checks',
     )
   })
 
@@ -2167,6 +2167,224 @@ describe("a target's own peers (#198)", () => {
       updated: false,
       reason:
         'peer conflict: react-redux@9.1.2 needs react ^18.0 (installed 17.0.2)',
+    })
+  })
+})
+
+describe('engines.node (#199)', () => {
+  let cwd: string
+  const at = (...parts: string[]) => path.join(cwd, ...parts)
+  const writeJson = (file: string, value: unknown) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify(value))
+  }
+  const COMMANDER = capturedManifest(
+    'commander',
+    '14.0.0',
+    'commander.14.0.0.manifest',
+  )
+  const MKDIRP = capturedManifest('mkdirp', '3.0.1', 'mkdirp.3.0.1.manifest')
+  const MS = capturedManifest('ms', '2.1.3', 'ms.2.1.3.manifest')
+  const commanderRow = {
+    name: 'commander',
+    current: '13.1.0',
+    wanted: '14.0.0',
+    latest: '14.0.0',
+  }
+  const known: Record<string, VersionManifest | undefined> = {
+    'commander@14.0.0': COMMANDER,
+    'mkdirp@3.0.1': MKDIRP,
+    'ms@2.1.3': MS,
+  }
+  const HELD_BY_DECLARED =
+    'engines: needs node >=20 (the project declares >=18)'
+
+  const plan = (
+    rows: Record<string, PackageInfo>,
+    {
+      config = {},
+      answers = known,
+      options = {},
+    }: {
+      config?: Partial<AlwaysUpToDateConfig>
+      answers?: Record<string, VersionManifest | undefined>
+      options?: Parameters<ReturnType<typeof loadFilterWithConfig>>[1]
+    } = {},
+  ) => {
+    const filter = loadFilterWithConfig(config, {
+      versionManifest: async (name, version) => answers[`${name}@${version}`],
+    })
+    return filter(rows, {
+      cwd,
+      node: '24.22.1',
+      installed: () => ({}),
+      ...options,
+    })
+  }
+
+  beforeEach(() => {
+    cwd = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-engines-')),
+    )
+    mockLogger.default.warn.mockClear()
+    mockLogger.default.debug.mockClear()
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('holds a target that excludes the declared range, naming both', async () => {
+    writeJson(at('package.json'), { engines: { node: '>=18' } })
+
+    const [result] = await plan(makeOutdated([commanderRow]))
+
+    expect(result).toMatchObject({
+      updated: false,
+      target: undefined,
+      reason: HELD_BY_DECLARED,
+    })
+  })
+
+  it('judges the running Node when nothing is declared', async () => {
+    writeJson(at('package.json'), {})
+
+    const [held] = await plan(makeOutdated([commanderRow]), {
+      options: { node: '18.20.4' },
+    })
+    const [moves] = await plan(makeOutdated([commanderRow]))
+
+    expect(held).toMatchObject({
+      updated: false,
+      reason: 'engines: needs node >=20 (running node 18.20.4)',
+    })
+    expect(moves).toMatchObject({ updated: true, target: '14.0.0' })
+  })
+
+  it("names the manager's own Node setting when given", async () => {
+    const [result] = await plan(makeOutdated([commanderRow]), {
+      options: { node: '18.0.0', nodeLabel: 'pnpm nodeVersion' },
+    })
+
+    expect(result.reason).toBe(
+      'engines: needs node >=20 (pnpm nodeVersion 18.0.0)',
+    )
+  })
+
+  it('moves it under a latest rule, with the text as a warning', async () => {
+    writeJson(at('package.json'), { engines: { node: '>=18' } })
+
+    const [result] = await plan(makeOutdated([commanderRow]), {
+      config: { rules: { commander: 'latest' } },
+    })
+
+    expect(result).toMatchObject({
+      updated: true,
+      target: '14.0.0',
+      warning: HELD_BY_DECLARED,
+    })
+  })
+
+  it('moves a target with no constraint, a wide one, or none', async () => {
+    writeJson(at('package.json'), { engines: { node: '>=12' } })
+
+    const results = await plan(
+      makeOutdated([
+        { name: 'mkdirp', current: '2.0.0', wanted: '3.0.1', latest: '3.0.1' },
+        { name: 'ms', current: '2.0.0', wanted: '2.1.3', latest: '2.1.3' },
+      ]),
+    )
+
+    expect(results.map((r) => [r.name, r.updated])).toEqual([
+      ['mkdirp', true],
+      ['ms', true],
+    ])
+  })
+
+  it('uses a member its own range, else the root', async () => {
+    writeJson(at('package.json'), { engines: { node: '>=18' } })
+    writeJson(at('packages', 'a', 'package.json'), {
+      engines: { node: '>=20' },
+    })
+    writeJson(at('packages', 'b', 'package.json'), {})
+    const inMember = async (workspace: string) => {
+      const [result] = await plan(
+        foldWorkspaceEntries([{ ...commanderRow, workspace }]),
+      )
+      return result
+    }
+
+    expect(await inMember('packages/a')).toMatchObject({ updated: true })
+    expect(await inMember('packages/b')).toMatchObject({
+      updated: false,
+      reason: HELD_BY_DECLARED,
+    })
+  })
+
+  it('checks nothing without a Node or a declaration, with one debug line', async () => {
+    writeJson(at('package.json'), {})
+
+    const [result] = await plan(makeOutdated([commanderRow]), {
+      options: { node: null },
+    })
+
+    expect(result.updated).toBe(true)
+    expect(mockLogger.default.debug).toHaveBeenCalledWith(
+      "No Node runs autd and the project declares no engines.node: engines aren't checked",
+    )
+  })
+
+  it('lets an unknown document through and lists it in the warning', async () => {
+    writeJson(at('package.json'), { engines: { node: '>=18' } })
+
+    const [result] = await plan(makeOutdated([commanderRow]), { answers: {} })
+
+    expect(result.updated).toBe(true)
+    expect(mockLogger.default.warn).toHaveBeenCalledWith(
+      'No version manifest for target commander@14.0.0: they move without license, peer or engines checks',
+    )
+  })
+
+  it('counts a peer held for engines as not moving (#198)', async () => {
+    writeJson(at('package.json'), { engines: { node: '>=18' } })
+    const REDUX = capturedManifest(
+      'react-redux',
+      '9.2.0',
+      'react-redux.9.2.0.manifest',
+    )
+    const REACT = capturedManifest('react', '18.3.1', 'react.18.3.1.manifest')
+
+    const results = await plan(
+      makeOutdated([
+        {
+          name: 'react-redux',
+          current: '8.1.3',
+          wanted: '9.2.0',
+          latest: '9.2.0',
+        },
+        {
+          name: 'react',
+          current: '17.0.2',
+          wanted: '18.3.1',
+          latest: '18.3.1',
+        },
+      ]),
+      {
+        answers: {
+          'react-redux@9.2.0': REDUX,
+          'react@18.3.1': { ...REACT, enginesNode: '>=99' },
+        },
+      },
+    )
+
+    expect(results.find((r) => r.name === 'react')?.reason).toBe(
+      'engines: needs node >=99 (the project declares >=18)',
+    )
+    expect(results.find((r) => r.name === 'react-redux')).toMatchObject({
+      updated: false,
+      reason: expect.stringMatching(
+        /^peer conflict: react-redux@9.2.0 needs react/,
+      ),
     })
   })
 })

@@ -16,6 +16,32 @@ import { runProcess } from '@/utils'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
+describe('pnpm.nodeVersion (#199)', () => {
+  let cwd: string
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-node-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it.each([
+    ['a version', 'nodeVersion: 20.0.0\n', '20.0.0'],
+    ['a quoted version', 'nodeVersion: "20.1.0" # pinned\n', '20.1.0'],
+    ['a value that is not a version', 'nodeVersion: lts\n', undefined],
+    ['no setting', 'saveExact: true\n', undefined],
+  ])('reads %s from pnpm-workspace.yaml', (_label, yaml, expected) => {
+    fs.writeFileSync(path.join(cwd, 'pnpm-workspace.yaml'), yaml)
+    expect(pnpm.nodeVersion?.(cwd)).toBe(expected)
+  })
+
+  it('is undefined without the file', () => {
+    expect(pnpm.nodeVersion?.(cwd)).toBeUndefined()
+  })
+})
+
 describe('pnpm.readWorkspace', () => {
   let cwd: string
 
