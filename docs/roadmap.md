@@ -240,6 +240,7 @@ Goal: a machine without Node can run autd.
   them to GitHub releases. Homebrew tap formula downloads the matching asset.
 - The test suite and integration matrix also run against the compiled binary, since it
   runs on Bun's runtime rather than Node.
+- The compiled binary has no Node to judge `engines.node` against, so it judges only the range the project declares (#199).
 
 Done when: `autd check` runs on a bun project on a machine with no Node installed.
 

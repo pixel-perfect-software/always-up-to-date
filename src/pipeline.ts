@@ -7,6 +7,7 @@ import { type PipelineStep, StepError } from '@/stepError'
 import type { PackageInfo, UpdateResult } from '@/types'
 import { filterPackages, logger, splitUpdates } from '@/utils'
 import { type Catalogs, declaredDependency } from '@/utils/dependencySpecs'
+import { runningNode } from '@/utils/engines'
 import { checkApplied, readInstalledVersions } from '@/utils/installed'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 
@@ -122,6 +123,7 @@ export const plan = (
   targetPackages?: string[],
 ): Promise<UpdateResult[]> => {
   const locked = adapter.installedFromLockfile?.(root)
+  const nodeVersion = adapter.nodeVersion?.(root)
   // Read only when the cooldown checks a target, once.
   let catalogs: Catalogs | undefined
   return filterPackages(outdated, {
@@ -130,6 +132,11 @@ export const plan = (
     cwd: root,
     registry,
     overrides: adapter.overrides(root),
+    // The Node `engines.node` is judged by without a declared range: the
+    // manager's own setting (pnpm's `nodeVersion`), else the running Node.
+    ...(nodeVersion
+      ? { node: nodeVersion, nodeLabel: `${adapter.name} nodeVersion` }
+      : { node: runningNode() }),
     // The peers of a target (#198): the lockfile stands in for node_modules
     // where the adapter says so.
     ...(locked

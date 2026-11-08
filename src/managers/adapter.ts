@@ -198,6 +198,12 @@ export interface ManagerAdapter {
    * root `install` resolves with the root's, as discovery does.
    */
   pinMembers?(cwd: string): boolean
+  /**
+   * The Node version the manager judges a package's `engines` by when the
+   * project sets one (pnpm's `nodeVersion` in pnpm-workspace.yaml), else
+   * undefined: the manager uses the Node it runs on (#199).
+   */
+  nodeVersion?(cwd: string): string | undefined
   /** Packages pinned by an override this manager enforces. */
   overrides(cwd: string): Record<string, ControllingOverride>
 }

@@ -1,3 +1,5 @@
+import fs from 'fs'
+import path from 'path'
 import semver, { type ReleaseType } from 'semver'
 import type {
   AlwaysUpToDateConfig,
@@ -15,6 +17,7 @@ import {
 } from './cooldown'
 import type { DeclaredDependency } from './dependencySpecs'
 import { formatAgeDays } from './duration'
+import { declaredNodeRange, enginesHold, runningNode } from './engines'
 import {
   readInstalledManifests,
   readInstalledVersions,
@@ -75,6 +78,14 @@ interface FilterPackagesOptions {
   installed?: (
     rows: { name: string; workspace?: string }[],
   ) => Record<string, string>
+  /**
+   * The Node a target's `engines.node` is judged against when the project
+   * declares none (#199): default `runningNode()`; null when there is none
+   * (a Bun runtime), and then nothing is checked without a declaration.
+   */
+  node?: string | null
+  /** What `node` is called in a reason (`pnpm nodeVersion`); default `running node`. */
+  nodeLabel?: string
 }
 
 /**
@@ -505,9 +516,10 @@ const holdLicenseChanges = async (
 }
 
 /**
- * A pass that judges each moving row by its target's own manifest (#199:
- * `engines.node`; license and peers are judged elsewhere): it holds or warns, never moves a row. An
- * unknown manifest (undefined) is a state each pass decides for itself.
+ * A pass that judges each moving row by its target's own manifest (`engines.node`
+ * today; license and peers are judged elsewhere): it holds or warns, never
+ * moves a row. An unknown manifest (undefined) is a state each pass decides
+ * for itself.
  */
 type ManifestPass = (
   rows: UpdateResult[],
@@ -519,10 +531,79 @@ type ManifestPass = (
 ) => UpdateResult[]
 
 /**
- * The manifest passes, in order. #196 reads the manifests and holds nothing
- * on them; #199 adds its synchronous pass here (license, #197, is async and called directly; the target peers, #198, are checked inside `settle`).
+ * Holds a moving row whose target's `engines.node` excludes the project's
+ * Node (#199): the `engines.node` the row's manifest declares (a member's
+ * own, else the root's) when there is one, else `node`. A `latest` rule moves
+ * it with the text as a warning. A known document without `engines.node`
+ * is no constraint; an unknown one is left to the caller's warning.
  */
-const MANIFEST_PASSES: readonly ManifestPass[] = []
+const enginesPass = ({
+  cwd,
+  node,
+  nodeLabel,
+}: {
+  cwd: string
+  node: string | null
+  nodeLabel?: string
+}): ManifestPass => {
+  const declaredIn = new Map<string, string | undefined>()
+  const declaredAt = (dir: string): string | undefined => {
+    if (!declaredIn.has(dir)) {
+      const file = path.join(cwd, dir, 'package.json')
+      let range: string | undefined
+      try {
+        const manifest: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
+        const engines =
+          typeof manifest === 'object' && manifest !== null
+            ? (manifest as { engines?: unknown }).engines
+            : undefined
+        range = declaredNodeRange(
+          typeof engines === 'object' && engines !== null
+            ? (engines as { node?: unknown }).node
+            : undefined,
+          dir === '.' ? 'package.json' : `${dir}/package.json`,
+        )
+      } catch {
+        range = undefined
+      }
+      declaredIn.set(dir, range)
+    }
+    return declaredIn.get(dir)
+  }
+  let noted = false
+  return (rows, { manifests, lookupName, policy }) =>
+    manifests.size === 0
+      ? rows
+      : rows.map((row) => {
+          const range = targetManifestOf(
+            manifests,
+            row,
+            lookupName,
+          )?.enginesNode
+          if (!range) return row
+          const owner = row.workspace ?? '.'
+          const declared =
+            declaredAt(owner) ?? (owner === '.' ? undefined : declaredAt('.'))
+          if (declared === undefined && node === null) {
+            if (!noted) {
+              noted = true
+              logger.debug(
+                "No Node runs autd and the project declares no engines.node: engines aren't checked",
+              )
+            }
+            return row
+          }
+          const reason = enginesHold(range, {
+            ...(declared === undefined ? {} : { declared }),
+            running: node,
+            ...(nodeLabel === undefined ? {} : { runningLabel: nodeLabel }),
+          })
+          if (!reason) return row
+          return policy.ruleFor(row.name) === 'latest'
+            ? withWarning(row, reason)
+            : heldFor(row, reason)
+        })
+}
 
 /** Versions the registry marks deprecated, when the session can say. */
 const deprecatedVersions = async (
@@ -681,7 +762,14 @@ const filterPackages = async (
       lookupName,
       cwd,
     })
-    const passed = MANIFEST_PASSES.reduce(
+    const passes: readonly ManifestPass[] = [
+      enginesPass({
+        cwd,
+        node: options.node === undefined ? runningNode() : options.node,
+        nodeLabel: options.nodeLabel,
+      }),
+    ]
+    const passed = passes.reduce(
       (current, pass) => pass(current, { manifests, lookupName, policy }),
       licensed.rows,
     )
@@ -724,7 +812,7 @@ const filterPackages = async (
     ].filter(Boolean)
     if (missing.length > 0) {
       logger.warn(
-        `No version manifest for ${missing.join('; ')}: they move without license or peer checks`,
+        `No version manifest for ${missing.join('; ')}: they move without license, peer or engines checks`,
       )
     }
     return settled

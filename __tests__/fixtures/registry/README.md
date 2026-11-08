@@ -127,6 +127,19 @@ Captured for #197 with the same curl shape (HTTP/2, `content-encoding: gzip`, no
 | `ms.2.1.1.manifest.body`            | `registry.npmjs.org/ms/2.1.1`            | 200    | `application/json` | 1483 B       | no  |
 | `pako.2.1.0.manifest.body`          | `registry.npmjs.org/pako/2.1.0`          | 200    | `application/json` | 3422 B       | no  |
 
+### Engines (2026-11-08)
+
+Captured for #199 with the same curl shape (`curl --compressed`, `Accept: application/json`, HTTP 200, `application/json`, no gz). Each body's `name` and `version` equal the request.
+
+- `commander.14.0.0`: `engines.node` is `">=20"`.
+- `eslint.9.0.0`: `engines.node` is `"^18.18.0 || ^20.9.0 || >=21.1.0"`, a real `||` range.
+- Already captured and used here: `mkdirp.3.0.1` (`>=10`), `mkdirp.0.3.0` and `ms.0.1.0` (`*`), `ms.2.1.3` (no `engines`).
+
+| File                             | Request                               | Status | Content type       | Decoded size | gz  |
+| -------------------------------- | ------------------------------------- | ------ | ------------------ | ------------ | --- |
+| `commander.14.0.0.manifest.body` | `registry.npmjs.org/commander/14.0.0` | 200    | `application/json` | 2725 B       | no  |
+| `eslint.9.0.0.manifest.body`     | `registry.npmjs.org/eslint/9.0.0`     | 200    | `application/json` | 5740 B       | no  |
+
 ### Cache headers of the manifest endpoint
 
 Same method as the cache headers above; `ms/2.1.3` (the `Date` header read 2026-11-08 02:01 GMT).

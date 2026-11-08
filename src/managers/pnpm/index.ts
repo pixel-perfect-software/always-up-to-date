@@ -1,4 +1,5 @@
 import path from 'path'
+import semver from 'semver'
 
 import type { ManagerAdapter } from '@/managers/adapter'
 import { pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
@@ -150,6 +151,12 @@ const pnpm: ManagerAdapter = {
 
   // pnpm 12 gates versions younger than one day unless set (#168).
   releaseAgeGate: (cwd, sources) => pnpmReleaseAgeGate(cwd, sources),
+
+  /** `nodeVersion` in pnpm-workspace.yaml: pnpm 12 judges `engines.node` by it when set (probed 2026-11-07). */
+  nodeVersion: (cwd) => {
+    const version = yamlValue(readWorkspaceYaml(cwd), 'nodeVersion')
+    return version && semver.valid(version) ? version : undefined
+  },
 
   overrides: (cwd) =>
     overridesFromField(

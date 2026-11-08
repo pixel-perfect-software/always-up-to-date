@@ -73,6 +73,11 @@ const SECTIONS: Record<
     summary: () => 'held for a license change',
     color: cyan,
   },
+  engines: {
+    heading: () => 'Held by engines.node',
+    summary: () => 'held by engines.node',
+    color: cyan,
+  },
   together: {
     heading: () => 'Held with another manifest',
     summary: () => 'held with another manifest',
