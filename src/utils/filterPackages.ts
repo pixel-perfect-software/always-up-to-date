@@ -6,6 +6,7 @@ import type {
   PackageInfo,
   PinnedRow,
   UpdateResult,
+  VersionManifest,
 } from '@/types'
 import {
   cooldownDaysFor,
@@ -14,11 +15,17 @@ import {
 } from './cooldown'
 import type { DeclaredDependency } from './dependencySpecs'
 import { formatAgeDays } from './duration'
+import { readInstalledManifests, rowKey } from './installed'
+import { sameLicense } from './license'
 import logger from './logger'
 import type { ControllingOverride } from './overrides'
 import { type PeerRequirement, readInstalledPeers } from './peers'
 import type { RegistrySession } from './registry'
-import { readTargetManifests, type TargetManifests } from './targetManifests'
+import {
+  readTargetManifests,
+  type TargetManifests,
+  targetManifestOf,
+} from './targetManifests'
 import updateChecker, {
   policyFromConfig,
   type UpdatePolicy,
@@ -286,6 +293,107 @@ const holdDeprecated = async (
   )
 }
 
+/** Characters of a license shown in a reason or warning; the rest is cut. */
+const LICENSE_SHOWN = 40
+
+/** A declared license (undefined: none) as a reason shows it: one line, cut. */
+const shownLicense = (license: string | undefined): string => {
+  const line = license === undefined ? '' : oneLine(license)
+  if (line === '') return 'none'
+  return line.length > LICENSE_SHOWN
+    ? `${line.slice(0, LICENSE_SHOWN).trimEnd()}…`
+    : line
+}
+
+/**
+ * Holds a moving row whose target declares a different license from the
+ * installed version (`license change: MIT → AGPL-3.0-or-later`, #197); a
+ * `latest` rule moves it with the text as a warning. `none` stands for a
+ * known manifest that declares no license, and a move to or from it is a
+ * change too. Only the rows still moving are read: the current version's
+ * license comes from `node_modules` when the installed copy is that version,
+ * else from its own manifest (one request per name and version). A row
+ * whose target manifest or current manifest is unknown moves unchecked, and
+ * is returned in `unchecked` as `name@version`. Without a registry that can
+ * read manifests, nothing is judged.
+ */
+const holdLicenseChanges = async (
+  rows: UpdateResult[],
+  manifests: TargetManifests,
+  {
+    registry,
+    policy,
+    lookupName,
+    cwd,
+  }: {
+    registry: FilterPackagesOptions['registry']
+    policy: UpdatePolicy
+    lookupName: (row: UpdateResult) => string
+    cwd: string
+  },
+): Promise<{ rows: UpdateResult[]; unchecked: string[] }> => {
+  const { versionManifest } = registry
+  if (!versionManifest) return { rows, unchecked: [] }
+  // A `missing` or non-semver current has no license to compare.
+  const moving = rows.filter(
+    (row) => row.updated && row.target && semver.valid(row.current),
+  )
+  const unchecked = new Set<string>()
+  const judged = moving.filter((row) => {
+    if (targetManifestOf(manifests, row, lookupName)) return true
+    unchecked.add(`${lookupName(row)}@${row.target}`)
+    return false
+  })
+  if (judged.length === 0) return { rows, unchecked: [...unchecked] }
+
+  const installed = readInstalledManifests(cwd, judged)
+  const read = new Map<string, Promise<VersionManifest | undefined>>()
+  const currentOf = async (
+    row: UpdateResult,
+  ): Promise<{ known: boolean; license?: string }> => {
+    const found = installed[rowKey(row)]
+    if (found?.version === row.current) {
+      return { known: true, license: found.license }
+    }
+    const name = lookupName(row)
+    const key = `${name}@${row.current}`
+    let pending = read.get(key)
+    if (!pending) {
+      pending = versionManifest(name, row.current)
+      read.set(key, pending)
+    }
+    const manifest = await pending
+    return manifest
+      ? { known: true, license: manifest.license }
+      : { known: false }
+  }
+
+  const held = new Map<UpdateResult, UpdateResult>()
+  await Promise.all(
+    judged.map(async (row) => {
+      const target = targetManifestOf(manifests, row, lookupName)
+      if (!target) return
+      const current = await currentOf(row)
+      if (!current.known) {
+        unchecked.add(`${lookupName(row)}@${row.current}`)
+        return
+      }
+      if (sameLicense(current.license, target.license)) return
+      const message = `license change: ${shownLicense(current.license)} → ${shownLicense(target.license)}`
+      held.set(
+        row,
+        policy.ruleFor(row.name) === 'latest'
+          ? withWarning(row, message)
+          : heldFor(row, message),
+      )
+    }),
+  )
+  return {
+    rows: rows.map((row) => held.get(row) ?? row),
+    unchecked: [...unchecked],
+  }
+}
+
 /**
  * A pass that judges each moving row by its target's own manifest (#197-#199:
  * license, `engines.node`, peers): it holds or warns, never moves a row. An
@@ -438,12 +546,26 @@ const filterPackages = async (
       registry,
       lookupName,
     })
-    return settle(
+    const licensed = await holdLicenseChanges(moving, manifests, {
+      registry,
+      policy,
+      lookupName,
+      cwd,
+    })
+    const settled = settle(
       MANIFEST_PASSES.reduce(
         (current, pass) => pass(current, { manifests, lookupName, policy }),
-        moving,
+        licensed.rows,
       ),
     )
+    if (licensed.unchecked.length > 0) {
+      const listed = licensed.unchecked.slice(0, 10).join(', ')
+      const more = licensed.unchecked.length - 10
+      logger.warn(
+        `No version manifest for ${listed}${more > 0 ? ` and ${more} more` : ''}: they move without a license check`,
+      )
+    }
+    return settled
   }
 
   if (!cooldownActive) return signals(results)

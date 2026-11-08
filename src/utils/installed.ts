@@ -4,6 +4,7 @@ import semver from 'semver'
 import type { UpdateResult } from '@/types'
 import { DEPENDENCY_FIELDS } from './dependencySpecs'
 import { pinnedPackages } from './filterPackages'
+import { licenseField } from './license'
 
 const readJson = (file: string): Record<string, unknown> | undefined => {
   try {
@@ -58,24 +59,24 @@ const safeRealpath = (dir: string): string | undefined => {
   }
 }
 
+interface InstalledEntry {
+  row: { name: string; workspace?: string }
+  /** The package's directory in `node_modules`. */
+  entry: string
+  manifest: Record<string, unknown>
+  version: string
+}
+
 /**
- * The version installed for each row whose manifest declares it, read from
- * `node_modules/<name>/package.json` (a symlink into the store on pnpm).
- * A workspace member's own `node_modules` is read first, since the manager
- * may nest a copy there; the root's holds the hoisted one. In a
- * single-package project that is the root's only. Names a manifest does not
- * declare, and packages with no node_modules entry (yarn berry's PnP), are
- * left out: there is nothing here to check them against.
- *
- * `links: false` skips the link test (`linked` is then always false): only
- * discovery needs it, and it costs an lstat and a realpath per row.
+ * Each row whose manifest declares it and whose `node_modules` entry has a
+ * `package.json` with a version: a workspace member's own `node_modules` is
+ * read first, since the manager may nest a copy there; the root's holds the
+ * hoisted one. In a single-package project that is the root's only.
  */
-export const readInstalledPackages = (
+function* scanInstalled(
   cwd: string,
   rows: { name: string; workspace?: string }[],
-  { links = true }: { links?: boolean } = {},
-): Record<string, InstalledPackage> => {
-  let root: string | undefined
+): Generator<InstalledEntry> {
   const declaredBy = new Map<string, Set<string>>()
   const declaredIn = (dir: string): Set<string> => {
     let declared = declaredBy.get(dir)
@@ -91,23 +92,61 @@ export const readInstalledPackages = (
     return declared
   }
 
-  const installed: Record<string, InstalledPackage> = {}
   for (const row of rows) {
     const dir = path.join(cwd, row.workspace ?? '.')
     if (!declaredIn(dir).has(row.name)) continue
     const lookups = dir === cwd ? [cwd] : [dir, cwd]
     for (const base of lookups) {
       const entry = path.join(base, 'node_modules', row.name)
-      const version = readJson(path.join(entry, 'package.json'))?.version
-      if (typeof version === 'string') {
-        if (links) root ??= safeRealpath(cwd)
-        installed[rowKey(row)] = {
-          version,
-          linked: links && root !== undefined && isLink(root, entry),
-        }
+      const manifest = readJson(path.join(entry, 'package.json'))
+      if (typeof manifest?.version === 'string') {
+        yield { row, entry, manifest, version: manifest.version }
         break
       }
     }
+  }
+}
+
+/**
+ * The version installed for each row whose manifest declares it, read from
+ * `node_modules/<name>/package.json` (a symlink into the store on pnpm).
+ * Names a manifest does not declare, and packages with no node_modules entry
+ * (yarn berry's PnP), are left out: there is nothing here to check them
+ * against.
+ *
+ * `links: false` skips the link test (`linked` is then always false): only
+ * discovery needs it, and it costs an lstat and a realpath per row.
+ */
+export const readInstalledPackages = (
+  cwd: string,
+  rows: { name: string; workspace?: string }[],
+  { links = true }: { links?: boolean } = {},
+): Record<string, InstalledPackage> => {
+  let root: string | undefined
+  const installed: Record<string, InstalledPackage> = {}
+  for (const { row, entry, version } of scanInstalled(cwd, rows)) {
+    if (links) root ??= safeRealpath(cwd)
+    installed[rowKey(row)] = {
+      version,
+      linked: links && root !== undefined && isLink(root, entry),
+    }
+  }
+  return installed
+}
+
+/**
+ * The version and declared license of each installed row (#197), found as
+ * `readInstalledPackages` finds them. `license` is absent when the installed
+ * `package.json` declares none.
+ */
+export const readInstalledManifests = (
+  cwd: string,
+  rows: { name: string; workspace?: string }[],
+): Record<string, { version: string; license?: string }> => {
+  const installed: Record<string, { version: string; license?: string }> = {}
+  for (const { row, manifest, version } of scanInstalled(cwd, rows)) {
+    const license = licenseField(manifest)
+    installed[rowKey(row)] = { version, ...(license ? { license } : {}) }
   }
   return installed
 }

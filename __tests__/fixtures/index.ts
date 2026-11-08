@@ -10,6 +10,7 @@ import type {
   OutdatedEntry,
   PackageLookup,
   RegistryPackage,
+  VersionManifest,
 } from '@/types'
 import { DEFAULT_CONFIG } from '@/utils/config'
 import type { RegistrySession } from '@/utils/registry'
@@ -17,6 +18,7 @@ import {
   parseDepsDevPackage,
   parseDistTags,
   parsePackument,
+  parseVersionManifest,
 } from '@/utils/registryDocuments'
 import { registryBody } from './registry'
 
@@ -186,6 +188,39 @@ export const installPackages = (
       JSON.stringify({ name, version }),
     )
   }
+}
+
+/**
+ * Writes a captured manifest (`ms.2.1.3.manifest` in `fixtures/registry/`) as
+ * `node_modules/<name>/package.json` under `cwd/dir`: a real published
+ * manifest, with its license, where `installPackages` writes name and version
+ * only (which reads as no license).
+ */
+export const installCaptured = (
+  cwd: string,
+  dir: string,
+  name: string,
+  capture: string,
+): void => {
+  const entry = path.join(cwd, dir, 'node_modules', name)
+  fs.mkdirSync(entry, { recursive: true })
+  fs.writeFileSync(path.join(entry, 'package.json'), registryBody(capture))
+}
+
+/** A captured version manifest (`ms.2.1.3.manifest`), parsed as the reader does. */
+export const capturedManifest = (
+  name: string,
+  version: string,
+  capture: string,
+): VersionManifest => {
+  const manifest = parseVersionManifest(JSON.parse(registryBody(capture)), {
+    name,
+    version,
+  })
+  if (!manifest) {
+    throw new Error(`${capture} is not a manifest of ${name}@${version}`)
+  }
+  return manifest
 }
 
 /** A project for the pipeline: the default config with `config` laid over it. */

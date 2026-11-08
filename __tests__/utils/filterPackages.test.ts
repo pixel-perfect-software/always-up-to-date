@@ -1,4 +1,11 @@
-import type { AlwaysUpToDateConfig, PackageInfo } from '@/types'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import type {
+  AlwaysUpToDateConfig,
+  PackageInfo,
+  VersionManifest,
+} from '@/types'
 import type filterPackagesType from '@/utils/filterPackages'
 import type { splitUpdates as splitUpdatesType } from '@/utils/filterPackages'
 import { withWarning } from '@/utils/filterPackages'
@@ -7,8 +14,10 @@ import { wantedVersion } from '@/utils/wanted'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 import {
   type CapturedPackageOptions,
+  capturedManifest,
   capturedPackage,
   capturedRegistry,
+  installCaptured,
   WORKSPACE_ENTRIES,
 } from '../fixtures'
 
@@ -18,6 +27,7 @@ const mockLogger = {
     error: jest.fn(),
     skippingPackage: jest.fn(),
     debug: jest.fn(),
+    warn: jest.fn(),
   },
 }
 
@@ -800,6 +810,287 @@ describe('filterPackages', () => {
         'moving',
       ])
       expect(asked).toEqual(['moving@1.0.1'])
+    })
+  })
+
+  describe('license changes (#197)', () => {
+    let cwd: string
+    const at = (...parts: string[]) => path.join(cwd, ...parts)
+    const writeJson = (file: string, value: unknown) => {
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, JSON.stringify(value))
+    }
+    const uaParser = (version: string, capture: string) =>
+      capturedManifest('ua-parser-js', version, capture)
+    const UA_1 = uaParser('1.0.39', 'ua-parser-js.1.0.39.manifest')
+    const UA_2 = uaParser('2.0.0', 'ua-parser-js.2.0.0.manifest')
+    const MS_2_1_1 = capturedManifest('ms', '2.1.1', 'ms.2.1.1.manifest')
+    const MS_2_1_3 = capturedManifest('ms', '2.1.3', 'ms.2.1.3.manifest')
+
+    /** A recording `versionManifest` answering from `known`, by `name@version`. */
+    const registryOf = (known: Record<string, VersionManifest | undefined>) => {
+      const asked: string[] = []
+      const versionManifest = jest.fn(async (name: string, version: string) => {
+        asked.push(`${name}@${version}`)
+        return known[`${name}@${version}`]
+      })
+      return { asked, versionManifest }
+    }
+    const uaRow = {
+      name: 'ua-parser-js',
+      current: '1.0.39',
+      wanted: '2.0.0',
+      latest: '2.0.0',
+    }
+    const installUa = () => {
+      writeJson(at('package.json'), {
+        dependencies: { 'ua-parser-js': '1.0.39' },
+      })
+      installCaptured(cwd, '.', 'ua-parser-js', 'ua-parser-js.1.0.39.manifest')
+    }
+
+    beforeEach(() => {
+      cwd = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-license-')),
+      )
+      mockLogger.default.warn.mockClear()
+    })
+
+    afterEach(() => {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    })
+
+    it('holds a target whose license differs from the installed one, naming both', async () => {
+      installUa()
+      const { asked, versionManifest } = registryOf({
+        'ua-parser-js@2.0.0': UA_2,
+      })
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      const [result] = await filter(makeOutdated([uaRow]), { cwd })
+
+      expect(result).toMatchObject({
+        updated: false,
+        target: undefined,
+        reason: 'license change: MIT → AGPL-3.0-or-later',
+      })
+      // The installed copy answers for the current version: one request.
+      expect(asked).toEqual(['ua-parser-js@2.0.0'])
+      expect(mockLogger.default.warn).not.toHaveBeenCalled()
+    })
+
+    it('moves it under a latest rule, with the same text as a warning', async () => {
+      installUa()
+      const { versionManifest } = registryOf({ 'ua-parser-js@2.0.0': UA_2 })
+      const filter = loadFilterWithConfig(
+        { rules: { 'ua-parser-js': 'latest' } },
+        { versionManifest },
+      )
+
+      const [result] = await filter(makeOutdated([uaRow]), { cwd })
+
+      expect(result).toMatchObject({
+        updated: true,
+        target: '2.0.0',
+        warning: 'license change: MIT → AGPL-3.0-or-later',
+      })
+    })
+
+    it('does not flag the same license spelled another way', async () => {
+      writeJson(at('package.json'), { dependencies: { ms: '2.1.1' } })
+      installCaptured(cwd, '.', 'ms', 'ms.2.1.1.manifest')
+      const { versionManifest } = registryOf({
+        'ms@2.1.3': { ...MS_2_1_3, license: '(mit)' },
+      })
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      const [result] = await filter(
+        makeOutdated([
+          { name: 'ms', current: '2.1.1', wanted: '2.1.3', latest: '2.1.3' },
+        ]),
+        { cwd },
+      )
+
+      expect(result).toMatchObject({ updated: true, target: '2.1.3' })
+      expect(result.warning).toBeUndefined()
+    })
+
+    it('holds a move from no license to one, as none → MIT', async () => {
+      writeJson(at('package.json'), { dependencies: { ms: '0.1.0' } })
+      installCaptured(cwd, '.', 'ms', 'ms.0.1.0.manifest')
+      const { versionManifest } = registryOf({ 'ms@2.1.3': MS_2_1_3 })
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      const [result] = await filter(
+        makeOutdated([
+          { name: 'ms', current: '0.1.0', wanted: '2.1.3', latest: '2.1.3' },
+        ]),
+        { cwd },
+      )
+
+      expect(result).toMatchObject({
+        updated: false,
+        reason: 'license change: none → MIT',
+      })
+    })
+
+    it('lets an unknown target through and lists it in one warning', async () => {
+      installUa()
+      const { asked, versionManifest } = registryOf({})
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      const [result] = await filter(makeOutdated([uaRow]), { cwd })
+
+      expect(result).toMatchObject({ updated: true, target: '2.0.0' })
+      expect(mockLogger.default.warn).toHaveBeenCalledTimes(1)
+      expect(mockLogger.default.warn).toHaveBeenCalledWith(
+        'No version manifest for ua-parser-js@2.0.0: they move without a license check',
+      )
+      // Nothing to compare against, so the current version is not read.
+      expect(asked).toEqual(['ua-parser-js@2.0.0'])
+    })
+
+    it('lets an unknown current through when nothing is installed, and lists it', async () => {
+      const { asked, versionManifest } = registryOf({
+        'ua-parser-js@2.0.0': UA_2,
+      })
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      const [result] = await filter(makeOutdated([uaRow]), { cwd })
+
+      expect(result.updated).toBe(true)
+      expect(asked.sort()).toEqual([
+        'ua-parser-js@1.0.39',
+        'ua-parser-js@2.0.0',
+      ])
+      expect(mockLogger.default.warn).toHaveBeenCalledWith(
+        'No version manifest for ua-parser-js@1.0.39: they move without a license check',
+      )
+    })
+
+    it('reads the current license from the registry with no node_modules, once per pair', async () => {
+      const { asked, versionManifest } = registryOf({
+        'ua-parser-js@1.0.39': UA_1,
+        'ua-parser-js@2.0.0': UA_2,
+        'ms@2.1.1': MS_2_1_1,
+        'ms@2.1.3': MS_2_1_3,
+      })
+      const filter = loadFilterWithConfig(
+        { beyondRange: 'major', rules: { held: 'hold' } },
+        { versionManifest },
+      )
+
+      const results = await filter(
+        {
+          ...foldWorkspaceEntries(
+            ['.', 'packages/a'].map((workspace) => ({
+              ...uaRow,
+              workspace,
+            })),
+          ),
+          'my-ms': {
+            name: 'my-ms',
+            current: '2.1.1',
+            wanted: '2.1.3',
+            latest: '2.1.3',
+          },
+          gone: {
+            name: 'gone',
+            current: 'missing',
+            wanted: '1.0.0',
+            latest: '1.0.0',
+          },
+          held: {
+            name: 'held',
+            current: '1.0.0',
+            wanted: '1.0.0',
+            latest: '2.0.0',
+          },
+          skipped: {
+            name: 'skipped',
+            current: '1.0.0',
+            wanted: '1.0.1',
+            latest: '1.0.1',
+          },
+        },
+        {
+          cwd,
+          targetPackages: ['ua-parser-js', 'my-ms', 'gone', 'held'],
+          declared: ({ name }) =>
+            name === 'my-ms'
+              ? { name: 'ms', spec: { range: '^2.1.1' } }
+              : undefined,
+        },
+      )
+
+      expect(asked.sort()).toEqual([
+        'ms@2.1.1',
+        'ms@2.1.3',
+        'ua-parser-js@1.0.39',
+        'ua-parser-js@2.0.0',
+      ])
+      expect(
+        results.filter((r) => r.name === 'ua-parser-js').map((r) => r.reason),
+      ).toEqual([
+        'license change: MIT → AGPL-3.0-or-later',
+        'license change: MIT → AGPL-3.0-or-later',
+      ])
+      expect(results.find((r) => r.name === 'my-ms')?.updated).toBe(true)
+    })
+
+    it("holds a package's other manifests with the one a license change holds", async () => {
+      writeJson(at('package.json'), {
+        dependencies: { 'ua-parser-js': '1.0.39' },
+        workspaces: ['packages/*'],
+      })
+      writeJson(at('packages/a/package.json'), {
+        name: '@ws/a',
+        dependencies: { 'ua-parser-js': '1.0.40' },
+      })
+      installCaptured(cwd, '.', 'ua-parser-js', 'ua-parser-js.1.0.39.manifest')
+      writeJson(at('packages/a/node_modules/ua-parser-js/package.json'), {
+        name: 'ua-parser-js',
+        version: '1.0.40',
+        license: 'AGPL-3.0-or-later',
+      })
+      const { versionManifest } = registryOf({ 'ua-parser-js@2.0.0': UA_2 })
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      const results = await filter(
+        foldWorkspaceEntries([
+          { ...uaRow, workspace: '.' },
+          { ...uaRow, current: '1.0.40', workspace: 'packages/a' },
+        ]),
+        { cwd },
+      )
+
+      expect(results.map((r) => [r.workspace, r.updated, r.reason])).toEqual([
+        ['.', false, 'license change: MIT → AGPL-3.0-or-later'],
+        [
+          'packages/a',
+          false,
+          'held with the root (license change: MIT → AGPL-3.0-or-later)',
+        ],
+      ])
+    })
+
+    it('shows a long or multi-line license cut to one line', async () => {
+      installUa()
+      const { versionManifest } = registryOf({
+        'ua-parser-js@2.0.0': {
+          ...UA_2,
+          license: `Line one\n\u001b[31mline two ${'x'.repeat(80)}`,
+        },
+      })
+      const filter = loadFilterWithConfig({}, { versionManifest })
+
+      const [result] = await filter(makeOutdated([uaRow]), { cwd })
+
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting none is left
+      expect(result.reason).not.toMatch(/[\u0000-\u001f]/)
+      expect(result.reason).toBe(
+        `license change: MIT → Line one [31mline two ${'x'.repeat(18)}…`,
+      )
     })
   })
 

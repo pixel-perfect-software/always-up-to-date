@@ -360,7 +360,35 @@ describe('Logger', () => {
       )
     })
 
+    it('shows a license change with both licenses, after deprecated holds (#197)', () => {
+      logger.report(
+        [
+          held('ua-parser-js', 'license change: MIT → AGPL-3.0-or-later', {
+            current: '1.0.39',
+            latest: '2.0.0',
+          }),
+          held('lodash', 'deprecated: Bad release.', {
+            current: '4.17.21',
+            latest: '4.18.0',
+          }),
+        ],
+        'npm',
+        'plan',
+      )
+      const lines = printed()
+      expect(lines).toContain('\nHeld as deprecated (1 package)')
+      expect(lines).toContain('\nHeld for a license change (1 package)')
+      expect(lines.indexOf('\nHeld as deprecated (1 package)')).toBeLessThan(
+        lines.indexOf('\nHeld for a license change (1 package)'),
+      )
+      expect(lines).toContain(
+        '  ua-parser-js  1.0.39  → 2.0.0   MIT → AGPL-3.0-or-later',
+      )
+      expect(lines.at(-1)).toContain('1 held for a license change')
+    })
+
     it.each([
+      ['license change: MIT → ISC', 'Held for a license change'],
       ['controlled by overrides (^1.0.0)', 'Held by an override'],
       [
         'peer conflict: react-dom@18.3.1 needs react ^18.3.1',
