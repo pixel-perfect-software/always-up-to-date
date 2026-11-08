@@ -10,6 +10,7 @@ import path from 'path'
 import { check, plan } from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import { isolateNpmConfig } from './fixtures'
+import { reasonFor } from './fixtures/reasons'
 import {
   derive,
   type Reply,
@@ -125,7 +126,9 @@ describe('npm engines walk-back, end to end (#200)', () => {
       updated: true,
       target: '5.0.4',
       wanted: '5.1.6',
-      reason: 'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+      reason: reasonFor(
+        'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+      ),
     })
     expect(manifestRequests().sort()).toEqual([
       '/typescript/5.0.4',
@@ -150,7 +153,7 @@ describe('npm engines walk-back, end to end (#200)', () => {
 
     expect(result).toMatchObject({
       updated: false,
-      reason: 'engines: needs node >=14.17 (running node 12.22.12)',
+      reason: reasonFor('engines: needs node >=14.17 (running node 12.22.12)'),
     })
     expect(manifestRequests()).toEqual(['/typescript/5.1.6'])
   })

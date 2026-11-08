@@ -16,6 +16,7 @@ jest.mock('@/utils', () => ({
 }))
 
 import { runProcess } from '@/utils'
+import { reasonFor } from '../fixtures/reasons'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -108,7 +109,7 @@ describe.each([
       expect(readManifest()).toEqual(manifest)
       expect(results.find((r) => r.name === 'dayjs')).toMatchObject({
         updated: false,
-        reason: 'patch beyond the range',
+        reason: reasonFor('patch beyond the range'),
       })
     })
 
@@ -139,7 +140,10 @@ describe.each([
 
       expect(results.find((r) => r.name === 'react')).toMatchObject({
         updated: false,
-        reason: expect.stringMatching(/^controlled by /),
+        reason: {
+          code: 'override',
+          message: expect.stringMatching(/^controlled by /),
+        },
       })
       expect(mockedRunProcess).not.toHaveBeenCalled()
     })

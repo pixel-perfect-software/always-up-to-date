@@ -22,6 +22,7 @@ jest.mock('@/utils', () => ({
 }))
 
 import { runProcess } from '@/utils'
+import { reasonFor } from '../fixtures/reasons'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -174,8 +175,10 @@ describe('yarn berry', () => {
           workspace: 'packages/a',
           updated: false,
           // packages/a declares chalk ^4.0.0, which yarn.lock locks at 4.1.2.
-          reason:
+          reason: reasonFor(
             'peer conflict: ms@2.1.3 needs chalk ^5.0.0 (installed 4.1.2)',
+            'target-peers',
+          ),
         }),
       ])
     })
@@ -293,7 +296,7 @@ describe('yarn berry', () => {
       // The mocked install relocked nothing: yarn.lock's debug is 4.3.7.
       expect(results.find((r) => r.name === 'debug')).toMatchObject({
         updated: false,
-        reason: 'not applied by yarn (installed 4.3.7)',
+        reason: reasonFor('not applied by yarn (installed 4.3.7)'),
       })
       expect(results.find((r) => r.name === 'ms')).toMatchObject({
         updated: true,

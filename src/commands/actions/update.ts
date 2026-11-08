@@ -10,6 +10,7 @@ import logger from '@/utils/logger'
 import { workspaceLabel } from '@/utils/workspaceRows'
 import reportFailure from '../reportFailure'
 import type { UpdateOptions } from '../update'
+import { legacyRow } from './legacyRow'
 
 /** What `autd update` does; `../update.ts` loads it when the command runs. */
 export const updateAction = async (
@@ -39,7 +40,7 @@ export const updateAction = async (
     const results = await runUpdate(project, { targetPackages })
 
     if (options.json) {
-      console.log(JSON.stringify(results, null, 2))
+      console.log(JSON.stringify(results.map(legacyRow), null, 2))
     }
   } catch (error) {
     reportFailure(error, options.json)
@@ -63,7 +64,7 @@ const dryRun = async (
   const results = await plan(project, outdatedPackages, targetPackages)
 
   if (json) {
-    console.log(JSON.stringify(results, null, 2))
+    console.log(JSON.stringify(results.map(legacyRow), null, 2))
     return
   }
 

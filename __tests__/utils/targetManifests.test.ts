@@ -1,5 +1,6 @@
 import type { UpdateResult, VersionManifest } from '@/types'
 import { readTargetManifests, targetManifestOf } from '@/utils/targetManifests'
+import { reasonFor } from '../fixtures/reasons'
 
 const row = (overrides: Partial<UpdateResult>): UpdateResult => ({
   name: 'foo',
@@ -9,6 +10,7 @@ const row = (overrides: Partial<UpdateResult>): UpdateResult => ({
   target: '1.0.1',
   updateType: 'patch',
   updated: true,
+  reason: reasonFor('within range'),
   ...overrides,
 })
 

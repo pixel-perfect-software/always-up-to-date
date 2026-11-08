@@ -4,6 +4,7 @@ import path from 'path'
 import type {
   AlwaysUpToDateConfig,
   PackageInfo,
+  Reason,
   VersionManifest,
 } from '@/types'
 import type filterPackagesType from '@/utils/filterPackages'
@@ -20,6 +21,7 @@ import {
   installCaptured,
   WORKSPACE_ENTRIES,
 } from '../fixtures'
+import { reasonFor } from '../fixtures/reasons'
 
 const mockLogger = {
   __esModule: true,
@@ -154,7 +156,7 @@ describe('filterPackages', () => {
     expect(results[1].name).toBe('bar')
     expect(results[1].updated).toBe(false)
     expect(results[1].updateType).toBe('major')
-    expect(results[1].reason).toBe('major beyond the range')
+    expect(results[1].reason).toEqual(reasonFor('major beyond the range'))
   })
 
   it('reports the in-range target and wanted version', async () => {
@@ -185,7 +187,9 @@ describe('filterPackages', () => {
 
     expect(results.find((r) => r.name === 'foo')?.updated).toBe(true)
     expect(results.find((r) => r.name === 'bar')?.updated).toBe(false)
-    expect(results.find((r) => r.name === 'bar')?.reason).toBe('not targeted')
+    expect(results.find((r) => r.name === 'bar')?.reason).toEqual(
+      reasonFor('not targeted'),
+    )
     expect(results.find((r) => r.name === 'baz')?.updated).toBe(true)
   })
 
@@ -199,7 +203,9 @@ describe('filterPackages', () => {
     const results = await filter(outdated, { targetPackages: ['foo', 'bar'] })
 
     expect(results.find((r) => r.name === 'foo')?.updated).toBe(false)
-    expect(results.find((r) => r.name === 'foo')?.reason).toBe('held by rule')
+    expect(results.find((r) => r.name === 'foo')?.reason).toEqual(
+      reasonFor('held by rule'),
+    )
     expect(results.find((r) => r.name === 'bar')?.updated).toBe(true)
   })
 
@@ -259,7 +265,7 @@ describe('filterPackages', () => {
 
     expect(results.find((r) => r.name === 'dayjs')).toMatchObject({
       updated: false,
-      reason: 'controlled by resolutions (1.11.9)',
+      reason: reasonFor('controlled by resolutions (1.11.9)'),
     })
     expect(results.find((r) => r.name === 'ms')?.updated).toBe(true)
   })
@@ -279,7 +285,9 @@ describe('filterPackages', () => {
 
     expect(result).toMatchObject({
       updated: false,
-      reason: 'controlled by overrides in pnpm-workspace.yaml (1.11.9)',
+      reason: reasonFor(
+        'controlled by overrides in pnpm-workspace.yaml (1.11.9)',
+      ),
     })
   })
 
@@ -319,7 +327,7 @@ describe('filterPackages', () => {
 
     expect(result).toMatchObject({
       updated: false,
-      reason: 'controlled by overrides (^18.2.0)',
+      reason: reasonFor('controlled by overrides (^18.2.0)'),
     })
   })
 
@@ -362,8 +370,9 @@ describe('filterPackages', () => {
 
       expect(results.find((r) => r.name === 'react')).toMatchObject({
         updated: false,
-        reason:
+        reason: reasonFor(
           'peer conflict: @tanstack/react-query@4.29.5 needs react ^16.8.0 || ^17.0.0 || ^18.0.0',
+        ),
       })
     })
 
@@ -400,7 +409,9 @@ describe('filterPackages', () => {
       expect(results.find((r) => r.name === 'react-dom')?.updated).toBe(false)
       expect(results.find((r) => r.name === 'react')).toMatchObject({
         updated: false,
-        reason: 'peer conflict: react-dom@18.2.0 needs react ^18.2.0',
+        reason: reasonFor(
+          'peer conflict: react-dom@18.2.0 needs react ^18.2.0',
+        ),
       })
     })
 
@@ -423,8 +434,11 @@ describe('filterPackages', () => {
       expect(results[0]).toMatchObject({
         updated: true,
         target: '19.3.1',
-        warning:
-          'peer conflict: @tanstack/react-query@4.29.5 needs react ^16.8.0 || ^17.0.0 || ^18.0.0',
+        warnings: [
+          reasonFor(
+            'peer conflict: @tanstack/react-query@4.29.5 needs react ^16.8.0 || ^17.0.0 || ^18.0.0',
+          ),
+        ],
       })
     })
   })
@@ -468,7 +482,7 @@ describe('filterPackages', () => {
       expect(result).toMatchObject({
         updated: true,
         target: '4.1.1',
-        warning: `deprecated: ${DEBUG_REDOS}`,
+        warnings: [reasonFor(`deprecated: ${DEBUG_REDOS}`)],
       })
     })
 
@@ -485,7 +499,7 @@ describe('filterPackages', () => {
       expect(result).toMatchObject({
         updated: false,
         target: undefined,
-        reason: `deprecated: ${LODASH_BAD_RELEASE}`,
+        reason: reasonFor(`deprecated: ${LODASH_BAD_RELEASE}`),
       })
     })
 
@@ -502,7 +516,7 @@ describe('filterPackages', () => {
       expect(result).toMatchObject({
         updated: true,
         target: '4.18.0',
-        warning: `deprecated: ${LODASH_BAD_RELEASE}`,
+        warnings: [reasonFor(`deprecated: ${LODASH_BAD_RELEASE}`)],
       })
     })
 
@@ -521,9 +535,10 @@ describe('filterPackages', () => {
         outdatedFrom('lodash', '^4.17.21', '4.17.21', LODASH_DAY),
       )
 
-      expect(result.warning).toBe(
-        `peer conflict: x@1.0.0 needs lodash ~4.17.0; deprecated: ${LODASH_BAD_RELEASE}`,
-      )
+      expect(result.warnings).toEqual([
+        reasonFor('peer conflict: x@1.0.0 needs lodash ~4.17.0'),
+        reasonFor(`deprecated: ${LODASH_BAD_RELEASE}`),
+      ])
     })
 
     it('puts a message with line breaks and escape codes on one plain line', async () => {
@@ -555,7 +570,9 @@ describe('filterPackages', () => {
         ]),
       )
 
-      expect(result.reason).toBe('deprecated: use q [31minstead [0m')
+      expect(result.reason).toEqual(
+        reasonFor('deprecated: use q [31minstead [0m'),
+      )
     })
 
     /** A lookup listing 1.0.0 and 1.0.1, each deprecated with the message given (undefined: not deprecated). */
@@ -595,7 +612,7 @@ describe('filterPackages', () => {
 
       expect(result).toMatchObject({
         updated: false,
-        reason: 'deprecated: use bar instead',
+        reason: reasonFor('deprecated: use bar instead'),
       })
     })
 
@@ -612,8 +629,10 @@ describe('filterPackages', () => {
 
       const [result] = await filter(pMoving)
 
-      expect(result.reason).toBe(
-        `deprecated: ${`use q instead ${'x'.repeat(500)}`.slice(0, 400)}…`,
+      expect(result.reason).toEqual(
+        reasonFor(
+          `deprecated: ${`use q instead ${'x'.repeat(500)}`.slice(0, 400)}…`,
+        ),
       )
     })
 
@@ -640,7 +659,7 @@ describe('filterPackages', () => {
         ]),
       )
 
-      expect(result.reason).toBe('deprecated: no message given')
+      expect(result.reason).toEqual(reasonFor('deprecated: no message given'))
     })
 
     it('moves a target that is not deprecated, with no warning', async () => {
@@ -652,7 +671,7 @@ describe('filterPackages', () => {
       const [result] = await filter(outdatedFrom('debug', '^4.1.0', '4.1.0'))
 
       expect(result).toMatchObject({ updated: true, target: '4.4.3' })
-      expect(result.warning).toBeUndefined()
+      expect(result.warnings).toBeUndefined()
     })
   })
 
@@ -872,7 +891,7 @@ describe('filterPackages', () => {
       expect(result).toMatchObject({
         updated: false,
         target: undefined,
-        reason: 'license change: MIT → AGPL-3.0-or-later',
+        reason: reasonFor('license change: MIT → AGPL-3.0-or-later'),
       })
       // The installed copy answers for the current version: one request.
       expect(asked).toEqual(['ua-parser-js@2.0.0'])
@@ -892,7 +911,7 @@ describe('filterPackages', () => {
       expect(result).toMatchObject({
         updated: true,
         target: '2.0.0',
-        warning: 'license change: MIT → AGPL-3.0-or-later',
+        warnings: [reasonFor('license change: MIT → AGPL-3.0-or-later')],
       })
     })
 
@@ -912,7 +931,7 @@ describe('filterPackages', () => {
       )
 
       expect(result).toMatchObject({ updated: true, target: '2.1.3' })
-      expect(result.warning).toBeUndefined()
+      expect(result.warnings).toBeUndefined()
     })
 
     it('holds a move from no license to one, as none → MIT', async () => {
@@ -930,7 +949,7 @@ describe('filterPackages', () => {
 
       expect(result).toMatchObject({
         updated: false,
-        reason: 'license change: none → MIT',
+        reason: reasonFor('license change: none → MIT'),
       })
     })
 
@@ -1032,8 +1051,8 @@ describe('filterPackages', () => {
       expect(
         results.filter((r) => r.name === 'ua-parser-js').map((r) => r.reason),
       ).toEqual([
-        'license change: MIT → AGPL-3.0-or-later',
-        'license change: MIT → AGPL-3.0-or-later',
+        reasonFor('license change: MIT → AGPL-3.0-or-later'),
+        reasonFor('license change: MIT → AGPL-3.0-or-later'),
       ])
       expect(results.find((r) => r.name === 'my-ms')?.updated).toBe(true)
     })
@@ -1065,11 +1084,13 @@ describe('filterPackages', () => {
       )
 
       expect(results.map((r) => [r.workspace, r.updated, r.reason])).toEqual([
-        ['.', false, 'license change: MIT → AGPL-3.0-or-later'],
+        ['.', false, reasonFor('license change: MIT → AGPL-3.0-or-later')],
         [
           'packages/a',
           false,
-          'held with the root (license change: MIT → AGPL-3.0-or-later)',
+          reasonFor(
+            'held with the root (license change: MIT → AGPL-3.0-or-later)',
+          ),
         ],
       ])
     })
@@ -1087,9 +1108,11 @@ describe('filterPackages', () => {
       const [result] = await filter(makeOutdated([uaRow]), { cwd })
 
       // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting none is left
-      expect(result.reason).not.toMatch(/[\u0000-\u001f]/)
-      expect(result.reason).toBe(
-        `license change: MIT → Line one [31mline two ${'x'.repeat(18)}…`,
+      expect(result.reason.message).not.toMatch(/[\u0000-\u001f]/)
+      expect(result.reason).toEqual(
+        reasonFor(
+          `license change: MIT → Line one [31mline two ${'x'.repeat(18)}…`,
+        ),
       )
     })
   })
@@ -1115,7 +1138,7 @@ describe('filterPackages', () => {
       )
 
       expect(results[0].updated).toBe(false)
-      expect(results[0].reason).toMatch(/cooldown/)
+      expect(results[0].reason.code).toBe('cooldown')
       expect(Math.round(results[0].releaseAge ?? 0)).toBe(2)
     })
 
@@ -1305,7 +1328,7 @@ describe('filterPackages', () => {
 
       // The policy already holds it, so the cooldown reason shouldn't apply.
       expect(results[0].updated).toBe(false)
-      expect(results[0].reason).toBe('major beyond the range')
+      expect(results[0].reason).toEqual(reasonFor('major beyond the range'))
     })
 
     it('moves to the newest version past cooldown when the target is too fresh (#147)', async () => {
@@ -1338,7 +1361,7 @@ describe('filterPackages', () => {
         updated: true,
         target: '4.0.102',
         updateType: 'patch',
-        reason: 'cooldown: 4.0.103 released 1d ago, requires 2d',
+        reason: reasonFor('cooldown: 4.0.103 released 1d ago, requires 2d'),
       })
       expect(Math.round(results[0].releaseAge ?? 0)).toBe(3)
       expect(filter.split(results)).toMatchObject({
@@ -1460,7 +1483,7 @@ describe('filterPackages', () => {
         updated: true,
         target: '0.7.3',
         updateType: 'patch',
-        reason: 'cooldown: 2.1.3 released 2151d ago, requires 2200d',
+        reason: reasonFor('cooldown: 2.1.3 released 2151d ago, requires 2200d'),
       })
     })
 
@@ -1484,7 +1507,7 @@ describe('filterPackages', () => {
       expect(result).toMatchObject({
         updated: false,
         target: undefined,
-        reason: 'cooldown: released 1d ago, requires 2d',
+        reason: reasonFor('cooldown: released 1d ago, requires 2d'),
       })
     })
 
@@ -1544,7 +1567,7 @@ describe('filterPackages', () => {
         name: 'm',
         updated: true,
         target: '2.1.1',
-        reason: 'cooldown: 2.1.3 released 2151d ago, requires 2200d',
+        reason: reasonFor('cooldown: 2.1.3 released 2151d ago, requires 2200d'),
       })
     })
 
@@ -1564,7 +1587,7 @@ describe('filterPackages', () => {
       expect(results[0]).toMatchObject({
         updated: false,
         target: undefined,
-        reason: 'cooldown: release date unknown, requires 7d',
+        reason: reasonFor('cooldown: release date unknown, requires 7d'),
       })
     })
   })
@@ -1593,8 +1616,8 @@ describe('filterPackages', () => {
         true,
         false,
       ])
-      expect(results[0].reason).toBe('patch beyond the range')
-      expect(results[4].reason).toBe('patch beyond the range')
+      expect(results[0].reason).toEqual(reasonFor('patch beyond the range'))
+      expect(results[4].reason).toEqual(reasonFor('patch beyond the range'))
     })
 
     it('leaves a workspace key off single-package results', async () => {
@@ -1687,14 +1710,16 @@ describe('filterPackages', () => {
       expect(
         results.map((r) => [r.name, r.workspace, r.updated, r.reason]),
       ).toEqual([
-        ['P', '.', false, 'peer conflict: Q@1.0.0 needs P <1.2.0'],
+        ['P', '.', false, reasonFor('peer conflict: Q@1.0.0 needs P <1.2.0')],
         [
           'P',
           'packages/m',
           false,
-          'held with the root (peer conflict: Q@1.0.0 needs P <1.2.0)',
+          reasonFor(
+            'held with the root (peer conflict: Q@1.0.0 needs P <1.2.0)',
+          ),
         ],
-        ['x', '.', false, 'peer conflict: P@1.0.0 needs x 1.0.x'],
+        ['x', '.', false, reasonFor('peer conflict: P@1.0.0 needs x 1.0.x')],
       ])
     })
 
@@ -1731,8 +1756,12 @@ describe('filterPackages', () => {
       )
 
       expect(results.map((r) => r.updated)).toEqual([false, false])
-      expect(results[0].reason).toMatch(/^held with packages\/m \(cooldown: /)
-      expect(results[1].reason).toMatch(/^cooldown: /)
+      expect(results[0].reason.code).toBe('held-with')
+      expect(results[0].reason.message).toMatch(
+        /^held with packages\/m \(cooldown: /,
+      )
+      expect(results[1].reason.code).toBe('cooldown')
+      expect(results[1].reason.message).toMatch(/^cooldown: /)
     })
 
     it('pins every row of a package when one falls back from the cooldown (#147)', async () => {
@@ -1785,7 +1814,10 @@ describe('filterPackages', () => {
 
       const results = await filter(together(), { now: NOW })
 
-      expect(results[1].reason).toMatch(/^held with the root \(cooldown: /)
+      expect(results[1].reason.code).toBe('held-with')
+      expect(results[1].reason.message).toMatch(
+        /^held with the root \(cooldown: /,
+      )
     })
 
     it('does not let a held exact pin block the other manifests', async () => {
@@ -1930,7 +1962,11 @@ describe("a target's own peers (#198)", () => {
   )
   const REACT_18 = capturedManifest('react', '18.3.1', 'react.18.3.1.manifest')
   const REACT_RANGE = '^18.0 || ^19'
-  const PEER_CONFLICT = `peer conflict: react-redux@9.2.0 needs react ${REACT_RANGE} (installed 17.0.2)`
+  const PEER_CONFLICT_TEXT = `peer conflict: react-redux@9.2.0 needs react ${REACT_RANGE} (installed 17.0.2)`
+  const PEER_CONFLICT: Reason = {
+    code: 'target-peers',
+    message: PEER_CONFLICT_TEXT,
+  }
 
   const reduxRow = {
     name: 'react-redux',
@@ -2004,7 +2040,7 @@ describe("a target's own peers (#198)", () => {
       ['react-redux', true],
       ['react', true],
     ])
-    expect(results.every((r) => r.warning === undefined)).toBe(true)
+    expect(results.every((r) => r.warnings === undefined)).toBe(true)
   })
 
   it('holds the dependent too when a rule keeps its peer back', async () => {
@@ -2027,7 +2063,7 @@ describe("a target's own peers (#198)", () => {
     expect(result).toMatchObject({
       updated: true,
       target: '9.2.0',
-      warning: PEER_CONFLICT,
+      warnings: [PEER_CONFLICT],
     })
   })
 
@@ -2042,8 +2078,10 @@ describe("a target's own peers (#198)", () => {
     })
     expect(old).toMatchObject({
       updated: false,
-      reason:
+      reason: reasonFor(
         'peer conflict: react-redux@9.2.0 needs redux ^5.0.0 (installed 4.2.1)',
+        'target-peers',
+      ),
     })
   })
 
@@ -2165,8 +2203,10 @@ describe("a target's own peers (#198)", () => {
 
     expect(result).toMatchObject({
       updated: false,
-      reason:
+      reason: reasonFor(
         'peer conflict: react-redux@9.1.2 needs react ^18.0 (installed 17.0.2)',
+        'target-peers',
+      ),
     })
   })
 })
@@ -2196,8 +2236,9 @@ describe('engines.node (#199)', () => {
     'mkdirp@3.0.1': MKDIRP,
     'ms@2.1.3': MS,
   }
-  const HELD_BY_DECLARED =
-    'engines: needs node >=20 (the project declares >=18)'
+  const HELD_BY_DECLARED = reasonFor(
+    'engines: needs node >=20 (the project declares >=18)',
+  )
 
   const plan = (
     rows: Record<string, PackageInfo>,
@@ -2256,7 +2297,7 @@ describe('engines.node (#199)', () => {
 
     expect(held).toMatchObject({
       updated: false,
-      reason: 'engines: needs node >=20 (running node 18.20.4)',
+      reason: reasonFor('engines: needs node >=20 (running node 18.20.4)'),
     })
     expect(moves).toMatchObject({ updated: true, target: '14.0.0' })
   })
@@ -2266,8 +2307,8 @@ describe('engines.node (#199)', () => {
       options: { node: '18.0.0', nodeLabel: 'pnpm nodeVersion' },
     })
 
-    expect(result.reason).toBe(
-      'engines: needs node >=20 (pnpm nodeVersion 18.0.0)',
+    expect(result.reason).toEqual(
+      reasonFor('engines: needs node >=20 (pnpm nodeVersion 18.0.0)'),
     )
   })
 
@@ -2281,7 +2322,7 @@ describe('engines.node (#199)', () => {
     expect(result).toMatchObject({
       updated: true,
       target: '14.0.0',
-      warning: HELD_BY_DECLARED,
+      warnings: [HELD_BY_DECLARED],
     })
   })
 
@@ -2377,14 +2418,17 @@ describe('engines.node (#199)', () => {
       },
     )
 
-    expect(results.find((r) => r.name === 'react')?.reason).toBe(
-      'engines: needs node >=99 (the project declares >=18)',
+    expect(results.find((r) => r.name === 'react')?.reason).toEqual(
+      reasonFor('engines: needs node >=99 (the project declares >=18)'),
     )
     expect(results.find((r) => r.name === 'react-redux')).toMatchObject({
       updated: false,
-      reason: expect.stringMatching(
-        /^peer conflict: react-redux@9.2.0 needs react/,
-      ),
+      reason: {
+        code: 'target-peers',
+        message: expect.stringMatching(
+          /^peer conflict: react-redux@9.2.0 needs react/,
+        ),
+      },
     })
   })
 })
@@ -2470,7 +2514,9 @@ describe('npm engines walk-back (#200)', () => {
       target: '5.0.4',
       wanted: '5.1.6',
       updateType: 'patch',
-      reason: 'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+      reason: reasonFor(
+        'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+      ),
     })
     expect(reads).toEqual([
       'typescript@5.1.6',
@@ -2486,7 +2532,7 @@ describe('npm engines walk-back (#200)', () => {
     expect(reads).toEqual(['typescript@5.1.6'])
     expect(results[0]).toMatchObject({
       updated: false,
-      reason: 'engines: needs node >=14.17 (running node 12.22.12)',
+      reason: reasonFor('engines: needs node >=14.17 (running node 12.22.12)'),
     })
   })
 
@@ -2502,7 +2548,7 @@ describe('npm engines walk-back (#200)', () => {
 
     expect(results[0]).toMatchObject({
       updated: false,
-      reason: 'engines: needs node >=14.17 (running node 10.0.0)',
+      reason: reasonFor('engines: needs node >=14.17 (running node 10.0.0)'),
     })
   })
 
@@ -2511,7 +2557,7 @@ describe('npm engines walk-back (#200)', () => {
 
     // The fit passes #199 unwarned; a pass on the old target would warn.
     expect(results[0]).toMatchObject({ target: '5.0.4', updated: true })
-    expect(results[0].warning).toBeUndefined()
+    expect(results[0].warnings).toBeUndefined()
   })
 
   it('takes releaseAge from the fit under a cooldown', async () => {
@@ -2553,14 +2599,27 @@ describe('withWarning', () => {
     target: '1.0.1',
     updateType: 'patch' as const,
     updated: true,
+    reason: reasonFor('within range'),
   }
 
   it('adds a message holding "; " once, however often it is added (#195)', () => {
-    const message = 'deprecated: use q; see the changelog'
-    const once = withWarning(row, message)
+    const warning = reasonFor('deprecated: use q; see the changelog')
+    const peer = reasonFor('peer conflict: x')
+    const once = withWarning(row, warning)
 
-    expect(withWarning(withWarning(once, 'peer conflict: x'), message)).toEqual(
-      { ...row, warning: `${message}; peer conflict: x` },
-    )
+    expect(withWarning(withWarning(once, peer), warning)).toEqual({
+      ...row,
+      warnings: [warning, peer],
+    })
+  })
+
+  it('keeps two warnings that share a message but not a code', () => {
+    const peer = reasonFor('peer conflict: x')
+    const targetPeers: Reason = { ...peer, code: 'target-peers' }
+
+    expect(withWarning(withWarning(row, peer), targetPeers).warnings).toEqual([
+      peer,
+      targetPeers,
+    ])
   })
 })

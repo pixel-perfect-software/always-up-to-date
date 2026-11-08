@@ -23,26 +23,34 @@ describe('updateChecker', () => {
       // react ^18.2.0: installed 18.2.0, range allows 18.3.1, latest 19.3.1
       expect(
         updateChecker(pkg('18.2.0', '18.3.1', '19.3.1'), policy()),
-      ).toEqual({ target: '18.3.1' })
+      ).toEqual({
+        target: '18.3.1',
+        reason: { code: 'within-range', message: 'within range' },
+      })
     })
 
     it('moves to latest when the range already covers it', () => {
       expect(
         updateChecker(pkg('1.11.9', '1.11.23', '1.11.23'), policy()),
-      ).toEqual({ target: '1.11.23' })
+      ).toEqual({
+        target: '1.11.23',
+        reason: { code: 'within-range', message: 'within range' },
+      })
     })
 
     it('holds an exact pin, even for a patch', () => {
       // dayjs "1.11.9": the range is the pin, so wanted == current
       expect(
         updateChecker(pkg('1.11.9', '1.11.9', '1.11.23'), policy()),
-      ).toEqual({ reason: 'patch beyond the range' })
+      ).toEqual({
+        reason: { code: 'outside-range', message: 'patch beyond the range' },
+      })
     })
 
     it('holds a range that is already at its highest version', () => {
       expect(updateChecker(pkg('4.22.3', '4.22.3', '5.3.0'), policy())).toEqual(
         {
-          reason: 'major beyond the range',
+          reason: { code: 'outside-range', message: 'major beyond the range' },
         },
       )
     })
@@ -58,7 +66,13 @@ describe('updateChecker', () => {
       (level, current, latest, target) => {
         expect(
           updateChecker(pkg(current, current, latest), policy(level)),
-        ).toEqual({ target })
+        ).toEqual({
+          target,
+          reason: {
+            code: 'past-range',
+            message: `past its range, "beyondRange": "${level}"`,
+          },
+        })
       },
     )
 
@@ -66,13 +80,22 @@ describe('updateChecker', () => {
       // ^18.2.0 with latest 19: "minor" allows only the in-range 18.3.1
       expect(
         updateChecker(pkg('18.2.0', '18.3.1', '19.3.1'), policy('minor')),
-      ).toEqual({ target: '18.3.1' })
+      ).toEqual({
+        target: '18.3.1',
+        reason: { code: 'within-range', message: 'within range' },
+      })
     })
 
     it('a larger level includes the smaller ones', () => {
       expect(
         updateChecker(pkg('1.11.9', '1.11.9', '1.11.23'), policy('major')),
-      ).toEqual({ target: '1.11.23' })
+      ).toEqual({
+        target: '1.11.23',
+        reason: {
+          code: 'past-range',
+          message: 'past its range, "beyondRange": "major"',
+        },
+      })
     })
   })
 
@@ -83,7 +106,9 @@ describe('updateChecker', () => {
           pkg('18.2.0', '18.3.1', '19.3.1'),
           policy('major', { pkg: 'hold' }),
         ),
-      ).toEqual({ reason: 'held by rule' })
+      ).toEqual({
+        reason: { code: 'rule-hold', message: 'held by rule' },
+      })
     })
 
     it('"latest" moves past the range at any step', () => {
@@ -92,7 +117,10 @@ describe('updateChecker', () => {
           pkg('18.2.0', '18.2.0', '19.3.1'),
           policy('none', { pkg: 'latest' }),
         ),
-      ).toEqual({ target: '19.3.1' })
+      ).toEqual({
+        target: '19.3.1',
+        reason: { code: 'rule-latest', message: 'rule "latest"' },
+      })
     })
 
     it('"followRange" stays within the range even when the level allows more', () => {
@@ -101,13 +129,21 @@ describe('updateChecker', () => {
           pkg('18.2.0', '18.3.1', '19.3.1'),
           policy('major', { pkg: 'followRange' }),
         ),
-      ).toEqual({ target: '18.3.1' })
+      ).toEqual({
+        target: '18.3.1',
+        reason: { code: 'within-range', message: 'within range' },
+      })
       expect(
         updateChecker(
           pkg('1.11.9', '1.11.9', '1.11.23'),
           policy('major', { pkg: 'followRange' }),
         ),
-      ).toEqual({ reason: 'outside the range (rule followRange)' })
+      ).toEqual({
+        reason: {
+          code: 'rule-follow-range',
+          message: 'outside the range (rule followRange)',
+        },
+      })
     })
   })
 
@@ -116,19 +152,35 @@ describe('updateChecker', () => {
       expect(
         updateChecker(pkg('not-a-version', '1.0.0', '1.0.1'), policy()),
       ).toEqual({
-        reason: 'invalid version (current not-a-version, latest 1.0.1)',
+        reason: {
+          code: 'invalid-version',
+          message: 'invalid version (current not-a-version, latest 1.0.1)',
+        },
       })
+    })
+
+    it('files a dependency that is not installed under its own code', () => {
+      expect(updateChecker(pkg('missing', '1.0.0', '1.0.1'), policy())).toEqual(
+        {
+          reason: {
+            code: 'not-installed',
+            message: 'invalid version (current missing, latest 1.0.1)',
+          },
+        },
+      )
     })
 
     it('holds when latest is not newer than installed', () => {
       expect(
         updateChecker(pkg('2.0.0', '2.0.0', '1.9.0'), policy('major')),
-      ).toEqual({ reason: 'not newer than installed' })
+      ).toEqual({
+        reason: { code: 'not-newer', message: 'not newer than installed' },
+      })
     })
 
     it('treats an unusable wanted as "nothing in range"', () => {
       expect(updateChecker(pkg('1.0.0', 'linked', '1.0.1'), policy())).toEqual({
-        reason: 'patch beyond the range',
+        reason: { code: 'outside-range', message: 'patch beyond the range' },
       })
     })
   })

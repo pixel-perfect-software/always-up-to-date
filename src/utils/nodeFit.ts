@@ -171,7 +171,10 @@ export const fitRunningNode = async (
         ...row,
         target: fit.version,
         updateType: stepType(row.current, fit.version),
-        reason: `engines: ${target} needs node ${shownRange(fit.range)} (running node ${node})`,
+        reason: {
+          code: 'engines-fallback',
+          message: `engines: ${target} needs node ${shownRange(fit.range)} (running node ${node})`,
+        },
         releaseAge: fit.ageDays,
       }
     }),

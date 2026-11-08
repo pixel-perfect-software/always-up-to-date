@@ -4,6 +4,7 @@ import type {
   BeyondRange,
   PackageInfo,
   PackageRule,
+  Reason,
 } from '@/types'
 
 /** The override layer as the policy reads it, built from the config file. */
@@ -12,11 +13,10 @@ export interface UpdatePolicy {
   ruleFor: (name: string) => PackageRule | undefined
 }
 
-/** `target` is set when the package should move; `reason` when it is held. */
-export interface UpdateDecision {
-  target?: string
-  reason?: string
-}
+/** Where the package moves, or why it is held; either way, the reason. */
+export type UpdateDecision =
+  | { target: string; reason: Reason }
+  | { target?: undefined; reason: Reason }
 
 const LEVEL_RANK: Record<BeyondRange, number> = {
   none: 0,
@@ -95,13 +95,29 @@ const updateChecker = (
   policy: UpdatePolicy,
 ): UpdateDecision => {
   if (!semver.valid(current) || !semver.valid(latest)) {
-    return { reason: `invalid version (current ${current}, latest ${latest})` }
+    return {
+      reason: {
+        code: current === 'missing' ? 'not-installed' : 'invalid-version',
+        message: `invalid version (current ${current}, latest ${latest})`,
+      },
+    }
   }
 
   const rule = policy.ruleFor(name)
-  if (rule === 'hold') return { reason: 'held by rule' }
-  if (!semver.gt(latest, current)) return { reason: 'not newer than installed' }
-  if (rule === 'latest') return { target: latest }
+  if (rule === 'hold') {
+    return { reason: { code: 'rule-hold', message: 'held by rule' } }
+  }
+  if (!semver.gt(latest, current)) {
+    return {
+      reason: { code: 'not-newer', message: 'not newer than installed' },
+    }
+  }
+  if (rule === 'latest') {
+    return {
+      target: latest,
+      reason: { code: 'rule-latest', message: 'rule "latest"' },
+    }
+  }
 
   const inRange =
     semver.valid(wanted) && semver.gt(wanted, current) ? wanted : undefined
@@ -113,16 +129,30 @@ const updateChecker = (
     rule !== 'followRange' &&
     LEVEL_RANK[step] <= LEVEL_RANK[policy.beyondRange]
   ) {
-    return { target: latest }
+    return {
+      target: latest,
+      reason: {
+        code: 'past-range',
+        message: `past its range, "beyondRange": "${policy.beyondRange}"`,
+      },
+    }
   }
 
-  if (inRange) return { target: inRange }
+  if (inRange) {
+    return {
+      target: inRange,
+      reason: { code: 'within-range', message: 'within range' },
+    }
+  }
 
   return {
     reason:
       rule === 'followRange'
-        ? 'outside the range (rule followRange)'
-        : `${step} beyond the range`,
+        ? {
+            code: 'rule-follow-range',
+            message: 'outside the range (rule followRange)',
+          }
+        : { code: 'outside-range', message: `${step} beyond the range` },
   }
 }
 

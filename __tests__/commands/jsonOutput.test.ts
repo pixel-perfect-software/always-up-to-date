@@ -17,6 +17,7 @@ import updateCommand from '@/commands/update'
 import { check, findOutdated, plan, update } from '@/pipeline'
 import type { PackageInfo, UpdateResult } from '@/types'
 import logger from '@/utils/logger'
+import { reasonFor } from '../fixtures/reasons'
 
 /**
  * The logger is real here. The fake pipeline reports progress through it the
@@ -39,8 +40,12 @@ const results: UpdateResult[] = [
     latest: '1.11.23',
     updateType: 'patch',
     updated: true,
+    reason: reasonFor('within range'),
   },
 ]
+
+/** What `--json` prints for them: a moving row's reason is not part of 3.x's rows. */
+const printed = results.map(({ reason: _reason, ...rest }) => rest)
 
 const fakePipeline = {
   check: async () => {
@@ -94,12 +99,12 @@ describe('--json output', () => {
 
   it('update --dry-run --json prints only JSON on stdout', async () => {
     expect(JSON.parse(await run('update', '--dry-run', '--json'))).toEqual(
-      results,
+      printed,
     )
   })
 
   it('update --json prints only JSON on stdout', async () => {
-    expect(JSON.parse(await run('update', '--json'))).toEqual(results)
+    expect(JSON.parse(await run('update', '--json'))).toEqual(printed)
   })
 
   it('update --dry-run --json prints [] when nothing is outdated', async () => {

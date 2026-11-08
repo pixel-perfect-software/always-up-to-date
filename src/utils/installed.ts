@@ -201,7 +201,10 @@ export const checkApplied = (
       ...result,
       target: undefined,
       updated: false,
-      reason: `not applied by ${manager} (installed ${version})`,
+      reason: {
+        code: 'not-applied',
+        message: `not applied by ${manager} (installed ${version})`,
+      },
     }
   })
 }

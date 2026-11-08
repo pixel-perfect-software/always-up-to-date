@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from 'util'
 import type { UpdateResult } from '@/types'
 import logger, { pluralize } from '@/utils/logger'
+import { reasonFor } from '../fixtures/reasons'
 
 const originalLog = Object.getPrototypeOf(console).log
 
@@ -16,6 +17,7 @@ const moved = (
   target: '1.0.1',
   updateType: 'patch',
   updated: true,
+  reason: reasonFor('within range'),
   ...fields,
 })
 
@@ -31,7 +33,7 @@ const held = (
   latest: '2.0.0',
   updateType: 'major',
   updated: false,
-  reason,
+  reason: reasonFor(reason),
   ...fields,
 })
 
@@ -304,7 +306,10 @@ describe('Logger', () => {
             wanted: '1.0.3',
             latest: '1.0.3',
             target: '1.0.2',
-            reason: 'cooldown: 1.0.3 released 1d ago, requires 2d',
+            reason: reasonFor(
+              'cooldown: 1.0.3 released 1d ago, requires 2d',
+              'cooldown-fallback',
+            ),
           }),
         ],
         'npm',
@@ -323,7 +328,10 @@ describe('Logger', () => {
             wanted: '5.1.6',
             latest: '5.1.6',
             target: '5.0.4',
-            reason: 'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+            reason: reasonFor(
+              'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+              'engines-fallback',
+            ),
           }),
         ],
         'npm',
@@ -354,7 +362,9 @@ describe('Logger', () => {
             wanted: '1.0.0',
             target: '2.0.0',
             latest: '2.0.0',
-            warning: 'peer conflict: react-dom@18.3.1 needs react ^18.3.1',
+            warnings: [
+              reasonFor('peer conflict: react-dom@18.3.1 needs react ^18.3.1'),
+            ],
           }),
         ],
         'npm',

@@ -1,6 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { legacyRow } from '@/commands/actions/legacyRow'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
@@ -61,9 +62,9 @@ const run = async (
     const project = projectFor({ ...adapter, apply }, cwd, config, registry)
     if (operation === 'check') return json(await check(project))
     if (operation === 'plan') {
-      return json(await plan(project, await check(project)))
+      return json((await plan(project, await check(project))).map(legacyRow))
     }
-    return json(await update(project))
+    return json((await update(project)).map(legacyRow))
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true })
   }
