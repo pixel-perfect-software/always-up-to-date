@@ -11,15 +11,15 @@ allowBuilds:
 catalog:
   "@inquirer/prompts": 8.7.5
   colorette: 2.0.20
-  commander: 15.0.0
+  commander: 15.1.0
   semver: 7.8.6
-  "@biomejs/biome": 2.6.4
-  "@swc/core": 1.16.21
+  "@biomejs/biome": 2.6.6
+  "@swc/core": 1.16.22
   "@swc/jest": "0.2.39"
   "@types/jest": 30.0.0
   "@types/node": 26.6.6
   "@types/semver": 7.8.0
-  ajv: 8.17.1
+  ajv: 8.20.0
   esbuild: 0.28.2
   globals: 17.14.0
   jest: 30.5.2
