@@ -110,6 +110,7 @@ export const check = async (
   if (Object.keys(found).length > 0) {
     logger.report(await plan(project, found), project.adapter.name, 'plan', {
       member: project.member?.path,
+      next: 'autd update',
     })
   }
   return found
@@ -190,6 +191,7 @@ export const update = async (
   } = {},
 ): Promise<UpdateResult[]> => {
   refuseMemberApply(project)
+  const started = performance.now()
   const { adapter, root } = project
   const { outdated, workspace } = discovered
     ? { outdated: discovered, workspace: workspaceOf(project) }
@@ -238,6 +240,8 @@ export const update = async (
       : readInstalledVersions(root, moved),
     adapter.name,
   )
-  logger.report(applied, adapter.name, 'applied')
+  logger.report(applied, adapter.name, 'applied', {
+    elapsedMs: performance.now() - started,
+  })
   return applied
 }

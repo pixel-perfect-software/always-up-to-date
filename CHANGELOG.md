@@ -23,7 +23,14 @@ Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Ve
 
 ### Changed
 
-- After `update`, a package that moved past its range reads `range rewritten`, and `rewrites its range` in the plan. Before, both said `past its range`, the same words as the **Past the range in package.json** hold. A move within the range has no note, so the moves that rewrite a range stand out, and a cooldown fallback reads `3.25.76 held by cooldown (released 1d ago, needs 2d)`. A row's notes are separated by `·` throughout. Human output only: `--json` is unchanged.
+- The human report changes in six places ([#213](https://github.com/pixel-perfect-software/always-up-to-date/pull/213)):
+  - **Moves past the range:** after `update`, a package that moved past its range reads `range rewritten`, and `rewrites its range` in the plan. Before, both said `past its range`, the same words as the **Past the range in package.json** hold. A move within the range has no note, so the moves that rewrite a range stand out.
+  - **Colors:** each new version is colored from the part that changes: red for a major step, yellow for a minor one, green for a patch. The current version is plain.
+  - **The `beyondRange` hint:** the **Past the range in package.json** section names the level that would move its packages once, on its heading (`"beyondRange": "minor" would move 1, "major" all 3`), and each row shows its step. Before, every row repeated it.
+  - **Next step:** `check` and `update --dry-run` end with `Run autd update to apply.` when something would move, naming the targeted packages, and saying `in the workspace root` from a member.
+  - **Time:** after `update`, the summary line says how long the update took (`(took 12.3s)`).
+  - A cooldown fallback reads `3.25.76 held by cooldown (released 1d ago, needs 2d)`, and a row's notes are separated by `·` throughout.
+- Human output only: `--json` is unchanged.
 
 ## 2026-11-08 — 3.6.0: autd holds updates that are deprecated, change the license, break a peer, or need a newer Node
 

@@ -38,14 +38,17 @@ Would update (16 packages)
 Held by cooldown (1 package)
   ms          2.1.2   → 2.1.3    released 1d ago, needs 2d
 
-Past the range in package.json (5 packages)
-  express     4.17.1  → 5.3.0    major; "beyondRange": "major" would move it
-  react       18.2.0  → 19.3.1   major; "beyondRange": "major" would move it
-  typescript  5.0.4   → 7.0.2    major; "beyondRange": "major" would move it
+Past the range in package.json (5 packages) · "beyondRange": "major" would move them
+  express     4.17.1  → 5.3.0    major
+  react       18.2.0  → 19.3.1   major
+  typescript  5.0.4   → 7.0.2    major
   …
 
 16 to update · 1 held by cooldown · 5 past the range
+Run autd update to apply.
 ```
+
+In a terminal, each new version is colored from the part that changes: red for a major step, yellow for a minor one, green for a patch. A move past the range rewrites the range in `package.json` (or the catalog), and the report says so. After `update`, the summary line says how long it took.
 
 `check` prints the same report, and `update` prints it once more after the package manager has run, with what it actually installed. Every package shows up once, under what happened to it: updated, left in place by the package manager, held by cooldown, past its range, or held by a rule, an override, a peer conflict, a deprecation or a license change.
 

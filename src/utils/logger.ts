@@ -8,6 +8,7 @@ import {
   type Outcome,
   type ReportPhase,
   type ReportRow,
+  splitAtChange,
 } from './report'
 import { workspaceLabel } from './workspaceRows'
 
@@ -197,13 +198,19 @@ class Logger {
    * reason, then one summary line. Rows that share a move and a reason across
    * manifests are one row; the manifest column is left out when every row is
    * the root's. A member run (#123) covers one manifest, so it has no
-   * manifest column either.
+   * manifest column either. `next` is the command that applies a plan,
+   * printed last when something would move; `elapsedMs` is how long an
+   * applied `update` took, on its summary line.
    */
   report(
     results: UpdateResult[],
     manager: string,
     phase: ReportPhase,
-    { member }: { member?: string } = {},
+    {
+      member,
+      next,
+      elapsedMs,
+    }: { member?: string; next?: string; elapsedMs?: number } = {},
   ): void {
     if (this.muted) return
     const sections = groupResults(results, phase)
@@ -229,8 +236,9 @@ class Logger {
     }
     for (const section of sections) {
       const { heading, color } = SECTIONS[section.outcome]
+      const hint = section.hint ? `${NOTE_SEPARATOR}${section.hint}` : ''
       console.log(
-        `\n${bold(color(heading(phase, manager)))} ${gray(`(${pluralize(section.packages, 'package')})`)}`,
+        `\n${bold(color(heading(phase, manager)))} ${gray(`(${pluralize(section.packages, 'package')})${hint}`)}`,
       )
       for (const row of section.rows) {
         const age =
@@ -244,9 +252,19 @@ class Logger {
     )
     if (counts.length === 0) return
     const moving = sections.some((section) => section.outcome === 'update')
+    const took =
+      elapsedMs === undefined
+        ? ''
+        : gray(`  (took ${formatElapsed(elapsedMs)})`)
     console.log(
-      `\n${moving ? '' : bold('Nothing to update: ')}${counts.join(gray(' · '))}`,
+      `\n${moving ? '' : bold('Nothing to update: ')}${counts.join(gray(NOTE_SEPARATOR))}${took}`,
     )
+    if (moving && next) {
+      const where = member === undefined ? '' : ' in the workspace root'
+      console.log(
+        `${gray('Run')} ${bold(cyan(next))}${gray(`${where} to apply.`)}`,
+      )
+    }
   }
 
   starting(operation: string, manager: string): void {
@@ -281,15 +299,33 @@ const formatRow = (
     widths.where > 0
       ? `  ${gray(whereOf(row.workspaces).padEnd(widths.where))}`
       : ''
-  const current = red(row.current.padEnd(widths.current))
+  const current = row.current.padEnd(widths.current)
   const tail = [row.note]
   if (releaseAge !== undefined)
     tail.push(`released ${formatAgeDays(releaseAge)} ago`)
   const note = tail.filter(Boolean).join(NOTE_SEPARATOR)
-  // Padded only when a note follows: the color codes would keep trimEnd()
-  // from removing the padding of a row that ends at its version.
-  const to = green(note ? row.to.padEnd(widths.to) : row.to)
+  // The part of the version that changes, colored by the size of the step;
+  // padded only when a note follows, outside the color codes.
+  const [same, changed] = splitAtChange(row.current, row.to)
+  const pad = note ? ' '.repeat(widths.to - row.to.length) : ''
+  const to = `${same}${levelColor(row.level)(changed)}${pad}`
   return `  ${name}${where}  ${current} ${gray('→')} ${to}${note ? `  ${gray(note)}` : ''}`.trimEnd()
+}
+
+/** Red for a major step, yellow for a minor one, green for a patch or an unknown one. */
+const levelColor = (level: ReportRow['level']): ((text: string) => string) =>
+  level === 'major' || level === 'premajor'
+    ? red
+    : level === 'minor' || level === 'preminor'
+      ? yellow
+      : green
+
+/** `850ms`, `12.3s`, `2m 05s`. */
+export const formatElapsed = (ms: number): string => {
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const seconds = Math.round(ms / 1000)
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
 }
 
 const logger = new Logger()
