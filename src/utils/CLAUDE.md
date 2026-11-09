@@ -75,6 +75,7 @@ utils/
 ### Update Policy (`updateChecker.ts`)
 
 `updateChecker(info, policy)` is pure: it returns a `Reason` always, with a `target` when the package moves (`within-range`, `past-range`, `rule-latest`) and without one when it is held. `filterPackages` builds the policy per run with `policyFromConfig(config)`.
+
 1. Invalid semver: held (`invalid version …`)
 2. Rule `hold`: held. Rule `latest`: target `latest`, any step size
 3. Default: stay within the manifest range. Target is `wanted` (the highest version the range allows) when it is ahead of `current`; an exact pin has `wanted == current`, so it is held (`patch beyond the range`, etc.)
