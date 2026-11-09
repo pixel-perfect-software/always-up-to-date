@@ -1,6 +1,9 @@
 import semver from 'semver'
 import type { ReasonCode, UpdateResult } from '@/types'
 
+/** Before apply (`check`, `--dry-run`, interactive) or after it. */
+export type ReportPhase = 'plan' | 'applied'
+
 /** What happened to one candidate, or will. */
 export type Outcome =
   | 'update'
@@ -69,6 +72,8 @@ export interface ReportRow {
   current: string
   /** Where it moves (or would): the target, else `latest`. */
   to: string
+  /** The step from `current` to `to`, which colors `to`; null when unknown. */
+  level: UpdateResult['updateType']
   /** The reason, worded for the section it is in. */
   note?: string
 }
@@ -78,15 +83,75 @@ export interface ReportSection {
   rows: ReportRow[]
   /** Distinct package names in the section. */
   packages: number
+  /** One line for the whole section, shown after its heading. */
+  hint?: string
 }
 
 const byPath = (a: string, b: string) =>
   a === '.' ? -1 : b === '.' ? 1 : a.localeCompare(b)
 
-/** The reason as the section shows it: the section names the kind of hold. */
+/**
+ * `to` split where it starts to differ from `current`, at a `.`: `1.4.0 →
+ * 1.20.0` is `['1.', '20.0']`, so the report colors only what changes.
+ * Everything is the changed part when the first segment differs, or when
+ * `current` is no version (`missing`).
+ */
+export const splitAtChange = (
+  current: string,
+  to: string,
+): [same: string, changed: string] => {
+  const was = current.split('.')
+  const now = to.split('.')
+  let i = 0
+  while (i < now.length - 1 && was[i] === now[i]) i++
+  const same = now.slice(0, i).join('.')
+  return [same ? `${same}.` : '', now.slice(i).join('.')]
+}
+
+const STEPS = ['patch', 'minor', 'major'] as const
+
+/**
+ * The `beyondRange` level that would move each row past its range, said once
+ * for the section: `"beyondRange": "major" would move them`, or with several
+ * steps, how many each level moves (levels include the smaller steps).
+ */
+const rangeHint = (rows: ReportRow[], packages: number): string | undefined => {
+  const stepOf = new Map<string, number>()
+  for (const row of rows) {
+    const step = STEPS.indexOf(row.note as (typeof STEPS)[number])
+    if (step < 0) return undefined
+    stepOf.set(row.name, Math.max(step, stepOf.get(row.name) ?? 0))
+  }
+  const steps = [...new Set(stepOf.values())].sort((a, b) => a - b)
+  if (steps.length === 1) {
+    return `"beyondRange": "${STEPS[steps[0]]}" would move ${packages === 1 ? 'it' : 'them'}`
+  }
+  const moved = (step: number) =>
+    [...stepOf.values()].filter((s) => s <= step).length
+  return `"beyondRange": ${steps
+    .map((step, i) =>
+      i === 0
+        ? `"${STEPS[step]}" would move ${moved(step)}`
+        : i === steps.length - 1
+          ? `"${STEPS[step]}" all ${packages}`
+          : `"${STEPS[step]}" ${moved(step)}`,
+    )
+    .join(', ')}`
+}
+
+/** The notes of one row, as the report joins them. */
+export const NOTE_SEPARATOR = ' · '
+
+/**
+ * The reason as the section shows it: the section names the kind of hold. A
+ * move within the range has no note of its own, since it is the default; a
+ * move past it rewrites the manifest's range, which the note says in the
+ * phase's tense.
+ */
 const noteFor = (
   outcome: Outcome,
   result: UpdateResult,
+  phase: ReportPhase,
 ): string | undefined => {
   const reason = result.reason.message
   switch (outcome) {
@@ -98,10 +163,16 @@ const noteFor = (
           semver.valid(wanted) !== null &&
           semver.lt(target, wanted))
       const notes = [
-        within ? 'within range' : 'past its range',
+        within
+          ? undefined
+          : phase === 'plan'
+            ? 'rewrites its range'
+            : 'range rewritten',
         // A cooldown fallback (#147) names the newer version it held.
         result.reason.code === 'cooldown-fallback'
-          ? reason.replace(/^cooldown: /, '').replace(/requires /, 'needs ')
+          ? reason
+              .replace(/^cooldown: (\S+) (.*)$/, '$1 held by cooldown ($2)')
+              .replace(/requires /, 'needs ')
           : undefined,
         // npm's engines preference (#200): the version the target needed Node for.
         result.reason.code === 'engines-fallback'
@@ -109,14 +180,13 @@ const noteFor = (
           : undefined,
         ...(result.warnings ?? []).map((w) => w.message),
       ]
-      return notes.filter(Boolean).join('; ')
+      return notes.filter(Boolean).join(NOTE_SEPARATOR) || undefined
     }
     case 'cooldown':
       return reason.replace(/^cooldown: /, '').replace(/requires /, 'needs ')
-    case 'range': {
-      const step = reason.replace(/ beyond the range$/, '')
-      return `${step}; "beyondRange": "${step}" would move it`
-    }
+    // The step alone: the section's hint names the level that would move it.
+    case 'range':
+      return reason.replace(/ beyond the range$/, '')
     case 'rule':
       return result.reason.code === 'rule-hold'
         ? 'rule "hold"'
@@ -138,13 +208,16 @@ const noteFor = (
  * The results grouped by outcome, in report order, each candidate once. Rows
  * that share a package, versions and reason across manifests are one row.
  */
-export const groupResults = (results: UpdateResult[]): ReportSection[] => {
+export const groupResults = (
+  results: UpdateResult[],
+  phase: ReportPhase = 'plan',
+): ReportSection[] => {
   const sections = new Map<Outcome, Map<string, ReportRow>>()
   for (const result of results) {
     const outcome = outcomeOf(result)
     if (!outcome) continue
     const to = result.target ?? result.latest
-    const note = noteFor(outcome, result)
+    const note = noteFor(outcome, result, phase)
     const key = [result.name, result.current, to, note].join('\0')
     let rows = sections.get(outcome)
     if (!rows) {
@@ -160,6 +233,7 @@ export const groupResults = (results: UpdateResult[]): ReportSection[] => {
         workspaces: result.workspace === undefined ? [] : [result.workspace],
         current: result.current,
         to,
+        level: result.updateType,
         note,
       })
     }
@@ -174,12 +248,8 @@ export const groupResults = (results: UpdateResult[]): ReportSection[] => {
           a.name.localeCompare(b.name) ||
           byPath(a.workspaces[0] ?? '.', b.workspaces[0] ?? '.'),
       )
-    return [
-      {
-        outcome,
-        rows: sorted,
-        packages: new Set(sorted.map((row) => row.name)).size,
-      },
-    ]
+    const packages = new Set(sorted.map((row) => row.name)).size
+    const hint = outcome === 'range' ? rangeHint(sorted, packages) : undefined
+    return [{ outcome, rows: sorted, packages, ...(hint ? { hint } : {}) }]
   })
 }

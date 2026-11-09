@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from 'util'
 import type { UpdateResult } from '@/types'
-import logger, { pluralize } from '@/utils/logger'
+import logger, { formatElapsed, pluralize } from '@/utils/logger'
+import { splitAtChange } from '@/utils/report'
 import { reasonFor } from '../fixtures/reasons'
 
 const originalLog = Object.getPrototypeOf(console).log
@@ -239,11 +240,11 @@ describe('Logger', () => {
 
       expect(printed()).toEqual([
         '\nWould update (1 package)',
-        '  motion       apps/web          14.6.0 → 14.7.1       within range · released 3d ago',
+        '  motion       apps/web          14.6.0 → 14.7.1       released 3d ago',
         '\nHeld by cooldown (1 package)',
         '  vercel       (root)            65.2.0 → 65.4.0       released 14h ago, needs 2d',
-        '\nPast the range in package.json (1 package)',
-        '  @types/node  (root), apps/web  25.9.9 → 26.6.5       major; "beyondRange": "major" would move it',
+        '\nPast the range in package.json (1 package) · "beyondRange": "major" would move it',
+        '  @types/node  (root), apps/web  25.9.9 → 26.6.5       major',
         '\nHeld by a rule (1 package)',
         '  prisma       apps/web          7.10.1 → 8.0.0-rc.27  rule "hold"',
         '\n1 to update · 1 held by cooldown · 1 past the range · 1 held by a rule',
@@ -266,7 +267,7 @@ describe('Logger', () => {
 
       expect(printed()).toEqual([
         '\nUpdated (1 package)',
-        '  ms     1.0.0 → 1.0.1  within range',
+        '  ms     1.0.0 → 1.0.1',
         '\nLeft in place by pnpm (1 package)',
         '  debug  4.3.1 → 4.4.3  installed 4.3.1',
         '\n1 updated · 1 left in place by pnpm',
@@ -289,14 +290,14 @@ describe('Logger', () => {
 
     it('leaves the manifest column out when every row is the root', () => {
       logger.report([moved('a', { workspace: '.' })], 'pnpm', 'plan')
-      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1  within range')
+      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1')
     })
 
     it('leaves the manifest column out of a member run (#123)', () => {
       logger.report([moved('a', { workspace: 'packages/a' })], 'npm', 'plan', {
         member: 'packages/a',
       })
-      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1  within range')
+      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1')
     })
 
     it('names the version a cooldown fallback skipped, within its range (#147)', () => {
@@ -316,7 +317,7 @@ describe('Logger', () => {
         'plan',
       )
       expect(printed()[1]).toBe(
-        '  a  1.0.0 → 1.0.2  within range; 1.0.3 released 1d ago, needs 2d',
+        '  a  1.0.0 → 1.0.2  1.0.3 held by cooldown (released 1d ago, needs 2d)',
       )
     })
 
@@ -339,7 +340,7 @@ describe('Logger', () => {
       )
       const lines = printed()
       expect(lines).toContain(
-        '  typescript  5.0.2 → 5.0.4  within range; 5.1.6 needs node >=14.17 (running node 12.22.12)',
+        '  typescript  5.0.2 → 5.0.4  5.1.6 needs node >=14.17 (running node 12.22.12)',
       )
       expect(lines.join('\n')).not.toContain('Held by engines.node')
     })
@@ -371,8 +372,76 @@ describe('Logger', () => {
         'plan',
       )
       expect(printed()[1]).toContain(
-        'past its range; peer conflict: react-dom@18.3.1 needs react ^18.3.1',
+        'rewrites its range · peer conflict: react-dom@18.3.1 needs react ^18.3.1',
       )
+    })
+
+    it('names the beyondRange level once per section, with how many each level moves', () => {
+      logger.report(
+        [
+          held('express', 'minor beyond the range', { latest: '1.1.0' }),
+          held('typescript', 'major beyond the range'),
+          held('zod', 'major beyond the range'),
+        ].map((row) => ({
+          ...row,
+          reason: { ...row.reason, code: 'outside-range' },
+        })),
+        'npm',
+        'plan',
+      )
+      expect(printed().slice(0, 4)).toEqual([
+        '\nPast the range in package.json (3 packages) · "beyondRange": "minor" would move 1, "major" all 3',
+        '  express     1.0.0 → 1.1.0  minor',
+        '  typescript  1.0.0 → 2.0.0  major',
+        '  zod         1.0.0 → 2.0.0  major',
+      ])
+    })
+
+    it('ends a plan with the command that applies it, from the root for a member', () => {
+      logger.report([moved('ms')], 'npm', 'plan', { next: 'autd update ms' })
+      expect(printed().at(-1)).toBe('Run autd update ms to apply.')
+
+      logSpy.mockClear()
+      logger.report([moved('ms')], 'npm', 'plan', {
+        member: 'packages/a',
+        next: 'autd update',
+      })
+      expect(printed().at(-1)).toBe(
+        'Run autd update in the workspace root to apply.',
+      )
+
+      logSpy.mockClear()
+      logger.report([held('a', 'held by rule')], 'npm', 'plan', {
+        next: 'autd update',
+      })
+      expect(printed().at(-1)).toBe('\nNothing to update: 1 held by a rule')
+    })
+
+    it('says how long an applied update took on its summary line', () => {
+      logger.report([moved('ms')], 'npm', 'applied', { elapsedMs: 12_345 })
+      expect(printed().at(-1)).toBe('\n1 updated  (took 12.3s)')
+    })
+
+    it('says a move past the range rewrote it once applied, not that it is past it', () => {
+      logger.report(
+        [
+          moved('commander', {
+            current: '15.0.0',
+            wanted: '15.0.0',
+            target: '15.1.0',
+            latest: '15.1.0',
+          }),
+          moved('ms'),
+        ],
+        'npm',
+        'applied',
+      )
+      expect(printed()).toEqual([
+        '\nUpdated (2 packages)',
+        '  commander  15.0.0 → 15.1.0  range rewritten',
+        '  ms         1.0.0  → 1.0.1',
+        '\n2 updated',
+      ])
     })
 
     it('shows a deprecated target with the registry message (#195)', () => {
@@ -499,5 +568,27 @@ describe('pluralize', () => {
 
   it('honors an explicit plural form', () => {
     expect(pluralize(2, 'index', 'indices')).toBe('2 indices')
+  })
+})
+
+describe('splitAtChange', () => {
+  it.each([
+    ['1.4.0', '1.20.0', ['1.', '20.0']],
+    ['4.3.1', '4.3.7', ['4.3.', '7']],
+    ['15.0.0', '16.0.0', ['', '16.0.0']],
+    ['8.0.0-rc.26', '8.0.0-rc.27', ['8.0.0-rc.', '27']],
+    ['missing', '2.0.0', ['', '2.0.0']],
+  ])('%s → %s colors only what changes', (current, to, expected) => {
+    expect(splitAtChange(current, to)).toEqual(expected)
+  })
+})
+
+describe('formatElapsed', () => {
+  it.each([
+    [850, '850ms'],
+    [12_345, '12.3s'],
+    [125_000, '2m 05s'],
+  ])('%d ms is %s', (ms, expected) => {
+    expect(formatElapsed(ms)).toBe(expected)
   })
 })

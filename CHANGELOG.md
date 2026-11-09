@@ -21,6 +21,17 @@ Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Ve
 - A reason code on every row: 21 codes, among them `within-range`, `past-range`, `rule-latest`, `cooldown-fallback` and `engines-fallback`.
 - The README documents the `--json` fields, outcomes and codes.
 
+### Changed
+
+- The human report changes in six places ([#213](https://github.com/pixel-perfect-software/always-up-to-date/pull/213)):
+  - **Moves past the range:** after `update`, a package that moved past its range reads `range rewritten`, and `rewrites its range` in the plan. Before, both said `past its range`, the same words as the **Past the range in package.json** hold. A move within the range has no note, so the moves that rewrite a range stand out.
+  - **Colors:** each new version is colored from the part that changes: red for a major step, yellow for a minor one, green for a patch. The current version is plain.
+  - **The `beyondRange` hint:** the **Past the range in package.json** section names the level that would move its packages once, on its heading (`"beyondRange": "minor" would move 1, "major" all 3`), and each row shows its step. Before, every row repeated it.
+  - **Next step:** `check` and `update --dry-run` end with `Run autd update to apply.` when something would move, naming the targeted packages, and saying `in the workspace root` from a member.
+  - **Time:** after `update`, the summary line says how long the update took (`(took 12.3s)`).
+  - A cooldown fallback reads `3.25.76 held by cooldown (released 1d ago, needs 2d)`, and a row's notes are separated by `·` throughout.
+- Human output only: `--json` is unchanged.
+
 ## 2026-11-08 — 3.6.0: autd holds updates that are deprecated, change the license, break a peer, or need a newer Node
 
 `check` and `update` now hold a target that carries a warning sign, and print the reason. Each hold shows in its own section of the report. A `latest` rule still moves the package and puts the reason in the row's `warning`. The `--json` shape is unchanged: the new holds are `reason` text, and the `warning` field already existed. Reading a target's own manifest costs one registry request per package that would move, answered from the cache afterwards. `check --json` sends none.
@@ -197,6 +208,7 @@ When the newest version a package could move to is too fresh for `cooldown`, the
 ## 2026-10-27 — 3.0.0: outdated packages found without the package manager, a registry cache, and each manager's own registry settings
 
 **Breaking:** `check` no longer runs the package manager's `outdated` for npm, pnpm, yarn v1 and bun. It reads the manifests, `node_modules` and the registry itself. As a result:
+
 - `check --json` loses the manager-specific fields;
 - peer-only dependencies are no longer listed;
 - a failed lookup fails the run;

@@ -321,7 +321,7 @@ describe('update command', () => {
         [expect.objectContaining({ name: 'ms', workspace: 'packages/a' })],
         expect.any(String),
         'plan',
-        { member: undefined },
+        { member: undefined, next: 'autd update' },
       )
     })
   })

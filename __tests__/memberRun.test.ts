@@ -79,7 +79,7 @@ describe.each(ADAPTERS)('a member run with $pm', ({ adapter }) => {
       expect.any(Array),
       adapter.name,
       'plan',
-      { member: 'packages/b' },
+      { member: 'packages/b', next: 'autd update' },
     )
   })
 

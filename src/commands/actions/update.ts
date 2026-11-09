@@ -85,6 +85,7 @@ const dryRun = async (
 
   logger.report(results, project.adapter.name, 'plan', {
     member: project.member?.path,
+    next: ['autd update', ...(targetPackages ?? [])].join(' '),
   })
 }
 
