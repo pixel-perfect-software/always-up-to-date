@@ -3,6 +3,24 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-11-09 — 4.0.0: every --json document is versioned and has one shape, and check --json plans
+
+**Breaking:** `check --json`, `update --dry-run --json` and `update --json` now print one versioned document, `{ "version": 1, "autd", "command", "phase", "manager", "member", "rows": [...] }`, and every row carries a reason. Any script that reads 3.x `--json` output needs updating. The README's "Upgrading from 3.x" maps each old field to its new one. Human output is unchanged.
+
+### Breaking
+
+- `check --json` prints planned rows, as `update --dry-run --json` does: one row per package and manifest, with `target`, `outcome` and `reason` ([#201](https://github.com/pixel-perfect-software/always-up-to-date/issues/201)). Before, it was an object keyed by package name, with `workspaces` in a workspace project, and `update --json` printed an array. Since `check --json` now plans, a cold run reads a version manifest for each row that would move, about 0.3 s more on 40 dependencies. The reads are cached, and a warm run sends no request.
+- `reason` is `{ code, message }` on every row, moving rows included. `message` is the text `reason` held before. `warning` is now `warnings: [{ code, message }]`.
+- `updated` is replaced by `outcome`: `update`, `held`, `not-applied` or `not-targeted`.
+- `target` is `null` on a held row. `workspace` is `"."` in a single-package project. `current` is `null` for a dependency that isn't installed (it was `"missing"`). `releaseAge` is `releaseAgeDays`, `null` when nothing judged the row.
+- The error document is `{ "version": 1, "autd", "command", "error": { step, message, manifestWritten } }`. `step` is `null` for a failure outside a step, such as a malformed config. Before, the key was left out.
+
+### Added
+
+- `schema/output.schema.json`, the JSON Schema (draft-07) of every `--json` document. The `--json` option text names it. Within version 1, fields and reason codes may be added, so branch on `outcome`.
+- A reason code on every row: 21 codes, among them `within-range`, `past-range`, `rule-latest`, `cooldown-fallback` and `engines-fallback`.
+- The README documents the `--json` fields, outcomes and codes.
+
 ## 2026-11-08 — 3.6.0: autd holds updates that are deprecated, change the license, break a peer, or need a newer Node
 
 `check` and `update` now hold a target that carries a warning sign, and print the reason. Each hold shows in its own section of the report. A `latest` rule still moves the package and puts the reason in the row's `warning`. The `--json` shape is unchanged: the new holds are `reason` text, and the `warning` field already existed. Reading a target's own manifest costs one registry request per package that would move, answered from the cache afterwards. `check --json` sends none.
