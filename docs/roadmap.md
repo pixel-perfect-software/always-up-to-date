@@ -3,7 +3,8 @@
 Status: proposed 2026-10-23 from an analysis of v1.0.31. M0 and M1 done and closed 2026-10-23,
 released as 2.0.0. M2 done and closed 2026-10-23, released as 2.1.0 on 2026-10-24. M3 planned
 2026-10-26 from a new baseline on 2.1.0, done and closed 2026-11-06, finished in 3.5.0 on
-2026-11-06. M4 is next.
+2026-11-06. M4 planned 2026-11-06, done and closed 2026-11-09, released in 3.6.0 on 2026-11-08
+and 4.0.0 on 2026-11-09. M5 is next.
 
 Tracking: GitHub milestones M0 through M6 at
 https://github.com/pixel-perfect-software/always-up-to-date/milestones. Pull requests
@@ -203,7 +204,7 @@ Goal: `check` is fast on every manager and no longer depends on `<pm> outdated`.
 Done when the perf gates below pass in CI, `check` runs no `<pm> outdated` or `yarn info`, and
 the integration matrix passes unchanged.
 
-### M4: Policy signals (medium)
+### M4: Policy signals (medium, done)
 
 Goal: risky updates are flagged in the plan, never applied silently.
 
