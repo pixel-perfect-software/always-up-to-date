@@ -282,11 +282,13 @@ const formatRow = (
       ? `  ${gray(whereOf(row.workspaces).padEnd(widths.where))}`
       : ''
   const current = red(row.current.padEnd(widths.current))
-  const to = green(row.to.padEnd(widths.to))
   const tail = [row.note]
   if (releaseAge !== undefined)
     tail.push(`released ${formatAgeDays(releaseAge)} ago`)
   const note = tail.filter(Boolean).join(NOTE_SEPARATOR)
+  // Padded only when a note follows: the color codes would keep trimEnd()
+  // from removing the padding of a row that ends at its version.
+  const to = green(note ? row.to.padEnd(widths.to) : row.to)
   return `  ${name}${where}  ${current} ${gray('→')} ${to}${note ? `  ${gray(note)}` : ''}`.trimEnd()
 }
 
