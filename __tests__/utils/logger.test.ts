@@ -239,7 +239,7 @@ describe('Logger', () => {
 
       expect(printed()).toEqual([
         '\nWould update (1 package)',
-        '  motion       apps/web          14.6.0 → 14.7.1       within range · released 3d ago',
+        '  motion       apps/web          14.6.0 → 14.7.1       released 3d ago',
         '\nHeld by cooldown (1 package)',
         '  vercel       (root)            65.2.0 → 65.4.0       released 14h ago, needs 2d',
         '\nPast the range in package.json (1 package)',
@@ -266,7 +266,7 @@ describe('Logger', () => {
 
       expect(printed()).toEqual([
         '\nUpdated (1 package)',
-        '  ms     1.0.0 → 1.0.1  within range',
+        '  ms     1.0.0 → 1.0.1',
         '\nLeft in place by pnpm (1 package)',
         '  debug  4.3.1 → 4.4.3  installed 4.3.1',
         '\n1 updated · 1 left in place by pnpm',
@@ -289,14 +289,14 @@ describe('Logger', () => {
 
     it('leaves the manifest column out when every row is the root', () => {
       logger.report([moved('a', { workspace: '.' })], 'pnpm', 'plan')
-      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1  within range')
+      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1')
     })
 
     it('leaves the manifest column out of a member run (#123)', () => {
       logger.report([moved('a', { workspace: 'packages/a' })], 'npm', 'plan', {
         member: 'packages/a',
       })
-      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1  within range')
+      expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1')
     })
 
     it('names the version a cooldown fallback skipped, within its range (#147)', () => {
@@ -316,7 +316,7 @@ describe('Logger', () => {
         'plan',
       )
       expect(printed()[1]).toBe(
-        '  a  1.0.0 → 1.0.2  within range; 1.0.3 released 1d ago, needs 2d',
+        '  a  1.0.0 → 1.0.2  1.0.3 held by cooldown (released 1d ago, needs 2d)',
       )
     })
 
@@ -339,7 +339,7 @@ describe('Logger', () => {
       )
       const lines = printed()
       expect(lines).toContain(
-        '  typescript  5.0.2 → 5.0.4  within range; 5.1.6 needs node >=14.17 (running node 12.22.12)',
+        '  typescript  5.0.2 → 5.0.4  5.1.6 needs node >=14.17 (running node 12.22.12)',
       )
       expect(lines.join('\n')).not.toContain('Held by engines.node')
     })
@@ -371,8 +371,30 @@ describe('Logger', () => {
         'plan',
       )
       expect(printed()[1]).toContain(
-        'past its range; peer conflict: react-dom@18.3.1 needs react ^18.3.1',
+        'rewrites its range · peer conflict: react-dom@18.3.1 needs react ^18.3.1',
       )
+    })
+
+    it('says a move past the range rewrote it once applied, not that it is past it', () => {
+      logger.report(
+        [
+          moved('commander', {
+            current: '15.0.0',
+            wanted: '15.0.0',
+            target: '15.1.0',
+            latest: '15.1.0',
+          }),
+          moved('ms'),
+        ],
+        'npm',
+        'applied',
+      )
+      expect(printed()).toEqual([
+        '\nUpdated (2 packages)',
+        '  commander  15.0.0 → 15.1.0  range rewritten',
+        '  ms         1.0.0  → 1.0.1',
+        '\n2 updated',
+      ])
     })
 
     it('shows a deprecated target with the registry message (#195)', () => {

@@ -29,10 +29,10 @@ manager your package.json declares, or the one your lockfile belongs to.
 $ autd update --dry-run
 
 Would update (16 packages)
-  axios       1.4.0   → 1.20.0   within range
-  commander   9.0.0   → 9.5.0    within range
-  debug       4.3.1   → 4.3.7    within range
-  zod         3.20.0  → 3.25.75  within range; 3.25.76 released 1d ago, needs 2d
+  axios       1.4.0   → 1.20.0
+  commander   9.0.0   → 9.5.0
+  debug       4.3.1   → 4.3.7
+  zod         3.20.0  → 3.25.75  3.25.76 held by cooldown (released 1d ago, needs 2d)
   …
 
 Held by cooldown (1 package)

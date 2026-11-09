@@ -1,6 +1,9 @@
 import semver from 'semver'
 import type { ReasonCode, UpdateResult } from '@/types'
 
+/** Before apply (`check`, `--dry-run`, interactive) or after it. */
+export type ReportPhase = 'plan' | 'applied'
+
 /** What happened to one candidate, or will. */
 export type Outcome =
   | 'update'
@@ -83,10 +86,19 @@ export interface ReportSection {
 const byPath = (a: string, b: string) =>
   a === '.' ? -1 : b === '.' ? 1 : a.localeCompare(b)
 
-/** The reason as the section shows it: the section names the kind of hold. */
+/** The notes of one row, as the report joins them. */
+export const NOTE_SEPARATOR = ' · '
+
+/**
+ * The reason as the section shows it: the section names the kind of hold. A
+ * move within the range has no note of its own, since it is the default; a
+ * move past it rewrites the manifest's range, which the note says in the
+ * phase's tense.
+ */
 const noteFor = (
   outcome: Outcome,
   result: UpdateResult,
+  phase: ReportPhase,
 ): string | undefined => {
   const reason = result.reason.message
   switch (outcome) {
@@ -98,10 +110,16 @@ const noteFor = (
           semver.valid(wanted) !== null &&
           semver.lt(target, wanted))
       const notes = [
-        within ? 'within range' : 'past its range',
+        within
+          ? undefined
+          : phase === 'plan'
+            ? 'rewrites its range'
+            : 'range rewritten',
         // A cooldown fallback (#147) names the newer version it held.
         result.reason.code === 'cooldown-fallback'
-          ? reason.replace(/^cooldown: /, '').replace(/requires /, 'needs ')
+          ? reason
+              .replace(/^cooldown: (\S+) (.*)$/, '$1 held by cooldown ($2)')
+              .replace(/requires /, 'needs ')
           : undefined,
         // npm's engines preference (#200): the version the target needed Node for.
         result.reason.code === 'engines-fallback'
@@ -109,7 +127,7 @@ const noteFor = (
           : undefined,
         ...(result.warnings ?? []).map((w) => w.message),
       ]
-      return notes.filter(Boolean).join('; ')
+      return notes.filter(Boolean).join(NOTE_SEPARATOR) || undefined
     }
     case 'cooldown':
       return reason.replace(/^cooldown: /, '').replace(/requires /, 'needs ')
@@ -138,13 +156,16 @@ const noteFor = (
  * The results grouped by outcome, in report order, each candidate once. Rows
  * that share a package, versions and reason across manifests are one row.
  */
-export const groupResults = (results: UpdateResult[]): ReportSection[] => {
+export const groupResults = (
+  results: UpdateResult[],
+  phase: ReportPhase = 'plan',
+): ReportSection[] => {
   const sections = new Map<Outcome, Map<string, ReportRow>>()
   for (const result of results) {
     const outcome = outcomeOf(result)
     if (!outcome) continue
     const to = result.target ?? result.latest
-    const note = noteFor(outcome, result)
+    const note = noteFor(outcome, result, phase)
     const key = [result.name, result.current, to, note].join('\0')
     let rows = sections.get(outcome)
     if (!rows) {

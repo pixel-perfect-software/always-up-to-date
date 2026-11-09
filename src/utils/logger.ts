@@ -2,8 +2,16 @@ import { blue, bold, cyan, gray, green, red, yellow } from 'colorette'
 import type { AlwaysUpToDateConfig, UpdateResult } from '@/types'
 import { formatAgeDays } from './duration'
 import { scrub } from './redaction'
-import { groupResults, type Outcome, type ReportRow } from './report'
+import {
+  groupResults,
+  NOTE_SEPARATOR,
+  type Outcome,
+  type ReportPhase,
+  type ReportRow,
+} from './report'
 import { workspaceLabel } from './workspaceRows'
+
+export type { ReportPhase }
 
 export const pluralize = (
   count: number,
@@ -15,9 +23,6 @@ export const pluralize = (
 export type LoggerConfig = Partial<
   Pick<AlwaysUpToDateConfig, 'debug' | 'silent'>
 >
-
-/** Before apply (`check`, `--dry-run`, interactive) or after it. */
-export type ReportPhase = 'plan' | 'applied'
 
 /** Each section's heading and its summary wording, and the heading's color. */
 const SECTIONS: Record<
@@ -201,7 +206,7 @@ class Logger {
     { member }: { member?: string } = {},
   ): void {
     if (this.muted) return
-    const sections = groupResults(results)
+    const sections = groupResults(results, phase)
     const ages = new Map(
       results
         .filter((r) => r.updated && r.releaseAge !== undefined)
@@ -281,7 +286,7 @@ const formatRow = (
   const tail = [row.note]
   if (releaseAge !== undefined)
     tail.push(`released ${formatAgeDays(releaseAge)} ago`)
-  const note = tail.filter(Boolean).join(' · ')
+  const note = tail.filter(Boolean).join(NOTE_SEPARATOR)
   return `  ${name}${where}  ${current} ${gray('→')} ${to}${note ? `  ${gray(note)}` : ''}`.trimEnd()
 }
 
