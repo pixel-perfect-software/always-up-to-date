@@ -69,6 +69,7 @@ managers/
 ### Package Detection (`src/detectPackageManager.ts`)
 
 `detectPackageManager(root, pm?, { from, cwd }?)`, first source that answers (`root` is the workspace root that lists the run's directory, `locate()` in `src/projectLocation.ts`; `from` the member's directory: the declaration is the nearest package.json from it up to `root` that declares a manager, so a member without one uses the root's; lockfiles are always `root`'s; messages name declaring files relative to `cwd`, the command's directory, and the searched directory when it is not `cwd`):
+
 1. `pm`: the `--pm` option
 2. package.json `packageManager` (`pnpm@12.14.0+sha512.…`): the name before the first `@`
 3. package.json `devEngines.packageManager`: one `{ name }` or an array of them. Of the supported names, the one with a lockfile present, else the first
@@ -101,6 +102,7 @@ The member map (`readWorkspaceManifests`) expands the patterns with `readdirSync
 ### Native discovery (`src/discovery.ts`, npm, pnpm, yarn v1, bun)
 
 No subprocess: `check`, and `update`'s discovery, read the manifests, `node_modules` and `RegistrySession.lookup`. The same rules for every manager:
+
 - **Declared:** `dependencies`, `devDependencies`, `optionalDependencies` of the root and each member (`readDeclaredDependencies`). A name only in `peerDependencies` is not discovered (npm and bun's `outdated` listed it; pnpm's and yarn v1's did not). A manifest that can't be read is a `discover` `StepError`
 - **Specs:** `classifySpec` resolves `catalog:` through `Workspace.catalogs`; skips `workspace:`, git, file, link, URL and github specs (debug line); looks an `npm:name@range` alias up by its target and keys the row by the manifest key, and a bare `npm:name` as the `latest` of that name (npm reads it so); follows `latest`; warns and skips any other dist-tag and an unknown catalog entry
 - **Installed:** `readInstalledPackages` reads `node_modules`. A symlink or junction to a directory inside the project (a link) is skipped without a lookup, and so is any dependency named like a workspace member, whatever is installed (pnpm's injected workspace packages are real copies; an `npm:` alias to a registry package of that name is still looked up). A dependency not installed is a `current: 'missing'` row; a missing optional one is skipped. With a registry dependency declared and no `node_modules` in the root or in any manifest that declares one (pnpm with `sharedWorkspaceLockfile: false` installs per member), discovery fails telling the user to run `<pm> install`. An adapter whose `installedFromLockfile(root)` returns a reader replaces both: the pipeline passes it as `readInstalled` with `requireNodeModules: false`, and logs which lockfile at debug level. npm's (#107) answers when the root has `package-lock.json` and no `node_modules` (`readLockedPackages`: `<member>/node_modules/<key>`, then `node_modules/<key>`, `link: true` as linked); with node_modules, node_modules decides
@@ -133,6 +135,7 @@ A fallback moves below the version the manager picks when asked by name, so `app
 ### Yarn berry (`src/managers/yarn/berry.ts`)
 
 Berry has no `outdated` (`yarn outdated` runs a script of that name). Since #107 it is discovered natively, and `check` runs no `yarn` command. Verified on yarn 4.12.0 and 4.18.1 with PnP and with `nodeLinker: node-modules`.
+
 - Installed versions (`readBerryLock`, the adapter's `installedFromLockfile`, PnP or not): each workspace's entry `<name>@workspace:<path>` lists the descriptor yarn resolved for every key it declares, devDependencies included (`ms: "npm:~2.1.1"`, an alias's `m: "npm:ms@^2.0.0"`). The entry whose comma-separated key list holds `<key>@<descriptor>` gives `version`. A `workspace:` descriptor is a member, so it is linked and never looked up. A builtin patch is keyed apart (`resolve@patch:resolve@npm%3A^1.22.0#optional!builtin<compat/resolve>`) and locks the same version, so the workspace's own `npm:` descriptor is read. The file is read with `parseYarnrcYml` (the lockfile is YAML)
 - Registries: `.yarnrc.yml` through `berryRegistryConfig` (`src/utils/CLAUDE.md`), never `.npmrc`
 - `wanted`: the shared rule without the `latest` preference (`prefersLatestInRange: false`). 4.18.1 resolves a range to its highest non-deprecated version that `npmMinimalAgeGate` (default `1d`) lets through, and fails when the gate drops every satisfying version. autd applies the same gate to every lookup (`releaseAgeGate`, #166; see `src/utils/CLAUDE.md`), so `wanted`, `latest` and cooldown fallbacks are versions berry installs
@@ -143,6 +146,7 @@ Berry has no `outdated` (`yarn outdated` runs a script of that name). Since #107
 ### Integration matrix (`__tests__/integration/`, `testRepos/`)
 
 `pnpm run test:integration` runs the built CLI against every manager on temp copies of `testRepos/<manager>-<layout>`: each range installed at its minimum, ranges restored, the lockfile rewritten to agree. It asserts autd's own output (never the manager's) against values derived from the ranges. Manager behavior it has observed and asserts, as per-manager overrides in `expectations.ts`:
+
 - pnpm, in a workspace or with catalogs, dedupes the root's `ms` (`~2.1.1`) onto 2.1.2, which a member pins: `pnpm update -r ms` writes `~2.1.2`, and autd reports the row `not applied by pnpm (installed 2.1.2)`
 - pnpm and bun raise range floors on `update`; npm, yarn v1 and berry leave package.json alone (see the apply notes above)
 - bun 1.4.0 raises floors in package.json but leaves `catalog`/`catalogs` ranges as written; pnpm 12 raises its catalog ranges too

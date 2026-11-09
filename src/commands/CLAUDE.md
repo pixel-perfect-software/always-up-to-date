@@ -70,6 +70,7 @@ With `--json`, stdout carries exactly one versioned JSON document (#201): a plan
 ### Failures
 
 `check` and `update` wrap their whole action and hand any error to `reportFailure(error, { json, command })` (`reportFailure.ts`), which sets `process.exitCode = 1` and reports once:
+
 - human mode: `Failed during <step>: <message>`, plus a warning when `package.json` was already rewritten
 - `--json`: the error document `{ version: 1, autd, command, error: { step, message, manifestWritten } }` on stdout, never `rows: []`; `step` is `null` outside a step (a malformed config)
 
