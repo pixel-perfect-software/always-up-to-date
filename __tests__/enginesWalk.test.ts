@@ -7,9 +7,10 @@ jest.mock('@/utils/engines', () => ({
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { check, plan } from '@/pipeline'
+import { findOutdated, plan } from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import { isolateNpmConfig } from './fixtures'
+import { reasonFor } from './fixtures/reasons'
 import {
   derive,
   type Reply,
@@ -116,7 +117,7 @@ describe('npm engines walk-back, end to end (#200)', () => {
 
   it('plans 5.0.4 with four manifest requests, and none from a second session on the same cache', async () => {
     const first = open()
-    const outdated = await check(first, { report: false })
+    const outdated = await findOutdated(first)
 
     const [result] = await plan(first, outdated)
 
@@ -125,7 +126,9 @@ describe('npm engines walk-back, end to end (#200)', () => {
       updated: true,
       target: '5.0.4',
       wanted: '5.1.6',
-      reason: 'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+      reason: reasonFor(
+        'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+      ),
     })
     expect(manifestRequests().sort()).toEqual([
       '/typescript/5.0.4',
@@ -137,28 +140,28 @@ describe('npm engines walk-back, end to end (#200)', () => {
     first.registry.close()
     server.requests.splice(0)
     const second = open()
-    const [again] = await plan(second, await check(second, { report: false }))
+    const [again] = await plan(second, await findOutdated(second))
     expect(again.target).toBe('5.0.4')
     expect(manifestRequests()).toEqual([])
   })
 
   it('plans the engines hold at wanted for pnpm, which installs the highest version', async () => {
     const project = open('pnpm')
-    const outdated = await check(project, { report: false })
+    const outdated = await findOutdated(project)
 
     const [result] = await plan(project, outdated)
 
     expect(result).toMatchObject({
       updated: false,
-      reason: 'engines: needs node >=14.17 (running node 12.22.12)',
+      reason: reasonFor('engines: needs node >=14.17 (running node 12.22.12)'),
     })
     expect(manifestRequests()).toEqual(['/typescript/5.1.6'])
   })
 
-  it('check --json sends no manifest request, and wanted stays discovery’s', async () => {
+  it('discovery sends no manifest request, and wanted stays its own', async () => {
     const project = open()
 
-    const outdated = await check(project, { report: false })
+    const outdated = await findOutdated(project)
 
     expect(outdated.typescript).toMatchObject({
       current: '5.0.2',

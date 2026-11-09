@@ -1,5 +1,5 @@
 import semver from 'semver'
-import type { UpdateResult } from '@/types'
+import type { ReasonCode, UpdateResult } from '@/types'
 
 /** What happened to one candidate, or will. */
 export type Outcome =
@@ -32,25 +32,34 @@ const ORDER: Outcome[] = [
   'other',
 ]
 
-/** Untargeted rows (`autd update a b`) are left out of the report. */
-export const outcomeOf = (result: UpdateResult): Outcome | undefined => {
-  if (result.updated) return 'update'
-  const reason = result.reason ?? ''
-  if (reason === 'not targeted') return undefined
-  if (reason.startsWith('not applied by ')) return 'not-applied'
-  if (reason.startsWith('cooldown:')) return 'cooldown'
-  if (reason.endsWith(' beyond the range')) return 'range'
-  if (reason === 'held by rule' || reason.endsWith('(rule followRange)')) {
-    return 'rule'
-  }
-  if (reason.startsWith('controlled by ')) return 'override'
-  if (reason.startsWith('peer conflict: ')) return 'peer'
-  if (reason.startsWith('deprecated: ')) return 'deprecated'
-  if (reason.startsWith('license change: ')) return 'license'
-  if (reason.startsWith('engines: ')) return 'engines'
-  if (reason.startsWith('held with ')) return 'together'
-  return 'other'
+/** The report section of each reason code; a new code must get one here. */
+export const SECTION_OF: Record<ReasonCode, Outcome | undefined> = {
+  'within-range': 'update',
+  'past-range': 'update',
+  'rule-latest': 'update',
+  'cooldown-fallback': 'update',
+  'engines-fallback': 'update',
+  'invalid-version': 'other',
+  'not-installed': 'other',
+  'not-newer': 'other',
+  'rule-hold': 'rule',
+  'rule-follow-range': 'rule',
+  'outside-range': 'range',
+  override: 'override',
+  'peer-conflict': 'peer',
+  'target-peers': 'peer',
+  cooldown: 'cooldown',
+  deprecated: 'deprecated',
+  'license-change': 'license',
+  engines: 'engines',
+  'held-with': 'together',
+  'not-applied': 'not-applied',
+  'not-targeted': undefined,
 }
+
+/** Untargeted rows (`autd update a b`) are left out of the report. */
+export const outcomeOf = (result: UpdateResult): Outcome | undefined =>
+  result.updated ? 'update' : SECTION_OF[result.reason.code]
 
 /** One line of the report: a package and every manifest that shares its move and reason. */
 export interface ReportRow {
@@ -79,7 +88,7 @@ const noteFor = (
   outcome: Outcome,
   result: UpdateResult,
 ): string | undefined => {
-  const reason = result.reason ?? ''
+  const reason = result.reason.message
   switch (outcome) {
     case 'update': {
       const { target = '', wanted } = result
@@ -91,14 +100,14 @@ const noteFor = (
       const notes = [
         within ? 'within range' : 'past its range',
         // A cooldown fallback (#147) names the newer version it held.
-        reason.startsWith('cooldown: ')
+        result.reason.code === 'cooldown-fallback'
           ? reason.replace(/^cooldown: /, '').replace(/requires /, 'needs ')
           : undefined,
         // npm's engines preference (#200): the version the target needed Node for.
-        reason.startsWith('engines: ')
+        result.reason.code === 'engines-fallback'
           ? reason.replace(/^engines: /, '')
           : undefined,
-        result.warning,
+        ...(result.warnings ?? []).map((w) => w.message),
       ]
       return notes.filter(Boolean).join('; ')
     }
@@ -109,7 +118,9 @@ const noteFor = (
       return `${step}; "beyondRange": "${step}" would move it`
     }
     case 'rule':
-      return reason === 'held by rule' ? 'rule "hold"' : 'rule "followRange"'
+      return result.reason.code === 'rule-hold'
+        ? 'rule "hold"'
+        : 'rule "followRange"'
     case 'deprecated':
       return reason.replace(/^deprecated: /, '')
     case 'license':

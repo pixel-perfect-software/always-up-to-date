@@ -103,9 +103,11 @@ export const formatDifference = (seconds: number): string => {
 
 /**
  * How many rows `autd update --dry-run --json` plans to move: the ones with
- * `updated: true`. The cooldown rows only measure something when this is above
- * zero, because a row with no target never reaches the gate. An `{ error }`
- * document (autd's failure output) throws with autd's message.
+ * `outcome: "update"` in the version 1 document (#201). The cooldown rows only
+ * measure something when this is above zero, because a row with no target never
+ * reaches the gate. An error document throws with autd's message. A bare array
+ * is the 3.x output (`updated: true`), still counted so `AUTD_BENCH_CLI` can
+ * time a build from before 4.0.
  */
 export const movingRows = (text: string): number => {
   let parsed: unknown
@@ -117,6 +119,11 @@ export const movingRows = (text: string): number => {
 
   if (Array.isArray(parsed)) {
     return parsed.filter((row) => isRecord(row) && row.updated === true).length
+  }
+  if (isRecord(parsed) && Array.isArray(parsed.rows)) {
+    return parsed.rows.filter(
+      (row) => isRecord(row) && row.outcome === 'update',
+    ).length
   }
   const failure = isRecord(parsed) ? parsed.error : undefined
   if (isRecord(failure) && typeof failure.message === 'string') {

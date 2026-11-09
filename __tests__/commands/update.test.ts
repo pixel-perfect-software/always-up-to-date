@@ -31,6 +31,8 @@ import { findOutdated, plan, refuseMemberApply, update } from '@/pipeline'
 import { openProject } from '@/project'
 import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
+import { validateOutput } from '../fixtures/outputSchema'
+import { reasonFor } from '../fixtures/reasons'
 
 const mockDetectPackageManager = jest.mocked(detectPackageManager)
 const mockPlan = jest.mocked(plan)
@@ -125,6 +127,7 @@ describe('update command', () => {
         latest: '18.0.1',
         updateType: 'patch',
         updated: true,
+        reason: reasonFor('within range'),
       },
     ])
 
@@ -141,8 +144,10 @@ describe('update command', () => {
         current: '18.0.0',
         wanted: '18.0.0',
         latest: '18.0.1',
+        target: '18.0.1',
         updateType: 'patch' as const,
         updated: true,
+        reason: reasonFor('within range'),
       },
     ]
     mockCheckPackageVersions.mockResolvedValue({
@@ -158,7 +163,14 @@ describe('update command', () => {
     const consoleSpy = jest.spyOn(console, 'log').mockImplementation()
     await program.parseAsync(['node', 'test', 'update', '--dry-run', '--json'])
 
-    expect(consoleSpy).toHaveBeenCalledWith(JSON.stringify(results, null, 2))
+    const document = JSON.parse(String(consoleSpy.mock.calls[0][0]))
+    validateOutput(document)
+    expect(document).toMatchObject({
+      version: 1,
+      command: 'update',
+      phase: 'plan',
+      rows: [{ name: 'react', target: '18.0.1', outcome: 'update' }],
+    })
     consoleSpy.mockRestore()
   })
 
@@ -169,8 +181,10 @@ describe('update command', () => {
         current: '18.0.0',
         wanted: '18.0.0',
         latest: '18.0.1',
+        target: '18.0.1',
         updateType: 'patch' as const,
         updated: true,
+        reason: reasonFor('within range'),
       },
     ]
     mockUpdatePackages.mockResolvedValue(results)
@@ -178,7 +192,14 @@ describe('update command', () => {
     const consoleSpy = jest.spyOn(console, 'log').mockImplementation()
     await program.parseAsync(['node', 'test', 'update', '--json'])
 
-    expect(consoleSpy).toHaveBeenCalledWith(JSON.stringify(results, null, 2))
+    const document = JSON.parse(String(consoleSpy.mock.calls[0][0]))
+    validateOutput(document)
+    expect(document).toMatchObject({
+      version: 1,
+      command: 'update',
+      phase: 'applied',
+      rows: [{ name: 'react', outcome: 'update' }],
+    })
     consoleSpy.mockRestore()
   })
 
@@ -215,6 +236,7 @@ describe('update command', () => {
         latest: '18.0.1',
         updateType: 'patch',
         updated: true,
+        reason: reasonFor('within range'),
       },
       {
         name: 'lodash',
@@ -223,6 +245,7 @@ describe('update command', () => {
         latest: '4.17.21',
         updateType: 'patch',
         updated: true,
+        reason: reasonFor('within range'),
       },
     ])
     mockCheckbox.mockResolvedValue(['react'])
@@ -250,7 +273,7 @@ describe('update command', () => {
       target: updated ? '1.0.1' : undefined,
       updateType: 'patch' as const,
       updated,
-      reason: updated ? undefined : 'held',
+      reason: updated ? reasonFor('within range') : reasonFor('held by rule'),
     })
 
     it('interactive mode offers one choice per package, listing its manifests', async () => {

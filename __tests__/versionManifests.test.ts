@@ -3,7 +3,7 @@ jest.mock('@/utils/logger')
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { check, plan } from '@/pipeline'
+import { check, findOutdated, plan } from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import { isolateNpmConfig } from './fixtures'
 import {
@@ -102,10 +102,10 @@ describe('version manifests in the plan (#196)', () => {
   const manifestRequests = () =>
     server.requests.map((r) => r.url).filter(isManifestUrl)
 
-  it('sends none for check --json, which never plans', async () => {
+  it('sends none for discovery alone, which never plans', async () => {
     const project = open({ beyondRange: 'major' })
 
-    const outdated = await check(project, { report: false })
+    const outdated = await findOutdated(project)
 
     expect(Object.keys(outdated).sort()).toEqual(['@types/ms', 'ms'])
     expect(manifestRequests()).toEqual([])
@@ -122,7 +122,7 @@ describe('version manifests in the plan (#196)', () => {
 
   it('sends one per moving target, none for a second plan, and none from a new session on the same cache', async () => {
     const first = open({ beyondRange: 'major' })
-    const outdated = await check(first, { report: false })
+    const outdated = await findOutdated(first)
 
     const results = await plan(first, outdated)
     expect(
@@ -140,7 +140,7 @@ describe('version manifests in the plan (#196)', () => {
     server.requests.splice(0)
 
     const second = open({ beyondRange: 'major' })
-    await plan(second, await check(second, { report: false }))
+    await plan(second, await findOutdated(second))
     expect(manifestRequests()).toEqual([])
     expect(
       fs.readdirSync(path.join(at('cache'), 'v1', 'manifest')),
@@ -167,7 +167,7 @@ describe('version manifests in the plan (#196)', () => {
     )
     write(at('.npmrc'), `registry=${server.url}\n`)
     const first = open({ beyondRange: 'major' })
-    const outdated = await check(first, { report: false })
+    const outdated = await findOutdated(first)
 
     const results = await plan(first, outdated)
     await plan(first, outdated)
@@ -180,7 +180,7 @@ describe('version manifests in the plan (#196)', () => {
     server.requests.splice(0)
 
     const second = open({ beyondRange: 'major' })
-    await plan(second, await check(second, { report: false }))
+    await plan(second, await findOutdated(second))
     expect(manifestRequests()).toEqual([])
   })
 
@@ -191,7 +191,7 @@ describe('version manifests in the plan (#196)', () => {
     )
     const project = open({ beyondRange: 'major' })
 
-    await plan(project, await check(project, { report: false }))
+    await plan(project, await findOutdated(project))
 
     const sent = server.requests.find((r) => r.url === '/@types%2fms/2.1.0')
     expect(sent?.headers.authorization).toBe('Bearer TOK')

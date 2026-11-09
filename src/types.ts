@@ -1,5 +1,6 @@
 import type { ReleaseType } from 'semver'
 import type { supportedManagers } from './managers/names'
+import type { REASON_CODES } from './utils/reasons'
 
 export type SupportedPackageManager = (typeof supportedManagers)[number]
 
@@ -37,6 +38,14 @@ export interface OutdatedEntry {
   workspace: string
 }
 
+export type ReasonCode = (typeof REASON_CODES)[number]
+
+/** A reason as a machine reads it (`code`) and a person does (`message`). */
+export interface Reason {
+  code: ReasonCode
+  message: string
+}
+
 export interface UpdateResult {
   name: string
   /** Workspace projects only: the manifest this row belongs to. Absent in single-package projects. */
@@ -48,9 +57,10 @@ export interface UpdateResult {
   target?: string
   updateType: ReleaseType | null
   updated: boolean
-  reason?: string
+  /** Why the row moves or is held: a stable code and the text the report builds on. */
+  reason: Reason
   /** Set when an update goes ahead despite a problem (a `latest` rule over a peer conflict). */
-  warning?: string
+  warnings?: Reason[]
   releaseAge?: number
 }
 

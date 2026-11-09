@@ -5,9 +5,12 @@ import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
-import { check, plan, update } from '@/pipeline'
+import { findOutdated, plan, update } from '@/pipeline'
 import type { AlwaysUpToDateConfig } from '@/types'
+import { planDocument } from '@/utils/jsonDocument'
+import packageJson from '../package.json'
 import { capturedRegistry, installPackages, projectFor } from './fixtures'
+import { validateOutput } from './fixtures/outputSchema'
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils', () => ({
@@ -41,6 +44,7 @@ const json = (value: unknown): string => JSON.stringify(value, null, 2)
 
 type Operation = 'check' | 'plan' | 'update'
 
+/** `plan` is `update --dry-run --json`. */
 const run = async (
   adapter: typeof npm,
   config: Partial<AlwaysUpToDateConfig>,
@@ -59,11 +63,21 @@ const run = async (
       installPackages(dir, '.', beyondRange),
     )
     const project = projectFor({ ...adapter, apply }, cwd, config, registry)
-    if (operation === 'check') return json(await check(project))
-    if (operation === 'plan') {
-      return json(await plan(project, await check(project)))
-    }
-    return json(await update(project))
+    // check --json plans, as the action does: findOutdated, then plan.
+    const results =
+      operation === 'update'
+        ? await update(project)
+        : await plan(project, await findOutdated(project))
+    const document = planDocument({
+      command: operation === 'check' ? 'check' : 'update',
+      phase: operation === 'update' ? 'applied' : 'plan',
+      manager: adapter.name,
+      results,
+    })
+    validateOutput(document)
+    // The release PR bumps the version; the snapshot must not move with it.
+    expect(document.autd).toBe(packageJson.version)
+    return json({ ...document, autd: '<package version>' })
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true })
   }
@@ -89,6 +103,8 @@ const ADAPTERS = [
  * `outdated` output through, so the input is the registry captures as of the
  * date the snapshot was taken, plus a written node_modules, and all four
  * managers print the same bytes.
+ *
+ * #201 reviewed it once: 4.0.0's versioned document.
  */
 describe.each(ADAPTERS)('$pm single-package JSON', ({ adapter }) => {
   describe.each(CONFIGS)('$label', ({ config }) => {
@@ -105,7 +121,17 @@ describe.each(CONFIGS)('single-package JSON, $label', ({ config }) => {
       const printed = await Promise.all(
         ADAPTERS.map(({ adapter }) => run(adapter, config, operation)),
       )
-      for (const output of printed) expect(output).toBe(printed[0])
+      // Only `manager` differs; the rows are the same bytes.
+      const rows = printed.map((output) => json(JSON.parse(output).rows))
+      for (const output of rows) expect(output).toBe(rows[0])
     },
   )
+})
+
+describe.each(CONFIGS)('check and update --dry-run, $label', ({ config }) => {
+  it('print the same rows', async () => {
+    const rowsOf = async (operation: Operation) =>
+      JSON.parse(await run(npm, config, operation)).rows
+    expect(await rowsOf('check')).toEqual(await rowsOf('plan'))
+  })
 })

@@ -64,7 +64,7 @@ What happens to each kind of spec:
 - 🛡️ **Holds what would break.** A package your package manager pins with an override is left alone, and so is an update an installed package's peer range would reject. Each one is reported with the reason.
 - ⏳ **Waits out fresh releases.** `cooldown` skips versions published more recently than a number of days, a duration like `"1 week"`, or a limit per update type.
 - ✍️ **Keeps package.json yours.** Decorators, `npm:` aliases and compound ranges keep their shape, and the file keeps its indentation, line endings and final newline.
-- 🤖 **Fits in CI.** `--json` prints nothing but JSON, and a failed step exits 1 with its name.
+- 🤖 **Fits in CI.** `--json` prints one versioned JSON document with a schema, and a failed step exits 1 with its name.
 
 ## 📋 Requirements
 
@@ -90,19 +90,101 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 
 ## ⌨️ Commands
 
-| Command                                                   | Description                                                                            |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `autd check`                                              | List outdated dependencies                                                             |
-| `autd check --json`                                       | The same, as JSON                                                                      |
-| `autd update`                                             | Update every eligible dependency                                                       |
-| `autd update [packages...]`                               | Update only the named packages                                                         |
-| `autd update --dry-run`                                   | Show where each package would move, or why it's held, without changing anything        |
-| `autd update -i, --interactive`                           | Pick the packages to update from a checklist                                           |
-| `autd update --json`                                      | Print the update results as JSON (combines with `--dry-run`, not with `--interactive`) |
-| `autd check --no-cache`, `autd update --no-cache`         | Ask the registries instead of using autd's cache (see [Cache](#-cache))                |
-| `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager                    |
-| `autd init`                                               | Create `.always-up-to-date.json` in the nearest package.json's directory               |
-| `autd help`                                               | Show help                                                                              |
+| Command                                                   | Description                                                                                                 |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `autd check`                                              | List outdated dependencies                                                                                  |
+| `autd check --json`                                       | The same rows `update --dry-run` plans, as a versioned JSON document (see [JSON output](#-json-output))     |
+| `autd update`                                             | Update every eligible dependency                                                                            |
+| `autd update [packages...]`                               | Update only the named packages                                                                              |
+| `autd update --dry-run`                                   | Show where each package would move, or why it's held, without changing anything                             |
+| `autd update -i, --interactive`                           | Pick the packages to update from a checklist                                                                |
+| `autd update --json`                                      | Print the update results as a versioned JSON document (combines with `--dry-run`, not with `--interactive`) |
+| `autd check --no-cache`, `autd update --no-cache`         | Ask the registries instead of using autd's cache (see [Cache](#-cache))                                     |
+| `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager                                         |
+| `autd init`                                               | Create `.always-up-to-date.json` in the nearest package.json's directory                                    |
+| `autd help`                                               | Show help                                                                                                   |
+
+## 🧾 JSON output
+
+`check --json`, `update --dry-run --json` and `update --json` print one JSON document on stdout and nothing else; progress, warnings and debug lines go to stderr. `check --json` plans the way `update --dry-run --json` does, so both print the same `rows`. [`schema/output.schema.json`](schema/output.schema.json) (JSON Schema draft-07) describes every document.
+
+```json
+{
+  "version": 1,
+  "autd": "4.0.0",
+  "command": "check",
+  "phase": "plan",
+  "manager": "npm",
+  "member": null,
+  "rows": [
+    {
+      "name": "ms",
+      "workspace": ".",
+      "current": "2.0.0",
+      "wanted": "2.1.3",
+      "latest": "2.1.3",
+      "target": "2.1.3",
+      "updateType": "minor",
+      "outcome": "update",
+      "reason": { "code": "within-range", "message": "within range" },
+      "warnings": [],
+      "releaseAgeDays": null
+    }
+  ]
+}
+```
+
+| Field                   | Meaning                                                                                                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `version`               | The format's version, `1`                                                                                               |
+| `autd`                  | The version of autd that printed it                                                                                     |
+| `command`               | `check` or `update`                                                                                                     |
+| `phase`                 | `plan` for `check` and `update --dry-run`; `applied` for `update`, also when nothing moved                              |
+| `manager`               | The package manager the run used                                                                                        |
+| `member`                | The workspace member the run started from, or `null`                                                                    |
+| `rows[].name`           | The package name as the manifest names it                                                                               |
+| `rows[].workspace`      | The manifest's directory relative to the project root; `.` for the root and for a single package                        |
+| `rows[].current`        | The installed version, or `null` when it isn't installed                                                                |
+| `rows[].wanted`         | The highest version the range allows                                                                                    |
+| `rows[].latest`         | The registry's latest version                                                                                           |
+| `rows[].target`         | The version the row moves to, or `null` when it is held                                                                 |
+| `rows[].updateType`     | The semver step (`major`, `minor`, `patch`, a `pre` variant, `prerelease`), or `null`                                   |
+| `rows[].outcome`        | What happens to the row, below                                                                                          |
+| `rows[].reason`         | `{ code, message }`: why the row moves or is held, on every row. `message` is the text the report shows; don't parse it |
+| `rows[].warnings`       | `[{ code, message }]`: problems the row moved despite, such as a `"latest"` rule over a peer conflict. Always an array  |
+| `rows[].releaseAgeDays` | The age in days of the release the cooldown judged, or `null` when nothing judged the row                               |
+
+The four outcomes:
+
+| `outcome`      | Meaning                                                                        |
+| -------------- | ------------------------------------------------------------------------------ |
+| `update`       | The row moves (in a plan) or moved (after `update`)                            |
+| `held`         | The plan leaves it where it is; `reason` says why                              |
+| `not-applied`  | `update` asked the manager to move it and the manager left it below its target |
+| `not-targeted` | `update <packages>` named other packages                                       |
+
+The `reason.code` values:
+
+| Outcome                       | Codes                                                                                                                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `update`                      | `within-range`, `past-range` (a `beyondRange` level moved it past the range), `rule-latest`, `cooldown-fallback` (an older version, because the newest is too fresh), `engines-fallback` (npm's newest version its Node runs) |
+| `held`                        | `invalid-version`, `not-installed`, `not-newer`, `rule-hold`, `rule-follow-range`, `outside-range`, `override`, `peer-conflict`, `target-peers`, `cooldown`, `deprecated`, `license-change`, `engines`, `held-with`           |
+| `not-applied`, `not-targeted` | the code of the same name                                                                                                                                                                                                     |
+
+Within version 1, 4.x releases may add fields and reason codes without changing `version`. Branch on `outcome`, and treat a code you don't know like its outcome. A change that removes or renames a field, or changes what one means, bumps `version`.
+
+A failed command prints an error document and exits 1:
+
+```json
+{
+  "version": 1,
+  "autd": "4.0.0",
+  "command": "update",
+  "error": { "step": "apply", "message": "…", "manifestWritten": true }
+}
+```
+
+`step` is `detect`, `discover` or `apply`, or `null` for a failure outside a step, such as a malformed config. `manifestWritten` is `true` when a package.json was already rewritten when the manager failed.
 
 ## ⚙️ Configuration
 
@@ -171,11 +253,11 @@ autd uses the first of these that names a manager: the `--pm` option, the `packa
 | yarn (v1 and 2+) | `yarn.lock`         | the `workspaces` field in package.json                           |
 | bun              | `bun.lock`          | the `workspaces` field in package.json, including catalogs       |
 
-In a workspace, autd plans each package once per manifest that declares it, and `update --json` has one row per package and manifest, each with a `workspace` (`.` is the root). A package that moves past its range is rewritten in the manifest that declares it; if that spec is a `catalog:` reference, the catalog entry is rewritten instead. A package that can move in one manifest but is held in another (a cooldown, a peer conflict, an override) is held everywhere, with the reason `held with <path> (…)`, so the manifests don't drift apart.
+In a workspace, autd plans each package once per manifest that declares it, and `--json` has one row per package and manifest, each with a `workspace` (`.` is the root, also in a single-package project). A package that moves past its range is rewritten in the manifest that declares it; if that spec is a `catalog:` reference, the catalog entry is rewritten instead. A package that can move in one manifest but is held in another (a cooldown, a peer conflict, an override) is held everywhere, with the reason `held with <path> (…)`, so the manifests don't drift apart.
 
 ### Running from a workspace member
 
-Run `check` or `update --dry-run` from a member's directory (or any directory inside it) and autd covers that member's manifest only. It finds the workspace root that lists the member and detects the manager from the root's lockfile and the root's `packageManager`, unless the member declares its own, and `check --json` lists only that member's packages. The config is the member's own `.always-up-to-date.json` if it has one, else the workspace root's; the two are not merged. A pnpm directory with its own `pnpm-workspace.yaml`, or one no workspace lists, is a project of its own. Yarn 2+ refuses a directory its root doesn't list, and so does autd.
+Run `check` or `update --dry-run` from a member's directory (or any directory inside it) and autd covers that member's manifest only. It finds the workspace root that lists the member and detects the manager from the root's lockfile and the root's `packageManager`, unless the member declares its own, and `check --json` lists only that member's rows, with `member` naming the directory. The config is the member's own `.always-up-to-date.json` if it has one, else the workspace root's; the two are not merged. A pnpm directory with its own `pnpm-workspace.yaml`, or one no workspace lists, is a project of its own. Yarn 2+ refuses a directory its root doesn't list, and so does autd.
 
 `update` is refused from a member. Every manager writes one lockfile for all workspaces and can move other workspaces' copies of a package, so an update is never limited to one member. Run `autd update` in the workspace root; `autd update --dry-run` in the member previews that member's updates.
 
@@ -195,11 +277,30 @@ It holds derived version lists only, never a registry document, a header or anyt
 
 ## 🩺 Troubleshooting
 
-- **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)`, `peer conflict: …`, `deprecated: …` or `license change: MIT → AGPL-3.0-or-later`. After `autd update`, a package your manager was asked to move but left where it was is listed under "left in place by …" and reported with `"updated": false` and `not applied by npm (installed …)`. npm does this to a package another dependency pins exactly, and to a workspace member's copy it dedupes onto the root's. In a workspace, `held with <path> (…)` means the same package is held in that manifest, so its other manifests wait for it.
+- **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)`, `peer conflict: …`, `deprecated: …` or `license change: MIT → AGPL-3.0-or-later`. After `autd update`, a package your manager was asked to move but left where it was is listed under "left in place by …" and reported with `"outcome": "not-applied"` and `not applied by npm (installed …)`. npm does this to a package another dependency pins exactly, and to a workspace member's copy it dedupes onto the root's. In a workspace, `held with <path> (…)` means the same package is held in that manifest, so its other manifests wait for it.
 - **`check` or `update` exits 1.** The message names the step that failed (`detect`, `discover` or `apply`) and says whether package.json was already written. Set `"debug": true` to see each package-manager command and its stderr.
 - **"No package manager detected".** package.json declares no manager and there's no lockfile in the current directory (from a workspace member: no package.json from the member's up to the workspace root's declares one, and the workspace root has no lockfile). Set `"packageManager"`, pass `--pm`, or run your package manager's install first.
 - **`cooldown` holds a package with `release date unknown`.** autd couldn't read that version's publish time from the registry. It reads `.npmrc` the way npm does: registries and scoped registries, per-registry auth, `ca` / `cafile` / `strict-ssl`, `https-proxy` / `proxy` / `noproxy`, `fetch-retries`, `fetch-timeout` and `maxsockets`. SOCKS proxies aren't supported. Set `"debug": true` to see the request that failed.
 - **The wrong package manager runs.** A leftover lockfile decided it. Set `"packageManager"` in package.json or pass `--pm`; with `"debug": true`, autd logs which lockfiles it ignored.
+
+## 🔄 Upgrading from 3.x
+
+4.0 versions the `--json` output and gives every command the same document. If a script reads it, update it:
+
+| 3.x                                                                    | 4.0                                                                                              |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `check --json` printed an object keyed by package name                 | A document with `rows`, the rows `update --dry-run --json` prints; `check --json` now plans      |
+| `update --json` and `--dry-run --json` printed an array of rows        | A document with `rows`, `version`, `autd`, `command`, `phase`, `manager` and `member`            |
+| `--dry-run --json` printed `[]` when nothing was outdated              | The document with `"rows": []`                                                                   |
+| `"updated": true` / `false`                                            | `"outcome"`: `update`, `held`, `not-applied` or `not-targeted`                                   |
+| `"reason": "…"`, absent on a moving row                                | `"reason": { "code", "message" }` on every row; `message` is the old text                        |
+| `"warning": "…"`                                                       | `"warnings": [{ "code", "message" }]`, always an array                                           |
+| `target` absent on a held row                                          | `"target": null`                                                                                 |
+| `workspace` absent in a single-package project                         | `"workspace": "."`                                                                               |
+| `"current": "missing"`                                                 | `"current": null`                                                                                |
+| `releaseAge`                                                           | `releaseAgeDays`, `null` when nothing judged the row                                             |
+| `workspaces: [{ path, current, wanted }]` in the `check --json` record | One row per manifest, each with its `workspace`                                                  |
+| `{ "error": { "step", "message", "manifestWritten" } }`                | The same inside a document with `version`, `autd` and `command`; `step` is `null` outside a step |
 
 ## 🔄 Upgrading from 1.x
 

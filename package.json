@@ -70,6 +70,7 @@
     "@types/jest": "catalog:",
     "@types/node": "catalog:",
     "@types/semver": "catalog:",
+    "ajv": "catalog:",
     "colorette": "catalog:",
     "commander": "catalog:",
     "esbuild": "catalog:",

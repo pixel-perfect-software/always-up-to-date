@@ -7,6 +7,7 @@ import type {
   ManifestPlan,
   PackageInfo,
   PinnedRow,
+  Reason,
   UpdateResult,
   VersionManifest,
 } from '@/types'
@@ -105,24 +106,21 @@ const stepType = (from: string, to: string): ReleaseType | null =>
   semver.valid(from) && semver.valid(to) ? semver.diff(from, to) : null
 
 /**
- * A moving row's warnings, one after another; the same one is never added
- * twice. A message can hold `; ` itself (a registry's deprecation text), so
- * it is matched whole, between separators, not split.
+ * A moving row's warnings, one after another; the same one (code and
+ * message) is never added twice.
  */
 export const withWarning = (
   result: UpdateResult,
-  message: string,
+  warning: Reason,
 ): UpdateResult =>
-  result.warning !== undefined &&
-  `; ${result.warning}; `.includes(`; ${message}; `)
+  result.warnings?.some(
+    (w) => w.code === warning.code && w.message === warning.message,
+  )
     ? result
-    : {
-        ...result,
-        warning: result.warning ? `${result.warning}; ${message}` : message,
-      }
+    : { ...result, warnings: [...(result.warnings ?? []), warning] }
 
 /** A moving row held for `reason`: no target, and its step is `current → latest`. */
-const heldFor = (result: UpdateResult, reason: string): UpdateResult => ({
+const heldFor = (result: UpdateResult, reason: Reason): UpdateResult => ({
   ...result,
   target: undefined,
   updated: false,
@@ -159,11 +157,14 @@ const holdPeerConflicts = (
       )
       if (!conflict) return result
 
-      const message = `peer conflict: ${conflict.name}@${conflict.version} needs ${name} ${conflict.range}`
-      if (policy.ruleFor(name) === 'latest') return withWarning(result, message)
+      const reason: Reason = {
+        code: 'peer-conflict',
+        message: `peer conflict: ${conflict.name}@${conflict.version} needs ${name} ${conflict.range}`,
+      }
+      if (policy.ruleFor(name) === 'latest') return withWarning(result, reason)
 
       changed = true
-      return heldFor(result, message)
+      return heldFor(result, reason)
     })
 
     if (!changed) return current
@@ -196,7 +197,7 @@ const targetPeerConflict = (
   rows: readonly UpdateResult[],
   { manifests, installed, lookupName }: TargetPeers,
   noted: Set<string>,
-): string | undefined => {
+): Reason | undefined => {
   const { target } = row
   if (!row.updated || !target) return undefined
   const manifest = targetManifestOf(manifests, row, lookupName)
@@ -249,7 +250,10 @@ const targetPeerConflict = (
     }
     if (semver.valid(version) === null) continue
     if (semver.satisfies(version, range, { includePrerelease: true })) continue
-    return `peer conflict: ${name}@${target} needs ${peer} ${range} (${planned?.moving ? 'moving to' : 'installed'} ${version})`
+    return {
+      code: 'target-peers',
+      message: `peer conflict: ${name}@${target} needs ${peer} ${range} (${planned?.moving ? 'moving to' : 'installed'} ${version})`,
+    }
   }
   return undefined
 }
@@ -285,7 +289,10 @@ const holdTogether = (results: UpdateResult[]): UpdateResult[] => {
       target: undefined,
       updated: false,
       updateType: stepType(r.current, r.latest),
-      reason: `held with ${where} (${by.reason})`,
+      reason: {
+        code: 'held-with',
+        message: `held with ${where} (${by.reason.message})`,
+      },
     }
   })
 }
@@ -397,7 +404,10 @@ const holdDeprecated = async (
       if (!deprecation?.deprecated) return result
 
       const message = oneLine(deprecation.deprecatedReason ?? '')
-      const reason = `deprecated: ${message || 'no message given'}`
+      const reason: Reason = {
+        code: 'deprecated',
+        message: `deprecated: ${message || 'no message given'}`,
+      }
       // The installed version carries the same deprecation, so the move takes
       // on nothing new; a different message is a new reason, and holds.
       const installed = versions.find((v) => v.version === current)
@@ -508,12 +518,15 @@ const holdLicenseChanges = async (
         return
       }
       if (sameLicense(current.license, target.license)) return
-      const message = `license change: ${shownLicense(current.license)} → ${shownLicense(target.license)}`
+      const reason: Reason = {
+        code: 'license-change',
+        message: `license change: ${shownLicense(current.license)} → ${shownLicense(target.license)}`,
+      }
       held.set(
         row,
         policy.ruleFor(row.name) === 'latest'
-          ? withWarning(row, message)
-          : heldFor(row, message),
+          ? withWarning(row, reason)
+          : heldFor(row, reason),
       )
     }),
   )
@@ -601,12 +614,13 @@ const enginesPass = ({
             }
             return row
           }
-          const reason = enginesHold(range, {
+          const message = enginesHold(range, {
             ...(declared === undefined ? {} : { declared }),
             running: node,
             ...(nodeLabel === undefined ? {} : { runningLabel: nodeLabel }),
           })
-          if (!reason) return row
+          if (!message) return row
+          const reason: Reason = { code: 'engines', message }
           return policy.ruleFor(row.name) === 'latest'
             ? withWarning(row, reason)
             : heldFor(row, reason)
@@ -668,7 +682,7 @@ const filterPackages = async (
           latest,
           updateType: stepType(current, latest),
           updated: false,
-          reason: 'not targeted',
+          reason: { code: 'not-targeted', message: 'not targeted' },
         }
       }
 
@@ -689,7 +703,10 @@ const filterPackages = async (
           latest,
           updateType: stepType(current, latest),
           updated: false,
-          reason: `controlled by ${override.field} (${override.range})`,
+          reason: {
+            code: 'override',
+            message: `controlled by ${override.field} (${override.range})`,
+          },
         }
       }
 
@@ -866,7 +883,7 @@ const filterPackages = async (
   if (!cooldownActive) return signals(results)
 
   const gated = await Promise.all(
-    results.map(async (result) => {
+    results.map(async (result): Promise<UpdateResult> => {
       if (!result.updated || !result.target) return result
       // A zero-day step is never gated, whatever its release time is.
       if (cooldownDaysFor(config.cooldown, result.updateType) <= 0) {
@@ -912,7 +929,10 @@ const filterPackages = async (
             ...result,
             target: fallback.version,
             updateType: stepType(result.current, fallback.version),
-            reason: `cooldown: ${result.target} ${held}`,
+            reason: {
+              code: 'cooldown-fallback',
+              message: `cooldown: ${result.target} ${held}`,
+            },
             releaseAge: fallback.ageDays,
           }
         }
@@ -920,7 +940,7 @@ const filterPackages = async (
           ...result,
           target: undefined,
           updated: false,
-          reason: `cooldown: ${held}`,
+          reason: { code: 'cooldown', message: `cooldown: ${held}` },
           releaseAge: evaluation.ageDays,
         }
       }

@@ -31,7 +31,10 @@ const update = (program: Command) =>
       'Interactively select which packages to update',
     )
     .addOption(
-      new Option('--json', 'Output results as JSON').conflicts('interactive'),
+      new Option(
+        '--json',
+        'Output a versioned JSON document (schema/output.schema.json)',
+      ).conflicts('interactive'),
     )
     .addOption(pmOption())
     .addOption(noCacheOption())

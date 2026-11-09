@@ -5,7 +5,11 @@ jest.mock('@/detectPackageManager', () => ({
   default: jest.fn().mockReturnValue('npm'),
 }))
 
-jest.mock('@/pipeline', () => ({ check: jest.fn() }))
+jest.mock('@/pipeline', () => ({
+  check: jest.fn(),
+  findOutdated: jest.fn(),
+  plan: jest.fn(),
+}))
 
 jest.mock('@/project', () => {
   const actual = jest.requireActual<typeof import('@/project')>('@/project')
@@ -18,8 +22,11 @@ import checkCommand from '@/commands/check'
 import detectPackageManager from '@/detectPackageManager'
 import npm from '@/managers/npm'
 import yarn from '@/managers/yarn'
-import { check } from '@/pipeline'
+import { check, findOutdated, plan } from '@/pipeline'
 import { openProject } from '@/project'
+import packageJson from '../../package.json'
+import { validateOutput } from '../fixtures/outputSchema'
+import { reasonFor } from '../fixtures/reasons'
 
 const mockCheckPackageVersions = jest.mocked(check)
 
@@ -54,7 +61,6 @@ describe('check command', () => {
     await program.parseAsync(['node', 'test', 'check'])
     expect(mockCheckPackageVersions).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: npm, root: expect.any(String) }),
-      { report: true },
     )
   })
 
@@ -71,7 +77,6 @@ describe('check command', () => {
     )
     expect(mockCheckPackageVersions).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: yarn }),
-      { report: true },
     )
   })
 
@@ -87,21 +92,40 @@ describe('check command', () => {
     expect(mockCheckPackageVersions).not.toHaveBeenCalled()
   })
 
-  it('outputs JSON when --json flag is passed', async () => {
-    const mockData = {
+  it('--json prints the planned rows as a versioned document, not the pipeline check', async () => {
+    const outdated = {
       react: {
         name: 'react',
         current: '18.0.0',
         wanted: '18.0.0',
-        latest: '19.0.0',
+        latest: '18.0.1',
       },
     }
-    mockCheckPackageVersions.mockResolvedValue(mockData)
+    jest.mocked(findOutdated).mockResolvedValue(outdated)
+    jest.mocked(plan).mockResolvedValue([
+      {
+        ...outdated.react,
+        updateType: 'patch',
+        updated: false,
+        reason: reasonFor('patch beyond the range', 'outside-range'),
+      },
+    ])
 
     const consoleSpy = jest.spyOn(console, 'log').mockImplementation()
     await program.parseAsync(['node', 'test', 'check', '--json'])
 
-    expect(consoleSpy).toHaveBeenCalledWith(JSON.stringify(mockData, null, 2))
+    const document = JSON.parse(String(consoleSpy.mock.calls[0][0]))
     consoleSpy.mockRestore()
+    validateOutput(document)
+    expect(document).toMatchObject({
+      version: 1,
+      autd: packageJson.version,
+      command: 'check',
+      phase: 'plan',
+      manager: 'npm',
+      member: null,
+      rows: [{ name: 'react', target: null, outcome: 'held' }],
+    })
+    expect(mockCheckPackageVersions).not.toHaveBeenCalled()
   })
 })

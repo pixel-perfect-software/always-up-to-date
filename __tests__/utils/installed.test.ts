@@ -9,6 +9,7 @@ import {
   readInstalledVersions,
 } from '@/utils/installed'
 import { installCaptured } from '../fixtures'
+import { reasonFor } from '../fixtures/reasons'
 
 describe('readInstalledVersions', () => {
   let cwd: string
@@ -189,6 +190,7 @@ describe('checkApplied', () => {
     target: '2.1.3',
     updateType: 'patch',
     updated: true,
+    reason: reasonFor('within range'),
     ...overrides,
   })
 
@@ -197,7 +199,7 @@ describe('checkApplied', () => {
       row({
         target: undefined,
         updated: false,
-        reason: 'not applied by npm (installed 2.1.1)',
+        reason: reasonFor('not applied by npm (installed 2.1.1)'),
       }),
     ])
   })
@@ -221,7 +223,7 @@ describe('checkApplied', () => {
         current: '0.7.1',
         target: undefined,
         updated: false,
-        reason: 'not applied by npm (installed 2.1.3)',
+        reason: reasonFor('not applied by npm (installed 2.1.3)'),
       }),
     ])
   })
@@ -240,8 +242,8 @@ describe('checkApplied', () => {
         'npm',
       ).map((r) => [r.updated, r.reason]),
     ).toEqual([
-      [false, 'not applied by npm (installed 2.1.3)'],
-      [true, undefined],
+      [false, reasonFor('not applied by npm (installed 2.1.3)')],
+      [true, reasonFor('within range')],
     ])
   })
 
@@ -262,7 +264,7 @@ describe('checkApplied', () => {
         ...walked,
         target: undefined,
         updated: false,
-        reason: 'not applied by npm (installed 5.1.6)',
+        reason: reasonFor('not applied by npm (installed 5.1.6)'),
       },
     ])
   })
@@ -281,14 +283,14 @@ describe('checkApplied', () => {
     const held = row({
       updated: false,
       target: undefined,
-      reason: 'held by config',
+      reason: reasonFor('held by rule'),
     })
     expect(checkApplied([held], { ms: '2.1.1' }, 'npm')).toEqual([held])
   })
 
   it('names the manager in the reason', () => {
-    expect(checkApplied([row()], { ms: '2.1.1' }, 'pnpm')[0].reason).toBe(
-      'not applied by pnpm (installed 2.1.1)',
+    expect(checkApplied([row()], { ms: '2.1.1' }, 'pnpm')[0].reason).toEqual(
+      reasonFor('not applied by pnpm (installed 2.1.1)'),
     )
   })
 })
@@ -303,6 +305,7 @@ describe('checkApplied in a workspace project', () => {
     target: '2.1.3',
     updateType: 'patch',
     updated: true,
+    reason: reasonFor('within range'),
   })
 
   it('judges each manifest against its own installed version', () => {
@@ -315,7 +318,7 @@ describe('checkApplied in a workspace project', () => {
     expect(root).toMatchObject({
       workspace: '.',
       updated: false,
-      reason: 'not applied by npm (installed 2.1.1)',
+      reason: reasonFor('not applied by npm (installed 2.1.1)'),
     })
     expect(member.updated).toBe(true)
   })

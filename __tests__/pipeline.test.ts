@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import npm from '@/managers/npm'
-import { check, plan, update } from '@/pipeline'
+import { check, findOutdated, plan, update } from '@/pipeline'
 import type { VersionManifest } from '@/types'
 import {
   capturedManifest,
@@ -27,6 +27,7 @@ jest.mock('@/utils', () => ({
 import { runProcess } from '@/utils'
 import { loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
+import { reasonFor } from './fixtures/reasons'
 
 // Keep the developer's own npm configuration out of every case.
 let npmConfigDir: string
@@ -206,12 +207,16 @@ describe('pipeline', () => {
         expect.objectContaining({
           name: 'l',
           updated: false,
-          reason: 'deprecated: Bad release. Please use lodash@4.17.21 instead.',
+          reason: reasonFor(
+            'deprecated: Bad release. Please use lodash@4.17.21 instead.',
+          ),
         }),
         expect.objectContaining({
           name: 'lodash',
           updated: false,
-          reason: 'deprecated: Bad release. Please use lodash@4.17.21 instead.',
+          reason: reasonFor(
+            'deprecated: Bad release. Please use lodash@4.17.21 instead.',
+          ),
         }),
       ])
       // Discovery's lookups only: the plan asked for nothing.
@@ -248,10 +253,7 @@ describe('pipeline', () => {
         },
       )
 
-      const results = await plan(
-        project,
-        await check(project, { report: false }),
-      )
+      const results = await plan(project, await findOutdated(project))
 
       expect(results).toEqual([
         expect.objectContaining({
@@ -324,8 +326,10 @@ describe('pipeline', () => {
         expect.objectContaining({
           name: 'react-redux',
           updated: false,
-          reason:
+          reason: reasonFor(
             'peer conflict: react-redux@9.2.0 needs react ^18.0 || ^19 (installed 17.0.2)',
+            'target-peers',
+          ),
         }),
       ])
     })
@@ -363,7 +367,7 @@ describe('pipeline', () => {
       expect(results.find((r) => r.name === 'ms')).toMatchObject({
         updated: false,
         target: undefined,
-        reason: 'not applied by npm (installed 2.1.1)',
+        reason: reasonFor('not applied by npm (installed 2.1.1)'),
       })
       expect(results.find((r) => r.name === 'debug')).toMatchObject({
         updated: true,
@@ -415,26 +419,31 @@ describe('pipeline', () => {
           name: 'dayjs',
           workspace: '.',
           updated: false,
-          reason: 'patch beyond the range',
+          reason: reasonFor('patch beyond the range'),
         },
         {
           name: 'dayjs',
           workspace: 'packages/b',
           updated: false,
-          reason: 'not applied by npm (installed 1.11.9)',
+          reason: reasonFor('not applied by npm (installed 1.11.9)'),
         },
         {
           name: 'debug',
           workspace: 'packages/b',
           updated: true,
-          reason: undefined,
+          reason: reasonFor('within range'),
         },
-        { name: 'ms', workspace: '.', updated: true, reason: undefined },
+        {
+          name: 'ms',
+          workspace: '.',
+          updated: true,
+          reason: reasonFor('within range'),
+        },
         {
           name: 'ms',
           workspace: 'packages/a',
           updated: false,
-          reason: 'patch beyond the range',
+          reason: reasonFor('patch beyond the range'),
         },
       ])
     })

@@ -10,6 +10,7 @@ import {
   capturedPackage,
   capturedRegistry,
 } from '../fixtures'
+import { reasonFor } from '../fixtures/reasons'
 import { derive } from '../fixtures/registry'
 
 const mockDebug = jest.fn()
@@ -39,6 +40,7 @@ const row = (overrides: Partial<UpdateResult> = {}): UpdateResult => ({
   target: '5.1.6',
   updateType: 'minor',
   updated: true,
+  reason: reasonFor('within range'),
   ...overrides,
 })
 
@@ -104,7 +106,10 @@ describe('fitRunningNode (#200)', () => {
       updateType: 'patch',
       updated: true,
       wanted: '5.1.6',
-      reason: 'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+      reason: reasonFor(
+        'engines: 5.1.6 needs node >=14.17 (running node 12.22.12)',
+        'engines-fallback',
+      ),
     })
     expect(manifests.get('typescript@5.0.4')).toEqual(manifestOf('5.0.4'))
     expect(mockDebug).toHaveBeenCalledWith(
@@ -172,7 +177,7 @@ describe('fitRunningNode (#200)', () => {
     const held = row({
       updated: false,
       target: undefined,
-      reason: 'held by rule',
+      reason: reasonFor('held by rule'),
     })
     const { rows, reads } = await walk({ rows: [held] })
 
