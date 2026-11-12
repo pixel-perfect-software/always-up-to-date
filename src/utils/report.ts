@@ -70,7 +70,7 @@ export interface ReportRow {
   /** Manifest paths ('.' is the root), sorted; empty in a single-package project. */
   workspaces: string[]
   current: string
-  /** Where it moves (or would): the target, else `latest`. */
+  /** Where it moves (or would): the target, else the version a hold judged, else `latest`. */
   to: string
   /** The step from `current` to `to`, which colors `to`; null when unknown. */
   level: UpdateResult['updateType']
@@ -220,7 +220,9 @@ export const groupResults = (
   for (const result of results) {
     const outcome = outcomeOf(result)
     if (!outcome) continue
-    const to = result.target ?? result.latest
+    // A hold that judged a version shows it, with its step (#221).
+    const judged = result.target === undefined ? result.judged : undefined
+    const to = result.target ?? judged ?? result.latest
     const note = noteFor(outcome, result, phase)
     const key = [result.name, result.current, to, note].join('\0')
     let rows = sections.get(outcome)
@@ -237,7 +239,12 @@ export const groupResults = (
         workspaces: result.workspace === undefined ? [] : [result.workspace],
         current: result.current,
         to,
-        level: result.updateType,
+        level:
+          judged !== undefined &&
+          semver.valid(result.current) &&
+          semver.valid(judged)
+            ? semver.diff(result.current, judged)
+            : result.updateType,
         note,
       })
     }
