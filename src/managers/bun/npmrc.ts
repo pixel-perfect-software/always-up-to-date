@@ -1,11 +1,10 @@
 import fs from 'fs'
 import path from 'path'
-
+import { nonEmpty } from '@/utils/npmrc'
 import {
   findNpmProjectRoot,
   type NpmrcLayer,
   type NpmrcSources,
-  nonEmpty,
   npmrcFileLayer,
 } from '@/utils/npmrcLoader'
 

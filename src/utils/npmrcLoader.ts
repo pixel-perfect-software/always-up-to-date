@@ -317,16 +317,3 @@ export const managerRegistryConfig = (
   const gate = adapter.releaseAgeGate?.(dir, sources, npmrc)
   return gate ? { ...config, releaseAgeGate: gate } : config
 }
-
-// The value readers and the registry config built from a view, for the
-// modules that import them from here.
-export { nonEmpty, npmrcBoolean } from './npmrc'
-export {
-  DEFAULT_REGISTRY,
-  type EmptyRegistryPolicy,
-  layerOrigin,
-  registryConfigFrom,
-  registryProblem,
-  unusableEntry,
-  withUnusable,
-} from './registryConfig'

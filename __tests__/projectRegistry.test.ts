@@ -3,7 +3,7 @@ jest.mock('@/utils/logger')
 import fs from 'fs'
 import path from 'path'
 import { openProject, type Project } from '@/project'
-import { registryFor } from '@/utils/registryRequest'
+import { registryFor } from '@/utils/registryUrls'
 import { tempDir, write } from './fixtures/files'
 import { startRegistry, type TestRegistry } from './fixtures/registry'
 

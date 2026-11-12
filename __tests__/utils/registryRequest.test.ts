@@ -1,33 +1,37 @@
 import type { BerryAuth, RegistryCredentials, YarnV1Auth } from '@/types'
 import {
-  ABBREVIATED_ACCEPT,
   authorizationFor,
   berryAuthorizationFor,
   credentialPrefixes,
   credentialsFor,
+  YARN_V1_REGISTRY,
+  yarnV1AuthorizationFor,
+  yarnV1RegistryKeys,
+} from '@/utils/registryAuth'
+import {
+  isRetryableError,
+  isRetryableStatus,
+  parseCacheControl,
+  RETRY_AFTER_MAX_MS,
+  RETRY_MAX_MS,
+  retryDelay,
+  throttledNotice,
+} from '@/utils/registryRequest'
+import {
+  ABBREVIATED_ACCEPT,
   DEFAULT_ENDPOINTS,
   decodeUri,
   depsDevUrl,
   describeUrl,
   distTagsUrl,
   isPublicNpmRegistry,
-  isRetryableError,
-  isRetryableStatus,
   isValidPackageName,
   nerfDart,
   packumentUrl,
-  parseCacheControl,
   pathMarker,
-  RETRY_AFTER_MAX_MS,
-  RETRY_MAX_MS,
   registryFor,
-  retryDelay,
-  throttledNotice,
   versionManifestUrl,
-  YARN_V1_REGISTRY,
-  yarnV1AuthorizationFor,
-  yarnV1RegistryKeys,
-} from '@/utils/registryRequest'
+} from '@/utils/registryUrls'
 import { registryConfig as config } from '../fixtures/files'
 
 describe('packumentUrl', () => {

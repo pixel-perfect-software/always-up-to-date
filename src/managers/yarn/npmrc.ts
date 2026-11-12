@@ -2,12 +2,12 @@ import path from 'path'
 import type { YarnV1Auth } from '@/types'
 import { ancestorFiles } from '@/utils/ancestors'
 import type { Npmrc, Substitute } from '@/utils/npmrc'
+import { nonEmpty } from '@/utils/npmrc'
 import {
   type EnvRule,
   execPrefix,
   type NpmrcLayer,
   type NpmrcSources,
-  nonEmpty,
   npmrcFileLayer,
 } from '@/utils/npmrcLoader'
 

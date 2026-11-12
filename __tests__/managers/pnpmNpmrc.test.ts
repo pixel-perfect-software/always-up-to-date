@@ -4,17 +4,10 @@ import fs from 'fs'
 import path from 'path'
 import { pnpmConfigDir, pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
 import type { RegistryConfig } from '@/types'
-import {
-  mergeNpmrcLayers,
-  type NpmrcSources,
-  registryConfigFrom,
-} from '@/utils/npmrcLoader'
-import {
-  authorizationFor,
-  credentialsFor,
-  packumentUrl,
-  registryFor,
-} from '@/utils/registryRequest'
+import { mergeNpmrcLayers, type NpmrcSources } from '@/utils/npmrcLoader'
+import { authorizationFor, credentialsFor } from '@/utils/registryAuth'
+import { registryConfigFrom } from '@/utils/registryConfig'
+import { packumentUrl, registryFor } from '@/utils/registryUrls'
 import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 // Each decision below was probed on pnpm 12.15.0 and 12.14.0, 2026-10-26; the

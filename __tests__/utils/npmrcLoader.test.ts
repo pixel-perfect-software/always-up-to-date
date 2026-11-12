@@ -1,10 +1,7 @@
 import fs from 'fs'
 import path from 'path'
-import {
-  loadNpmrc,
-  loadRegistryConfig,
-  npmrcBoolean,
-} from '@/utils/npmrcLoader'
+import { npmrcBoolean } from '@/utils/npmrc'
+import { loadNpmrc, loadRegistryConfig } from '@/utils/npmrcLoader'
 import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 describe('npmrc loader', () => {

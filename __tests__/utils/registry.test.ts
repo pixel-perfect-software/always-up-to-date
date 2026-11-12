@@ -12,7 +12,7 @@ import { createRegistrySession, type RegistrySession } from '@/utils/registry'
 import { createRegistryCache } from '@/utils/registryCache'
 import type { RegistryClient } from '@/utils/registryClient'
 import { type ParsedPackument, parsePackument } from '@/utils/registryDocuments'
-import { ABBREVIATED_ACCEPT } from '@/utils/registryRequest'
+import { ABBREVIATED_ACCEPT } from '@/utils/registryUrls'
 import { withReleaseAgeGate } from '@/utils/releaseAgeGate'
 import { localRegistryConfig as configFor, tempDir } from '../fixtures/files'
 import {

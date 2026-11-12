@@ -7,20 +7,19 @@ import type {
   UnusableRegistry,
 } from '@/types'
 import logger from '@/utils/logger'
+import { nonEmpty } from '@/utils/npmrc'
+import { findNpmProjectRoot, type NpmrcSources } from '@/utils/npmrcLoader'
 import {
-  findNpmProjectRoot,
-  type NpmrcSources,
-  nonEmpty,
   registryProblem,
   unusableEntry,
   withUnusable,
-} from '@/utils/npmrcLoader'
+} from '@/utils/registryConfig'
 import {
   DEFAULT_ENDPOINTS,
   decodeUri,
   isPublicNpmRegistry,
   nerfDart,
-} from '@/utils/registryRequest'
+} from '@/utils/registryUrls'
 import { exemptionOf } from '@/utils/releaseAgeGate'
 import { readTextFile } from '@/utils/saveStyle'
 

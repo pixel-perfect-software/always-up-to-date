@@ -1,5 +1,5 @@
 import type { RegistryPackage, UpdateResult, VersionManifest } from '@/types'
-import { ENGINES_WALK_LIMIT, fitRunningNode } from '@/utils/nodeFit'
+import { ENGINES_WALK_LIMIT, fitRunningNode } from '@/utils/plan/nodeFit'
 import {
   parseDepsDevPackage,
   parseVersionManifest,

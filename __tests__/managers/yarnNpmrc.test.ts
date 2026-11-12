@@ -6,13 +6,10 @@ import yarn from '@/managers/yarn'
 import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import type { RegistryConfig } from '@/types'
-import { mergeNpmrcLayers, registryConfigFrom } from '@/utils/npmrcLoader'
-import {
-  authorizationFor,
-  credentialsFor,
-  packumentUrl,
-  registryFor,
-} from '@/utils/registryRequest'
+import { mergeNpmrcLayers } from '@/utils/npmrcLoader'
+import { authorizationFor, credentialsFor } from '@/utils/registryAuth'
+import { registryConfigFrom } from '@/utils/registryConfig'
+import { packumentUrl, registryFor } from '@/utils/registryUrls'
 import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 // Each decision below was probed on yarn 1.22.22, 2026-10-26; the ids (y20,
