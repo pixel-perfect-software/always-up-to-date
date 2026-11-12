@@ -8,6 +8,8 @@ jest.mock('@/utils/registry', () => ({
   createRegistrySession: jest.fn(),
 }))
 
+import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import detectPackageManager from '@/detectPackageManager'
 import bun from '@/managers/bun'
@@ -19,8 +21,10 @@ import logger from '@/utils/logger'
 import { createRegistrySession } from '@/utils/registry'
 import { fakeRegistry } from './fixtures'
 
-// openProject resolves its directory: `D:\project` on Windows.
-const cwd = path.resolve('/project')
+// openProject needs a package.json at or above its directory.
+const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-project-'))
+fs.writeFileSync(path.join(cwd, 'package.json'), '{"name":"project"}')
+afterAll(() => fs.rmSync(cwd, { recursive: true, force: true }))
 
 const registryDefaults: RegistryConfig = {
   registry: 'https://registry.npmjs.org/',
@@ -273,5 +277,21 @@ describe('openProject', () => {
     expect(() => openProject(cwd)).toThrow('Failed to load JSON config')
     expect(logger.configure).not.toHaveBeenCalled()
     expect(detectPackageManager).not.toHaveBeenCalled()
+  })
+
+  it('fails with no package.json in the directory or any parent, before detection (#222)', () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-empty-'))
+    try {
+      expect(() => openProject(empty)).toThrow(
+        `No package.json in ${empty} or any parent directory`,
+      )
+      expect(detectPackageManager).not.toHaveBeenCalled()
+      // --pm does not skip the check.
+      expect(() => openProject(empty, { pm: 'npm' })).toThrow(
+        /No package.json in/,
+      )
+    } finally {
+      fs.rmSync(empty, { recursive: true, force: true })
+    }
   })
 })

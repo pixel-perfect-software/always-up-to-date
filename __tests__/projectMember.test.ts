@@ -115,7 +115,8 @@ describe('openProject from a workspace member', () => {
     expect(() => refuseMemberApply(openProject(at('packages', 'a')))).toThrow(
       expect.objectContaining({
         step: 'apply',
-        message: expect.stringContaining(`run autd update in ${tmp}`),
+        message: `autd update runs from the workspace root (it rewrites the shared lockfile): run it in ${tmp}, or preview this member with autd update --dry-run`,
+        refusal: true,
       }),
     )
     expect(() => refuseMemberApply(openProject(tmp))).not.toThrow()

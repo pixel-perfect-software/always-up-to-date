@@ -332,7 +332,7 @@ export const runMemberMatrix = (manager: Manager): void => {
             expect(output).toMatchObject({ version: 1, command: 'update' })
             expect(output.error.step).toBe('apply')
             expect(output.error.manifestWritten).toBe(false)
-            expect(output.error.message).toContain(`run autd update in ${cwd}`)
+            expect(output.error.message).toContain(`run it in ${cwd}`)
             expect(snapshotFiles(cwd)).toEqual(before)
           },
         )

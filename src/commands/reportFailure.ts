@@ -30,10 +30,12 @@ const reportFailure = (
     return
   }
 
-  logger.error(step ? `Failed during ${step}: ${message}` : message)
+  const refusal = error instanceof StepError && error.refusal
+  logger.error(step && !refusal ? `Failed during ${step}: ${message}` : message)
   if (manifestWritten) {
     logger.warn(
       'package.json was already rewritten when the package manager failed. Check it against the lockfile (git diff) before committing.',
+      { always: true },
     )
   }
 }
