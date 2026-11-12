@@ -10,12 +10,13 @@ import type { PackageInfo } from '@/types'
 import { projectFor } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils', () => ({
-  ...jest.requireActual('@/utils'),
+jest.mock('@/utils/runProcess', () => ({
+  ...jest.requireActual('@/utils/runProcess'),
   runProcess: jest.fn(),
 }))
 
-import { logger, runProcess } from '@/utils'
+import logger from '@/utils/logger'
+import { runProcess } from '@/utils/runProcess'
 
 const mockedRunProcess = jest.mocked(runProcess)
 

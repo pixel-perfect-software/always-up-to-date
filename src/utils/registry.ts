@@ -73,7 +73,7 @@ export interface RegistrySession {
   close(): void
 }
 
-export interface RegistrySessionOptions {
+interface RegistrySessionOptions {
   /** Ask deps.dev about public npm names; default true (the config default). */
   depsDev?: boolean
   /** Test seam; default `loadRegistryConfig`. */

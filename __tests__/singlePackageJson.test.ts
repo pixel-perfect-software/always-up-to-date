@@ -13,8 +13,8 @@ import { capturedRegistry, installPackages, projectFor } from './fixtures'
 import { validateOutput } from './fixtures/outputSchema'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils', () => ({
-  ...jest.requireActual('@/utils'),
+jest.mock('@/utils/runProcess', () => ({
+  ...jest.requireActual('@/utils/runProcess'),
   runProcess: jest.fn(),
 }))
 

@@ -8,7 +8,7 @@ import { exemptionOf } from '@/utils/releaseAgeGate'
 import { parseYaml, type YamlNode } from '@/utils/yaml'
 
 /** `minimumReleaseAge`'s default in pnpm 12: one day, in minutes. */
-export const PNPM_DEFAULT_RELEASE_AGE = 1440
+const PNPM_DEFAULT_RELEASE_AGE = 1440
 
 const readYaml = (file: string): Record<string, YamlNode> => {
   try {

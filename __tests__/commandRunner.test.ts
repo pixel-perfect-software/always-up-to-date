@@ -1,16 +1,20 @@
 import CommandRunner from '@/commandRunner'
 import { exitError } from './fixtures'
 
-jest.mock('@/utils', () => ({
+jest.mock('@/utils/runProcess', () => ({
   runProcess: jest.fn(),
-  logger: {
+}))
+jest.mock('@/utils/logger', () => ({
+  __esModule: true,
+  default: {
     command: jest.fn(),
     debug: jest.fn(),
     error: jest.fn(),
   },
 }))
 
-import { logger, runProcess } from '@/utils'
+import logger from '@/utils/logger'
+import { runProcess } from '@/utils/runProcess'
 
 const mockedRunProcess = jest.mocked(runProcess)
 

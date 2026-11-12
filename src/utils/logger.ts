@@ -21,9 +21,7 @@ export const pluralize = (
 ): string => `${count} ${count === 1 ? singular : (plural ?? `${singular}s`)}`
 
 /** The config fields the logger reads. */
-export type LoggerConfig = Partial<
-  Pick<AlwaysUpToDateConfig, 'debug' | 'silent'>
->
+type LoggerConfig = Partial<Pick<AlwaysUpToDateConfig, 'debug' | 'silent'>>
 
 /** Each section's heading and its summary wording, and the heading's color. */
 const SECTIONS: Record<

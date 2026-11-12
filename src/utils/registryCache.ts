@@ -9,8 +9,8 @@ import { type NpmrcSources, nonEmpty } from './npmrcLoader'
 import type { ParsedPackument } from './registryDocuments'
 import { parseCacheControl, revalidatesEveryUse } from './registryRequest'
 
-export const CACHE_FOLDER = 'ca.pixel-perfect.alwaysuptodate'
-export const DEFAULT_MAX_BYTES = 32 * 1024 * 1024
+const CACHE_FOLDER = 'ca.pixel-perfect.alwaysuptodate'
+const DEFAULT_MAX_BYTES = 32 * 1024 * 1024
 
 export const TTL_SECONDS = {
   'dist-tags': 300,

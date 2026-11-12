@@ -21,13 +21,11 @@ Documentation registry and index for the Always Up To Date project. This file ma
 
 ### Tier 2 (Component-Level)
 
-| Component        | Path                        | Description                                                      |
-| ---------------- | --------------------------- | ---------------------------------------------------------------- |
-| Package Managers | `src/managers/CLAUDE.md`    | Manager abstraction, CommandRunner, detection, workspace support |
-| CLI Commands     | `src/commands/CLAUDE.md`    | Commander.js setup, command registration, binary aliases         |
-| Utilities        | `src/utils/CLAUDE.md`       | Config system, update logic, logging, file ops, package grouping |
-| Migrator         | `src/migrator/CLAUDE.md`    | Framework migration rules (stub)                                 |
-| PR Generator     | `src/prGenerator/CLAUDE.md` | Automated PR creation (stub)                                     |
+| Component        | Path                     | Description                                                      |
+| ---------------- | ------------------------ | ---------------------------------------------------------------- |
+| Package Managers | `src/managers/CLAUDE.md` | Manager abstraction, CommandRunner, detection, workspace support |
+| CLI Commands     | `src/commands/CLAUDE.md` | Commander.js setup, command registration, binary aliases         |
+| Utilities        | `src/utils/CLAUDE.md`    | Config system, update logic, logging, file ops, package grouping |
 
 ### Tier 3 (Feature-Specific)
 
@@ -53,10 +51,6 @@ src/
   managers/                 # One adapter per package manager (adapter.ts interface, index.ts registry, names.ts the manager names with no adapter import)
     CLAUDE.md
   utils/                    # Shared utilities
-    CLAUDE.md
-  migrator/                 # Framework migration (stub)
-    CLAUDE.md
-  prGenerator/              # PR automation (stub)
     CLAUDE.md
 scripts/
   build.mts                 # pnpm run build: empties dist/, bundles src/index.ts with esbuild into dist/index.js, fails on a warning, runs the checks in guards.ts, writes dist/third-party-licenses.txt; removes dist/ when a check fails (#109)
@@ -97,7 +91,7 @@ __tests__/
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, the JSON error document
     registryPathToken.test.ts # A token in a registry URL path never reaches a message: the client's errors, a fake npm's stderr, debug lines and the --json error object (#131)
   detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging; from a member, the root's declaration and lockfile, the member's own first, files named from the cwd (#123)
-  startup.test.ts           # Loading the CLI loads none of the tracked modules: no action, pipeline, project, manager, utils barrel, logger, config, semver, colorette or @inquirer/prompts, and never the registry client, reader or cache (#109; the build's startup check covers every bundled input)
+  startup.test.ts           # Loading the CLI loads none of the tracked modules: no action, pipeline, project, manager, logger, config, semver, colorette or @inquirer/prompts, and never the registry client, reader or cache (#109; the build's startup check covers every bundled input)
   fixtures/
     registry.ts, tls/       # Local registry/proxy servers (replies() for exact url tables, registryBody() which gunzips a .body.gz, derive()); test-only TLS material (generate.sh)
     registry/               # Verbatim curl captures (.body; .body.gz over 100 KB decoded) of dist-tags, deps.dev and packuments: ms, @types/ms, mkdirp, then yarn, pnpm, dayjs, debug, express, semver, zod, axios, lodash, next, qs, typescript for #106 (packuments only for yarn and pnpm); `<name>.<version>.manifest.body`, ten captures of one version's own document for #196 (async, minimatch, mkdirp, ms, @types/ms, react-redux, and a nonexistent ms version); README.md lists status, type, wire and decoded size and the checks; per-version manifests for #196-#197: ua-parser-js 1.0.39 (MIT) and 2.0.0 (AGPL-3.0-or-later), ms 2.1.1, pako 2.1.0 ((MIT AND Zlib)), and for #199 commander 14.0.0 (engines >=20) and eslint 9.0.0 (^18.18.0 || ^20.9.0 || >=21.1.0), listed in the README's "Licenses" section

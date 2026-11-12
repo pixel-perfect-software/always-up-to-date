@@ -33,15 +33,11 @@ updateCommand(program)
 /**
  * Run the CLI program.
  * This function parses the command line arguments
- * and executes the appropriate command.
+ * and executes the appropriate command. A failure propagates to `main`
+ * (`src/index.ts`), which prints it once.
  */
 const run = async (): Promise<void> => {
-  try {
-    await program.parseAsync()
-  } catch (error) {
-    console.error('An error occurred while running the CLI:', error)
-    throw error
-  }
+  await program.parseAsync()
 }
 
 export default run

@@ -445,15 +445,6 @@ const timeoutFrom = (value: unknown): number => {
 
 export const DEFAULT_REGISTRY = 'https://registry.npmjs.org/'
 
-export const isRegistryUrl = (value: string): boolean => {
-  try {
-    const { protocol } = new URL(value)
-    return protocol === 'https:' || protocol === 'http:'
-  } catch {
-    return false
-  }
-}
-
 /** Why a manager cannot use `value` as a registry, or undefined when it can. */
 export const registryProblem = (value: string): string | undefined => {
   if (value.trim() === '') return 'it is empty'
@@ -521,7 +512,7 @@ export interface EmptyRegistryPolicy {
   scopes: boolean
 }
 
-export const NPM_EMPTY_REGISTRY: EmptyRegistryPolicy = {
+const NPM_EMPTY_REGISTRY: EmptyRegistryPolicy = {
   registry: true,
   scopes: false,
 }

@@ -30,10 +30,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 
 ### Local Development
 
-- `pnpm run init` - Initialize config in the current directory
-- `pnpm run check-deps` - Check for outdated dependencies
-- `pnpm run update-deps` - Update dependencies
-- After building, the CLI can be tested locally with: `node dist/index.js <command>`
+- `pnpm run autd <command>` - Run the built CLI (`node dist/index.js <command>`) in the current directory, e.g. `pnpm run autd init`, `pnpm run autd check`; build first
 
 ### Releasing
 
@@ -111,7 +108,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 
 - Entry point: `src/index.ts` → `src/cli.ts`
 - Uses Commander.js for command parsing
-- Startup (#109): `autd --version` initializes only commander, the command definitions and the manager names; any other command adds what its action loads (`help`, the logger). A command is a definition (`src/commands/<name>.ts`: commander, `./options`, `@/managers/names` and types, nothing else) and an action (`src/commands/actions/<name>.ts`) that the definition loads with `await import('./actions/<name>')` when the command runs; actions import leaf modules (`@/utils/logger`, `@/utils/config`), never the `@/utils` barrel, and read `process.cwd()` inside the action function. `src/managers/names.ts` holds `supportedManagers` so `--pm`'s choices need no adapter; `SupportedPackageManager` (`src/types.ts`) is derived from it, and `adapters.test.ts` keeps it equal to `adapters`' keys in order. In a bundle the saving is all lazy loading: esbuild initializes a module on first use only when it is reached through `import()` alone, so a static import from the definition path makes it eager. Two guards fail on that: `__tests__/startup.test.ts` (each of the pipeline, project, managers, utils barrel, logger, config, actions, semver, colorette and `@inquirer/prompts` is a Jest mock that records its load, and none loads with the CLI) and the build's startup check (`STARTUP_SOURCES` and `STARTUP_PACKAGES` in `scripts/guards.ts`, which `scripts/build.mts` runs: it walks the esbuild metafile from `src/index.ts` and `src/cli.ts` along `import` and `require` edges and throws the chain, e.g. `src/cli.ts → src/commands/options.ts → src/pipeline.ts`). Fix a failure by moving the import into the action; do not widen the lists (a new command's definition file is the one addition to `STARTUP_SOURCES`). The Jest guard tracks only the modules it mocks; the build's walk covers every input. Measured 2026-11-05 (Node 24.22.1, macOS arm64, `hyperfine -N`): `--version` 8 ms over bare `node -e 0`, where the tsc build was 37 ms over
+- Startup (#109): `autd --version` initializes only commander, the command definitions and the manager names; any other command adds what its action loads (`help`, the logger). A command is a definition (`src/commands/<name>.ts`: commander, `./options`, `@/managers/names` and types, nothing else) and an action (`src/commands/actions/<name>.ts`) that the definition loads with `await import('./actions/<name>')` when the command runs; actions import leaf modules (`@/utils/logger`, `@/utils/config`), and read `process.cwd()` inside the action function. `src/managers/names.ts` holds `supportedManagers` so `--pm`'s choices need no adapter; `SupportedPackageManager` (`src/types.ts`) is derived from it, and `adapters.test.ts` keeps it equal to `adapters`' keys in order. In a bundle the saving is all lazy loading: esbuild initializes a module on first use only when it is reached through `import()` alone, so a static import from the definition path makes it eager. Two guards fail on that: `__tests__/startup.test.ts` (each of the pipeline, project, managers, logger, config, actions, semver, colorette and `@inquirer/prompts` is a Jest mock that records its load, and none loads with the CLI) and the build's startup check (`STARTUP_SOURCES` and `STARTUP_PACKAGES` in `scripts/guards.ts`, which `scripts/build.mts` runs: it walks the esbuild metafile from `src/index.ts` and `src/cli.ts` along `import` and `require` edges and throws the chain, e.g. `src/cli.ts → src/commands/options.ts → src/pipeline.ts`). Fix a failure by moving the import into the action; do not widen the lists (a new command's definition file is the one addition to `STARTUP_SOURCES`). The Jest guard tracks only the modules it mocks; the build's walk covers every input. Measured 2026-11-05 (Node 24.22.1, macOS arm64, `hyperfine -N`): `--version` 8 ms over bare `node -e 0`, where the tsc build was 37 ms over
 - Commands registered in `src/commands/`:
   - `init` - Creates `.always-up-to-date.json` in the nearest package.json's directory (the cwd when none), where `check` reads it
   - `check` - Lists outdated dependencies. Supports `--json`: the same versioned document as `update --dry-run --json`
@@ -136,24 +133,11 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 
 - `check`, `update --dry-run`, interactive and `update` print one report (`logger.report(results, manager, phase)`): each planned row once, under its outcome (`groupResults` in `src/utils/report.ts`: would update / updated, left in place, held by cooldown, past the range with the `beyondRange` level that would move it, held by a rule, an override, a peer conflict, as deprecated, for a license change, with another manifest), rows sharing a move and reason across manifests merged, then one summary line. `update` prints it after apply only (`phase: 'applied'`); before apply only `Updating N packages with <pm>`. A workspace of one manifest prints no workspace line or manifest column, and neither does a member run (`logger.memberRun` prints `<pm> workspace member <path> (1 of N manifests)` instead; `logger.report`'s `member` option drops the column). `--json` prints the document above from the same rows; `check --json` plans through `findOutdated` and `plan`, so its rows are the ones the report groups
 
-### Future Components (In Development)
-
-**Migrators** (`src/migrator/`)
-
-- Framework-specific migration rules for major version upgrades
-- Example rules exist for React 18/19 and Next.js 14/15
-- Will provide codemod-like transformations for breaking changes
-
-**PR Generators** (`src/prGenerator/`)
-
-- Automated pull request creation with migration guides
-- Planned GitHub integration via @octokit/rest
-
 ## Path Aliases
 
 TypeScript paths are configured with `@/*` mapping to `src/*`:
 
-- Import as: `import logger from "@/utils/logger"` (in an action, always a leaf module, never the `@/utils` barrel)
+- Import as: `import logger from "@/utils/logger"` (always a leaf module; `src/utils` has no barrel)
 - esbuild resolves them from `tsconfig.json` `paths` when it bundles; Jest and `bench/register.cjs` map them themselves
 
 ## Engine Requirements

@@ -48,7 +48,6 @@ describe('coverage configuration', () => {
     expect(sourceFiles('src').filter(isIgnoredForCoverage).sort()).toEqual([
       'src/commands/index.ts',
       'src/managers/index.ts',
-      'src/utils/index.ts',
     ])
   })
 })
