@@ -363,7 +363,7 @@ Filed 2026-11-06, in pick-up order. #197, #198 and #199 depend on #196.
 
 ## M4.1 issues
 
-Filed 2026-11-12, in pick-up order. The first eleven are the pass itself; the rest follow it.
+Filed 2026-11-12, in pick-up order. The first eleven are the pass itself; the rest follow it. #247 was found while verifying #229.
 
 | Gap or defect                                                                                  | Milestone | Issue |
 | ---------------------------------------------------------------------------------------------- | --------- | ----- |
@@ -386,3 +386,4 @@ Filed 2026-11-12, in pick-up order. The first eleven are the pass itself; the re
 | The installed-peer hold never fires without `node_modules`                                     | M4.1      | #232  |
 | npm's engines walk-back can stop at a version the declared `engines.node` then holds           | M4.1      | #233  |
 | Target manifests are read only after every lookup settles                                      | M4.1      | #234  |
+| An empty `minimumReleaseAge:` turns off autd's copy of pnpm's release-age gate                 | M4.1      | #247  |
