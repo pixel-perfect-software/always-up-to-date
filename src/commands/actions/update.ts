@@ -11,6 +11,7 @@ import logger from '@/utils/logger'
 import { workspaceLabel } from '@/utils/workspaceRows'
 import reportFailure from '../reportFailure'
 import type { UpdateOptions } from '../update'
+import { applyCommand } from './applyCommand'
 
 /** What `autd update` does; `../update.ts` loads it when the command runs. */
 export const updateAction = async (
@@ -30,7 +31,7 @@ export const updateAction = async (
     const targetPackages = packages.length > 0 ? packages : undefined
 
     if (options.dryRun) {
-      await dryRun(project, targetPackages, options.json)
+      await dryRun(project, options, targetPackages)
       return
     }
 
@@ -80,9 +81,10 @@ const refuseInteractive = (packages: string[], options: UpdateOptions) => {
 
 const dryRun = async (
   project: Project,
+  options: UpdateOptions,
   targetPackages?: string[],
-  json?: boolean,
 ) => {
+  const { json } = options
   const outdatedPackages = await findOutdated(project, targetPackages)
 
   const results =
@@ -106,7 +108,7 @@ const dryRun = async (
 
   logger.report(results, project.adapter.name, 'plan', {
     member: project.member?.path,
-    next: ['autd update', ...(targetPackages ?? [])].join(' '),
+    next: applyCommand(options, targetPackages),
   })
 }
 
@@ -119,7 +121,7 @@ const choicesByPackage = (eligible: UpdateResult[]) => {
     else byName.set(result.name, [result])
   }
   const step = (r: UpdateResult) =>
-    `${r.current} → ${r.target} (${r.updateType}${r.target === r.wanted ? '' : ', beyond range'})`
+    `${r.current} → ${r.target} (${r.updateType}${r.target === r.wanted ? '' : ', rewrites its range'})`
 
   // Selecting a package moves every manifest listed, so each shows its own move.
   return [...byName].map(([name, rows]) => ({

@@ -13,14 +13,12 @@ export const initAction = async (): Promise<void> => {
   // Where `check` reads the config: the nearest package.json's directory,
   // so a run from `packages/a/src` writes the file `check` will find.
   const workingDir = nearestManifestDir(process.cwd())
-  logger.info(` Initializing 'always-up-to-date' in ${workingDir}...`)
+  logger.info(`Initializing 'always-up-to-date' in ${workingDir}...`)
 
   const jsonConfigFilePath = path.join(workingDir, '.always-up-to-date.json')
 
   if (checkIfFileExists(jsonConfigFilePath)) {
-    return logger.info(
-      `  Project already initialized with 'always-up-to-date'.`,
-    )
+    return logger.info(`Project already initialized with 'always-up-to-date'.`)
   }
 
   // Create the new JSON configuration file with a $schema reference
@@ -30,7 +28,5 @@ export const initAction = async (): Promise<void> => {
     jsonConfigFilePath,
   )
 
-  return logger.clean(
-    `  ✅ Created configuration file at ${jsonConfigFilePath}`,
-  )
+  return logger.success(`Created configuration file at ${jsonConfigFilePath}`)
 }

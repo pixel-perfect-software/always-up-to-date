@@ -271,7 +271,7 @@ export const loadConfig = (
  * Save configuration to JSON format
  */
 export const saveJsonConfig = (config: ConfigFile, filePath: string): void => {
-  const jsonContent = JSON.stringify(config, null, 2)
+  const jsonContent = `${JSON.stringify(config, null, 2)}\n`
   fs.writeFileSync(filePath, jsonContent, 'utf8')
 }
 

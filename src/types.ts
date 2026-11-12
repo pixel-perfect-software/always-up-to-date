@@ -61,6 +61,11 @@ export interface UpdateResult {
    * does not carry it.
    */
   judged?: string
+  /**
+   * The catalog the manifest's spec points at (`default` for `catalog:`),
+   * where the write lands. Report only: `--json` does not carry it.
+   */
+  catalog?: string
   updateType: ReleaseType | null
   updated: boolean
   /** Why the row moves or is held: a stable code and the text the report builds on. */

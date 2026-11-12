@@ -286,8 +286,8 @@ describe('command failures', () => {
 
       expect(process.exitCode).toBe(1)
       expect(output).toContain(configFailed.message)
-      expect(stderr.filter((line) => line.includes('❌'))).toHaveLength(1)
-      expect(stdout.filter((line) => line.includes('❌'))).toHaveLength(0)
+      expect(stderr.filter((line) => line.includes('error:'))).toHaveLength(1)
+      expect(stdout.filter((line) => line.includes('error:'))).toHaveLength(0)
       expect(pipeline.check).not.toHaveBeenCalled()
       expect(pipeline.update).not.toHaveBeenCalled()
     },

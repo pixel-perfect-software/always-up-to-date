@@ -4,6 +4,7 @@ import { planDocument, printJson } from '@/utils/jsonDocument'
 import logger from '@/utils/logger'
 import type { CheckOptions } from '../check'
 import reportFailure from '../reportFailure'
+import { applyCommand } from './applyCommand'
 
 /** What `autd check` does; `../check.ts` loads it when the command runs. */
 export const checkAction = async (options: CheckOptions): Promise<void> => {
@@ -17,7 +18,7 @@ export const checkAction = async (options: CheckOptions): Promise<void> => {
     })
 
     if (!options.json) {
-      await check(project)
+      await check(project, { next: applyCommand(options) })
       return
     }
 

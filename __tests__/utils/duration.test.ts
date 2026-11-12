@@ -1,6 +1,11 @@
 import fs from 'fs'
 import path from 'path'
-import { formatAgeDays, parseDuration, readDuration } from '@/utils/duration'
+import {
+  formatAge,
+  formatAgeDays,
+  parseDuration,
+  readDuration,
+} from '@/utils/duration'
 
 describe('parseDuration', () => {
   it.each([
@@ -138,5 +143,22 @@ describe('formatAgeDays', () => {
 
   it('handles undefined gracefully', () => {
     expect(formatAgeDays(undefined)).toBe('unknown age')
+  })
+})
+
+describe('formatAge', () => {
+  it('matches formatAgeDays up to a year', () => {
+    expect(formatAge(0.5)).toBe('12h')
+    expect(formatAge(365)).toBe('365d')
+    expect(formatAge(undefined)).toBe('unknown age')
+  })
+
+  it('shows years with one decimal past 365 days', () => {
+    expect(formatAge(366)).toBe('1.0y')
+    expect(formatAge(2775)).toBe('7.6y')
+  })
+
+  it('leaves formatAgeDays in days, since reason messages carry it', () => {
+    expect(formatAgeDays(2775)).toBe('2775d')
   })
 })
