@@ -2188,6 +2188,31 @@ describe("a target's own peers (#198)", () => {
     })
   })
 
+  it('asks for each distinct peer once, however many targets need it', async () => {
+    const installed = jest.fn((_asked: { name: string }[]) => ({
+      react: '18.3.1',
+    }))
+    await plan(
+      [
+        reduxRow,
+        {
+          name: 'redux-twin',
+          current: '8.1.3',
+          wanted: '9.2.0',
+          latest: '9.2.0',
+        },
+      ],
+      {
+        answers: { ...known, 'redux-twin@9.2.0': REDUX_9 },
+        options: { installed },
+      },
+    )
+
+    const asked = installed.mock.calls[0][0].map((peer) => peer.name)
+    expect(asked.sort()).toEqual([...new Set(asked)].sort())
+    expect(asked).toEqual(expect.arrayContaining(['react', 'redux']))
+  })
+
   it("checks a cooldown fallback's own document", async () => {
     const fallback: VersionManifest = {
       ...REDUX_9,

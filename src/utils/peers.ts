@@ -98,9 +98,11 @@ export const readInstalledPeers = (
       peerDependencies?: Record<string, string>
     }
     try {
-      manifest = JSON.parse(
-        fs.readFileSync(path.join(dir, 'package.json'), 'utf8'),
-      )
+      const text = fs.readFileSync(path.join(dir, 'package.json'), 'utf8')
+      // Only a manifest with peers contributes (name and version are used
+      // with them), so one whose text lacks the key needs no parse.
+      if (!text.includes('"peerDependencies"')) continue
+      manifest = JSON.parse(text)
     } catch {
       continue
     }

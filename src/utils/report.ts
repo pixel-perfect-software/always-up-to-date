@@ -87,8 +87,12 @@ export interface ReportSection {
   hint?: string
 }
 
+/** Code-unit order: unlike `localeCompare`, it needs no ICU collator. */
+const byCodeUnit = (a: string, b: string): number =>
+  a < b ? -1 : a > b ? 1 : 0
+
 const byPath = (a: string, b: string) =>
-  a === '.' ? -1 : b === '.' ? 1 : a.localeCompare(b)
+  a === '.' ? -1 : b === '.' ? 1 : byCodeUnit(a, b)
 
 /**
  * `to` split where it starts to differ from `current`, at a `.`: `1.4.0 →
@@ -245,7 +249,7 @@ export const groupResults = (
       .map((row) => ({ ...row, workspaces: row.workspaces.sort(byPath) }))
       .sort(
         (a, b) =>
-          a.name.localeCompare(b.name) ||
+          byCodeUnit(a.name, b.name) ||
           byPath(a.workspaces[0] ?? '.', b.workspaces[0] ?? '.'),
       )
     const packages = new Set(sorted.map((row) => row.name)).size
