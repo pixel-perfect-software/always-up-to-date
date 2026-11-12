@@ -1,6 +1,6 @@
 {
   "name": "@pixel-perfect-software/always-up-to-date",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "author": "Tyler Robertson <@tylernrobertson> (https://github.com/TylerNRobertson)",
   "description": "A configurable CLI that keeps the dependencies of npm, pnpm, yarn and bun projects up to date.",
   "license": "MIT",
