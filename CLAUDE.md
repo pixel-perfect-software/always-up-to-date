@@ -30,10 +30,7 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 
 ### Local Development
 
-- `pnpm run init` - Initialize config in the current directory
-- `pnpm run check-deps` - Check for outdated dependencies
-- `pnpm run update-deps` - Update dependencies
-- After building, the CLI can be tested locally with: `node dist/index.js <command>`
+- `pnpm run autd <command>` - Run the built CLI (`node dist/index.js <command>`) in the current directory, e.g. `pnpm run autd init`, `pnpm run autd check`; build first
 
 ### Releasing
 
