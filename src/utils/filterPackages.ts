@@ -576,21 +576,12 @@ type ManifestPass = (
 ) => UpdateResult[]
 
 /**
- * Holds a moving row whose target's `engines.node` excludes the project's
- * Node (#199): the `engines.node` the row's manifest declares (a member's
- * own, else the root's) when there is one, else `node`. A `latest` rule moves
- * it with the text as a warning. A known document without `engines.node`
- * is no constraint; an unknown one is left to the caller's warning.
+ * The `engines.node` a row's owning manifest declares (a member's own, else
+ * the root's), read once per manifest; shared by the walk-back and the pass.
  */
-const enginesPass = ({
-  cwd,
-  node,
-  nodeLabel,
-}: {
-  cwd: string
-  node: string | null
-  nodeLabel?: string
-}): ManifestPass => {
+const declaredEnginesReader = (
+  cwd: string,
+): ((row: UpdateResult) => string | undefined) => {
   const declaredIn = new Map<string, string | undefined>()
   const declaredAt = (dir: string): string | undefined => {
     if (!declaredIn.has(dir)) {
@@ -615,6 +606,28 @@ const enginesPass = ({
     }
     return declaredIn.get(dir)
   }
+  return (row) => {
+    const owner = row.workspace ?? '.'
+    return declaredAt(owner) ?? (owner === '.' ? undefined : declaredAt('.'))
+  }
+}
+
+/**
+ * Holds a moving row whose target's `engines.node` excludes the project's
+ * Node (#199): the `engines.node` the row's manifest declares (a member's
+ * own, else the root's) when there is one, else `node`. A `latest` rule moves
+ * it with the text as a warning. A known document without `engines.node`
+ * is no constraint; an unknown one is left to the caller's warning.
+ */
+const enginesPass = ({
+  declaredOf,
+  node,
+  nodeLabel,
+}: {
+  declaredOf: (row: UpdateResult) => string | undefined
+  node: string | null
+  nodeLabel?: string
+}): ManifestPass => {
   let noted = false
   return (rows, { manifests, lookupName, policy }) =>
     manifests.size === 0
@@ -626,9 +639,7 @@ const enginesPass = ({
             lookupName,
           )?.enginesNode
           if (!range) return row
-          const owner = row.workspace ?? '.'
-          const declared =
-            declaredAt(owner) ?? (owner === '.' ? undefined : declaredAt('.'))
+          const declared = declaredOf(row)
           if (declared === undefined && node === null) {
             if (!noted) {
               noted = true
@@ -807,6 +818,7 @@ const filterPackages = async (
       lookupName,
     })
     const node = options.node === undefined ? runningNode() : options.node
+    const declaredOf = declaredEnginesReader(cwd)
     // npm installs the newest version its Node runs (#200): retarget a row
     // whose target it would skip, before the passes below judge the target.
     const { rows: fitted, manifests } = options.skipsEnginesExcluded
@@ -815,6 +827,7 @@ const filterPackages = async (
           manifests: read,
           registry,
           lookupName,
+          declaredOf,
           rangeOf: (row) => {
             const spec = declared?.({
               name: row.name,
@@ -851,7 +864,7 @@ const filterPackages = async (
     })
     const passes: readonly ManifestPass[] = [
       enginesPass({
-        cwd,
+        declaredOf,
         node,
         nodeLabel: options.nodeLabel,
       }),

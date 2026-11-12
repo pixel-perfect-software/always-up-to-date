@@ -2541,14 +2541,26 @@ describe('npm engines walk-back (#200)', () => {
       node = '12.22.12',
       releaseTimes,
       now,
+      engines,
     }: {
       skipsEnginesExcluded?: boolean
       node?: string
       releaseTimes?: Record<string, string>
       now?: number
+      /** The project's declared `engines.node`. */
+      engines?: string
     } = {},
   ) => {
     const reads: string[] = []
+    if (engines !== undefined) {
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({
+          engines: { node: engines },
+          dependencies: { typescript: '>=5.0.0 <5.2.0' },
+        }),
+      )
+    }
     const session = capturedRegistry(['typescript'], { asOf: TS_AS_OF })
     await session.lookup('typescript')
     const filter = loadFilterWithConfig(config, {
@@ -2646,6 +2658,37 @@ describe('npm engines walk-back (#200)', () => {
     expect(results[0].releaseAge).toBeCloseTo(
       (now - Date.parse(times['5.0.4'])) / 86_400_000,
     )
+  })
+
+  it('moves to the newest version npm and the declared engines.node accept (#233)', async () => {
+    const { results } = await plan({}, { engines: '>=12.20' })
+
+    expect(results[0]).toMatchObject({
+      updated: true,
+      target: '5.0.4',
+      reason: reasonFor(
+        'engines: 5.1.6 needs node >=14.17 (the project declares >=12.20)',
+        'engines-fallback',
+      ),
+    })
+    expect(results[0].warnings).toBeUndefined()
+  })
+
+  it('walks when only the declared range excludes the target, not the running Node (#233)', async () => {
+    const { results } = await plan({}, { engines: '>=12.20', node: '24.22.1' })
+
+    expect(results[0]).toMatchObject({ updated: true, target: '5.0.4' })
+  })
+
+  it('holds the target when no version fits both npm and the declared range (#233)', async () => {
+    const { results } = await plan({}, { engines: '>=12.0.0' })
+
+    expect(results[0]).toMatchObject({
+      updated: false,
+      reason: reasonFor(
+        'engines: needs node >=14.17 (the project declares >=12.0.0)',
+      ),
+    })
   })
 
   it('pins the walked row and leaves it out of the names npm updates', async () => {
