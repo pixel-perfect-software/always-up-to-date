@@ -16,7 +16,7 @@ import {
   isValidPackageName,
   packumentUrl,
   registryFor,
-} from './registryRequest'
+} from './registryUrls'
 
 /** Whether `versions` lists `version`. */
 const lists = (

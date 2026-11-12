@@ -1,5 +1,5 @@
 import type { RegistryConfig } from '@/types'
-import { pathMarker } from './registryRequest'
+import { pathMarker } from './registryUrls'
 
 let source: (() => RegistryConfig) | undefined
 let patterns: Array<[text: string, shown: string]> | undefined

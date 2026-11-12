@@ -3,7 +3,7 @@ import { codeOf, messageOf, statusOf } from './errorFields'
 import { createLimiter } from './limiter'
 import type { RegistryCache, ResponseMeta } from './registryCache'
 import type { RegistryClient, RegistryResponse } from './registryClient'
-import { describeUrl, type RegistryEndpoints } from './registryRequest'
+import { describeUrl, type RegistryEndpoints } from './registryUrls'
 
 export type Failed = {
   ok: false

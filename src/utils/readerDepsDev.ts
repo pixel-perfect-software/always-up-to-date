@@ -3,7 +3,7 @@ import logger from './logger'
 import type { Failed, ReaderContext } from './readerContext'
 import type { CachedEntry } from './registryCache'
 import { parseDepsDevPackage } from './registryDocuments'
-import { depsDevUrl } from './registryRequest'
+import { depsDevUrl } from './registryUrls'
 
 // deps.dev is an accelerator with a fallback: a network that blackholes it must
 // not stall a run for the registry's whole fetch-timeout.

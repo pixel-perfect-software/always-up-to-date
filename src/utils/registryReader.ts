@@ -11,7 +11,7 @@ import { createVersionManifest } from './readerManifests'
 import { createReleaseTimes } from './readerReleaseTimes'
 import type { RegistryCache } from './registryCache'
 import type { RegistryClient } from './registryClient'
-import { DEFAULT_ENDPOINTS, type RegistryEndpoints } from './registryRequest'
+import { DEFAULT_ENDPOINTS, type RegistryEndpoints } from './registryUrls'
 
 interface RegistryReaderOptions {
   registryConfig: RegistryConfig

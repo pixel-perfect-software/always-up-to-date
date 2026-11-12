@@ -13,13 +13,14 @@ import {
   authorizationFor,
   berryAuthorizationFor,
   credentialsFor,
-  decodeUri,
-  describeUrl,
+  yarnV1AuthorizationFor,
+} from './registryAuth'
+import {
   isRetryableError,
   isRetryableStatus,
   retryDelay,
-  yarnV1AuthorizationFor,
 } from './registryRequest'
+import { decodeUri, describeUrl } from './registryUrls'
 
 /** What a GET came back with; `authenticated` is true when any hop sent credentials. */
 export type RegistryResponse =

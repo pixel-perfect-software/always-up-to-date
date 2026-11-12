@@ -4,11 +4,8 @@ import { messageOf } from './errorFields'
 import logger from './logger'
 import { type ReaderContext, timesOf } from './readerContext'
 import { parsePackument } from './registryDocuments'
-import {
-  packumentUrl,
-  registryFor,
-  revalidatesEveryUse,
-} from './registryRequest'
+import { revalidatesEveryUse } from './registryRequest'
+import { packumentUrl, registryFor } from './registryUrls'
 
 /** The first three of `versions`, then how many more. */
 const sample = (versions: readonly string[]): string =>

@@ -4,12 +4,12 @@ import { messageOf } from './errorFields'
 import logger from './logger'
 import type { ReaderContext } from './readerContext'
 import { parseVersionManifest } from './registryDocuments'
+import { revalidatesEveryUse } from './registryRequest'
 import {
   isValidPackageName,
   registryFor,
-  revalidatesEveryUse,
   versionManifestUrl,
-} from './registryRequest'
+} from './registryUrls'
 
 /**
  * One version's own manifest (#196), memoized per name and version per

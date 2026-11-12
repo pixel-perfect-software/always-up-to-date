@@ -23,7 +23,7 @@ import {
   type Substitute,
   substituteEnv,
 } from './npmrc'
-import { describeUnusable } from './registryRequest'
+import { describeUnusable } from './registryUrls'
 
 /** What the loader reads from the machine, injectable for tests. */
 export interface NpmrcSources {
