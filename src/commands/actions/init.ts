@@ -16,13 +16,8 @@ export const initAction = async (): Promise<void> => {
   logger.info(` Initializing 'always-up-to-date' in ${workingDir}...`)
 
   const jsonConfigFilePath = path.join(workingDir, '.always-up-to-date.json')
-  const envConfigFilePath = path.join(workingDir, '.always-up-to-date')
 
-  // Check if either config file already exists
-  if (
-    checkIfFileExists(jsonConfigFilePath) ||
-    checkIfFileExists(envConfigFilePath)
-  ) {
+  if (checkIfFileExists(jsonConfigFilePath)) {
     return logger.info(
       `  Project already initialized with 'always-up-to-date'.`,
     )
