@@ -46,7 +46,7 @@ src/
   detectPackageManager.ts   # --pm, then packageManager, then devEngines.packageManager, then the adapters' lockfiles; lockfiles at the root, the declaration nearest the member up to the root
   stepError.ts              # StepError: failed pipeline step (detect/discover/apply) + manifestWritten
   commands/                 # CLI command definitions (commander, ./options and types only), options.ts (--pm, --no-cache), reportFailure.ts
-    actions/                # check.ts, update.ts, init.ts, help.ts: the action bodies, each loaded by its definition with await import() (#109)
+    actions/                # check.ts, update.ts, init.ts: the action bodies, each loaded by its definition with await import() (#109)
     CLAUDE.md
   managers/                 # One adapter per package manager (adapter.ts interface, index.ts registry, names.ts the manager names with no adapter import)
     CLAUDE.md
@@ -86,7 +86,7 @@ __tests__/
   singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON documents (registry captures as of the capture date plus a written node_modules, `autd` normalised to a placeholder), identical for all four managers; reviewed once for #106 and regenerated once for #201: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   commands/
-    check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options; init writes to the nearest package.json's directory, update -i is refused from a member
+    check.test.ts, help.test.ts, init.test.ts, update.test.ts  # Command registration and options; help.test.ts runs the real program: `Usage: autd`, commander's `help [command]`, descriptions naming the four managers (#224); init writes to the nearest package.json's directory, update -i is refused from a member
     jsonOutput.test.ts      # Real logger: stdout is exactly one JSON document with --json (the versioned plan or error document)
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, the JSON error document
     registryPathToken.test.ts # A token in a registry URL path never reaches a message: the client's errors, a fake npm's stderr, debug lines and the --json error object (#131)

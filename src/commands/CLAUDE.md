@@ -6,7 +6,7 @@ Commander.js command definitions for the CLI. Each command is a function that re
 
 ## Current Status: Stable
 
-Four commands implemented: `init`, `check`, `update`, `help`.
+Three commands implemented: `init`, `check`, `update`. `help [command]` is commander's own, and the program is named `autd` in `src/cli.ts` (#224).
 
 ## Component-Specific Development Guidelines
 
@@ -22,18 +22,16 @@ Four commands implemented: `init`, `check`, `update`, `help`.
 
 ```
 commands/
-  index.ts    # Re-exports check, help, init, update
+  index.ts    # Re-exports check, init, update
   options.ts  # pmOption() (--pm, choices from supportedManagers), noCacheOption(): shared by check and update
   init.ts     # Definition of `init`: loads actions/init
   check.ts    # Definition of `check` (--json, --pm, --no-cache), CheckOptions: loads actions/check
   update.ts   # Definition of `update [packages...]` (--dry-run, -i, --json, --pm, --no-cache), UpdateOptions: loads actions/update
-  help.ts     # Definition of `help`: loads actions/help
   reportFailure.ts  # Reports a failed command once (human or JSON) and sets exit code 1
   actions/    # The bodies, each loaded with await import() when its command runs
     init.ts   # Creates .always-up-to-date.json with INITIAL_CONFIG (beyondRange, rules, cooldown, debug, silent) in the nearest package.json's directory (else the cwd), where `loadConfig` reads it
     check.ts  # Detects package manager, prints the planned report (each outdated dep under its outcome); --json plans (`findOutdated`, `plan`) and prints the plan document
     update.ts # Detects package manager, updates packages per config rules; --dry-run, and -i (choicesByPackage, interactiveUpdate with the dynamic @inquirer/prompts import)
-    help.ts   # Displays usage information
 ```
 
 ## Architectural Patterns

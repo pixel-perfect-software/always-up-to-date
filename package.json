@@ -2,7 +2,7 @@
   "name": "@pixel-perfect-software/always-up-to-date",
   "version": "4.0.0",
   "author": "Tyler Robertson <@tylernrobertson> (https://github.com/TylerNRobertson)",
-  "description": "A highly customizable and reusable dependency checker that keeps npm dependencies always up to date.",
+  "description": "A configurable CLI that keeps the dependencies of npm, pnpm, yarn and bun projects up to date.",
   "license": "MIT",
   "main": "dist/index.js",
   "files": ["dist/**/*", "schema/**/*", "README.md", "LICENSE"],
@@ -49,6 +49,7 @@
     "maintenance",
     "pnpm",
     "yarn",
+    "bun",
     "checker"
   ],
   "dependencies": {

@@ -30,7 +30,6 @@ const STARTUP_SOURCES: ReadonlySet<string> = new Set([
   'src/commands/index.ts',
   'src/commands/check.ts',
   'src/commands/update.ts',
-  'src/commands/help.ts',
   'src/commands/init.ts',
   'src/commands/options.ts',
   'src/managers/names.ts',

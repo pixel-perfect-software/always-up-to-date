@@ -3,30 +3,24 @@
  * Commands:
  * - init - Initialize the project with a JSON configuration file.
  * - check - Check the dependencies of the project.
- * - update - Update the update-able dependencies of the project.
- * - help - Show this help message.
+ * - update - Update the dependencies of the project.
+ * - help [command] - commander's own.
  */
 import { Command } from 'commander'
-import {
-  checkCommand,
-  helpCommand,
-  initCommand,
-  updateCommand,
-} from '@/commands'
+import { checkCommand, initCommand, updateCommand } from '@/commands'
 import packageJson from '../package.json'
 
 // Create a program instance
-const program = new Command()
+export const program = new Command()
 
 // Configure program metadata
 program
-  .name(packageJson.name)
+  .name('autd')
   .description(packageJson.description)
   .version(packageJson.version)
 
 // Register commands
 checkCommand(program)
-helpCommand(program)
 initCommand(program)
 updateCommand(program)
 
