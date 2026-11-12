@@ -20,7 +20,7 @@ import {
 } from '@/utils/installed'
 import logger from '@/utils/logger'
 import type { RegistrySession } from '@/utils/registry'
-import { unusableText } from '@/utils/registryRequest'
+import { unusableText } from '@/utils/registryUrls'
 import { wantedVersion } from '@/utils/wanted'
 import { byPath } from '@/utils/workspaceRows'
 

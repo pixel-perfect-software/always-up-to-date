@@ -10,12 +10,12 @@ import { loadRegistryConfig, processSources } from './npmrcLoader'
 import type { RegistryCache } from './registryCache'
 import type { RegistryClient, RegistryClientOptions } from './registryClient'
 import type { RegistryReader } from './registryReader'
+import { throttledNotice } from './registryRequest'
 import {
   type RegistryEndpoints,
-  throttledNotice,
   unusableRouteFor,
   unusableText,
-} from './registryRequest'
+} from './registryUrls'
 
 /** One command run's view of the registries: its .npmrc, its client, its cache. */
 export interface RegistrySession {
