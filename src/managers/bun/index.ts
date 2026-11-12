@@ -12,12 +12,8 @@ import {
   packageJsonWorkspaceRoot,
   readManifest,
 } from '@/managers/workspaces'
-import {
-  readBunCatalogs,
-  splitCatalogUpdates,
-  updateBunCatalogs,
-  updatePackageJson,
-} from '@/utils/files'
+import { readBunCatalogs, updateBunCatalogs } from '@/utils/catalogs'
+import { splitCatalogUpdates, updatePackageJson } from '@/utils/manifests'
 import {
   mergeNpmrcLayers,
   npmrcBoolean,

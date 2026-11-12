@@ -3,7 +3,11 @@ import path from 'path'
 
 import { StepError } from '@/stepError'
 import type { ManifestPlan, PinnedRow } from '@/types'
-import { readSpec, splitCatalogUpdates, updatePackageJson } from '@/utils/files'
+import {
+  readSpec,
+  splitCatalogUpdates,
+  updatePackageJson,
+} from '@/utils/manifests'
 import type { SaveStyle } from '@/utils/saveStyle'
 import type { ManagerAdapter, RunManager } from './adapter'
 

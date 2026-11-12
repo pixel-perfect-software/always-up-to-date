@@ -9,8 +9,8 @@ import {
 } from '@/managers/workspaces'
 import { StepError } from '@/stepError'
 import type { ManifestPlan } from '@/types'
-import { updatePackageJson } from '@/utils/files'
 import { type InstalledPackage, rowKey } from '@/utils/installed'
+import { updatePackageJson } from '@/utils/manifests'
 import type { SaveStyle } from '@/utils/saveStyle'
 import { parseYaml, type YamlNode } from '@/utils/yaml'
 

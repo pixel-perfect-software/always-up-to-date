@@ -14,7 +14,7 @@ import {
   readPnpmWorkspaceYaml,
 } from '@/managers/pnpm/workspaceYaml'
 import { pnpmWorkspacePatterns, pnpmWorkspaceRoot } from '@/managers/workspaces'
-import { readPnpmCatalogs } from '@/utils/files'
+import { readPnpmCatalogs } from '@/utils/catalogs'
 import type { NpmrcSources } from '@/utils/npmrcLoader'
 
 jest.mock('@/utils/logger')

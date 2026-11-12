@@ -15,11 +15,8 @@ import {
   pnpmWorkspaceRoot,
   readWorkspaceManifests,
 } from '@/managers/workspaces'
-import {
-  splitCatalogUpdates,
-  updatePackageJson,
-  updatePNPMWorkspaceYAML,
-} from '@/utils/files'
+import { updatePNPMWorkspaceYAML } from '@/utils/catalogs'
+import { splitCatalogUpdates, updatePackageJson } from '@/utils/manifests'
 import { overridesFromField } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
 
