@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import yarn from '@/managers/yarn'
-import { readBerryLock } from '@/managers/yarn/berry'
+import { readBerryLock, readBerryLockPeers } from '@/managers/yarn/berry'
 import { check, plan, update } from '@/pipeline'
 import type { OutdatedEntry } from '@/types'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
@@ -134,6 +134,33 @@ describe('yarn berry', () => {
       ).toEqual({})
       fs.rmSync(path.join(cwd, 'yarn.lock'))
       expect(readBerryLock(cwd, [{ name: 'ms', workspace: '.' }])).toEqual({})
+    })
+  })
+
+  describe('readBerryLockPeers (#232)', () => {
+    // The capture records no `peerDependencies`: debug 4.3.7 has only
+    // `peerDependenciesMeta`, which declares no range. A lockfile with peer
+    // ranges is not captured (yarn can't run here), so the positive case is
+    // left to the integration matrix.
+    it('reads no range from peerDependenciesMeta alone, and nothing without a lockfile', () => {
+      writeCaptured()
+      expect(readBerryLockPeers(cwd)).toEqual(new Map())
+      fs.rmSync(path.join(cwd, 'yarn.lock'))
+      expect(readBerryLockPeers(cwd)).toEqual(new Map())
+    })
+
+    it('stands in for node_modules under PnP only', () => {
+      writeCaptured()
+      expect(yarn.installedFromLockfile?.(cwd)).toEqual({
+        file: 'yarn.lock',
+        read: readBerryLock,
+        peers: readBerryLockPeers,
+      })
+      fs.mkdirSync(path.join(cwd, 'node_modules'))
+      expect(yarn.installedFromLockfile?.(cwd)).toEqual({
+        file: 'yarn.lock',
+        read: readBerryLock,
+      })
     })
   })
 

@@ -16,6 +16,7 @@ import type {
   NpmrcView,
 } from '@/utils/npmrcLoader'
 import type { ControllingOverride } from '@/utils/overrides'
+import type { PeerRequirement } from '@/utils/peers'
 import type { SaveStyle } from '@/utils/saveStyle'
 import type { RangedDependency } from './yarn/lockfile'
 
@@ -84,6 +85,12 @@ export interface LockedInstall {
     cwd: string,
     rows: { name: string; workspace?: string }[],
   ): Record<string, InstalledPackage>
+  /**
+   * Installed packages' peer ranges, keyed by the package they constrain, as
+   * `readInstalledPeers` reads them from node_modules (#232). Absent when
+   * node_modules exists and decides (berry with the node-modules linker).
+   */
+  peers?(cwd: string): Map<string, PeerRequirement[]>
 }
 
 /** What pinning a cooldown fallback (#147, `applyPinned`) needs from the manager. */

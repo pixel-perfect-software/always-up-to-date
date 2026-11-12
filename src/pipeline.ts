@@ -174,6 +174,7 @@ export const plan = async (
   targetPackages?: string[],
 ): Promise<UpdateResult[]> => {
   const locked = adapter.installedFromLockfile?.(root)
+  const lockedPeers = locked?.peers
   const nodeVersion = adapter.nodeVersion?.(root)
   // Read only when the cooldown checks a target, once.
   let catalogs: Catalogs | undefined
@@ -203,6 +204,9 @@ export const plan = async (
             ),
         }
       : {}),
+    // Installed peer ranges (#232): the lockfile's where it stands in for
+    // node_modules (npm lockfile-only, berry PnP).
+    ...(lockedPeers ? { installedPeers: () => lockedPeers(root) } : {}),
     declared: ({ name, workspace = '.' }) => {
       catalogs ??= adapter.readWorkspace(root).catalogs
       return declaredDependency(root, workspace, name, catalogs)

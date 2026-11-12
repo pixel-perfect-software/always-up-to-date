@@ -395,6 +395,49 @@ describe('pipeline', () => {
     })
   })
 
+  describe("an installed package's peers without node_modules (#232)", () => {
+    // The same capture: react-redux 8.1.3 is locked with a peer range of
+    // react `^16.8 || ^17.0 || ^18.0`, and there is no node_modules to read.
+    it('holds a target the lockfile records an installed peer range excluding', async () => {
+      fs.rmSync(path.join(cwd, 'node_modules'), { recursive: true })
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({
+          name: 'peers-no-node-modules',
+          dependencies: { react: '17.0.2', 'react-redux': '8.1.3' },
+        }),
+      )
+      fs.copyFileSync(
+        path.join(
+          __dirname,
+          'fixtures/npm/peers-no-node-modules.package-lock.json',
+        ),
+        path.join(cwd, 'package-lock.json'),
+      )
+      const project = projectFor(npm, cwd, { beyondRange: 'major' })
+
+      const results = await plan(project, {
+        react: {
+          name: 'react',
+          current: '17.0.2',
+          wanted: '17.0.2',
+          latest: '19.2.0',
+        },
+      })
+
+      expect(results).toEqual([
+        expect.objectContaining({
+          name: 'react',
+          updated: false,
+          reason: reasonFor(
+            'peer conflict: react-redux@8.1.3 needs react ^16.8 || ^17.0 || ^18.0',
+            'peer-conflict',
+          ),
+        }),
+      ])
+    })
+  })
+
   describe('a package the manager leaves in place', () => {
     const install = (name: string, version: string) =>
       installPackages(cwd, '.', { [name]: version })
