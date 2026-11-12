@@ -1,3 +1,6 @@
+import fs from 'fs'
+import path from 'path'
+
 import detectPackageManager from '@/detectPackageManager'
 import { adapterFor, type ManagerAdapter } from '@/managers'
 import type { WorkspaceManifest } from '@/managers/adapter'
@@ -52,6 +55,11 @@ export const openProject = (
   { pm, cache = true }: { pm?: SupportedPackageManager; cache?: boolean } = {},
 ): Project => {
   const { dir, workspaceRoot } = locate(cwd)
+  if (!fs.existsSync(path.join(dir, 'package.json'))) {
+    throw new Error(
+      `No package.json in ${path.resolve(cwd)} or any parent directory`,
+    )
+  }
   // Warnings wait for the logger: `silent` and `--json` come from the config.
   let warnings: string[] = []
   let config = loadConfig(dir, workspaceRoot, (m) => warnings.push(m))

@@ -53,14 +53,19 @@ const announceWorkspace = (adapter: ManagerAdapter, workspace: Workspace) => {
  */
 const discover = async (
   project: Project,
+  targetPackages?: string[],
 ): Promise<{
   outdated: Record<string, PackageInfo>
   workspace: Workspace
 }> => {
   const { adapter, root, registry } = project
+  const workspace = workspaceOf(project)
+  // Before the header and any lookup: a typo costs no network.
+  const named = targetPackages?.length
+    ? requireDependencies(project, workspace, targetPackages)
+    : []
   logger.starting('Checking dependencies', adapter.name)
 
-  const workspace = workspaceOf(project)
   announceWorkspace(adapter, workspace)
   if (workspace.isWorkspace) {
     logger.debug(
@@ -84,12 +89,45 @@ const discover = async (
       ? discovery.outdated
       : foldWorkspaceEntries(discovery.entries)
 
-  if (Object.keys(outdated).length === 0) {
-    logger.allUpToDate()
-    return { outdated: {}, workspace }
+  if (Object.keys(outdated).length === 0) logger.allUpToDate()
+  // A dependency the run reads that discovery did not list is current.
+  for (const name of named) {
+    if (!(name in outdated)) logger.info(`${name} is already up to date`)
   }
 
   return { outdated, workspace }
+}
+
+/**
+ * The names a targeted run asked for that the manifests it reads declare as
+ * registry dependencies, in the order asked. A name no manifest declares
+ * fails the run with a `discover` `StepError` (the manifests are what
+ * discovery reads; a typo must not read as "nothing to update"). A member
+ * run reads the member's manifest only.
+ */
+const requireDependencies = (
+  { root, member }: Project,
+  workspace: Workspace,
+  names: string[],
+): string[] => {
+  const manifests = member ? [member] : workspace.manifests
+  const unique = [...new Set(names)]
+  const unknown = unique.filter(
+    (name) =>
+      !manifests.some(
+        ({ path }) =>
+          declaredDependency(root, path, name, workspace.catalogs) !==
+          undefined,
+      ),
+  )
+  if (unknown.length > 0) {
+    const where = member ? `workspace member ${member.path}` : 'project'
+    throw new StepError(
+      'discover',
+      `${unknown.join(', ')} ${unknown.length === 1 ? "isn't a dependency" : "aren't dependencies"} of this ${where}`,
+    )
+  }
+  return unique
 }
 
 /**
@@ -98,7 +136,9 @@ const discover = async (
  */
 export const findOutdated = async (
   project: Project,
-): Promise<Record<string, PackageInfo>> => (await discover(project)).outdated
+  targetPackages?: string[],
+): Promise<Record<string, PackageInfo>> =>
+  (await discover(project, targetPackages)).outdated
 
 /**
  * The outdated packages, with the human report: it plans them first, so each
@@ -121,7 +161,7 @@ export const check = async (
  * Each outdated package's target or hold reason: the config's policy, the
  * overrides the manager enforces, installed peer ranges and the cooldown.
  */
-export const plan = (
+export const plan = async (
   { adapter, root, config, registry }: Project,
   outdated: Record<string, PackageInfo>,
   targetPackages?: string[],
@@ -130,7 +170,7 @@ export const plan = (
   const nodeVersion = adapter.nodeVersion?.(root)
   // Read only when the cooldown checks a target, once.
   let catalogs: Catalogs | undefined
-  return filterPackages(outdated, {
+  const results = await filterPackages(outdated, {
     config,
     targetPackages,
     cwd: root,
@@ -161,6 +201,18 @@ export const plan = (
       return declaredDependency(root, workspace, name, catalogs)
     },
   })
+  // The checker is pure and does not know the manager: the fix is named here.
+  return results.map((result) =>
+    result.reason.code === 'not-installed'
+      ? {
+          ...result,
+          reason: {
+            ...result.reason,
+            message: `${result.reason.message}: run ${adapter.name} install`,
+          },
+        }
+      : result,
+  )
 }
 
 /**
@@ -173,7 +225,8 @@ export const refuseMemberApply = ({ root, member }: Project): void => {
   if (!member) return
   throw new StepError(
     'apply',
-    `update runs from the workspace root, because it writes the lockfile every workspace shares: run autd update in ${root} (autd update --dry-run previews this member's updates here)`,
+    `autd update runs from the workspace root (it rewrites the shared lockfile): run it in ${root}, or preview this member with autd update --dry-run`,
+    { refusal: true },
   )
 }
 
@@ -196,7 +249,7 @@ export const update = async (
   const { adapter, root } = project
   const { outdated, workspace } = discovered
     ? { outdated: discovered, workspace: workspaceOf(project) }
-    : await discover(project)
+    : await discover(project, targetPackages)
 
   // discover already printed allUpToDate.
   if (Object.keys(outdated).length === 0) return []

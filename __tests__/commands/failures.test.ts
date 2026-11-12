@@ -60,6 +60,9 @@ describe('command failures', () => {
     return stdout.join('\n')
   }
 
+  /** Everything a human-mode run printed, either stream: which stream is #223's to test. */
+  const printed = () => [...stdout, ...stderr].join('\n')
+
   beforeEach(() => {
     pipeline.check.mockReset()
     pipeline.update.mockReset()
@@ -164,6 +167,90 @@ describe('command failures', () => {
     expect(JSON.parse(output)).toMatchObject({
       command: 'check',
       error: { step: 'discover' },
+    })
+  })
+
+  it('update names a target that is not a dependency, with --json too (#222)', async () => {
+    const unknown = new StepError(
+      'discover',
+      "leftpad-nope isn't a dependency of this project",
+    )
+    pipeline.findOutdated.mockRejectedValue(unknown)
+
+    await run('update', 'leftpad-nope', '--dry-run')
+    const human = printed()
+    expect(process.exitCode).toBe(1)
+    expect(human).toContain(
+      "Failed during discover: leftpad-nope isn't a dependency of this project",
+    )
+    expect(pipeline.findOutdated).toHaveBeenCalledWith(expect.anything(), [
+      'leftpad-nope',
+    ])
+
+    stdout.length = 0
+    stderr.length = 0
+    process.exitCode = undefined
+    const output = await run('update', 'leftpad-nope', '--dry-run', '--json')
+    expect(process.exitCode).toBe(1)
+    validateOutput(JSON.parse(output))
+    expect(JSON.parse(output).error).toEqual({
+      step: 'discover',
+      message: "leftpad-nope isn't a dependency of this project",
+      manifestWritten: false,
+    })
+  })
+
+  it('prints a refusal without the Failed during prefix, and keeps its step in JSON (#222)', async () => {
+    const refused = new StepError('apply', 'autd update runs from the root', {
+      refusal: true,
+    })
+    pipeline.update.mockRejectedValue(refused)
+
+    await run('update')
+    const human = printed()
+    expect(human).toContain('autd update runs from the root')
+    expect(human).not.toContain('Failed during')
+
+    stdout.length = 0
+    const output = await run('update', '--json')
+    expect(JSON.parse(output).error).toMatchObject({
+      step: 'apply',
+      message: 'autd update runs from the root',
+    })
+  })
+
+  describe('update -i (#222)', () => {
+    const tty = process.stdin.isTTY
+    afterEach(() => {
+      process.stdin.isTTY = tty
+    })
+
+    it.each([
+      [['update', '-i', 'react'], true, "can't be combined with package names"],
+      [['update', '-i', '--dry-run'], true, "can't be combined with --dry-run"],
+      [['update', '-i'], false, 'needs a terminal'],
+    ])('refuses %j before opening anything', async (args, isTTY, text) => {
+      process.stdin.isTTY = isTTY
+
+      await run(...args)
+      const output = printed()
+
+      expect(process.exitCode).toBe(1)
+      expect(output).toContain(text)
+      expect(output).not.toContain('Failed during')
+      expect(pipeline.findOutdated).not.toHaveBeenCalled()
+      expect(pipeline.update).not.toHaveBeenCalled()
+      expect(createRegistrySession).not.toHaveBeenCalled()
+    })
+
+    it('points a terminal-less -i at the named and dry-run forms', async () => {
+      process.stdin.isTTY = false
+
+      await run('update', '-i')
+      const output = printed()
+
+      expect(output).toContain('autd update [packages…]')
+      expect(output).toContain('autd update --dry-run')
     })
   })
 

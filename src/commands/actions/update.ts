@@ -21,6 +21,8 @@ export const updateAction = async (
 
   let project: Project | undefined
   try {
+    // Refused before the project is opened: nothing is read or looked up.
+    if (options.interactive) refuseInteractive(packages, options)
     project = openProject(process.cwd(), {
       pm: options.pm,
       cache: options.cache,
@@ -57,12 +59,31 @@ export const updateAction = async (
   }
 }
 
+/** `-i` picks the packages itself and applies them, and needs a terminal to do it. */
+const refuseInteractive = (packages: string[], options: UpdateOptions) => {
+  if (packages.length > 0) {
+    throw new Error(
+      "-i can't be combined with package names: the checklist chooses the packages. Drop -i to update them by name (autd update <packages…>)",
+    )
+  }
+  if (options.dryRun) {
+    throw new Error(
+      "-i can't be combined with --dry-run: the checklist is for applying updates. Drop -i to preview them (autd update --dry-run)",
+    )
+  }
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      '-i needs a terminal to show its checklist. Name the packages instead (autd update [packages…]), or preview with autd update --dry-run',
+    )
+  }
+}
+
 const dryRun = async (
   project: Project,
   targetPackages?: string[],
   json?: boolean,
 ) => {
-  const outdatedPackages = await findOutdated(project)
+  const outdatedPackages = await findOutdated(project, targetPackages)
 
   const results =
     Object.keys(outdatedPackages).length > 0

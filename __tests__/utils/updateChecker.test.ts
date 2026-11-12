@@ -164,7 +164,7 @@ describe('updateChecker', () => {
         {
           reason: {
             code: 'not-installed',
-            message: 'invalid version (current missing, latest 1.0.1)',
+            message: 'not installed',
           },
         },
       )

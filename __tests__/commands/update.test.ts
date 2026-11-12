@@ -44,7 +44,14 @@ const mockCheckPackageVersions = jest.mocked(findOutdated)
 describe('update command', () => {
   let program: Command
 
+  const tty = process.stdin.isTTY
+  afterEach(() => {
+    process.stdin.isTTY = tty
+  })
+
   beforeEach(() => {
+    // `-i` needs a terminal (#222); jest has none.
+    process.stdin.isTTY = true
     mockDetectPackageManager.mockReturnValue('npm')
     mockUpdatePackages.mockReset()
     mockCheckPackageVersions.mockReset()
@@ -107,6 +114,17 @@ describe('update command', () => {
     expect(mockUpdatePackages).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: bun }),
       { targetPackages: ['react'] },
+    )
+  })
+
+  it('hands the named packages to discovery, so unknown ones fail first (#222)', async () => {
+    mockCheckPackageVersions.mockResolvedValue({})
+
+    await program.parseAsync(['node', 'test', 'update', 'react', '--dry-run'])
+
+    expect(mockCheckPackageVersions).toHaveBeenCalledWith(
+      expect.objectContaining({ adapter: npm }),
+      ['react'],
     )
   })
 
