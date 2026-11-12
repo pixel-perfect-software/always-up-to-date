@@ -26,8 +26,6 @@ Documentation registry and index for the Always Up To Date project. This file ma
 | Package Managers | `src/managers/CLAUDE.md`    | Manager abstraction, CommandRunner, detection, workspace support |
 | CLI Commands     | `src/commands/CLAUDE.md`    | Commander.js setup, command registration, binary aliases         |
 | Utilities        | `src/utils/CLAUDE.md`       | Config system, update logic, logging, file ops, package grouping |
-| Migrator         | `src/migrator/CLAUDE.md`    | Framework migration rules (stub)                                 |
-| PR Generator     | `src/prGenerator/CLAUDE.md` | Automated PR creation (stub)                                     |
 
 ### Tier 3 (Feature-Specific)
 
@@ -53,10 +51,6 @@ src/
   managers/                 # One adapter per package manager (adapter.ts interface, index.ts registry, names.ts the manager names with no adapter import)
     CLAUDE.md
   utils/                    # Shared utilities
-    CLAUDE.md
-  migrator/                 # Framework migration (stub)
-    CLAUDE.md
-  prGenerator/              # PR automation (stub)
     CLAUDE.md
 scripts/
   build.mts                 # pnpm run build: empties dist/, bundles src/index.ts with esbuild into dist/index.js, fails on a warning, runs the checks in guards.ts, writes dist/third-party-licenses.txt; removes dist/ when a check fails (#109)

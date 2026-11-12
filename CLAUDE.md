@@ -135,19 +135,6 @@ Always Up To Date is a CLI tool that automatically keeps dependencies up to date
 
 - `check`, `update --dry-run`, interactive and `update` print one report (`logger.report(results, manager, phase)`): each planned row once, under its outcome (`groupResults` in `src/utils/report.ts`: would update / updated, left in place, held by cooldown, past the range with the `beyondRange` level that would move it, held by a rule, an override, a peer conflict, as deprecated, for a license change, with another manifest), rows sharing a move and reason across manifests merged, then one summary line. `update` prints it after apply only (`phase: 'applied'`); before apply only `Updating N packages with <pm>`. A workspace of one manifest prints no workspace line or manifest column, and neither does a member run (`logger.memberRun` prints `<pm> workspace member <path> (1 of N manifests)` instead; `logger.report`'s `member` option drops the column). `--json` prints the document above from the same rows; `check --json` plans through `findOutdated` and `plan`, so its rows are the ones the report groups
 
-### Future Components (In Development)
-
-**Migrators** (`src/migrator/`)
-
-- Framework-specific migration rules for major version upgrades
-- Example rules exist for React 18/19 and Next.js 14/15
-- Will provide codemod-like transformations for breaking changes
-
-**PR Generators** (`src/prGenerator/`)
-
-- Automated pull request creation with migration guides
-- Planned GitHub integration via @octokit/rest
-
 ## Path Aliases
 
 TypeScript paths are configured with `@/*` mapping to `src/*`:

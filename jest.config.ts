@@ -25,7 +25,7 @@ export default {
   restoreMocks: true,
   setupFiles: ['<rootDir>/__tests__/setup.ts'],
   transformIgnorePatterns: [
-    'node_modules/(?!(?:\\.pnpm/)?(@octokit|@inquirer|commander))',
+    'node_modules/(?!(?:\\.pnpm/)?(@inquirer|commander))',
   ],
   extensionsToTreatAsEsm: ['.ts'],
   testTimeout: 15000,
