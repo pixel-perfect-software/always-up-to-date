@@ -60,6 +60,9 @@ describe('command failures', () => {
     return stdout.join('\n')
   }
 
+  /** Everything a human-mode run printed, either stream: which stream is #223's to test. */
+  const printed = () => [...stdout, ...stderr].join('\n')
+
   beforeEach(() => {
     pipeline.check.mockReset()
     pipeline.update.mockReset()
@@ -151,7 +154,8 @@ describe('command failures', () => {
     )
     pipeline.findOutdated.mockRejectedValue(unknown)
 
-    const human = await run('update', 'leftpad-nope', '--dry-run')
+    await run('update', 'leftpad-nope', '--dry-run')
+    const human = printed()
     expect(process.exitCode).toBe(1)
     expect(human).toContain(
       "Failed during discover: leftpad-nope isn't a dependency of this project",
@@ -161,6 +165,7 @@ describe('command failures', () => {
     ])
 
     stdout.length = 0
+    stderr.length = 0
     process.exitCode = undefined
     const output = await run('update', 'leftpad-nope', '--dry-run', '--json')
     expect(process.exitCode).toBe(1)
@@ -178,7 +183,8 @@ describe('command failures', () => {
     })
     pipeline.update.mockRejectedValue(refused)
 
-    const human = await run('update')
+    await run('update')
+    const human = printed()
     expect(human).toContain('autd update runs from the root')
     expect(human).not.toContain('Failed during')
 
@@ -203,7 +209,8 @@ describe('command failures', () => {
     ])('refuses %j before opening anything', async (args, isTTY, text) => {
       process.stdin.isTTY = isTTY
 
-      const output = await run(...args)
+      await run(...args)
+      const output = printed()
 
       expect(process.exitCode).toBe(1)
       expect(output).toContain(text)
@@ -216,7 +223,8 @@ describe('command failures', () => {
     it('points a terminal-less -i at the named and dry-run forms', async () => {
       process.stdin.isTTY = false
 
-      const output = await run('update', '-i')
+      await run('update', '-i')
+      const output = printed()
 
       expect(output).toContain('autd update [packages…]')
       expect(output).toContain('autd update --dry-run')
