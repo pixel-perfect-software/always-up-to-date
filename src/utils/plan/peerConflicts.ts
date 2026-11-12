@@ -8,21 +8,34 @@ import type { UpdatePolicy } from '@/utils/updateChecker'
 import { heldFor, withWarning } from './rows'
 
 /**
+ * Whether an installed package's peer ranges still count once `rows` move:
+ * false for one the run replaces (`keptInstalls`). Absent, every one counts.
+ */
+export type StillInstalled = (
+  rows: UpdateResult[],
+) => (peer: PeerRequirement) => boolean
+
+/**
  * Holds targets an installed package's peer range excludes. A range declared
  * by a package that is itself moving in this run doesn't count here: those
  * are the new version's peers, which `targetPeerConflict` checks from the
- * version document (#198). Holding one package can expose a
- * conflict for another, so this repeats until nothing changes. A `latest`
- * rule still moves, with the conflict as a warning.
+ * version document (#198). Nor does one declared by a package the run
+ * replaces (`stillInstalled`): one installed only for packages that move,
+ * such as a tiptap extension `@tiptap/starter-kit` pins, whose exact peer
+ * on the old `@tiptap/core` would otherwise hold core forever. Holding one
+ * package can expose a conflict for another, so this repeats until nothing
+ * changes. A `latest` rule still moves, with the conflict as a warning.
  */
 export const holdPeerConflicts = (
   results: UpdateResult[],
   peers: Map<string, PeerRequirement[]>,
   policy: UpdatePolicy,
+  stillInstalled?: StillInstalled,
 ): UpdateResult[] => {
   let current = results
   for (;;) {
     const moving = new Set(current.filter((r) => r.updated).map((r) => r.name))
+    const counts = stillInstalled?.(current)
     let changed = false
 
     current = current.map((result) => {
@@ -32,7 +45,8 @@ export const holdPeerConflicts = (
       const conflict = (peers.get(name) ?? []).find(
         (peer) =>
           !moving.has(peer.name) &&
-          !semver.satisfies(target, peer.range, { includePrerelease: true }),
+          !semver.satisfies(target, peer.range, { includePrerelease: true }) &&
+          (counts?.(peer) ?? true),
       )
       if (!conflict) return result
 
@@ -130,7 +144,7 @@ export const targetPeerConflict = (
   noted: Set<string>,
 ): Reason | undefined => {
   const { target } = row
-  if (!row.updated || !target) return undefined
+  if (!row.updated || !target || manifests.size === 0) return undefined
   const manifest = targetManifestOf(manifests, row, lookupName)
   if (!manifest) return undefined
   const name = lookupName(row)

@@ -9,6 +9,7 @@ import type {
 import { isCooldownEnabled } from './cooldown'
 import { runningNode } from './engines'
 import { readInstalledVersions } from './installed'
+import { type InstalledGraph, readInstalledGraph } from './installedGraph'
 import logger from './logger'
 import type { ControllingOverride } from './overrides'
 import { type PeerRequirement, readInstalledPeers } from './peers'
@@ -67,6 +68,13 @@ interface FilterPackagesOptions {
    * lockfile's reader where the manager's lockfile stands in for it (#232).
    */
   installedPeers?: () => Map<string, PeerRequirement[]>
+  /**
+   * What is installed and what installed it, for the peer pass to tell a
+   * package the run replaces from one that stays; read with the peers.
+   * Default: `readInstalledGraph(cwd)` (pnpm's `.pnpm/lock.yaml`); without
+   * one, every installed peer range counts.
+   */
+  installedGraph?: () => InstalledGraph | undefined
   /**
    * The Node a target's `engines.node` is judged against when the project
    * declares none (#199): default `runningNode()`; null when there is none
@@ -171,7 +179,11 @@ const filterPackages = async (
     ? (options.installedPeers?.() ?? readInstalledPeers(cwd))
     : undefined
 
-  const settle = createSettle(peers, policy)
+  const graph = peers
+    ? (options.installedGraph ?? (() => readInstalledGraph(cwd)))()
+    : undefined
+
+  const settle = createSettle(peers, policy, graph)
 
   const results = settle(initialResults)
 
@@ -240,16 +252,13 @@ const filterPackages = async (
     const readInstalled =
       options.installed ??
       ((asked) => readInstalledVersions(cwd, asked, { declaredOnly: false }))
-    const settled = settle(
-      passed,
-      manifests.size === 0
-        ? undefined
-        : {
-            manifests,
-            installed: peerRows.length > 0 ? readInstalled(peerRows) : {},
-            lookupName,
-          },
-    )
+    // Always passed, manifests or not: the last settle is the one that asks
+    // each target what it still installs (with none read, it keeps them all).
+    const settled = settle(passed, {
+      manifests,
+      installed: peerRows.length > 0 ? readInstalled(peerRows) : {},
+      lookupName,
+    })
     const listed = (keys: string[]): string =>
       `${keys.slice(0, 10).join(', ')}${keys.length > 10 ? ` and ${keys.length - 10} more` : ''}`
     const { targets, installed } = licensed.unchecked

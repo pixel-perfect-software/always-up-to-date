@@ -188,6 +188,8 @@ describe('withReleaseAgeGate', () => {
       license: 'MIT',
       peerDependencies: {},
       optionalPeers: [],
+      dependencies: {},
+      optionalDependencies: {},
       deprecated: false,
     }
     const base = {

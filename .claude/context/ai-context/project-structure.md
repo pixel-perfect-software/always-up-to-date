@@ -125,6 +125,7 @@ __tests__/
     runProcess.test.ts      # Real child processes: no output cap, no shell, Windows quoting
     updateChecker.test.ts   # Update policy: within range, beyondRange levels, rules, legacy mapping
     overrides.test.ts       # Which override keys pin a package, per manager's current version
+    installedGraph.test.ts  # readInstalledGraph on the captured pnpm `.pnpm/lock.yaml` of the tiptap 3 installs: importers by workspace with the peer suffix dropped, links skipped, optional dependencies and resolved peers as edges, peer variants merged into one node, undefined without the file
     peers.test.ts           # Installed peer ranges from hoisted node_modules and the pnpm store; an orphan `.pnpm/lock.yaml` no longer lists is skipped (#146)
     saveStyle.test.ts       # Where each manager keeps save-exact / save-prefix
     workspaceRows.test.ts   # foldWorkspaceEntries ordering and top-level choice

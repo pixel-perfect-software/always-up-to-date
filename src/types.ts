@@ -336,6 +336,13 @@ export interface VersionManifest {
   /** Names with `peerDependenciesMeta[name].optional === true`, a range or not, sorted. */
   optionalPeers: string[]
   /**
+   * `dependencies` and `optionalDependencies`, string-valued entries only:
+   * what the version installs with it, which the peer pass reads to tell
+   * whether a moving package's new version still asks for what it has now.
+   */
+  dependencies: Record<string, string>
+  optionalDependencies: Record<string, string>
+  /**
    * The lookup's deprecation of this version (fresher than a stored manifest)
    * once the reader returns it; the manifest's own in the parser's output.
    */

@@ -1,9 +1,13 @@
 import semver from 'semver'
 import type { UpdateResult } from '@/types'
+import type { InstalledGraph } from '@/utils/installedGraph'
 import type { PeerRequirement } from '@/utils/peers'
+import { targetManifestOf } from '@/utils/targetManifests'
 import type { UpdatePolicy } from '@/utils/updateChecker'
+import { type KeptRules, keptInstalls } from './keptInstalls'
 import {
   holdPeerConflicts,
+  type StillInstalled,
   type TargetPeers,
   targetPeerConflict,
 } from './peerConflicts'
@@ -50,28 +54,85 @@ const holdTogether = (results: UpdateResult[]): UpdateResult[] => {
 }
 
 /**
+ * Which installed packages' peer ranges still count (`StillInstalled`), from
+ * the install's graph: those `keptInstalls` keeps, and any the graph doesn't
+ * list. Before the targets' manifests are read (no `targetPeers`), what a
+ * moving row depended on is taken as replaced, so a hold that depends on it
+ * waits for the last settle, which asks each target whether it still wants
+ * that version, and holds then; a target with no manifest keeps it all.
+ */
+const stillInstalledFrom = (
+  graph: InstalledGraph,
+  peers: Map<string, PeerRequirement[]>,
+  targetPeers: TargetPeers | undefined,
+): StillInstalled => {
+  const declared = new Set<string>()
+  for (const [constrained, list] of peers) {
+    for (const peer of list) {
+      declared.add(`${peer.name}@${peer.version}\0${constrained}`)
+    }
+  }
+  const rules: KeptRules = {
+    isPeer: (parent, child) => declared.has(`${parent}\0${child}`),
+    ...(targetPeers && {
+      keeps: (row, child, version) => {
+        const manifest = targetManifestOf(
+          targetPeers.manifests,
+          row,
+          targetPeers.lookupName,
+        )
+        if (!manifest) return true
+        const range =
+          manifest.dependencies[child] ??
+          manifest.optionalDependencies[child] ??
+          manifest.peerDependencies[child]
+        if (range === undefined) return false
+        if (semver.validRange(range) === null) return true
+        return semver.satisfies(version, range, { includePrerelease: true })
+      },
+    }),
+  }
+  return (rows) => {
+    let kept: Set<string> | undefined
+    return (peer) => {
+      const id = `${peer.name}@${peer.version}`
+      if (!graph.dependencies.has(id)) return true
+      kept ??= keptInstalls(rows, graph, rules)
+      return kept.has(id)
+    }
+  }
+}
+
+/**
  * The plan's `settle`, one per plan, so a debug note is logged once per plan.
  * A peer hold can hold a package's other rows (holdTogether), and a row
  * held for any reason stops counting as moving for the peer check, so
  * both repeat until nothing changes. Each only ever holds, so this ends.
  * With `targetPeers` (#198) a moving target's own peers are checked too,
- * after the installed ones. A row under a `latest` rule isn't held by
- * them; it gets its warning once the plan is stable, so a peer that stops
- * moving leaves no stale "moving to". Each pass makes a new array and none
- * is mutated once handed out, which `targetPeerConflict`'s row index needs.
+ * after the installed ones; the last settle always passes them, so it is
+ * the one that judges what a moving row's target still installs. A row
+ * under a `latest` rule isn't held by them; it gets its warning once the
+ * plan is stable, so a peer that stops moving leaves no stale "moving to".
+ * Each pass makes a new array and none is mutated once handed out, which
+ * `targetPeerConflict`'s row index needs.
  */
 export const createSettle = (
   peers: Map<string, PeerRequirement[]> | undefined,
   policy: UpdatePolicy,
+  graph?: InstalledGraph,
 ): ((rows: UpdateResult[], targetPeers?: TargetPeers) => UpdateResult[]) => {
   const noted = new Set<string>()
   const settle = (
     rows: UpdateResult[],
     targetPeers?: TargetPeers,
   ): UpdateResult[] => {
+    const stillInstalled =
+      peers && graph ? stillInstalledFrom(graph, peers, targetPeers) : undefined
     let current = rows
     for (;;) {
-      const peered = peers ? holdPeerConflicts(current, peers, policy) : current
+      const peered = peers
+        ? holdPeerConflicts(current, peers, policy, stillInstalled)
+        : current
       const checked = targetPeers
         ? peered.map((row) => {
             if (policy.ruleFor(row.name) === 'latest') return row

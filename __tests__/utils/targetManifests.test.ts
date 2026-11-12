@@ -19,6 +19,8 @@ const manifestFor = (name: string, version: string): VersionManifest => ({
   version,
   peerDependencies: {},
   optionalPeers: [],
+  dependencies: {},
+  optionalDependencies: {},
   deprecated: false,
 })
 

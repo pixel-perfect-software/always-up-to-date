@@ -1525,6 +1525,8 @@ describe('registry reader', () => {
         license: 'MIT',
         peerDependencies: {},
         optionalPeers: [],
+        dependencies: {},
+        optionalDependencies: {},
         deprecated: false,
       })
       const sent = registry.requests.find(

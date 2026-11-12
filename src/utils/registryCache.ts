@@ -165,13 +165,19 @@ const isVersions = (value: unknown): boolean =>
 const optionalString = (value: unknown): boolean =>
   value === undefined || typeof value === 'string'
 
+const isRanges = (value: unknown): boolean =>
+  isRecord(value) && Object.values(value).every((r) => typeof r === 'string')
+
+// A manifest stored before `dependencies` was kept fails this, so it is read
+// again once rather than answering without them.
 const isManifest = (value: Record<string, unknown>): boolean =>
   typeof value.name === 'string' &&
   typeof value.version === 'string' &&
   optionalString(value.license) &&
   optionalString(value.enginesNode) &&
-  isRecord(value.peerDependencies) &&
-  Object.values(value.peerDependencies).every((r) => typeof r === 'string') &&
+  isRanges(value.peerDependencies) &&
+  isRanges(value.dependencies) &&
+  isRanges(value.optionalDependencies) &&
   Array.isArray(value.optionalPeers) &&
   value.optionalPeers.every((peer) => typeof peer === 'string') &&
   typeof value.deprecated === 'boolean' &&
