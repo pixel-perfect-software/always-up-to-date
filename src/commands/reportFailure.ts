@@ -34,6 +34,7 @@ const reportFailure = (
   if (manifestWritten) {
     logger.warn(
       'package.json was already rewritten when the package manager failed. Check it against the lockfile (git diff) before committing.',
+      { always: true },
     )
   }
 }

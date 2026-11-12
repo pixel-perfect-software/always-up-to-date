@@ -117,7 +117,7 @@ class Logger {
 
   /**
    * `--json` mode: stdout carries only the JSON document. Progress output is
-   * dropped; errors, warnings and debug lines go to stderr.
+   * dropped.
    */
   setJsonOutput(jsonOutput: boolean): void {
     this.jsonOutput = jsonOutput
@@ -128,12 +128,14 @@ class Logger {
     return this.quiet || this.jsonOutput
   }
 
-  /** Errors, warnings and debug lines: stderr in `--json` mode. */
-  private diagnostic(line: string): void {
-    if (this.quiet) return
-    const shown = scrub(line)
-    if (this.jsonOutput) console.error(shown)
-    else console.log(shown)
+  /**
+   * Errors, warnings and debug lines go to stderr in every mode, scrubbed,
+   * so stdout stays the report (or the `--json` document). `silent` mutes
+   * all of them but an error, which is always printed (`always`).
+   */
+  private diagnostic(line: string, always = false): void {
+    if (this.quiet && !always) return
+    console.error(scrub(line))
   }
 
   info(message: string): void {
@@ -144,12 +146,16 @@ class Logger {
     if (!this.muted) console.log(`${green('✅')} ${green(message)}`)
   }
 
-  warn(message: string): void {
-    this.diagnostic(`${yellow('⚠️')} ${yellow(message)}`)
+  /**
+   * `silent` mutes a warning, as the config schema says, unless `always`
+   * is set: for one that belongs to an error, such as a rewritten manifest.
+   */
+  warn(message: string, { always = false }: { always?: boolean } = {}): void {
+    this.diagnostic(`${yellow('⚠️')} ${yellow(message)}`, always)
   }
 
   error(message: string): void {
-    this.diagnostic(`${red('❌')} ${red(message)}`)
+    this.diagnostic(`${red('❌')} ${red(message)}`, true)
   }
 
   /**
@@ -275,7 +281,7 @@ class Logger {
   }
 
   debug(message: string): void {
-    if (this.debugEnabled) this.diagnostic(gray(`  ${message}`))
+    if (this.debugEnabled) this.diagnostic(`${gray('debug')} ${gray(message)}`)
   }
 }
 
