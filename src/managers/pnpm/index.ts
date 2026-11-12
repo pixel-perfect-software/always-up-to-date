@@ -5,40 +5,25 @@ import type { ManagerAdapter } from '@/managers/adapter'
 import { pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
 import { pnpmReleaseAgeGate } from '@/managers/pnpm/releaseAge'
 import {
-  pnpmWorkspacePatterns,
+  pnpmCatalogs,
+  pnpmOverrides,
+  pnpmPackages,
+  pnpmSetting,
+  readPnpmWorkspaceYaml,
+} from '@/managers/pnpm/workspaceYaml'
+import {
   pnpmWorkspaceRoot,
   readWorkspaceManifests,
 } from '@/managers/workspaces'
 import {
-  readPnpmCatalogs,
   splitCatalogUpdates,
   updatePackageJson,
   updatePNPMWorkspaceYAML,
 } from '@/utils/files'
 import { overridesFromField } from '@/utils/overrides'
-import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
+import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
 
 export { pnpmWorkspaceRoot }
-
-const readWorkspaceYaml = (cwd: string): string =>
-  readTextFile(path.join(cwd, 'pnpm-workspace.yaml'))
-
-/** The `overrides:` block of pnpm-workspace.yaml, read line by line. */
-const readWorkspaceOverrides = (yaml: string): Record<string, string> => {
-  const overrides: Record<string, string> = {}
-  let inBlock = false
-  for (const line of yaml.split(/\r?\n/)) {
-    if (/^\S/.test(line)) {
-      inBlock = /^overrides:\s*$/.test(line)
-      continue
-    }
-    const entry = inBlock
-      ? /^\s+(['"]?)(.+?)\1\s*:\s*['"]?([^'"#]+?)['"]?\s*(#.*)?$/.exec(line)
-      : null
-    if (entry) overrides[entry[2]] = entry[3]
-  }
-  return overrides
-}
 
 /**
  * The install after autd rewrites a manifest or catalog. With `CI` set, pnpm
@@ -54,11 +39,11 @@ const pnpm: ManagerAdapter = {
   projectRoot: pnpmWorkspaceRoot,
 
   readWorkspace: (cwd) => {
-    const yaml = readWorkspaceYaml(cwd)
-    const patterns = pnpmWorkspacePatterns(yaml)
+    const yaml = readPnpmWorkspaceYaml(cwd)
+    const patterns = pnpmPackages(yaml)
     return {
       isWorkspace: patterns.length > 0,
-      catalogs: readPnpmCatalogs(yaml),
+      catalogs: pnpmCatalogs(yaml),
       manifests: readWorkspaceManifests(cwd, patterns),
     }
   },
@@ -136,10 +121,10 @@ const pnpm: ManagerAdapter = {
 
   /** `saveExact` / `savePrefix` in pnpm-workspace.yaml; pnpm 12 ignores .npmrc for these. */
   saveStyle: (cwd) => {
-    const yaml = readWorkspaceYaml(cwd)
+    const yaml = readPnpmWorkspaceYaml(cwd)
     return {
-      exact: yamlValue(yaml, 'saveExact') === 'true',
-      prefix: yamlValue(yaml, 'savePrefix') ?? DEFAULT_SAVE_STYLE.prefix,
+      exact: pnpmSetting(yaml, 'saveExact') === 'true',
+      prefix: pnpmSetting(yaml, 'savePrefix') ?? DEFAULT_SAVE_STYLE.prefix,
     }
   },
 
@@ -154,13 +139,13 @@ const pnpm: ManagerAdapter = {
 
   /** `nodeVersion` in pnpm-workspace.yaml: pnpm 12 judges `engines.node` by it when set (probed 2026-11-07). */
   nodeVersion: (cwd) => {
-    const version = yamlValue(readWorkspaceYaml(cwd), 'nodeVersion')
+    const version = pnpmSetting(readPnpmWorkspaceYaml(cwd), 'nodeVersion')
     return version && semver.valid(version) ? version : undefined
   },
 
   overrides: (cwd) =>
     overridesFromField(
-      readWorkspaceOverrides(readWorkspaceYaml(cwd)),
+      pnpmOverrides(readPnpmWorkspaceYaml(cwd)),
       'overrides in pnpm-workspace.yaml',
     ),
 }
