@@ -105,7 +105,7 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 | `autd check --no-cache`, `autd update --no-cache`         | Ask the registries instead of using autd's cache (see [Cache](#-cache))                                     |
 | `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager                                         |
 | `autd init`                                               | Create `.always-up-to-date.json` in the nearest package.json's directory                                    |
-| `autd help`                                               | Show help                                                                                                   |
+| `autd help [command]`                                     | Show the commands, or one command's options                                                                 |
 
 ## 🧾 JSON output
 

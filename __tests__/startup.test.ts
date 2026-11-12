@@ -30,9 +30,6 @@ jest.mock('@/commands/actions/update', () =>
 jest.mock('@/commands/actions/init', () =>
   mockTracked('@/commands/actions/init'),
 )
-jest.mock('@/commands/actions/help', () =>
-  mockTracked('@/commands/actions/help'),
-)
 jest.mock('@/pipeline', () => mockTracked('@/pipeline'))
 jest.mock('@/project', () => mockTracked('@/project'))
 jest.mock('@/managers', () => mockTracked('@/managers'))

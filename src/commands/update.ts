@@ -21,7 +21,9 @@ export interface UpdateOptions {
 const update = (program: Command) =>
   program
     .command('update [packages...]')
-    .description('Update the update-able dependencies of the project.')
+    .description(
+      'Update dependencies within their package.json ranges, or further where the config allows',
+    )
     .option(
       '--dry-run',
       'Preview which packages would be updated without making changes',

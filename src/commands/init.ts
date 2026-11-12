@@ -7,7 +7,7 @@ import type { Command } from 'commander'
 const initCommand = (program: Command) =>
   program
     .command('init')
-    .description("Initialize the 'always-up-to-date' with a basic setup.")
+    .description('Create .always-up-to-date.json')
     .action(async () => {
       const { initAction } = await import('./actions/init')
       await initAction()

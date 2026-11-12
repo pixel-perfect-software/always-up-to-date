@@ -19,7 +19,9 @@ export interface CheckOptions {
 const checkCommand = (program: Command) =>
   program
     .command('check')
-    .description('Check the dependencies of the project.')
+    .description(
+      'List outdated dependencies and what update would do with each',
+    )
     .option(
       '--json',
       'Output a versioned JSON document (schema/output.schema.json)',
