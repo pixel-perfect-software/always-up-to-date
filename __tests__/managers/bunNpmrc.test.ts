@@ -10,12 +10,8 @@ import {
   mergeNpmrcLayers,
   type NpmrcSources,
 } from '@/utils/npmrcLoader'
-import {
-  authorizationFor,
-  credentialsFor,
-  packumentUrl,
-  registryFor,
-} from '@/utils/registryRequest'
+import { authorizationFor, credentialsFor } from '@/utils/registryAuth'
+import { packumentUrl, registryFor } from '@/utils/registryUrls'
 import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 // Each decision below was probed on bun 1.4.4 (the latest), 2026-10-26; the

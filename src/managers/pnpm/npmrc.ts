@@ -12,12 +12,12 @@ import {
 } from '@/managers/pnpm/workspaceYaml'
 import { pnpmProjectRoot } from '@/managers/workspaces'
 import type { Npmrc } from '@/utils/npmrc'
+import { nonEmpty } from '@/utils/npmrc'
 import {
   type EnvRule,
   envLayer,
   type NpmrcLayer,
   type NpmrcSources,
-  nonEmpty,
   npmrcFileLayer,
 } from '@/utils/npmrcLoader'
 

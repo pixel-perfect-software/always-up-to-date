@@ -6,18 +6,15 @@ import zlib from 'zlib'
 import { yarnV1AuthOptions } from '@/managers/yarn/npmrc'
 import type { RegistryConfig } from '@/types'
 import { type Npmrc, parseNpmrc } from '@/utils/npmrc'
-import {
-  loadRegistryConfig,
-  mergeNpmrcLayers,
-  registryConfigFrom,
-} from '@/utils/npmrcLoader'
+import { loadRegistryConfig, mergeNpmrcLayers } from '@/utils/npmrcLoader'
 import {
   createRegistryClient,
   type RegistryClient,
   type RegistryClientOptions,
   RegistryRequestError,
 } from '@/utils/registryClient'
-import { pathMarker } from '@/utils/registryRequest'
+import { registryConfigFrom } from '@/utils/registryConfig'
+import { pathMarker } from '@/utils/registryUrls'
 import { npmrcSources, tempDir } from '../fixtures/files'
 import {
   conditional,

@@ -10,12 +10,12 @@ import type {
 } from '@/types'
 import { ancestorFiles } from '@/utils/ancestors'
 import logger from '@/utils/logger'
+import { type NpmrcSources } from '@/utils/npmrcLoader'
 import {
-  type NpmrcSources,
   registryProblem,
   unusableEntry,
   withUnusable,
-} from '@/utils/npmrcLoader'
+} from '@/utils/registryConfig'
 import { exemptionOf } from '@/utils/releaseAgeGate'
 import { parseYaml, type YamlNode } from '@/utils/yaml'
 

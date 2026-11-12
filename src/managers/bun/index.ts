@@ -15,11 +15,8 @@ import {
 } from '@/managers/workspaces'
 import { readBunCatalogs, updateBunCatalogs } from '@/utils/catalogs'
 import { updatePackageJson } from '@/utils/manifests'
-import {
-  mergeNpmrcLayers,
-  npmrcBoolean,
-  processSources,
-} from '@/utils/npmrcLoader'
+import { npmrcBoolean } from '@/utils/npmrc'
+import { mergeNpmrcLayers, processSources } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile } from '@/utils/saveStyle'
 

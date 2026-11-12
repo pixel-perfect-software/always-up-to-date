@@ -121,33 +121,3 @@ export const revalidatesEveryUse = (
     directives.maxAge === 0
   )
 }
-
-// The URL helpers and the credential rules, for the modules that import them from here.
-export {
-  authorizationFor,
-  berryAuthorizationFor,
-  credentialPrefixes,
-  credentialsFor,
-  YARN_V1_REGISTRY,
-  yarnV1AuthorizationFor,
-  yarnV1RegistryKeys,
-} from './registryAuth'
-export {
-  ABBREVIATED_ACCEPT,
-  DEFAULT_ENDPOINTS,
-  decodeUri,
-  depsDevUrl,
-  describeUnusable,
-  describeUrl,
-  distTagsUrl,
-  isPublicNpmRegistry,
-  isValidPackageName,
-  nerfDart,
-  packumentUrl,
-  pathMarker,
-  type RegistryEndpoints,
-  registryFor,
-  unusableRouteFor,
-  unusableText,
-  versionManifestUrl,
-} from './registryUrls'

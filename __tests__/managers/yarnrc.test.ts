@@ -14,12 +14,9 @@ import {
   yarnrcRoutes,
 } from '@/managers/yarn/yarnrc'
 import * as npmrcLoader from '@/utils/npmrcLoader'
-import {
-  mergeNpmrcLayers,
-  type NpmrcSources,
-  registryConfigFrom,
-} from '@/utils/npmrcLoader'
-import { registryFor } from '@/utils/registryRequest'
+import { mergeNpmrcLayers, type NpmrcSources } from '@/utils/npmrcLoader'
+import { registryConfigFrom } from '@/utils/registryConfig'
+import { registryFor } from '@/utils/registryUrls'
 import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 const A = 'http://127.0.0.1:4001/'

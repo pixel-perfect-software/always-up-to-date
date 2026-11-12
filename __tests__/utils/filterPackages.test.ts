@@ -8,7 +8,7 @@ import type {
 } from '@/types'
 import type filterPackagesType from '@/utils/filterPackages'
 import type { splitUpdates as splitUpdatesType } from '@/utils/filterPackages'
-import { withWarning } from '@/utils/filterPackages'
+import { withWarning } from '@/utils/plan/rows'
 import type { RegistrySession } from '@/utils/registry'
 import { wantedVersion } from '@/utils/wanted'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'

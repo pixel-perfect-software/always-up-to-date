@@ -18,15 +18,12 @@ import { declaredEnginesReader, enginesPass } from './plan/enginesPass'
 import { holdLicenseChanges } from './plan/licensePass'
 import { fitRunningNode } from './plan/nodeFit'
 import { targetPeerRows } from './plan/peerConflicts'
-import { stepType, withWarning } from './plan/rows'
+import { stepType } from './plan/rows'
 import { createSettle } from './plan/settle'
 import type { DeclaredOf, ManifestPass, PlanRegistry } from './plan/types'
 import { readTargetManifests } from './targetManifests'
 import updateChecker, { policyFromConfig } from './updateChecker'
 import { byPath, expandWorkspaces } from './workspaceRows'
-
-// The tests and other callers import it from here.
-export { withWarning }
 
 interface FilterPackagesOptions {
   config: AlwaysUpToDateConfig

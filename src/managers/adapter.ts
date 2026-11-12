@@ -9,14 +9,10 @@ import type {
 } from '@/types'
 import type { Catalogs } from '@/utils/dependencySpecs'
 import type { InstalledPackage } from '@/utils/installed'
-import type {
-  EmptyRegistryPolicy,
-  NpmrcLayer,
-  NpmrcSources,
-  NpmrcView,
-} from '@/utils/npmrcLoader'
+import type { NpmrcLayer, NpmrcSources, NpmrcView } from '@/utils/npmrcLoader'
 import type { ControllingOverride } from '@/utils/overrides'
 import type { PeerRequirement } from '@/utils/peers'
+import type { EmptyRegistryPolicy } from '@/utils/registryConfig'
 import type { SaveStyle } from '@/utils/saveStyle'
 import type { RangedDependency } from './yarn/lockfile'
 

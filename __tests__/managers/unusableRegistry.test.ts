@@ -12,10 +12,10 @@ import {
   managerRegistryConfig,
   mergeNpmrcLayers,
   type NpmrcSources,
-  registryConfigFrom,
 } from '@/utils/npmrcLoader'
 import { createRegistrySession } from '@/utils/registry'
-import { describeUnusable, unusableRouteFor } from '@/utils/registryRequest'
+import { registryConfigFrom } from '@/utils/registryConfig'
+import { describeUnusable, unusableRouteFor } from '@/utils/registryUrls'
 import { isolateNpmConfig } from '../fixtures'
 import { tempDir, write } from '../fixtures/files'
 

@@ -18,7 +18,7 @@ import {
 import {
   ABBREVIATED_ACCEPT,
   type RegistryEndpoints,
-} from '@/utils/registryRequest'
+} from '@/utils/registryUrls'
 import { localRegistryConfig as configFor, tempDir } from '../fixtures/files'
 import {
   conditional,

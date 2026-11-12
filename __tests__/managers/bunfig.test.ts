@@ -9,7 +9,7 @@ import {
 } from '@/managers/bun/bunfig'
 import logger from '@/utils/logger'
 import type { NpmrcSources } from '@/utils/npmrcLoader'
-import { authorizationFor } from '@/utils/registryRequest'
+import { authorizationFor } from '@/utils/registryAuth'
 import {
   registryConfig as base,
   npmrcSources,

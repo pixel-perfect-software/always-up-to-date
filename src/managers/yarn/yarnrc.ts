@@ -3,14 +3,13 @@ import path from 'path'
 import { yarnV1AuthOptions } from '@/managers/yarn/npmrc'
 import type { RegistryConfig, UnusableRegistries } from '@/types'
 import { ancestorFiles } from '@/utils/ancestors'
+import { type NpmrcSources, type NpmrcView } from '@/utils/npmrcLoader'
 import {
   layerOrigin,
-  type NpmrcSources,
-  type NpmrcView,
   registryProblem,
   unusableEntry,
   withUnusable,
-} from '@/utils/npmrcLoader'
+} from '@/utils/registryConfig'
 import { readTextFile } from '@/utils/saveStyle'
 
 /** What one .yarnrc routes, as written. */
