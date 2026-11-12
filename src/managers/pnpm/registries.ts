@@ -1,5 +1,10 @@
+import {
+  type PnpmYaml,
+  parsePnpmYaml,
+  pnpmSetting,
+} from '@/managers/pnpm/workspaceYaml'
 import logger from '@/utils/logger'
-import { unquote, yamlValue } from '@/utils/saveStyle'
+import type { YamlNode } from '@/utils/yaml'
 
 /** What pnpm-workspace.yaml routes: the default registry and per-scope registries. */
 export interface PnpmRegistrySettings {
@@ -14,105 +19,16 @@ export interface PnpmRegistrySettings {
   labels: Record<string, string>
 }
 
-const withoutComment = (value: string): string =>
-  value.replace(/(^|\s)#.*$/, '').trim()
-
-interface Entry {
-  key: string
-  /** What follows `key:` on the same line; '' for a nested mapping. */
-  value: string
-  /** The entry's nested lines. */
-  body: string[]
-}
-
 /**
- * The key and value of one `key: value` mapping line. A key is quoted, or
- * ends at its last `:` when nothing follows it (a URL key), or at its first
- * `: ` otherwise (`default: https://…`).
+ * The `scopes` of a URL-keyed entry, as a flow or block list; a value that
+ * is not a list holds none.
  */
-const keyValue = (text: string): [string, string] | undefined => {
-  const quoted = /^(["'])(.*?)\1\s*:\s*(.*)$/.exec(text)
-  if (quoted) return [quoted[2], quoted[3]]
-  if (text.endsWith(':')) return [text.slice(0, -1).trim(), '']
-  const bare = /^(.*?):\s+(.*)$/.exec(text)
-  return bare ? [bare[1], bare[2]] : undefined
-}
-
-/**
- * The entries of the top-level `registries:` mapping, written as a block or
- * as one-line flow (`registries: { default: https://x/, "@a": https://a/ }`).
- * A flow mapping is read only in its flat legacy shape.
- */
-const registryEntries = (yaml: string): Entry[] => {
-  const lines = yaml.split(/\r?\n/)
-  const start = lines.findIndex((line) => /^registries:/.test(line))
-  if (start === -1) return []
-
-  const flow = /^registries:\s*\{(.*)\}\s*(#.*)?$/.exec(lines[start])
-  if (flow) {
-    if (/[{[]/.test(flow[1])) {
-      logger.debug(
-        'Ignoring registries in pnpm-workspace.yaml: nested flow mapping',
+const scopesOf = (entry: Record<string, YamlNode>): string[] =>
+  Array.isArray(entry.scopes)
+    ? entry.scopes.filter(
+        (scope): scope is string => typeof scope === 'string' && scope !== '',
       )
-      return []
-    }
-    return flow[1].split(',').flatMap((pair) => {
-      const found = keyValue(withoutComment(pair))
-      return found ? [{ key: found[0], value: found[1], body: [] }] : []
-    })
-  }
-  if (!/^registries:\s*(#.*)?$/.test(lines[start])) return []
-
-  const entries: Entry[] = []
-  let indent: number | undefined
-  for (const line of lines.slice(start + 1)) {
-    if (/^\s*(#.*)?$/.test(line)) continue
-    if (/^\S/.test(line)) break
-    const depth = line.length - line.trimStart().length
-    indent ??= depth
-    if (depth > indent) {
-      entries.at(-1)?.body.push(line)
-      continue
-    }
-    const found = keyValue(withoutComment(line))
-    if (found) entries.push({ key: found[0], value: found[1], body: [] })
-  }
-  return entries
-}
-
-/** A `scopes: [a, b]` flow list or `scopes:` block list in an entry. */
-const scopesOf = (entry: Entry): string[] => {
-  const flow = /^\{.*\bscopes\s*:\s*\[([^\]]*)\]/.exec(entry.value)
-  if (flow) return flow[1].split(',').map(unquote).filter(Boolean)
-
-  const scopes: string[] = []
-  let inScopes = false
-  for (const line of entry.body.map(withoutComment)) {
-    const inline = /^scopes:\s*\[([^\]]*)\]$/.exec(line)
-    if (inline) {
-      scopes.push(...inline[1].split(',').map(unquote).filter(Boolean))
-      continue
-    }
-    if (/^scopes:$/.test(line)) {
-      inScopes = true
-      continue
-    }
-    const item = inScopes ? /^-\s*(.+)$/.exec(line) : null
-    if (item) scopes.push(unquote(item[1]))
-    else if (!/^-/.test(line)) inScopes = false
-  }
-  return scopes
-}
-
-const ecosystemOf = (entry: Entry): string | undefined => {
-  const inline = /\becosystem\s*:\s*([^,}\s]+)/.exec(entry.value)
-  if (inline) return unquote(inline[1])
-  for (const line of entry.body.map(withoutComment)) {
-    const found = /^ecosystem:\s*(.+)$/.exec(line)
-    if (found) return unquote(found[1])
-  }
-  return undefined
-}
+    : []
 
 /**
  * pnpm's `${VAR}` and `${VAR:-default}` in the user and global files and in
@@ -166,40 +82,49 @@ const usable = (
  * The file never carries credentials (p43).
  */
 export const pnpmRegistrySettings = (
-  yaml: string,
+  yaml: string | PnpmYaml,
   {
     env,
     file = 'pnpm-workspace.yaml',
   }: { env?: NodeJS.ProcessEnv; file?: string } = {},
 ): PnpmRegistrySettings => {
+  const doc = typeof yaml === 'string' ? parsePnpmYaml(yaml) : yaml
   const scopes: Record<string, string> = {}
   const labels: Record<string, string> = {}
   let fromRegistries: string | undefined
   let defaultLabel = 'registry'
 
-  for (const entry of registryEntries(yaml)) {
-    const scalar = entry.value !== '' && !entry.value.startsWith('{')
-    if (scalar) {
-      const url = usable(
-        unquote(entry.value),
-        `registries.${entry.key}`,
-        file,
-        env,
-      )
+  // A block or a flat one-line flow map (`parsePnpmYaml`); a flow map that
+  // nests another is left out by the reader, so it routes nothing.
+  const registries = doc.registries
+  const entries =
+    registries !== null &&
+    typeof registries === 'object' &&
+    !Array.isArray(registries)
+      ? Object.entries(registries)
+      : []
+
+  for (const [key, value] of entries) {
+    if (typeof value === 'string') {
+      const url = usable(value, `registries.${key}`, file, env)
       if (url === undefined) continue
-      if (entry.key === 'default') {
+      if (key === 'default') {
         fromRegistries = url
         defaultLabel = 'registries.default'
-      } else if (/^@.+/.test(entry.key)) {
-        scopes[entry.key] = url
-        labels[`${entry.key}:registry`] = `registries."${entry.key}"`
+      } else if (/^@.+/.test(key)) {
+        scopes[key] = url
+        labels[`${key}:registry`] = `registries."${key}"`
       }
       continue
     }
 
-    const ecosystem = ecosystemOf(entry)
-    if (ecosystem !== undefined && ecosystem !== 'npm') continue
-    const url = usable(entry.key, `registries entry ${entry.key}`, file, env)
+    const entry =
+      value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? value
+        : {}
+    const ecosystem = entry.ecosystem
+    if (typeof ecosystem === 'string' && ecosystem !== 'npm') continue
+    const url = usable(key, `registries entry ${key}`, file, env)
     if (url === undefined) continue
     for (const scope of scopesOf(entry)) {
       if (scope === '@') {
@@ -213,7 +138,7 @@ export const pnpmRegistrySettings = (
     }
   }
 
-  const topLevel = yamlValue(yaml, 'registry')
+  const topLevel = pnpmSetting(doc, 'registry')
   const fromTop =
     topLevel === undefined ? undefined : usable(topLevel, 'registry', file, env)
   labels.registry = fromTop === undefined ? defaultLabel : 'registry'

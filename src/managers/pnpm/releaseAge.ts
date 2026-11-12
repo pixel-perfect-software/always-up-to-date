@@ -1,22 +1,17 @@
-import fs from 'fs'
 import path from 'path'
 
 import { PNPM_ENV, pnpmConfigDir } from '@/managers/pnpm/npmrc'
+import {
+  readPnpmWorkspaceYaml,
+  readPnpmYaml,
+} from '@/managers/pnpm/workspaceYaml'
 import type { ReleaseAgeGate } from '@/types'
 import { envLayer, type NpmrcSources } from '@/utils/npmrcLoader'
 import { exemptionOf } from '@/utils/releaseAgeGate'
-import { parseYaml, type YamlNode } from '@/utils/yaml'
+import type { YamlNode } from '@/utils/yaml'
 
 /** `minimumReleaseAge`'s default in pnpm 12: one day, in minutes. */
 export const PNPM_DEFAULT_RELEASE_AGE = 1440
-
-const readYaml = (file: string): Record<string, YamlNode> => {
-  try {
-    return parseYaml(fs.readFileSync(file, 'utf8'))
-  } catch {
-    return {}
-  }
-}
 
 /**
  * pnpm's release-age gate (#168), a security default autd never overrides.
@@ -41,8 +36,8 @@ export const pnpmReleaseAgeGate = (
 ): ReleaseAgeGate => {
   const env = envLayer(sources.env, PNPM_ENV).values
   const files = [
-    readYaml(path.join(cwd, 'pnpm-workspace.yaml')),
-    readYaml(path.join(pnpmConfigDir(cwd, sources), 'config.yaml')),
+    readPnpmWorkspaceYaml(cwd),
+    readPnpmYaml(path.join(pnpmConfigDir(cwd, sources), 'config.yaml')),
   ]
   const setting = (yamlKey: string, envKey: string): YamlNode | undefined => {
     const fromEnv = env[envKey]

@@ -6,6 +6,11 @@ import {
   pnpmRegistrySettings,
   substitutePnpm,
 } from '@/managers/pnpm/registries'
+import {
+  type PnpmYaml,
+  pnpmSetting,
+  readPnpmYaml,
+} from '@/managers/pnpm/workspaceYaml'
 import { pnpmProjectRoot } from '@/managers/workspaces'
 import type { Npmrc } from '@/utils/npmrc'
 import {
@@ -16,7 +21,6 @@ import {
   nonEmpty,
   npmrcFileLayer,
 } from '@/utils/npmrcLoader'
-import { readTextFile, yamlValue } from '@/utils/saveStyle'
 
 /**
  * pnpm's global config directory, which holds `config.yaml` and `auth.ini`.
@@ -97,7 +101,7 @@ const YAML_FETCH_KEYS = {
 
 const routeLayer = (
   file: string,
-  content: string,
+  content: PnpmYaml,
   { registry, scopes, labels }: PnpmRegistrySettings,
 ): NpmrcLayer => {
   const values: Npmrc = Object.create(null)
@@ -106,7 +110,7 @@ const routeLayer = (
     values[`${scope}:registry`] = url
   }
   for (const [yamlKey, key] of Object.entries(YAML_FETCH_KEYS)) {
-    const value = yamlValue(content, yamlKey)
+    const value = pnpmSetting(content, yamlKey)
     if (value !== undefined) values[key] = value
   }
   return { kind: 'file', file, values, labels }
@@ -167,8 +171,8 @@ export const pnpmNpmrcLayers = (
   const configDir = pnpmConfigDir(cwd, sources)
   const yamlFile = path.join(root, 'pnpm-workspace.yaml')
   const globalYaml = path.join(configDir, 'config.yaml')
-  const projectYaml = readTextFile(yamlFile)
-  const globalYamlContent = readTextFile(globalYaml)
+  const projectYaml = readPnpmYaml(yamlFile)
+  const globalYamlContent = readPnpmYaml(globalYaml)
   return [
     envLayer(env, PNPM_ENV),
     envLayer(env, NPM_CREDENTIALS_ENV),
