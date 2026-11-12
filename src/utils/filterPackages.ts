@@ -3,7 +3,6 @@ import path from 'path'
 import semver from 'semver'
 import type {
   AlwaysUpToDateConfig,
-  CooldownConfig,
   ManifestPlan,
   PackageInfo,
   PinnedRow,
@@ -11,13 +10,7 @@ import type {
   UpdateResult,
   VersionManifest,
 } from '@/types'
-import {
-  cooldownDaysFor,
-  evaluateCooldown,
-  isCooldownEnabled,
-} from './cooldown'
-import type { DeclaredDependency } from './dependencySpecs'
-import { formatAgeDays } from './duration'
+import { isCooldownEnabled } from './cooldown'
 import { declaredNodeRange, enginesHold, runningNode } from './engines'
 import {
   readInstalledManifests,
@@ -29,10 +22,12 @@ import logger from './logger'
 import { fitRunningNode } from './nodeFit'
 import type { ControllingOverride } from './overrides'
 import { readInstalledPeers } from './peers'
+import { holdCooldown, versionCooldown } from './plan/cooldownPass'
+import { holdDeprecated, oneLine } from './plan/deprecationPass'
 import { targetPeerRows } from './plan/peerConflicts'
 import { heldFor, stepType, withWarning } from './plan/rows'
 import { createSettle } from './plan/settle'
-import type { PlanRegistry } from './plan/types'
+import type { DeclaredOf, PlanRegistry } from './plan/types'
 import {
   readTargetManifests,
   type TargetManifests,
@@ -71,10 +66,7 @@ interface FilterPackagesOptions {
    * satisfy (#151). Without it, the row's own name is looked up and no
    * fallback lands below `wanted`.
    */
-  declared?: (row: {
-    name: string
-    workspace?: string
-  }) => Pick<DeclaredDependency, 'name' | 'spec'> | undefined
+  declared?: DeclaredOf
   /**
    * The installed version of each package a moving target needs as a peer
    * (#198), by `rowKey`, asked once per plan with a `{ name, workspace }` for
@@ -100,130 +92,6 @@ interface FilterPackagesOptions {
    * newest version below it that fits (`fitRunningNode`). Default false.
    */
   skipsEnginesExcluded?: boolean
-}
-
-/**
- * The newest version between `current` and a target the cooldown held that
- * is past cooldown for its own step and not deprecated (#147), so a package
- * that publishes more often than the cooldown still moves. It is below the
- * target, so the policy allows a step no larger. Below `wanted` it must also
- * satisfy `range`, the one the manifest declares: `applyPinned` puts that
- * range back after the pin, and the manager keeps the version only if the
- * range allows it, which a range with a gap (`^1 || ^3`) need not (#151).
- * With no range known, nothing below `wanted` qualifies. A pre-release only
- * when the target is one.
- */
-const cooledOffVersion = (
-  { current, wanted, target }: UpdateResult,
-  range: string | undefined,
-  times: Record<string, string>,
-  deprecated: Set<string>,
-  cooldown: CooldownConfig | undefined,
-  now: number | undefined,
-): { version: string; ageDays: number | undefined } | undefined => {
-  if (!target || !semver.valid(current) || !semver.valid(target)) {
-    return undefined
-  }
-  const preRelease = semver.prerelease(target) !== null
-  const candidates = Object.keys(times)
-    .filter(
-      (version) =>
-        semver.valid(version) &&
-        semver.gt(version, current) &&
-        semver.lt(version, target) &&
-        (preRelease || semver.prerelease(version) === null) &&
-        !deprecated.has(version) &&
-        // At `wanted` the manager installs it by name; past it, the spec is
-        // rewritten to it.
-        ((semver.valid(wanted) !== null && semver.gte(version, wanted)) ||
-          (range !== undefined && semver.satisfies(version, range))),
-    )
-    .sort(semver.rcompare)
-  for (const version of candidates) {
-    const evaluation = evaluateCooldown(
-      times[version],
-      stepType(current, version),
-      cooldown,
-      now,
-    )
-    if (!evaluation.gated) return { version, ageDays: evaluation.ageDays }
-  }
-  return undefined
-}
-
-/** The most of a registry's message a report row shows. */
-const MESSAGE_LIMIT = 400
-
-/**
- * A registry's deprecation message on one line, as it lands in a terminal
- * row: line breaks, other control characters (an escape sequence's ESC among
- * them), zero-width and bidirectional formatting characters (which can make
- * a row read as something else) and runs of spaces become one space, and a
- * message past `MESSAGE_LIMIT` characters is cut with `…`.
- */
-const oneLine = (text: string): string => {
-  const line = text
-    .replace(
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
-      /[\s\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g,
-      ' ',
-    )
-    .trim()
-  return line.length > MESSAGE_LIMIT
-    ? `${line.slice(0, MESSAGE_LIMIT).trimEnd()}…`
-    : line
-}
-
-/**
- * Holds a moving row whose target the registry marks deprecated
- * (`deprecated: <message>`, #195); a `latest` rule moves it anyway, with the
- * message as a warning. When the installed version carries the same
- * deprecation, the move takes on nothing it doesn't have, so it goes ahead
- * with the warning: holding would keep an older deprecated version (every
- * next 14.0.x, for one). It judges the final target, so it runs after the cooldown, whose
- * fallbacks are never deprecated. It reads only the session's own lookups.
- */
-const holdDeprecated = async (
-  results: UpdateResult[],
-  registry: FilterPackagesOptions['registry'],
-  policy: UpdatePolicy,
-  lookupName: (row: UpdateResult) => string,
-): Promise<UpdateResult[]> => {
-  const { lookedUp } = registry
-  if (!lookedUp) return results
-  return Promise.all(
-    results.map(async (result) => {
-      const { target, current } = result
-      if (!result.updated || !target) return result
-      const name = lookupName(result)
-      const found = await lookedUp(name)
-      if (!found) {
-        logger.debug(
-          `No lookup of ${name} in this session; its deprecation isn't checked`,
-        )
-        return result
-      }
-      if (!found.ok) return result
-      const { versions } = found.package
-      const deprecation = versions.find((v) => v.version === target)
-      if (!deprecation?.deprecated) return result
-
-      const message = oneLine(deprecation.deprecatedReason ?? '')
-      const reason: Reason = {
-        code: 'deprecated',
-        message: `deprecated: ${message || 'no message given'}`,
-      }
-      // The installed version carries the same deprecation, so the move takes
-      // on nothing new; a different message is a new reason, and holds.
-      const installed = versions.find((v) => v.version === current)
-      const sameAsInstalled =
-        installed?.deprecated === true &&
-        oneLine(installed.deprecatedReason ?? '') === message
-      return sameAsInstalled || policy.ruleFor(result.name) === 'latest'
-        ? withWarning(result, reason)
-        : heldFor(result, reason)
-    }),
-  )
 }
 
 /** Characters of a license shown in a reason or warning; the rest is cut. */
@@ -443,21 +311,6 @@ const enginesPass = ({
         })
 }
 
-/** Versions the registry marks deprecated, when the session can say. */
-const deprecatedVersions = async (
-  registry: FilterPackagesOptions['registry'],
-  name: string,
-): Promise<Set<string>> => {
-  const lookup = await registry.lookup?.(name)
-  return new Set(
-    lookup?.ok
-      ? lookup.package.versions
-          .filter((v) => v.deprecated)
-          .map((v) => v.version)
-      : [],
-  )
-}
-
 /**
  * Decides each outdated package's target (`updateChecker`: within the
  * manifest range by default, further only when the policy allows), then
@@ -584,23 +437,12 @@ const filterPackages = async (
             return spec && 'range' in spec ? spec.range : undefined
           },
           cooldownOf: cooldownActive
-            ? async (row, version) => {
-                const type = stepType(row.current, version)
-                if (cooldownDaysFor(config.cooldown, type) <= 0) {
-                  return { gated: false, ageDays: undefined }
-                }
-                const times = await registry.releaseTimes(lookupName(row), {
-                  current: row.current,
-                  target: row.target as string,
-                })
-                const { gated, ageDays } = evaluateCooldown(
-                  times[version],
-                  type,
-                  config.cooldown,
-                  now,
-                )
-                return { gated, ageDays }
-              }
+            ? versionCooldown({
+                cooldown: config.cooldown,
+                registry,
+                lookupName,
+                now,
+              })
             : undefined,
         })
       : { rows: moving, manifests: read }
@@ -652,73 +494,12 @@ const filterPackages = async (
 
   if (!cooldownActive) return signals(results)
 
-  const gated = await Promise.all(
-    results.map(async (result): Promise<UpdateResult> => {
-      if (!result.updated || !result.target) return result
-      // A zero-day step is never gated, whatever its release time is.
-      if (cooldownDaysFor(config.cooldown, result.updateType) <= 0) {
-        return { ...result, releaseAge: undefined }
-      }
-
-      const dependency = declared?.({
-        name: result.name,
-        workspace: result.workspace,
-      })
-      // A row is keyed by its manifest key; an alias's dates are its target's.
-      const name = dependency?.name ?? result.name
-      const releaseTimes = await registry.releaseTimes(name, {
-        current: result.current,
-        target: result.target,
-      })
-      const releaseTime = releaseTimes[result.target]
-      const evaluation = evaluateCooldown(
-        releaseTime,
-        result.updateType,
-        config.cooldown,
-        now,
-      )
-
-      if (evaluation.gated) {
-        const held = evaluation.unknown
-          ? `release date unknown, requires ${evaluation.requiredDays}d`
-          : `released ${formatAgeDays(
-              evaluation.ageDays,
-            )} ago, requires ${evaluation.requiredDays}d`
-        const fallback = cooledOffVersion(
-          result,
-          dependency && 'range' in dependency.spec
-            ? dependency.spec.range
-            : undefined,
-          releaseTimes,
-          await deprecatedVersions(registry, name),
-          config.cooldown,
-          now,
-        )
-        if (fallback) {
-          return {
-            ...result,
-            target: fallback.version,
-            updateType: stepType(result.current, fallback.version),
-            reason: {
-              code: 'cooldown-fallback',
-              message: `cooldown: ${result.target} ${held}`,
-            },
-            releaseAge: fallback.ageDays,
-          }
-        }
-        return {
-          ...result,
-          target: undefined,
-          judged: result.target,
-          updated: false,
-          reason: { code: 'cooldown', message: `cooldown: ${held}` },
-          releaseAge: evaluation.ageDays,
-        }
-      }
-
-      return { ...result, releaseAge: evaluation.ageDays }
-    }),
-  )
+  const gated = await holdCooldown(results, {
+    cooldown: config.cooldown,
+    registry,
+    declared,
+    now,
+  })
   return signals(settle(gated))
 }
 
