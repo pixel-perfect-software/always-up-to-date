@@ -29,7 +29,6 @@ import { parseYaml, type YamlNode } from '@/utils/yaml'
 
 /** `.yarnrc.yml` is read with the shared YAML subset reader. */
 export const parseYarnrcYml = parseYaml
-export type { YamlNode }
 
 /**
  * Berry's `${…}` substitution, as yarn 4.18.1's bundle has it: `${NAME}`
@@ -138,7 +137,7 @@ const SCALARS = [
 type Scalar = (typeof SCALARS)[number]
 
 /** Berry's merged settings that autd reads. */
-export interface BerrySettings {
+interface BerrySettings {
   scalars: Partial<Record<Scalar, Sourced<string>>>
   /** Scope name without `@` → its settings. */
   scopes: Record<string, NpmEntry>
@@ -153,7 +152,7 @@ const envName = (setting: string): string =>
   `YARN_${setting.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()}`
 
 /** A berry boolean: `true` / `1`, `false` / `0`; anything else is not one. */
-export const berryBoolean = (value: string | undefined): boolean | undefined =>
+const berryBoolean = (value: string | undefined): boolean | undefined =>
   value === 'true' || value === '1'
     ? true
     : value === 'false' || value === '0'
@@ -306,7 +305,7 @@ const DURATION_UNITS: Record<string, number> = {
  * `unit`, or one followed by `ms`, `s`, `m`, `h`, `d` or `w`, with no space.
  * Undefined when it doesn't parse (berry fails on it).
  */
-export const berryDuration = (
+const berryDuration = (
   value: string | undefined,
   unit: keyof typeof DURATION_UNITS,
 ): number | undefined => {
@@ -349,10 +348,10 @@ const authEntry = (
   }
 }
 
-export const DEFAULT_BERRY_REGISTRY = 'https://registry.yarnpkg.com'
+const DEFAULT_BERRY_REGISTRY = 'https://registry.yarnpkg.com'
 
 /** `npmMinimalAgeGate`'s default, `1d`, in minutes. */
-export const DEFAULT_BERRY_AGE_GATE_MINUTES = 1440
+const DEFAULT_BERRY_AGE_GATE_MINUTES = 1440
 
 /**
  * The registry config yarn berry resolves (#107), replacing the `.npmrc`

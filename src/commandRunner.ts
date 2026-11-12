@@ -1,6 +1,7 @@
 import { type PipelineStep, StepError } from '@/stepError'
 import type { SupportedPackageManager } from '@/types'
-import { logger, runProcess } from '@/utils'
+import logger from '@/utils/logger'
+import { runProcess } from '@/utils/runProcess'
 
 interface ExecError extends Error {
   code?: number | string

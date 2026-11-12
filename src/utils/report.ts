@@ -78,7 +78,7 @@ export interface ReportRow {
   note?: string
 }
 
-export interface ReportSection {
+interface ReportSection {
   outcome: Outcome
   rows: ReportRow[]
   /** Distinct package names in the section. */

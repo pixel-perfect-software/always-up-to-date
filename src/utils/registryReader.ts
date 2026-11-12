@@ -33,7 +33,7 @@ import {
   versionManifestUrl,
 } from './registryRequest'
 
-export interface RegistryReaderOptions {
+interface RegistryReaderOptions {
   registryConfig: RegistryConfig
   /** Called only when a request is needed, so a run the cache answers never loads the client. */
   client: () => Promise<RegistryClient>

@@ -14,7 +14,7 @@ import {
 import { readTextFile } from '@/utils/saveStyle'
 
 /** What one .yarnrc routes, as written. */
-export interface YarnrcRoutes {
+interface YarnrcRoutes {
   /** `registry "…"`: an ordinary setting, below .npmrc. */
   registry?: string
   /** `--registry "…"`: yarn applies it as a command-line flag, above everything. */

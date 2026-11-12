@@ -10,7 +10,7 @@ import type { TargetManifests } from './targetManifests'
 export const ENGINES_WALK_LIMIT = 5
 
 /** What the cooldown says of one version; `ageDays` is kept as the row's `releaseAge`. */
-export interface VersionCooldown {
+interface VersionCooldown {
   gated: boolean
   ageDays: number | undefined
 }

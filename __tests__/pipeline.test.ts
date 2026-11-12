@@ -19,14 +19,14 @@ jest.mock('@/utils/config', () => ({
   loadConfig: jest.fn(),
 }))
 jest.mock('@/utils/logger')
-jest.mock('@/utils', () => ({
-  ...jest.requireActual('@/utils'),
+jest.mock('@/utils/runProcess', () => ({
+  ...jest.requireActual('@/utils/runProcess'),
   runProcess: jest.fn(),
 }))
 
-import { runProcess } from '@/utils'
 import { loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
+import { runProcess } from '@/utils/runProcess'
 import { reasonFor } from './fixtures/reasons'
 
 // Keep the developer's own npm configuration out of every case.
