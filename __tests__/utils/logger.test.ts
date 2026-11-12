@@ -87,11 +87,13 @@ describe('Logger', () => {
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('broke'))
     })
 
-    it('stays silent when quiet', () => {
+    it('mutes a warning when quiet, never an error', () => {
       logger.setQuiet(true)
+      logger.warn('careful')
       logger.error('broke')
 
-      expect(errorSpy).not.toHaveBeenCalled()
+      expect(errorSpy).toHaveBeenCalledTimes(1)
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('broke'))
     })
   })
 
@@ -106,14 +108,53 @@ describe('Logger', () => {
       expect(logSpy.mock.calls[0][0]).toContain('it worked')
     })
 
-    it('warn logs message', () => {
-      logger.warn('be careful')
-      expect(logSpy.mock.calls[0][0]).toContain('be careful')
-    })
+    describe('diagnostics in human mode', () => {
+      let errorSpy: jest.SpyInstance
 
-    it('error logs message', () => {
-      logger.error('something failed')
-      expect(logSpy.mock.calls[0][0]).toContain('something failed')
+      beforeEach(() => {
+        console.error = Object.getPrototypeOf(console).error
+        errorSpy = jest
+          .spyOn(console, 'error')
+          .mockImplementation(() => undefined)
+      })
+
+      afterEach(() => {
+        errorSpy.mockRestore()
+      })
+
+      it('warn goes to stderr, not stdout', () => {
+        logger.warn('be careful')
+        expect(errorSpy.mock.calls[0][0]).toContain('be careful')
+        expect(logSpy).not.toHaveBeenCalled()
+      })
+
+      it('error goes to stderr, not stdout', () => {
+        logger.error('something failed')
+        expect(errorSpy.mock.calls[0][0]).toContain('something failed')
+        expect(logSpy).not.toHaveBeenCalled()
+      })
+
+      it('silent still prints an error and a warning marked always, and mutes a plain warning', () => {
+        logger.configure({ silent: true })
+        logger.warn('plain')
+        logger.warn('with the error', { always: true })
+        logger.error('something failed')
+
+        const lines = errorSpy.mock.calls.map(([line]) => line)
+        expect(lines).toHaveLength(2)
+        expect(lines[0]).toContain('with the error')
+        expect(lines[1]).toContain('something failed')
+        expect(logSpy).not.toHaveBeenCalled()
+      })
+
+      it('a debug line carries a debug label and no report indent', () => {
+        logger.configure({ debug: true })
+        logger.debug('registry cache off')
+
+        const line = stripVTControlCharacters(errorSpy.mock.calls[0][0])
+        expect(line).toBe('debug registry cache off')
+        expect(logSpy).not.toHaveBeenCalled()
+      })
     })
 
     it('command stays silent when debug is off', () => {
@@ -164,14 +205,19 @@ describe('Logger', () => {
   })
 
   describe('configure', () => {
-    it('prints command and debug lines once debug is on', () => {
+    it('prints command and debug lines to stderr once debug is on', () => {
+      const errorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined)
       logger.configure({ debug: true })
 
       logger.command('npm outdated')
       logger.debug('debug info')
 
-      expect(logSpy.mock.calls[0][0]).toContain('npm outdated')
-      expect(logSpy.mock.calls[1][0]).toContain('debug info')
+      expect(errorSpy.mock.calls[0][0]).toContain('npm outdated')
+      expect(errorSpy.mock.calls[1][0]).toContain('debug info')
+      expect(logSpy).not.toHaveBeenCalled()
+      errorSpy.mockRestore()
     })
 
     it('mutes output when silent', () => {
@@ -539,12 +585,11 @@ describe('Logger', () => {
   })
 
   describe('quiet mode', () => {
-    it('suppresses all output when quiet is true', () => {
+    it('suppresses all output but an error when quiet is true', () => {
       logger.setQuiet(true)
       logger.info('x')
       logger.success('x')
       logger.warn('x')
-      logger.error('x')
       logger.allUpToDate()
       logger.report([moved('p'), held('q', 'held by rule')], 'npm', 'plan')
       logger.updatingHeader('npm', 1)

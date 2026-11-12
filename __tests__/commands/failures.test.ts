@@ -91,13 +91,36 @@ describe('command failures', () => {
   it('update exits 1 and names the failed step and the written manifest', async () => {
     pipeline.update.mockRejectedValue(applyFailed)
 
-    const output = await run('update', 'dayjs')
+    await run('update', 'dayjs')
+    const output = stderr.join('\n')
 
     expect(process.exitCode).toBe(1)
     expect(output).toContain('Failed during apply')
     expect(output).toContain('ERR_PNPM_IGNORED_BUILDS')
     expect(output).toContain('package.json was already rewritten')
+    expect(stdout.join('\n')).not.toContain('Failed during apply')
   })
+
+  it.each([['check'], ['update']] as const)(
+    '%s with silent: true still prints the failure, and the rewritten-manifest note',
+    async (command) => {
+      jest
+        .mocked(loadConfig)
+        .mockImplementation(
+          () => ({ silent: true }) as ReturnType<typeof loadConfig>,
+        )
+      pipeline[command].mockRejectedValue(applyFailed)
+
+      await run(command)
+
+      expect(process.exitCode).toBe(1)
+      const output = stderr.join('\n')
+      expect(output).toContain('Failed during apply')
+      expect(output).toContain('ERR_PNPM_IGNORED_BUILDS')
+      expect(output).toContain('package.json was already rewritten')
+      expect(stdout).toHaveLength(0)
+    },
+  )
 
   it('update --json exits 1 and prints a JSON error object instead of []', async () => {
     pipeline.update.mockRejectedValue(applyFailed)
@@ -171,11 +194,13 @@ describe('command failures', () => {
         throw configFailed
       })
 
-      const output = await run(command)
+      await run(command)
+      const output = stderr.join('\n')
 
       expect(process.exitCode).toBe(1)
       expect(output).toContain(configFailed.message)
-      expect(stdout.filter((line) => line.includes('❌'))).toHaveLength(1)
+      expect(stderr.filter((line) => line.includes('❌'))).toHaveLength(1)
+      expect(stdout.filter((line) => line.includes('❌'))).toHaveLength(0)
       expect(pipeline.check).not.toHaveBeenCalled()
       expect(pipeline.update).not.toHaveBeenCalled()
     },
