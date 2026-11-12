@@ -12,6 +12,7 @@ import { isRecord } from '@/utils/isRecord'
 import { updatePackageJson } from '@/utils/manifests'
 import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
+import type { PeerRequirement } from '@/utils/peers'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
 
 /** One `packages` entry of package-lock.json (lockfileVersion 2 and 3). */
@@ -19,6 +20,7 @@ interface LockedEntry {
   version?: unknown
   link?: unknown
   resolved?: unknown
+  peerDependencies?: unknown
 }
 
 const readLockfile = (cwd: string): Record<string, LockedEntry> | undefined => {
@@ -77,6 +79,48 @@ export const readLockedPackages = (
     }
   }
   return installed
+}
+
+/** A package directly under the root's node_modules: `x` or `@scope/x`. */
+const HOISTED = /^node_modules\/((?:@[^/]+\/)?[^/]+)$/
+
+/**
+ * Peer ranges package-lock.json records for the packages under the root's
+ * node_modules, keyed by the package they constrain (#232): what
+ * `readInstalledPeers` reads from `<cwd>/node_modules` when it exists. So,
+ * like that scan, only hoisted entries count (`node_modules/<name>`, not a
+ * nested `node_modules/a/node_modules/b` or a member's own
+ * `<member>/node_modules/<name>`), a `link: true` entry (a workspace member)
+ * counts with the member entry it resolves to, and optional peers count too.
+ * Empty without a readable lockfile.
+ */
+export const readLockedPeers = (
+  cwd: string,
+): Map<string, PeerRequirement[]> => {
+  const peers = new Map<string, PeerRequirement[]>()
+  const packages = readLockfile(cwd)
+  if (!packages) return peers
+  const seen = new Set<string>()
+  for (const [location, found] of Object.entries(packages)) {
+    const name = HOISTED.exec(location)?.[1]
+    if (!name || !isRecord(found)) continue
+    const entry =
+      found.link === true && typeof found.resolved === 'string'
+        ? packages[found.resolved]
+        : found
+    if (!isRecord(entry)) continue
+    const { version, peerDependencies } = entry
+    if (typeof version !== 'string' || !isRecord(peerDependencies)) continue
+    if (seen.has(`${name}@${version}`)) continue
+    seen.add(`${name}@${version}`)
+    for (const [peer, range] of Object.entries(peerDependencies)) {
+      if (typeof range !== 'string') continue
+      const list = peers.get(peer) ?? []
+      list.push({ name, version, range })
+      peers.set(peer, list)
+    }
+  }
+  return peers
 }
 
 /**
@@ -168,7 +212,11 @@ const npm: ManagerAdapter = {
   installedFromLockfile: (cwd) =>
     !fs.existsSync(path.join(cwd, 'node_modules')) &&
     fs.existsSync(path.join(cwd, 'package-lock.json'))
-      ? { file: 'package-lock.json', read: readLockedPackages }
+      ? {
+          file: 'package-lock.json',
+          read: readLockedPackages,
+          peers: readLockedPeers,
+        }
       : undefined,
 
   overrides: (cwd) => manifestOverrides(cwd, ['overrides']),

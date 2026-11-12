@@ -11,6 +11,7 @@ import {
   applyBerry,
   berryProjectRoot,
   readBerryLock,
+  readBerryLockPeers,
   yarnProjectDir,
 } from '@/managers/yarn/berry'
 import {
@@ -90,9 +91,18 @@ const yarn: ManagerAdapter = {
       : yarnRegistryConfig(cwd, fromNpmrc, sources, npmrc),
 
   // berry (#107): `yarn.lock` holds the installed versions, PnP or not; v1
-  // reads node_modules.
+  // reads node_modules. Installed peer ranges (#232) come from it only under
+  // PnP: with the node-modules linker, node_modules decides.
   installedFromLockfile: (cwd) =>
-    isYarnBerry(cwd) ? { file: 'yarn.lock', read: readBerryLock } : undefined,
+    isYarnBerry(cwd)
+      ? {
+          file: 'yarn.lock',
+          read: readBerryLock,
+          ...(fs.existsSync(path.join(cwd, 'node_modules'))
+            ? {}
+            : { peers: readBerryLockPeers }),
+        }
+      : undefined,
 
   // berry resolves a range to its highest version, with no preference for
   // the `latest` tag (yarn 4.18.1, p-latest); v1 prefers `latest`.

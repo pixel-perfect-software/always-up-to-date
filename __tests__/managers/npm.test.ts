@@ -1,9 +1,9 @@
 import fs from 'fs'
 import path from 'path'
-import npm, { readLockedPackages } from '@/managers/npm'
+import npm, { readLockedPackages, readLockedPeers } from '@/managers/npm'
 import { check } from '@/pipeline'
 import { capturedRegistry, projectFor } from '../fixtures'
-import { tempDir } from '../fixtures/files'
+import { tempDir, write as writeFile } from '../fixtures/files'
 
 jest.mock('@/utils/logger')
 
@@ -64,6 +64,111 @@ describe('readLockedPackages', () => {
   })
 })
 
+// #232: the shape `readInstalledPeers` reads from node_modules.
+describe('readLockedPeers', () => {
+  let cwd: string
+  beforeEach(() => {
+    cwd = tempDir('autd-npm-peers-')
+  })
+  const captured = () =>
+    JSON.parse(
+      fs.readFileSync(
+        fixture('peers-no-node-modules.package-lock.json'),
+        'utf8',
+      ),
+    )
+  const lockWith = (lockfile: object) =>
+    writeFile(path.join(cwd, 'package-lock.json'), lockfile)
+
+  it("reads each hoisted entry's peer ranges, scoped and optional ones included", () => {
+    lockWith(captured())
+    const peers = readLockedPeers(cwd)
+
+    expect(peers.get('react')).toEqual([
+      {
+        name: 'react-redux',
+        version: '8.1.3',
+        range: '^16.8 || ^17.0 || ^18.0',
+      },
+      {
+        name: 'use-sync-external-store',
+        version: '1.7.0',
+        range: '^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0',
+      },
+    ])
+    expect(peers.get('@types/react')).toEqual([
+      { name: '@types/hoist-non-react-statics', version: '3.3.7', range: '*' },
+      {
+        name: 'react-redux',
+        version: '8.1.3',
+        range: '^16.8 || ^17.0 || ^18.0',
+      },
+    ])
+    expect(peers.get('redux')).toEqual([
+      { name: 'react-redux', version: '8.1.3', range: '^4 || ^5.0.0-beta.0' },
+    ])
+    expect([...peers.keys()].sort()).toEqual([
+      '@types/react',
+      '@types/react-dom',
+      'react',
+      'react-dom',
+      'react-native',
+      'redux',
+    ])
+  })
+
+  // The node_modules scan reads only the root's node_modules, so a nested
+  // copy doesn't count. Derived: the capture's react-redux entry moved under
+  // another package.
+  it('leaves out a nested copy, as the node_modules scan does', () => {
+    const lockfile = captured()
+    const { packages } = lockfile
+    packages['node_modules/hoist-non-react-statics/node_modules/react-redux'] =
+      packages['node_modules/react-redux']
+    delete packages['node_modules/react-redux']
+    lockWith(lockfile)
+
+    expect(readLockedPeers(cwd).get('react')).toEqual([
+      {
+        name: 'use-sync-external-store',
+        version: '1.7.0',
+        range: '^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0',
+      },
+    ])
+  })
+
+  // A member is linked into node_modules, so the scan reads its manifest.
+  // Derived: the capture's react-redux entry made a member's.
+  it("reads a linked member's peers from the entry it resolves to", () => {
+    const lockfile = captured()
+    const { packages } = lockfile
+    packages['packages/rr'] = packages['node_modules/react-redux']
+    packages['node_modules/react-redux'] = {
+      resolved: 'packages/rr',
+      link: true,
+    }
+    lockWith(lockfile)
+
+    expect(readLockedPeers(cwd).get('react')?.[0]).toEqual({
+      name: 'react-redux',
+      version: '8.1.3',
+      range: '^16.8 || ^17.0 || ^18.0',
+    })
+  })
+
+  it('is empty without peer ranges or a readable lockfile', () => {
+    expect(readLockedPeers(cwd)).toEqual(new Map())
+    fs.copyFileSync(
+      fixture('workspace-no-node-modules.package-lock.json'),
+      path.join(cwd, 'package-lock.json'),
+    )
+    // debug 4.3.7 has peerDependenciesMeta and no peerDependencies.
+    expect(readLockedPeers(cwd)).toEqual(new Map())
+    fs.writeFileSync(path.join(cwd, 'package-lock.json'), '{ not json')
+    expect(readLockedPeers(cwd)).toEqual(new Map())
+  })
+})
+
 describe('npm installedFromLockfile', () => {
   let cwd: string
   beforeEach(() => {
@@ -79,6 +184,7 @@ describe('npm installedFromLockfile', () => {
     expect(npm.installedFromLockfile?.(cwd)).toEqual({
       file: 'package-lock.json',
       read: readLockedPackages,
+      peers: readLockedPeers,
     })
     fs.mkdirSync(path.join(cwd, 'node_modules'))
     expect(npm.installedFromLockfile?.(cwd)).toBeUndefined()

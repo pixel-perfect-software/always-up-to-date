@@ -11,7 +11,7 @@ import { runningNode } from './engines'
 import { readInstalledVersions } from './installed'
 import logger from './logger'
 import type { ControllingOverride } from './overrides'
-import { readInstalledPeers } from './peers'
+import { type PeerRequirement, readInstalledPeers } from './peers'
 import { holdCooldown, versionCooldown } from './plan/cooldownPass'
 import { holdDeprecated } from './plan/deprecationPass'
 import { declaredEnginesReader, enginesPass } from './plan/enginesPass'
@@ -63,6 +63,13 @@ interface FilterPackagesOptions {
   installed?: (
     rows: { name: string; workspace?: string }[],
   ) => Record<string, string>
+  /**
+   * Installed packages' peer ranges, keyed by the package they constrain,
+   * for the peer pass; read once, only when something moves. Default:
+   * `readInstalledPeers(cwd)` (node_modules); the pipeline passes the
+   * lockfile's reader where the manager's lockfile stands in for it (#232).
+   */
+  installedPeers?: () => Map<string, PeerRequirement[]>
   /**
    * The Node a target's `engines.node` is judged against when the project
    * declares none (#199): default `runningNode()`; null when there is none
@@ -164,7 +171,7 @@ const filterPackages = async (
   )
 
   const peers = initialResults.some((r) => r.updated)
-    ? readInstalledPeers(cwd)
+    ? (options.installedPeers?.() ?? readInstalledPeers(cwd))
     : undefined
 
   const settle = createSettle(peers, policy)

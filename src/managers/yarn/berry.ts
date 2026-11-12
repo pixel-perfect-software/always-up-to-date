@@ -11,6 +11,7 @@ import { StepError } from '@/stepError'
 import type { ManifestPlan } from '@/types'
 import { type InstalledPackage, rowKey } from '@/utils/installed'
 import { updatePackageJson } from '@/utils/manifests'
+import type { PeerRequirement } from '@/utils/peers'
 import type { SaveStyle } from '@/utils/saveStyle'
 import { parseYaml, type YamlNode } from '@/utils/yaml'
 
@@ -83,6 +84,48 @@ export const readBerryLock = (
     }
   }
   return installed
+}
+
+/**
+ * Peer ranges berry's `yarn.lock` records, keyed by the package they
+ * constrain (#232): under PnP there is no node_modules for
+ * `readInstalledPeers` to scan. Every locked package counts (berry hoists
+ * nothing a scan could miss), each `name@version` once, as the scan counts
+ * a copy; a workspace entry's peers count too, as a member linked into
+ * node_modules does. The name is the `resolution`'s (an alias's entry
+ * resolves to its target). Optional peers count, as in the scan.
+ * `peerDependenciesMeta` alone (debug 4.3.7 in the capture) declares no
+ * range. Empty without a readable lockfile.
+ */
+export const readBerryLockPeers = (
+  cwd: string,
+): Map<string, PeerRequirement[]> => {
+  const peers = new Map<string, PeerRequirement[]>()
+  let lock: Record<string, YamlNode>
+  try {
+    lock = parseYaml(fs.readFileSync(path.join(cwd, 'yarn.lock'), 'utf8'))
+  } catch {
+    return peers
+  }
+  const seen = new Set<string>()
+  for (const entry of Object.values(lock)) {
+    if (!isMap(entry)) continue
+    const { version, resolution, peerDependencies } = entry
+    if (typeof version !== 'string' || typeof resolution !== 'string') continue
+    if (!isMap(peerDependencies)) continue
+    const at = resolution.indexOf('@', 1)
+    if (at === -1) continue
+    const name = resolution.slice(0, at)
+    if (seen.has(`${name}@${version}`)) continue
+    seen.add(`${name}@${version}`)
+    for (const [peer, range] of Object.entries(peerDependencies)) {
+      if (typeof range !== 'string') continue
+      const list = peers.get(peer) ?? []
+      list.push({ name, version, range })
+      peers.set(peer, list)
+    }
+  }
+  return peers
 }
 
 /**
