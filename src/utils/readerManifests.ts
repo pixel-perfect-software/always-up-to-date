@@ -1,7 +1,8 @@
 import semver from 'semver'
 import type { PackageLookup, VersionManifest } from '@/types'
+import { messageOf } from './errorFields'
 import logger from './logger'
-import { messageOf, type ReaderContext } from './readerContext'
+import type { ReaderContext } from './readerContext'
 import { parseVersionManifest } from './registryDocuments'
 import {
   isValidPackageName,

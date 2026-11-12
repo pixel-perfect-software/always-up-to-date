@@ -1,7 +1,8 @@
 import semver from 'semver'
 import type { PackageLookup, ReleaseWindow } from '@/types'
+import { messageOf } from './errorFields'
 import logger from './logger'
-import { messageOf, type ReaderContext, timesOf } from './readerContext'
+import { type ReaderContext, timesOf } from './readerContext'
 import { parsePackument } from './registryDocuments'
 import {
   packumentUrl,

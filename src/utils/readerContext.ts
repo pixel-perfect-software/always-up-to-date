@@ -1,4 +1,5 @@
 import type { RegistryConfig, RegistryVersion } from '@/types'
+import { codeOf, messageOf, statusOf } from './errorFields'
 import { createLimiter } from './limiter'
 import type { RegistryCache, ResponseMeta } from './registryCache'
 import type { RegistryClient, RegistryResponse } from './registryClient'
@@ -60,25 +61,6 @@ export interface ReaderContext {
     extra?: GetOptions,
   ): Promise<Revalidated<V>>
 }
-
-export const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
-const statusOf = (error: unknown): number | undefined =>
-  typeof error === 'object' &&
-  error !== null &&
-  'status' in error &&
-  typeof error.status === 'number'
-    ? error.status
-    : undefined
-
-const codeOf = (error: unknown): string | undefined =>
-  typeof error === 'object' &&
-  error !== null &&
-  'code' in error &&
-  typeof error.code === 'string'
-    ? error.code
-    : undefined
 
 /** The publish times of the versions a document lists, and only those. */
 export const timesOf = (

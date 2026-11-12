@@ -7,6 +7,7 @@ import { setTimeout as sleepFor } from 'timers/promises'
 import zlib from 'zlib'
 import type { RegistryConfig, RegistryCredentials } from '@/types'
 import packageJson from '../../package.json'
+import { codeOf, messageOf } from './errorFields'
 import logger from './logger'
 import {
   authorizationFor,
@@ -165,17 +166,6 @@ const requestError = (
     `GET ${describeUrl(target, hop.registry, { redirect: hop.redirected })}: ${text}`,
     details,
   )
-
-const codeOf = (error: unknown): string | undefined =>
-  typeof error === 'object' &&
-  error !== null &&
-  'code' in error &&
-  typeof error.code === 'string'
-    ? error.code
-    : undefined
-
-const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 
 const headerValue = (
   value: string | string[] | undefined,
