@@ -229,8 +229,25 @@ describe('openProject', () => {
     openProject(cwd)
 
     expect(loadConfig).toHaveBeenCalledTimes(1)
-    expect(loadConfig).toHaveBeenCalledWith(cwd, cwd)
+    expect(loadConfig).toHaveBeenCalledWith(cwd, cwd, expect.any(Function))
     expect(logger.configure).toHaveBeenCalledWith(config)
+  })
+
+  it('prints the config warnings through the logger once it is configured', () => {
+    jest.mocked(loadConfig).mockImplementation((_dir, _fallback, onWarning) => {
+      onWarning?.('Ignoring unknown key "beyondrange"')
+      return { ...DEFAULT_CONFIG, silent: true }
+    })
+    jest.mocked(detectPackageManager).mockReturnValue('npm')
+
+    openProject(cwd)
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Ignoring unknown key "beyondrange"',
+    )
+    expect(
+      jest.mocked(logger.configure).mock.invocationCallOrder[0],
+    ).toBeLessThan(jest.mocked(logger.warn).mock.invocationCallOrder[0])
   })
 
   it('configures the logger before it detects the manager', () => {

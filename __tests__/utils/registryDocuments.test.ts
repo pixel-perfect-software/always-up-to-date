@@ -1,3 +1,4 @@
+import semver from 'semver'
 import {
   parseDepsDevPackage,
   parseDistTags,
@@ -565,5 +566,46 @@ describe('parseVersionManifest (#196)', () => {
         version: '3.0.1',
       }),
     ).not.toHaveProperty('enginesNode')
+  })
+})
+
+describe('version order', () => {
+  const ascending = (versions: string[]) =>
+    [...versions].sort((a, b) => semver.compare(a, b))
+
+  it('matches semver.compare on the whole next capture', () => {
+    const parsed = parseDepsDevPackage(json('next.deps-dev'))?.map(
+      (v) => v.version,
+    )
+    const document = json('next.deps-dev') as {
+      versions: { versionKey: { version: string } }[]
+    }
+    const unsorted = document.versions.map((v) => v.versionKey.version)
+
+    expect(parsed).toEqual(ascending(unsorted.filter((v) => semver.valid(v))))
+  })
+
+  it('drops versions that differ only in build metadata, so none reaches the sort tied', () => {
+    const body = JSON.parse(
+      derive<{ versions: { versionKey: { version: string } }[] }>(
+        'ms.deps-dev',
+        (doc) => {
+          const [first] = doc.versions
+          const base = first.versionKey.version
+          for (const tag of ['+b', '+a']) {
+            doc.versions.push({
+              ...first,
+              versionKey: { ...first.versionKey, version: `${base}${tag}` },
+            })
+          }
+        },
+      ),
+    )
+    const sorted = parseDepsDevPackage(body)?.map((v) => v.version)
+
+    expect(sorted).toEqual(
+      parseDepsDevPackage(json('ms.deps-dev'))?.map((v) => v.version),
+    )
+    expect(sorted?.some((v) => v.includes('+'))).toBe(false)
   })
 })

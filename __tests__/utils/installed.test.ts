@@ -198,10 +198,16 @@ describe('checkApplied', () => {
     expect(checkApplied([row()], { ms: '2.1.1' }, 'npm')).toEqual([
       row({
         target: undefined,
+        judged: '2.1.3',
         updated: false,
         reason: reasonFor('not applied by npm (installed 2.1.1)'),
       }),
     ])
+  })
+
+  it('keeps the version the manager was asked for as judged (#221)', () => {
+    const [applied] = checkApplied([row()], { ms: '2.1.1' }, 'npm')
+    expect(applied).toMatchObject({ target: undefined, judged: '2.1.3' })
   })
 
   it('keeps a row installed at its target', () => {
@@ -222,6 +228,7 @@ describe('checkApplied', () => {
       row({
         current: '0.7.1',
         target: undefined,
+        judged: '2.1.2',
         updated: false,
         reason: reasonFor('not applied by npm (installed 2.1.3)'),
       }),
@@ -263,6 +270,7 @@ describe('checkApplied', () => {
       {
         ...walked,
         target: undefined,
+        judged: '5.0.4',
         updated: false,
         reason: reasonFor('not applied by npm (installed 5.1.6)'),
       },

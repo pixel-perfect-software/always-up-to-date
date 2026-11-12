@@ -48,6 +48,34 @@ describe('readInstalledPeers', () => {
     expect(readInstalledPeers(cwd).get('dayjs')).toBeUndefined()
   })
 
+  it('skips parsing a manifest whose text has no peerDependencies, even a malformed one', () => {
+    install('node_modules/dayjs', { name: 'dayjs', version: '1.11.9' })
+    fs.mkdirSync(path.join(cwd, 'node_modules/broken'), { recursive: true })
+    fs.writeFileSync(
+      path.join(cwd, 'node_modules/broken/package.json'),
+      '{ "name": "broken", "version": "1.0.0", ',
+    )
+    const parse = jest.spyOn(JSON, 'parse')
+
+    readInstalledPeers(cwd)
+
+    expect(parse).not.toHaveBeenCalled()
+  })
+
+  it('still reads a manifest with peerDependencies written after other fields', () => {
+    install('node_modules/react-dom', {
+      name: 'react-dom',
+      version: '18.2.0',
+      dependencies: { loose: '^1.0.0' },
+      peerDependenciesMeta: { react: { optional: true } },
+      peerDependencies: { react: '^18.2.0' },
+    })
+
+    expect(readInstalledPeers(cwd).get('react')).toEqual([
+      { name: 'react-dom', version: '18.2.0', range: '^18.2.0' },
+    ])
+  })
+
   it('reads packages from the pnpm store', () => {
     install(
       'node_modules/.pnpm/react-dom@18.2.0_react@18.2.0/node_modules/react-dom',

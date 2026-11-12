@@ -55,6 +55,12 @@ export interface UpdateResult {
   latest: string
   /** Version the update moves to, when `updated`. Equal to `wanted` when it stays within the range. */
   target?: string
+  /**
+   * The version a hold judged, kept when it clears `target`: the report shows
+   * it (and its age and step) in place of `latest`. Report only: `--json`
+   * does not carry it.
+   */
+  judged?: string
   updateType: ReleaseType | null
   updated: boolean
   /** Why the row moves or is held: a stable code and the text the report builds on. */

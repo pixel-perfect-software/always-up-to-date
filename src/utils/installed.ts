@@ -200,6 +200,7 @@ export const checkApplied = (
     return {
       ...result,
       target: undefined,
+      judged: result.target,
       updated: false,
       reason: {
         code: 'not-applied',

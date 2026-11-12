@@ -109,7 +109,7 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 
 ## 🧾 JSON output
 
-`check --json`, `update --dry-run --json` and `update --json` print one JSON document on stdout and nothing else; progress, warnings and debug lines go to stderr. `check --json` plans the way `update --dry-run --json` does, so both print the same `rows`. [`schema/output.schema.json`](schema/output.schema.json) (JSON Schema draft-07) describes every document.
+`check --json`, `update --dry-run --json` and `update --json` print one JSON document on stdout and nothing else; progress, warnings and debug lines go to stderr. `check --json` plans the way `update --dry-run --json` does, so both print the same `rows`. [`schema/output.schema.json`](schema/output.schema.json) (JSON Schema draft-07) describes every document. It stays open where 4.x may grow: objects allow additional properties and `reason.code` is any string, with the codes 4.0.0 defines listed as `examples`, so a copy of the schema from one 4.x release validates the documents of a later one. `version`, `command`, `phase` and `outcome` are closed.
 
 ```json
 {
@@ -212,6 +212,8 @@ You only need a config file to go further than your package.json ranges. Run `au
 | `depsDev`     | `true`   | Look up versions of packages on the public npm registry (registry.npmjs.org, registry.yarnpkg.com) through [deps.dev](https://deps.dev), which is much smaller than the registry's own documents. Each such package name is sent to api.deps.dev, **including private packages published to registry.npmjs.org**; set `false` to read everything from the registry. Names from any other registry, including a scope's own, are never sent. |
 | `debug`       | `false`  | Print each package-manager command and its stderr.                                                                                                                                                                                                                                                                                                                                                                                          |
 | `silent`      | `false`  | Suppress all output.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+
+autd checks the file. A `cooldown` it can't read (`"30 dyas"`, `-3`), a `debug` or `silent` that isn't `true` or `false`, or a file that isn't a JSON object fails `check` and `update` with a message that names the key and the value. An unknown key is a warning that names it and the nearest known key (`beyondrange`: did you mean `beyondRange`?).
 
 ### Rules
 

@@ -7,7 +7,7 @@ import type {
   YarnV1Auth,
 } from '@/types'
 
-export const RETRY_BASE_MS = 100
+const RETRY_BASE_MS = 100
 export const RETRY_MAX_MS = 1000
 // A throttled registry is abnormal, so a server's own `Retry-After` is waited
 // for up to this long. Past it we stop retrying: a skipped lookup lets the
@@ -339,7 +339,7 @@ export const retryDelay = (
   return Math.min(RETRY_BASE_MS * 2 ** attempt, RETRY_MAX_MS)
 }
 
-export interface CacheDirectives {
+interface CacheDirectives {
   /** Seconds; the smallest `max-age` when the header repeats it. */
   maxAge?: number
   noStore: boolean
@@ -434,7 +434,7 @@ export const isPublicNpmRegistry = (
 }
 
 /** What `describeUrl` shows for a URL it cannot read. */
-export const INVALID_URL = '(invalid URL)'
+const INVALID_URL = '(invalid URL)'
 
 /** The public endpoints whose paths hold no secret and are shown whole. */
 const PUBLIC_ORIGINS = [
@@ -497,7 +497,7 @@ export const describeUrl = (
 }
 
 /** What `describeUnusable` shows for a value that may hold a credential. */
-export const VALUE_NOT_SHOWN = '(value not shown)'
+const VALUE_NOT_SHOWN = '(value not shown)'
 
 /** Only `${NAME}` / `$NAME` references and spaces: the names are no secret. */
 const ONLY_REFERENCES =

@@ -119,10 +119,14 @@ export const withWarning = (
     ? result
     : { ...result, warnings: [...(result.warnings ?? []), warning] }
 
-/** A moving row held for `reason`: no target, and its step is `current → latest`. */
+/**
+ * A moving row held for `reason`: no target, and its `updateType` is `current
+ * → latest`; `judged` keeps the target the hold judged (#221).
+ */
 const heldFor = (result: UpdateResult, reason: Reason): UpdateResult => ({
   ...result,
   target: undefined,
+  judged: result.target ?? result.judged,
   updated: false,
   updateType: stepType(result.current, result.latest),
   reason,
@@ -179,6 +183,27 @@ interface TargetPeers {
   lookupName: (row: UpdateResult) => string
 }
 
+// Built once per array: `settle` makes a new array each pass and never
+// mutates one it has handed out, so an index can't go stale.
+const rowIndexes = new WeakMap<
+  readonly UpdateResult[],
+  Map<string, UpdateResult>
+>()
+
+/** `rows` by workspace and name, the first of a pair winning as `find` would. */
+const indexOf = (rows: readonly UpdateResult[]): Map<string, UpdateResult> => {
+  let index = rowIndexes.get(rows)
+  if (!index) {
+    index = new Map()
+    for (const r of rows) {
+      const key = `${r.workspace ?? '.'}\0${r.name}`
+      if (!index.has(key)) index.set(key, r)
+    }
+    rowIndexes.set(rows, index)
+  }
+  return index
+}
+
 /**
  * The first peer of a moving row's target (its own version document, #198)
  * that the plan leaves outside the declared range, worded as the reason:
@@ -214,9 +239,7 @@ const targetPeerConflict = (
     peer: string,
     where: string,
   ): { version: string; moving: boolean } | undefined => {
-    const found = rows.find(
-      (r) => r.name === peer && (r.workspace ?? '.') === where,
-    )
+    const found = indexOf(rows).get(`${where}\0${peer}`)
     if (!found) return undefined
     if (found.updated && found.target) {
       return { version: found.target, moving: true }
@@ -287,6 +310,7 @@ const holdTogether = (results: UpdateResult[]): UpdateResult[] => {
     return {
       ...r,
       target: undefined,
+      judged: r.target,
       updated: false,
       updateType: stepType(r.current, r.latest),
       reason: {
@@ -552,21 +576,12 @@ type ManifestPass = (
 ) => UpdateResult[]
 
 /**
- * Holds a moving row whose target's `engines.node` excludes the project's
- * Node (#199): the `engines.node` the row's manifest declares (a member's
- * own, else the root's) when there is one, else `node`. A `latest` rule moves
- * it with the text as a warning. A known document without `engines.node`
- * is no constraint; an unknown one is left to the caller's warning.
+ * The `engines.node` a row's owning manifest declares (a member's own, else
+ * the root's), read once per manifest; shared by the walk-back and the pass.
  */
-const enginesPass = ({
-  cwd,
-  node,
-  nodeLabel,
-}: {
-  cwd: string
-  node: string | null
-  nodeLabel?: string
-}): ManifestPass => {
+const declaredEnginesReader = (
+  cwd: string,
+): ((row: UpdateResult) => string | undefined) => {
   const declaredIn = new Map<string, string | undefined>()
   const declaredAt = (dir: string): string | undefined => {
     if (!declaredIn.has(dir)) {
@@ -591,6 +606,28 @@ const enginesPass = ({
     }
     return declaredIn.get(dir)
   }
+  return (row) => {
+    const owner = row.workspace ?? '.'
+    return declaredAt(owner) ?? (owner === '.' ? undefined : declaredAt('.'))
+  }
+}
+
+/**
+ * Holds a moving row whose target's `engines.node` excludes the project's
+ * Node (#199): the `engines.node` the row's manifest declares (a member's
+ * own, else the root's) when there is one, else `node`. A `latest` rule moves
+ * it with the text as a warning. A known document without `engines.node`
+ * is no constraint; an unknown one is left to the caller's warning.
+ */
+const enginesPass = ({
+  declaredOf,
+  node,
+  nodeLabel,
+}: {
+  declaredOf: (row: UpdateResult) => string | undefined
+  node: string | null
+  nodeLabel?: string
+}): ManifestPass => {
   let noted = false
   return (rows, { manifests, lookupName, policy }) =>
     manifests.size === 0
@@ -602,9 +639,7 @@ const enginesPass = ({
             lookupName,
           )?.enginesNode
           if (!range) return row
-          const owner = row.workspace ?? '.'
-          const declared =
-            declaredAt(owner) ?? (owner === '.' ? undefined : declaredAt('.'))
+          const declared = declaredOf(row)
           if (declared === undefined && node === null) {
             if (!noted) {
               noted = true
@@ -702,6 +737,7 @@ const filterPackages = async (
           wanted,
           latest,
           updateType: stepType(current, latest),
+          ...(target === undefined ? {} : { judged: target }),
           updated: false,
           reason: {
             code: 'override',
@@ -782,6 +818,7 @@ const filterPackages = async (
       lookupName,
     })
     const node = options.node === undefined ? runningNode() : options.node
+    const declaredOf = declaredEnginesReader(cwd)
     // npm installs the newest version its Node runs (#200): retarget a row
     // whose target it would skip, before the passes below judge the target.
     const { rows: fitted, manifests } = options.skipsEnginesExcluded
@@ -790,6 +827,7 @@ const filterPackages = async (
           manifests: read,
           registry,
           lookupName,
+          declaredOf,
           rangeOf: (row) => {
             const spec = declared?.({
               name: row.name,
@@ -826,7 +864,7 @@ const filterPackages = async (
     })
     const passes: readonly ManifestPass[] = [
       enginesPass({
-        cwd,
+        declaredOf,
         node,
         nodeLabel: options.nodeLabel,
       }),
@@ -841,17 +879,24 @@ const filterPackages = async (
     const peerRows =
       manifests.size === 0
         ? []
-        : passed.flatMap((row) => {
-            const manifest = targetManifestOf(manifests, row, lookupName)
-            return manifest
-              ? Object.keys(manifest.peerDependencies).map((name) => ({
-                  name,
-                  ...(row.workspace === undefined
-                    ? {}
-                    : { workspace: row.workspace }),
-                }))
-              : []
-          })
+        : [
+            ...new Map(
+              passed.flatMap((row) => {
+                const manifest = targetManifestOf(manifests, row, lookupName)
+                return manifest
+                  ? Object.keys(manifest.peerDependencies).map((name) => {
+                      const peer = {
+                        name,
+                        ...(row.workspace === undefined
+                          ? {}
+                          : { workspace: row.workspace }),
+                      }
+                      return [rowKey(peer), peer] as const
+                    })
+                  : []
+              }),
+            ).values(),
+          ]
     const readInstalled =
       options.installed ??
       ((asked) => readInstalledVersions(cwd, asked, { declaredOnly: false }))
@@ -939,6 +984,7 @@ const filterPackages = async (
         return {
           ...result,
           target: undefined,
+          judged: result.target,
           updated: false,
           reason: { code: 'cooldown', message: `cooldown: ${held}` },
           releaseAge: evaluation.ageDays,

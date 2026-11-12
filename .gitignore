@@ -1,11 +1,8 @@
 node_modules
-.copilot
 dist
-*.backup
 *.log
 coverage
 .DS_Store
-.clinerules
 
 # The integration suite generates lockfiles in temp copies of testRepos/; none are committed.
 testRepos/**/package-lock.json

@@ -11,8 +11,16 @@ const timestamp = (value: unknown): string | undefined =>
     ? value
     : undefined
 
-const byVersion = (a: RegistryVersion, b: RegistryVersion): number =>
-  semver.compare(a.version, b.version)
+/**
+ * `versions` ascending by semver, each version parsed once. Versions that
+ * differ only in build metadata compare equal, and the sort is stable, so
+ * they keep the document's order, as sorting with `semver.compare` does.
+ */
+const sortedByVersion = (versions: RegistryVersion[]): RegistryVersion[] =>
+  versions
+    .map((entry) => ({ entry, parsed: new semver.SemVer(entry.version) }))
+    .sort((a, b) => a.parsed.compare(b.parsed))
+    .map(({ entry }) => entry)
 
 /** `latest` from the registry's `/-/package/<name>/dist-tags` body. */
 export const parseDistTags = (body: unknown): string | undefined => {
@@ -42,7 +50,7 @@ export const parseDepsDevPackage = (
       ...(publishedAt ? { publishedAt } : {}),
     })
   }
-  return versions.sort(byVersion)
+  return sortedByVersion(versions)
 }
 
 export interface ParsedPackument {
@@ -80,7 +88,7 @@ export const parsePackument = (body: unknown): ParsedPackument | undefined => {
   return {
     ...(isCanonical(latest) ? { latest } : {}),
     ...(modified ? { modified } : {}),
-    versions: versions.sort(byVersion),
+    versions: sortedByVersion(versions),
   }
 }
 

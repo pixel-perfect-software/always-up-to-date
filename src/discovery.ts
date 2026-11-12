@@ -24,7 +24,7 @@ import { unusableText } from '@/utils/registryRequest'
 import { wantedVersion } from '@/utils/wanted'
 import { byPath } from '@/utils/workspaceRows'
 
-export interface RegistryDiscoveryInput {
+interface RegistryDiscoveryInput {
   cwd: string
   /** Names the install command in the "nothing installed" message. */
   manager: SupportedPackageManager

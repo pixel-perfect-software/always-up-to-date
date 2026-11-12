@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from 'util'
 import type { UpdateResult } from '@/types'
 import logger, { formatElapsed, pluralize } from '@/utils/logger'
-import { splitAtChange } from '@/utils/report'
+import { groupResults, splitAtChange } from '@/utils/report'
 import { reasonFor } from '../fixtures/reasons'
 
 const originalLog = Object.getPrototypeOf(console).log
@@ -295,6 +295,63 @@ describe('Logger', () => {
         '  prisma       apps/web          7.10.1 → 8.0.0-rc.27  rule "hold"',
         '\n1 to update · 1 held by cooldown · 1 past the range · 1 held by a rule',
       ])
+    })
+
+    it('shows the version a cooldown hold judged, with its age, not latest (#221)', () => {
+      // react ^18.2.0 at 18.2.0: the cooldown judged 18.3.1 (a minor step),
+      // while latest is 19.3.1 (a major one).
+      logger.report(
+        [
+          held('react', 'cooldown: released 929d ago, requires 3000d', {
+            current: '18.2.0',
+            wanted: '18.3.1',
+            latest: '19.3.1',
+            judged: '18.3.1',
+            updateType: 'minor',
+          }),
+        ],
+        'npm',
+        'plan',
+      )
+
+      expect(printed()).toEqual([
+        '\nHeld by cooldown (1 package)',
+        '  react  18.2.0 → 18.3.1  released 929d ago, needs 3000d',
+        '\nNothing to update: 1 held by cooldown',
+      ])
+    })
+
+    it('shows a peer hold and a not-applied row at the version they judged (#221)', () => {
+      const [peer, notApplied] = [
+        held('react-dom', 'peer conflict: react@18.2.0 needs react-dom ^18', {
+          current: '18.2.0',
+          wanted: '18.3.1',
+          latest: '19.3.1',
+          judged: '19.3.1',
+          updateType: 'major',
+        }),
+        held('zod', 'not applied by npm (installed 3.21.4)', {
+          current: '3.21.4',
+          wanted: '3.25.76',
+          latest: '4.6.7',
+          judged: '3.25.76',
+          updateType: 'major',
+        }),
+      ]
+      expect(groupResults([peer])[0].rows).toMatchObject([
+        { to: '19.3.1', level: 'major' },
+      ])
+      expect(groupResults([notApplied], 'applied')[0].rows).toMatchObject([
+        { to: '3.25.76', level: 'minor' },
+      ])
+    })
+
+    it('keeps latest for a row held by its range (#221)', () => {
+      const [section] = groupResults(
+        [held('ms', 'major beyond the range', { latest: '3.0.0' })],
+        'plan',
+      )
+      expect(section.rows).toMatchObject([{ to: '3.0.0', level: 'major' }])
     })
 
     it('names what the manager left in place after apply, and what moved', () => {

@@ -14,7 +14,7 @@ export default {
   // index.ts and the CLI entry, is measured.
   coveragePathIgnorePatterns: [
     '/node_modules/',
-    '<rootDir>/src/(commands|managers|utils)/index\\.ts$',
+    '<rootDir>/src/(commands|managers)/index\\.ts$',
   ],
   coverageReporters: ['text', 'lcov', 'html', 'json-summary'],
   moduleNameMapper: {
@@ -25,7 +25,7 @@ export default {
   restoreMocks: true,
   setupFiles: ['<rootDir>/__tests__/setup.ts'],
   transformIgnorePatterns: [
-    'node_modules/(?!(?:\\.pnpm/)?(@octokit|@inquirer|commander))',
+    'node_modules/(?!(?:\\.pnpm/)?(@inquirer|commander))',
   ],
   extensionsToTreatAsEsm: ['.ts'],
   testTimeout: 15000,

@@ -54,6 +54,7 @@ interface Setup {
   served?: (version: string) => VersionManifest | undefined
   cooldownOf?: Parameters<typeof fitRunningNode>[1]['cooldownOf']
   range?: string | null
+  declared?: string
   targets?: Record<string, VersionManifest | undefined>
 }
 
@@ -65,6 +66,7 @@ const walk = async ({
   served = (version) => (CAPTURES[version] ? manifestOf(version) : undefined),
   cooldownOf,
   range = RANGE,
+  declared,
   targets = { 'typescript@5.1.6': manifestOf('5.1.6') },
 }: Setup = {}) => {
   const reads: string[] = []
@@ -88,6 +90,7 @@ const walk = async ({
     registry,
     lookupName: byName,
     rangeOf: () => range ?? undefined,
+    declaredOf: () => declared,
     cooldownOf,
     limit,
   })
@@ -290,5 +293,96 @@ describe('fitRunningNode (#200)', () => {
 
     expect(reads).toEqual(['5.1.5', '5.1.3', '5.0.4'])
     expect(rows[0].target).toBe('5.0.4')
+  })
+
+  describe('with a declared engines.node (#233)', () => {
+    const withEngines = (version: string, node: string): VersionManifest => {
+      const body = derive<{ engines: { node: string } }>(
+        `typescript.${version}.manifest`,
+        (b) => {
+          b.engines.node = node
+        },
+      )
+      const manifest = parseVersionManifest(JSON.parse(body), {
+        name: 'typescript',
+        version,
+      })
+      if (!manifest) throw new Error('derived manifest is unreadable')
+      return manifest
+    }
+
+    it('walks past a candidate npm accepts but the declared range excludes', async () => {
+      // On node 12, npm accepts 5.1.5 (>=12.20), which a project declaring
+      // >=12.0.0 could run on node 12.0: it is skipped for 5.1.3 (>=12.0.0).
+      const derived: Record<string, VersionManifest> = {
+        '5.1.5': withEngines('5.1.5', '>=12.20'),
+        '5.1.3': withEngines('5.1.3', '>=12.0.0'),
+      }
+      const { rows, reads } = await walk({
+        declared: '>=12.0.0',
+        served: (version) => derived[version] ?? manifestOf(version),
+      })
+
+      expect(reads).toEqual(['5.1.5', '5.1.3'])
+      expect(rows[0]).toMatchObject({
+        target: '5.1.3',
+        updateType: 'minor',
+        // >=12.0.0 excludes the target as well, so the reason names it.
+        reason: reasonFor(
+          'engines: 5.1.6 needs node >=14.17 (the project declares >=12.0.0)',
+          'engines-fallback',
+        ),
+      })
+    })
+
+    it('keeps the target when no candidate fits both', async () => {
+      // 5.0.4 (>=12.20) is what npm takes on node 12, and >=12.0.0 excludes
+      // it; the cap keeps the walk to the three captured candidates.
+      const { rows, reads } = await walk({ declared: '>=12.0.0', limit: 3 })
+
+      expect(reads).toEqual(['5.1.5', '5.1.3', '5.0.4'])
+      expect(rows[0].target).toBe('5.1.6')
+      expect(mockDebug).toHaveBeenCalledWith(
+        'engines: none of the 3 newest versions of typescript below 5.1.6 fits node 12.22.12 and the declared >=12.0.0; keeping 5.1.6',
+      )
+    })
+
+    it('starts when the target fits npm but not the declared range', async () => {
+      const { rows, reads } = await walk({
+        node: '24.22.1',
+        declared: '>=12.20',
+      })
+
+      expect(reads).toEqual(['5.1.5', '5.1.3', '5.0.4'])
+      expect(rows[0]).toMatchObject({
+        target: '5.0.4',
+        reason: reasonFor(
+          'engines: 5.1.6 needs node >=14.17 (the project declares >=12.20)',
+          'engines-fallback',
+        ),
+      })
+    })
+
+    it('does not start when the target fits both', async () => {
+      const { rows, reads } = await walk({
+        node: '24.22.1',
+        declared: '>=14.17',
+      })
+
+      expect(reads).toEqual([])
+      expect(rows[0].target).toBe('5.1.6')
+    })
+
+    it('names the declared range when it excludes the target and npm does too', async () => {
+      const { rows } = await walk({ declared: '>=12.20' })
+
+      expect(rows[0]).toMatchObject({
+        target: '5.0.4',
+        reason: reasonFor(
+          'engines: 5.1.6 needs node >=14.17 (the project declares >=12.20)',
+          'engines-fallback',
+        ),
+      })
+    })
   })
 })

@@ -20,7 +20,7 @@ import {
  * becomes `@acme:registry`. Values are used as written: no `${VAR}` expansion.
  * Verified on yarn 1.22.22, 2026-10-26 (y28d, y29, y30, y31b).
  */
-export const YARN_NPM_ENV: EnvRule = {
+const YARN_NPM_ENV: EnvRule = {
   prefix: /^npm_config_/i,
   key: (rest) => {
     const key = rest
@@ -66,7 +66,7 @@ const YARN_REFERENCE = /(\\*)\$\{([^}]+)\}/g
  * holding `${…}` is dropped, as for any reference that cannot be resolved.
  * Verified on yarn 1.22.22, 2026-10-27 (c1-c4, y31, y32).
  */
-export const substituteYarn: Substitute = (text, env) =>
+const substituteYarn: Substitute = (text, env) =>
   text.replace(YARN_REFERENCE, (match, escapes: string, name: string) => {
     if (escapes.length % 2) return match
     const value = env[name]

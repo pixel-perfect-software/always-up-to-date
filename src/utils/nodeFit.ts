@@ -1,7 +1,7 @@
 import semver from 'semver'
 
 import type { UpdateResult, VersionManifest } from '@/types'
-import { npmAcceptsNode, shownRange } from './engines'
+import { enginesHold, npmAcceptsNode, shownRange } from './engines'
 import logger from './logger'
 import type { RegistrySession } from './registry'
 import type { TargetManifests } from './targetManifests'
@@ -10,7 +10,7 @@ import type { TargetManifests } from './targetManifests'
 export const ENGINES_WALK_LIMIT = 5
 
 /** What the cooldown says of one version; `ageDays` is kept as the row's `releaseAge`. */
-export interface VersionCooldown {
+interface VersionCooldown {
   gated: boolean
   ageDays: number | undefined
 }
@@ -21,6 +21,8 @@ interface Fit {
   ageDays: number | undefined
   /** The target's `engines.node`, for the reason. */
   range: string
+  /** The declared `engines.node` the walk was judged by, when it drove it. */
+  declared: string | undefined
 }
 
 const stepType = (from: string, to: string) =>
@@ -34,6 +36,10 @@ const keyOf = (name: string, version: string): string => `${name}@${version}`
  * `engineOk`, judged by `npmAcceptsNode`), so a moving in-range row whose
  * target excludes `node` moves to the newest version below it that fits, and
  * `npm install` of that exact version is what the plan then pins.
+ *
+ * When the project declares `engines.node` (#233), a target it excludes is
+ * walked too, and a candidate must fit both npm's Node and the declared
+ * range, so the row lands where #199 will not hold it.
  *
  * Only a row at `wanted` is walked: a past-the-range target is the policy's
  * choice, and a cooldown fallback is already an exact pin. Candidates are the
@@ -58,6 +64,7 @@ export const fitRunningNode = async (
     registry,
     lookupName,
     rangeOf,
+    declaredOf,
     cooldownOf,
     limit = ENGINES_WALK_LIMIT,
   }: {
@@ -67,6 +74,13 @@ export const fitRunningNode = async (
     lookupName: (row: UpdateResult) => string
     /** The range the row's manifest declares for it. */
     rangeOf: (row: UpdateResult) => string | undefined
+    /**
+     * The `engines.node` the row's owning manifest declares (a real
+     * constraint, see `declaredNodeRange`), if any. A candidate must fit it
+     * as well as npm's Node: `enginesHold`'s rule, which #199 judges the
+     * move by afterwards.
+     */
+    declaredOf?: (row: UpdateResult) => string | undefined
     /** Whether the cooldown holds `version` for the row; absent when it is off. */
     cooldownOf?: (
       row: UpdateResult,
@@ -99,6 +113,8 @@ export const fitRunningNode = async (
     target: string,
     enginesNode: string,
     range: string | undefined,
+    declared: string | undefined,
+    declaredHolds: boolean,
   ): Promise<Fit | undefined> => {
     const name = lookupName(row)
     if (range === undefined) {
@@ -132,6 +148,13 @@ export const fitRunningNode = async (
         return undefined
       }
       if (!npmAcceptsNode(manifest.enginesNode, node)) continue
+      if (
+        declared !== undefined &&
+        manifest.enginesNode !== undefined &&
+        enginesHold(manifest.enginesNode, { declared, running: null })
+      ) {
+        continue
+      }
       const cooldown = cooldownOf ? await cooldownOf(row, version) : undefined
       if (cooldown?.gated) continue
       logger.debug(
@@ -142,10 +165,11 @@ export const fitRunningNode = async (
         manifest,
         ageDays: cooldown?.ageDays,
         range: enginesNode,
+        declared: declaredHolds ? declared : undefined,
       }
     }
     logger.debug(
-      `engines: none of the ${candidates.length} newest versions of ${name} below ${target} fits node ${node}; keeping ${target}`,
+      `engines: none of the ${candidates.length} newest versions of ${name} below ${target} fits node ${node}${declared === undefined ? '' : ` and the declared ${declared}`}; keeping ${target}`,
     )
     return undefined
   }
@@ -156,12 +180,24 @@ export const fitRunningNode = async (
       if (!atWanted(row) || target === undefined) return row
       const name = lookupName(row)
       const own = manifests.get(keyOf(name, target))
-      if (!own?.enginesNode || npmAcceptsNode(own.enginesNode, node)) return row
+      if (!own?.enginesNode) return row
+      const declared = declaredOf?.(row)
+      const declaredHolds =
+        declared !== undefined &&
+        enginesHold(own.enginesNode, { declared, running: null }) !== undefined
+      if (npmAcceptsNode(own.enginesNode, node) && !declaredHolds) return row
       const range = rangeOf(row)
-      const key = [keyOf(name, target), range, row.current].join('|')
+      const key = [keyOf(name, target), range, row.current, declared].join('|')
       let walk = walks.get(key)
       if (!walk) {
-        walk = walkFor(row, target, own.enginesNode, range)
+        walk = walkFor(
+          row,
+          target,
+          own.enginesNode,
+          range,
+          declared,
+          declaredHolds,
+        )
         walks.set(key, walk)
       }
       const fit = await walk
@@ -173,7 +209,11 @@ export const fitRunningNode = async (
         updateType: stepType(row.current, fit.version),
         reason: {
           code: 'engines-fallback',
-          message: `engines: ${target} needs node ${shownRange(fit.range)} (running node ${node})`,
+          message: `engines: ${target} needs node ${shownRange(fit.range)} (${
+            fit.declared === undefined
+              ? `running node ${node}`
+              : `the project declares ${fit.declared}`
+          })`,
         },
         releaseAge: fit.ageDays,
       }

@@ -6,7 +6,7 @@ import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
 import { check } from '@/pipeline'
-import { logger } from '@/utils'
+import logger from '@/utils/logger'
 import {
   capturedRegistry,
   installPackages,

@@ -7,12 +7,12 @@ import type { PackageInfo } from '@/types'
 import { projectFor, writeWorkspaceProject } from '../fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils', () => ({
-  ...jest.requireActual('@/utils'),
+jest.mock('@/utils/runProcess', () => ({
+  ...jest.requireActual('@/utils/runProcess'),
   runProcess: jest.fn(),
 }))
 
-import { runProcess } from '@/utils'
+import { runProcess } from '@/utils/runProcess'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
