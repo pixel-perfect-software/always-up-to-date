@@ -1,53 +1,28 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import {
   loadNpmrc,
   loadRegistryConfig,
-  type NpmrcSources,
   npmrcBoolean,
 } from '@/utils/npmrcLoader'
+import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 describe('npmrc loader', () => {
   let tmp: string
 
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
-
-  const sourcesFor = (
-    env: NodeJS.ProcessEnv = {},
-    overrides: Partial<NpmrcSources> = {},
-  ): NpmrcSources => ({
-    env,
-    home: at('home'),
-    // Node's own layout, so npm's default prefix is <tmp>/prefix on both:
-    // node.exe sits in the prefix on Windows, in <prefix>/bin elsewhere.
-    execPath:
-      process.platform === 'win32'
-        ? path.join(tmp, 'prefix', 'node.exe')
-        : path.join(tmp, 'prefix', 'bin', 'node'),
-    platform: process.platform,
-    ...overrides,
-  })
 
   const globalFile = () => at('prefix', 'etc', 'npmrc')
   const userFile = () => at('home', '.npmrc')
 
   beforeEach(() => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npmrc-')))
+    tmp = tempDir('autd-npmrc-', { real: true })
     write(at('proj', 'package.json'), '{}')
-  })
-
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   describe('loadNpmrc', () => {
     it('is empty when no .npmrc exists', () => {
-      expect({ ...loadNpmrc(at('proj'), sourcesFor()) }).toEqual({})
+      expect({ ...loadNpmrc(at('proj'), npmrcSources(tmp)) }).toEqual({})
     })
 
     it('reads each layer', () => {
@@ -56,7 +31,7 @@ describe('npmrc loader', () => {
       write(at('proj', '.npmrc'), 'p=1')
 
       expect({
-        ...loadNpmrc(at('proj'), sourcesFor({ npm_config_e: '1' })),
+        ...loadNpmrc(at('proj'), npmrcSources(tmp, { npm_config_e: '1' })),
       }).toEqual({ g: '1', u: '1', p: '1', e: '1' })
     })
 
@@ -66,7 +41,7 @@ describe('npmrc loader', () => {
       write(at('proj', '.npmrc'), 'key=project\nonlyProject=p')
 
       const read = (env: NodeJS.ProcessEnv) =>
-        loadNpmrc(at('proj'), sourcesFor(env)).key
+        loadNpmrc(at('proj'), npmrcSources(tmp, env)).key
       expect(read({ npm_config_key: 'env' })).toBe('env')
       expect(read({})).toBe('project')
 
@@ -81,7 +56,9 @@ describe('npmrc loader', () => {
       fs.mkdirSync(at('proj', '.npmrc'))
       write(userFile(), 'u=1')
 
-      expect({ ...loadNpmrc(at('proj'), sourcesFor()) }).toEqual({ u: '1' })
+      expect({ ...loadNpmrc(at('proj'), npmrcSources(tmp)) }).toEqual({
+        u: '1',
+      })
     })
 
     it('keeps an unset ${VAR} literal and substitutes a set one', () => {
@@ -90,7 +67,7 @@ describe('npmrc loader', () => {
         'a=${NOPE}\nb=${SET}\n//r.example/:_authToken=${SET}',
       )
 
-      const npmrc = loadNpmrc(at('proj'), sourcesFor({ SET: 'yes' }))
+      const npmrc = loadNpmrc(at('proj'), npmrcSources(tmp, { SET: 'yes' }))
 
       expect(npmrc.a).toBe('${NOPE}')
       expect(npmrc.b).toBe('yes')
@@ -101,7 +78,7 @@ describe('npmrc loader', () => {
       it('reads any case, skips empty values and dashes underscores', () => {
         const npmrc = loadNpmrc(
           at('proj'),
-          sourcesFor({
+          npmrcSources(tmp, {
             NPM_CONFIG_STRICT_SSL: 'false',
             npm_config_save_prefix: '~',
             Npm_Config_Fetch_Retries: '4',
@@ -119,7 +96,7 @@ describe('npmrc loader', () => {
       it('keeps a leading underscore and // keys as written', () => {
         const npmrc = loadNpmrc(
           at('proj'),
-          sourcesFor({
+          npmrcSources(tmp, {
             'npm_config_//registry.example.com/:_authToken': 'tok',
             npm_config__auth: 'abc',
           }),
@@ -134,7 +111,10 @@ describe('npmrc loader', () => {
       it('substitutes ${VAR} in values', () => {
         const npmrc = loadNpmrc(
           at('proj'),
-          sourcesFor({ npm_config_registry: '${HOST}/', HOST: 'https://h' }),
+          npmrcSources(tmp, {
+            npm_config_registry: '${HOST}/',
+            HOST: 'https://h',
+          }),
         )
 
         expect(npmrc.registry).toBe('https://h/')
@@ -146,7 +126,7 @@ describe('npmrc loader', () => {
         write(at('proj', '.npmrc'), 'k=proj')
         fs.mkdirSync(at('proj', 'src', 'deep'), { recursive: true })
 
-        expect(loadNpmrc(at('proj', 'src', 'deep'), sourcesFor()).k).toBe(
+        expect(loadNpmrc(at('proj', 'src', 'deep'), npmrcSources(tmp)).k).toBe(
           'proj',
         )
       })
@@ -156,13 +136,13 @@ describe('npmrc loader', () => {
         fs.mkdirSync(at('bare', 'src'), { recursive: true })
         write(at('bare', '.npmrc'), 'k=bare')
 
-        expect(loadNpmrc(at('bare', 'src'), sourcesFor()).k).toBe('bare')
+        expect(loadNpmrc(at('bare', 'src'), npmrcSources(tmp)).k).toBe('bare')
       })
 
       it('uses the directory itself when nothing marks a project', () => {
         write(at('loose', '.npmrc'), 'k=loose')
 
-        expect(loadNpmrc(at('loose'), sourcesFor()).k).toBe('loose')
+        expect(loadNpmrc(at('loose'), npmrcSources(tmp)).k).toBe('loose')
       })
 
       describe('from a workspace member', () => {
@@ -180,7 +160,7 @@ describe('npmrc loader', () => {
             JSON.stringify({ workspaces: ['packages/*'] }),
           )
 
-          expect(loadNpmrc(member(), sourcesFor()).k).toBe('root')
+          expect(loadNpmrc(member(), npmrcSources(tmp)).k).toBe('root')
         })
 
         it('reads the object form of workspaces', () => {
@@ -189,7 +169,7 @@ describe('npmrc loader', () => {
             JSON.stringify({ workspaces: { packages: ['packages/*'] } }),
           )
 
-          expect(loadNpmrc(member(), sourcesFor()).k).toBe('root')
+          expect(loadNpmrc(member(), npmrcSources(tmp)).k).toBe('root')
         })
 
         it('matches a packages/** pattern against a nested member', () => {
@@ -201,7 +181,7 @@ describe('npmrc loader', () => {
           write(at('ws', 'packages', 'team', 'b', '.npmrc'), 'k=nested')
 
           expect(
-            loadNpmrc(at('ws', 'packages', 'team', 'b'), sourcesFor()).k,
+            loadNpmrc(at('ws', 'packages', 'team', 'b'), npmrcSources(tmp)).k,
           ).toBe('root')
         })
 
@@ -213,9 +193,9 @@ describe('npmrc loader', () => {
           write(at('ws', 'packages', 'bare', 'node_modules', 'x', 'y'), '')
           write(at('ws', 'packages', 'bare', '.npmrc'), 'k=bare')
 
-          expect(loadNpmrc(at('ws', 'packages', 'bare'), sourcesFor()).k).toBe(
-            'bare',
-          )
+          expect(
+            loadNpmrc(at('ws', 'packages', 'bare'), npmrcSources(tmp)).k,
+          ).toBe('bare')
         })
 
         it('honors a negated pattern', () => {
@@ -224,13 +204,13 @@ describe('npmrc loader', () => {
             JSON.stringify({ workspaces: ['packages/*', '!packages/a'] }),
           )
 
-          expect(loadNpmrc(member(), sourcesFor()).k).toBe('member')
+          expect(loadNpmrc(member(), npmrcSources(tmp)).k).toBe('member')
         })
 
         it('uses the member .npmrc when the parent has no workspaces field', () => {
           write(at('ws', 'package.json'), '{}')
 
-          expect(loadNpmrc(member(), sourcesFor()).k).toBe('member')
+          expect(loadNpmrc(member(), npmrcSources(tmp)).k).toBe('member')
         })
 
         it('uses the member .npmrc when the parent does not list it', () => {
@@ -239,7 +219,7 @@ describe('npmrc loader', () => {
             JSON.stringify({ workspaces: ['other/*'] }),
           )
 
-          expect(loadNpmrc(member(), sourcesFor()).k).toBe('member')
+          expect(loadNpmrc(member(), npmrcSources(tmp)).k).toBe('member')
         })
       })
     })
@@ -252,14 +232,14 @@ describe('npmrc loader', () => {
         write(userFile(), `k=user\nuserconfig=${JSON.stringify(at('other'))}`)
         write(at('other'), 'k=other')
 
-        expect(loadNpmrc(at('home'), sourcesFor()).k).toBe('user')
+        expect(loadNpmrc(at('home'), npmrcSources(tmp)).k).toBe('user')
       })
 
       it('reads npm_config_userconfig instead of ~/.npmrc', () => {
         write(userFile(), 'k=home')
         write(at('elsewhere', 'rc'), 'k=elsewhere')
 
-        const sources = sourcesFor({
+        const sources = npmrcSources(tmp, {
           npm_config_userconfig: at('elsewhere', 'rc'),
         })
 
@@ -274,7 +254,7 @@ describe('npmrc loader', () => {
           `userconfig=${JSON.stringify(at('elsewhere', 'rc'))}`,
         )
 
-        expect(loadNpmrc(at('proj'), sourcesFor()).k).toBe('elsewhere')
+        expect(loadNpmrc(at('proj'), npmrcSources(tmp)).k).toBe('elsewhere')
       })
 
       it('resolves a relative userconfig against cwd and ~/ against home', () => {
@@ -282,12 +262,15 @@ describe('npmrc loader', () => {
         write(at('home', 'custom'), 'k=tilde')
 
         expect(
-          loadNpmrc(at('proj'), sourcesFor({ npm_config_userconfig: 'rc' })).k,
+          loadNpmrc(
+            at('proj'),
+            npmrcSources(tmp, { npm_config_userconfig: 'rc' }),
+          ).k,
         ).toBe('relative')
         expect(
           loadNpmrc(
             at('proj'),
-            sourcesFor({ npm_config_userconfig: '~/custom' }),
+            npmrcSources(tmp, { npm_config_userconfig: '~/custom' }),
           ).k,
         ).toBe('tilde')
       })
@@ -297,7 +280,7 @@ describe('npmrc loader', () => {
       it('reads <PREFIX>/etc/npmrc', () => {
         write(at('custom', 'etc', 'npmrc'), 'k=prefix')
 
-        const sources = sourcesFor({ PREFIX: at('custom') })
+        const sources = npmrcSources(tmp, { PREFIX: at('custom') })
 
         expect(loadNpmrc(at('proj'), sources).k).toBe('prefix')
       })
@@ -305,7 +288,8 @@ describe('npmrc loader', () => {
       it('derives the prefix from execPath on posix: two directories up', () => {
         write(path.join(tmp, 'usr', 'etc', 'npmrc'), 'k=posix')
 
-        const sources = sourcesFor(
+        const sources = npmrcSources(
+          tmp,
           {},
           {
             platform: 'linux',
@@ -319,7 +303,8 @@ describe('npmrc loader', () => {
       it('derives the prefix from execPath on win32: one directory up', () => {
         write(path.join(tmp, 'node', 'etc', 'npmrc'), 'k=win')
 
-        const sources = sourcesFor(
+        const sources = npmrcSources(
+          tmp,
           {},
           { platform: 'win32', execPath: path.join(tmp, 'node', 'node.exe') },
         )
@@ -330,7 +315,9 @@ describe('npmrc loader', () => {
       it('ignores an empty PREFIX', () => {
         write(globalFile(), 'k=exec')
 
-        expect(loadNpmrc(at('proj'), sourcesFor({ PREFIX: '' })).k).toBe('exec')
+        expect(loadNpmrc(at('proj'), npmrcSources(tmp, { PREFIX: '' })).k).toBe(
+          'exec',
+        )
       })
 
       it('puts the default globalconfig under a prefix set in the user .npmrc', () => {
@@ -338,7 +325,7 @@ describe('npmrc loader', () => {
         write(globalFile(), 'k=exec')
         write(userFile(), `prefix=${JSON.stringify(at('custom'))}`)
 
-        expect(loadNpmrc(at('proj'), sourcesFor()).k).toBe('from-prefix')
+        expect(loadNpmrc(at('proj'), npmrcSources(tmp)).k).toBe('from-prefix')
       })
 
       it('lets npm_config_prefix beat the project, user and PREFIX', () => {
@@ -346,7 +333,7 @@ describe('npmrc loader', () => {
         write(at('custom', 'etc', 'npmrc'), 'k=user')
         write(userFile(), `prefix=${JSON.stringify(at('custom'))}`)
 
-        const sources = sourcesFor({
+        const sources = npmrcSources(tmp, {
           npm_config_prefix: at('env'),
           PREFIX: at('other'),
         })
@@ -358,7 +345,7 @@ describe('npmrc loader', () => {
         write(at('custom', 'etc', 'npmrc'), 'k=project')
         write(at('proj', '.npmrc'), `prefix=${JSON.stringify(at('custom'))}`)
 
-        expect(loadNpmrc(at('proj'), sourcesFor()).k).toBe('project')
+        expect(loadNpmrc(at('proj'), npmrcSources(tmp)).k).toBe('project')
       })
 
       describe("npm's builtin npmrc", () => {
@@ -371,7 +358,8 @@ describe('npmrc loader', () => {
 
           const config = loadNpmrc(
             at('proj'),
-            sourcesFor(
+            npmrcSources(
+              tmp,
               {},
               {
                 platform: 'linux',
@@ -392,7 +380,8 @@ describe('npmrc loader', () => {
 
           const config = loadNpmrc(
             at('proj'),
-            sourcesFor(
+            npmrcSources(
+              tmp,
               {},
               {
                 platform: 'win32',
@@ -414,7 +403,8 @@ describe('npmrc loader', () => {
 
           const config = loadNpmrc(
             at('proj'),
-            sourcesFor(
+            npmrcSources(
+              tmp,
               {},
               {
                 platform: 'linux',
@@ -431,7 +421,9 @@ describe('npmrc loader', () => {
         write(globalFile(), 'k=default')
         write(at('g', 'rc'), 'k=custom')
 
-        const sources = sourcesFor({ npm_config_globalconfig: at('g', 'rc') })
+        const sources = npmrcSources(tmp, {
+          npm_config_globalconfig: at('g', 'rc'),
+        })
 
         expect(loadNpmrc(at('proj'), sources).k).toBe('custom')
       })
@@ -440,7 +432,7 @@ describe('npmrc loader', () => {
         write(at('g', 'rc'), 'k=custom')
         write(userFile(), `globalconfig=${JSON.stringify(at('g', 'rc'))}`)
 
-        expect(loadNpmrc(at('proj'), sourcesFor()).k).toBe('custom')
+        expect(loadNpmrc(at('proj'), npmrcSources(tmp)).k).toBe('custom')
       })
     })
   })
@@ -463,11 +455,11 @@ describe('npmrc loader', () => {
   describe('loadRegistryConfig', () => {
     const load = (npmrc: string, env: NodeJS.ProcessEnv = {}) => {
       write(at('proj', '.npmrc'), npmrc)
-      return loadRegistryConfig(at('proj'), sourcesFor(env))
+      return loadRegistryConfig(at('proj'), npmrcSources(tmp, env))
     }
 
     it('uses npm defaults when no .npmrc files exist', () => {
-      expect(loadRegistryConfig(at('proj'), sourcesFor())).toEqual({
+      expect(loadRegistryConfig(at('proj'), npmrcSources(tmp))).toEqual({
         registry: 'https://registry.npmjs.org/',
         scopedRegistries: {},
         credentials: {},

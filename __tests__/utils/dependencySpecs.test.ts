@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { StepError } from '@/stepError'
 import {
@@ -12,6 +11,7 @@ import {
   readDeclaredDependencies,
 } from '@/utils/dependencySpecs'
 import logger from '@/utils/logger'
+import { tempDir } from '../fixtures/files'
 
 jest.mock('@/utils/logger')
 
@@ -140,11 +140,7 @@ describe('readDeclaredDependencies', () => {
   const root = [{ path: '.' }]
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-declared-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-declared-')
   })
 
   it('reads the fields in order and the first field wins a duplicate key', () => {
@@ -300,11 +296,7 @@ describe('declaredDependency', () => {
   }
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-declared-one-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-declared-one-')
   })
 
   it('reads a key as discovery does: first field, catalog, alias by its target (#151, #152)', () => {
@@ -400,9 +392,8 @@ describe('classifySpec with a bare npm: alias', () => {
 describe('catalogOf', () => {
   let cwd: string
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-catalogof-'))
+    cwd = tempDir('autd-catalogof-')
   })
-  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }))
 
   it('names the catalog a spec points at, `default` for `catalog:`', () => {
     fs.mkdirSync(path.join(cwd, 'packages', 'a'), { recursive: true })

@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import yarn from '@/managers/yarn'
 import { readBerryLock } from '@/managers/yarn/berry'
@@ -22,6 +21,7 @@ jest.mock('@/utils/runProcess', () => ({
 }))
 
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from '../fixtures/files'
 import { reasonFor } from '../fixtures/reasons'
 
 const mockedRunProcess = jest.mocked(runProcess)
@@ -91,12 +91,9 @@ describe('yarn berry', () => {
     JSON.parse(fs.readFileSync(path.join(cwd, file), 'utf8'))
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-berry-'))
+    cwd = tempDir('autd-berry-')
     // Native discovery (#107): no yarn command runs for check.
     mockedRunProcess.mockRejectedValue(new Error('no yarn command expected'))
-  })
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   describe('readBerryLock', () => {

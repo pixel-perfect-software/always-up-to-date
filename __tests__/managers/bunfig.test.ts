@@ -1,17 +1,21 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import {
   bunfigExact,
   bunRegistryConfig,
   parseBunfigRegistries,
 } from '@/managers/bun/bunfig'
-import type { RegistryConfig } from '@/types'
 import logger from '@/utils/logger'
 import type { NpmrcSources } from '@/utils/npmrcLoader'
 import { authorizationFor } from '@/utils/registryRequest'
+import {
+  registryConfig as base,
+  npmrcSources,
+  tempDir,
+  write,
+} from '../fixtures/files'
 
 const A = 'http://127.0.0.1:4001/'
 const B = 'http://127.0.0.1:4002/'
@@ -181,36 +185,14 @@ describe('bunfigExact', () => {
 describe('bunRegistryConfig', () => {
   let tmp: string
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
-  const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources => ({
-    env,
-    home: at('home'),
-    execPath: process.execPath,
-    platform: process.platform,
-  })
-  const base = (overrides: Partial<RegistryConfig> = {}): RegistryConfig => ({
-    registry: 'https://registry.npmjs.org/',
-    scopedRegistries: {},
-    credentials: {},
-    strictSSL: true,
-    proxy: {},
-    fetchRetries: 2,
-    fetchTimeout: 300_000,
-    maxSockets: 15,
-    ...overrides,
-  })
+  const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources =>
+    npmrcSources(tmp, env, { execPath: process.execPath })
   const projectBunfig = (text: string) => write(at('proj', 'bunfig.toml'), text)
 
   beforeEach(() => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-bunfig-')),
-    )
+    tmp = tempDir('autd-bunfig-', { real: true })
     fs.mkdirSync(at('proj'), { recursive: true })
   })
-  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }))
 
   it('returns the .npmrc view when nothing sets a route', () => {
     expect(bunRegistryConfig(at('proj'), base(), sourcesFor())).toEqual(base())

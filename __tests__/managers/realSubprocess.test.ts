@@ -1,10 +1,10 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import npm from '@/managers/npm'
 import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
 import { prependPath, projectFor, writeNodeShim } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 
 jest.mock('@/utils/logger')
 
@@ -36,7 +36,7 @@ describe('npm with a real subprocess', () => {
       .map((line) => JSON.parse(line) as string[])
 
   beforeEach(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-subprocess-'))
+    root = tempDir('autd-subprocess-')
     cwd = path.join(root, 'project')
     const bin = path.join(root, 'bin')
     fs.mkdirSync(cwd)
@@ -62,7 +62,6 @@ describe('npm with a real subprocess', () => {
 
   afterEach(() => {
     restorePath()
-    fs.rmSync(root, { recursive: true, force: true })
   })
 
   it('gets past more than 1 MB of update output', async () => {

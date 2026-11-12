@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -8,6 +7,7 @@ import yarn from '@/managers/yarn'
 import { check } from '@/pipeline'
 import filterPackages from '@/utils/filterPackages'
 import { capturedRegistry, installPackages, projectFor } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 
 jest.mock('@/utils/logger')
 
@@ -65,11 +65,7 @@ describe.each([
   let cwd: string
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-within-range-${pm}-`))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir(`autd-within-range-${pm}-`)
   })
 
   const proposals = async (layout: 'ranges' | 'pinned') => {

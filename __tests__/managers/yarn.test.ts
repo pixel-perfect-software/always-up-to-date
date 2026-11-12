@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import yarn from '@/managers/yarn'
 import { update } from '@/pipeline'
@@ -21,6 +20,7 @@ jest.mock('@/utils/runProcess', () => ({
 
 import logger from '@/utils/logger'
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from '../fixtures/files'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -67,11 +67,7 @@ describe('update with yarn', () => {
     mockedRunProcess.mockResolvedValue({ stdout, stderr })
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarn-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-yarn-')
   })
 
   // A v1 workspace whose member @autd/b holds the yarn-C7 capture's `before`

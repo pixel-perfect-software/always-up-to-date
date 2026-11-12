@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -23,6 +22,7 @@ jest.mock('@/utils/runProcess', () => ({
 }))
 
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from '../fixtures/files'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -30,12 +30,11 @@ const mockedRunProcess = jest.mocked(runProcess)
 let npmConfigDir: string
 let restoreNpmConfig: () => void
 beforeEach(() => {
-  npmConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-config-'))
+  npmConfigDir = tempDir('autd-npm-config-')
   restoreNpmConfig = isolateNpmConfig(npmConfigDir)
 })
 afterEach(() => {
   restoreNpmConfig()
-  fs.rmSync(npmConfigDir, { recursive: true, force: true })
 })
 
 // When the workspace fixtures were captured, so no version drifts with the registry.
@@ -113,7 +112,7 @@ describe.each([
       capturedRegistry(['dayjs', 'ms', 'debug'], { asOf: AS_OF })
 
     beforeEach(() => {
-      cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-ws-apply-${pm}-`))
+      cwd = tempDir(`autd-ws-apply-${pm}-`)
       writeWorkspaceProject(cwd, { pnpm: usesPnpm })
       installPackages(cwd, '.', {
         dayjs: '1.11.9',
@@ -131,10 +130,6 @@ describe.each([
         )
       }
       answerCommands()
-    })
-
-    afterEach(() => {
-      fs.rmSync(cwd, { recursive: true, force: true })
     })
 
     it('updates every manifest in range with the manager, writing nothing itself', async () => {
@@ -194,44 +189,38 @@ describe('yarn v1 workspace apply', () => {
   // #127: a member's move resolves with root installs, which need no
   // workspace name (`workspace <name> upgrade` did).
   it('moves a member that has no name', async () => {
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-ws-apply-yarn-'))
-    try {
-      writeWorkspaceProject(cwd)
-      fs.writeFileSync(
-        path.join(cwd, 'packages/b/package.json'),
-        JSON.stringify({
-          version: '1.0.0',
-          dependencies: { debug: '~4.3.1', dayjs: '^1.11.9' },
-        }),
-      )
-      const discovered: Record<string, PackageInfo> = {
-        debug: {
-          name: 'debug',
-          current: '4.3.1',
-          wanted: '4.3.7',
-          latest: '4.4.3',
-          workspaces: [
-            { path: 'packages/b', current: '4.3.1', wanted: '4.3.7' },
-          ],
-        },
-      }
-      fs.writeFileSync(
-        path.join(cwd, 'yarn.lock'),
-        'debug@4.3.7:\n  version "4.3.7"\n',
-      )
-      mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
-
-      await update(projectFor(yarn, cwd), { discovered })
-      expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
-        ['install'],
-        ['install'],
-      ])
-      expect(fs.readFileSync(path.join(cwd, 'yarn.lock'), 'utf8')).toContain(
-        'debug@4.3.7, debug@~4.3.1:',
-      )
-    } finally {
-      fs.rmSync(cwd, { recursive: true, force: true })
+    const cwd = tempDir('autd-ws-apply-yarn-')
+    writeWorkspaceProject(cwd)
+    fs.writeFileSync(
+      path.join(cwd, 'packages/b/package.json'),
+      JSON.stringify({
+        version: '1.0.0',
+        dependencies: { debug: '~4.3.1', dayjs: '^1.11.9' },
+      }),
+    )
+    const discovered: Record<string, PackageInfo> = {
+      debug: {
+        name: 'debug',
+        current: '4.3.1',
+        wanted: '4.3.7',
+        latest: '4.4.3',
+        workspaces: [{ path: 'packages/b', current: '4.3.1', wanted: '4.3.7' }],
+      },
     }
+    fs.writeFileSync(
+      path.join(cwd, 'yarn.lock'),
+      'debug@4.3.7:\n  version "4.3.7"\n',
+    )
+    mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
+
+    await update(projectFor(yarn, cwd), { discovered })
+    expect(mockedRunProcess.mock.calls.map(([, args]) => args)).toEqual([
+      ['install'],
+      ['install'],
+    ])
+    expect(fs.readFileSync(path.join(cwd, 'yarn.lock'), 'utf8')).toContain(
+      'debug@4.3.7, debug@~4.3.1:',
+    )
   })
 })
 
@@ -257,7 +246,7 @@ describe.each([
   const readJson = (file: string) => JSON.parse(read(file))
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-ws-catalog-${pm}-`))
+    cwd = tempDir(`autd-ws-catalog-${pm}-`)
     writeWorkspaceProject(cwd, { pnpm: pm === 'pnpm' })
     const root = readJson('package.json')
     if (pm === 'pnpm') {
@@ -280,10 +269,6 @@ describe.each([
       }),
     )
     mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('writes the catalog for a catalog: spec and the owning manifest for a direct one', async () => {

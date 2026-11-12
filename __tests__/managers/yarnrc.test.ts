@@ -6,7 +6,6 @@ jest.mock('@/utils/npmrcLoader', () => ({
 }))
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import {
@@ -21,6 +20,7 @@ import {
   registryConfigFrom,
 } from '@/utils/npmrcLoader'
 import { registryFor } from '@/utils/registryRequest'
+import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 const A = 'http://127.0.0.1:4001/'
 const B = 'http://127.0.0.1:4002/'
@@ -129,26 +129,11 @@ describe('yarnrcRoutes', () => {
 describe('yarnRegistryConfig', () => {
   let tmp: string
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
-  const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources => ({
-    env,
-    home: at('home'),
-    // A temp prefix, so the real Node install's etc/npmrc cannot leak in.
-    // node.exe sits in the prefix on Windows, in <prefix>/bin elsewhere.
-    execPath:
-      process.platform === 'win32'
-        ? at('prefix', 'node.exe')
-        : at('prefix', 'bin', 'node'),
-    platform: process.platform,
-  })
   /** yarn's view, as the session builds it: its own .npmrc layers, then the hook. */
   const viewFor = (cwd: string, sources: NpmrcSources) =>
     mergeNpmrcLayers(yarnNpmrcLayers(cwd, sources))
   const configFor = (cwd: string, env: NodeJS.ProcessEnv = {}) => {
-    const sources = sourcesFor(env)
+    const sources = npmrcSources(tmp, env)
     const view = viewFor(cwd, sources)
     return yarnRegistryConfig(
       cwd,
@@ -160,12 +145,9 @@ describe('yarnRegistryConfig', () => {
   const proj = () => at('proj')
 
   beforeEach(() => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarnrc-')),
-    )
+    tmp = tempDir('autd-yarnrc-', { real: true })
     write(at('proj', 'package.json'), '{"name":"p"}')
   })
-  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }))
 
   // Precedence verified on yarn 1.22.22, 2026-10-26: `yarn install` against
   // local registries that log each request.
@@ -357,7 +339,7 @@ describe('yarnRegistryConfig', () => {
   })
 
   it('returns the .npmrc view when nothing routes', () => {
-    const sources = sourcesFor()
+    const sources = npmrcSources(tmp)
     const view = viewFor(proj(), sources)
     const base = registryConfigFrom(view, proj(), sources)
     expect(yarnRegistryConfig(proj(), base, sources, view)).toEqual({

@@ -1,9 +1,9 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import npm, { readLockedPackages } from '@/managers/npm'
 import { check } from '@/pipeline'
 import { capturedRegistry, projectFor } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 
 jest.mock('@/utils/logger')
 
@@ -14,10 +14,7 @@ const fixture = (name: string) => path.join(__dirname, '../fixtures/npm', name)
 describe('readLockedPackages', () => {
   let cwd: string
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-lock-'))
-  })
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-npm-lock-')
   })
   const lock = (name: string) =>
     fs.copyFileSync(fixture(name), path.join(cwd, 'package-lock.json'))
@@ -70,10 +67,7 @@ describe('readLockedPackages', () => {
 describe('npm installedFromLockfile', () => {
   let cwd: string
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-locked-'))
-  })
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-npm-locked-')
   })
 
   it('reads package-lock.json only when there is no node_modules', () => {
@@ -103,7 +97,7 @@ describe('npm check without node_modules', () => {
     fs.writeFileSync(path.join(cwd, file), JSON.stringify(manifest))
   }
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-nomodules-'))
+    cwd = tempDir('autd-npm-nomodules-')
     write('package.json', {
       name: 'autd-npm-workspace',
       workspaces: ['packages/*'],
@@ -121,9 +115,6 @@ describe('npm check without node_modules', () => {
       fixture('workspace-no-node-modules.package-lock.json'),
       path.join(cwd, 'package-lock.json'),
     )
-  })
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it("lists the members' rows with the lockfile's versions", async () => {

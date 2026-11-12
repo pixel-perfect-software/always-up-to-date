@@ -1,6 +1,3 @@
-import fs from 'fs'
-import os from 'os'
-import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
@@ -13,6 +10,7 @@ import {
   projectFor,
   writeWorkspaceProject,
 } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 
 jest.mock('@/utils/logger')
 
@@ -74,13 +72,9 @@ describe.each(ADAPTERS)(
     let cwd: string
 
     beforeEach(() => {
-      cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-ws-discovery-${pm}-`))
+      cwd = tempDir(`autd-ws-discovery-${pm}-`)
       writeWorkspaceProject(cwd, { pnpm: usesPnpm })
       installEvidenceWorkspace(cwd)
-    })
-
-    afterEach(() => {
-      fs.rmSync(cwd, { recursive: true, force: true })
     })
 
     it('returns each package once, with its manifests', async () => {
@@ -114,13 +108,9 @@ describe.each(ADAPTERS)(
     let cwd: string
 
     beforeEach(() => {
-      cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-ws-unnamed-${pm}-`))
+      cwd = tempDir(`autd-ws-unnamed-${pm}-`)
       writeWorkspaceProject(cwd, { rootName: null, pnpm: usesPnpm })
       installEvidenceWorkspace(cwd)
-    })
-
-    afterEach(() => {
-      fs.rmSync(cwd, { recursive: true, force: true })
     })
 
     it("attributes the unnamed root's rows to the root", async () => {

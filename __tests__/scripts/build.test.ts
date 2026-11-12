@@ -1,7 +1,7 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from '../fixtures/files'
 
 // The real scripts/ directory run by Node's type stripping, as `pnpm run
 // build` runs it, on a project of its own in a temp directory (so the repo's
@@ -19,7 +19,7 @@ describe('scripts/build.mts', () => {
   }
 
   beforeEach(() => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-build-')))
+    tmp = tempDir('autd-build-', { real: true })
     fs.cpSync(path.join(repoRoot, 'scripts'), at('scripts'), {
       recursive: true,
     })
@@ -35,9 +35,6 @@ describe('scripts/build.mts', () => {
       at('node_modules', 'esbuild'),
       'junction',
     )
-  })
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   async function runBuild(): Promise<{

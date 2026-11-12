@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import pnpm from '@/managers/pnpm'
 import { update } from '@/pipeline'
@@ -13,6 +12,7 @@ jest.mock('@/utils/runProcess', () => ({
 }))
 
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from '../fixtures/files'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -20,11 +20,7 @@ describe('pnpm.nodeVersion (#199)', () => {
   let cwd: string
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-node-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-pnpm-node-')
   })
 
   it.each([
@@ -49,11 +45,7 @@ describe('pnpm.readWorkspace', () => {
     fs.writeFileSync(path.join(cwd, 'pnpm-workspace.yaml'), content)
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-workspace-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-pnpm-workspace-')
   })
 
   it('is false without pnpm-workspace.yaml', () => {
@@ -171,12 +163,8 @@ describe('update with pnpm in a single-package project', () => {
   const read = (file: string) => fs.readFileSync(path.join(cwd, file), 'utf8')
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-single-'))
+    cwd = tempDir('autd-pnpm-single-')
     mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('takes the single-project path when pnpm-workspace.yaml only holds settings', async () => {
@@ -238,39 +226,31 @@ describe('update with pnpm in a single-package project', () => {
 
 describe('pnpm.readWorkspace manifests', () => {
   it('lists the root, then the members the patterns match', () => {
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-manifests-'))
-    try {
-      writeWorkspaceProject(cwd, { pnpm: true })
+    const cwd = tempDir('autd-pnpm-manifests-')
+    writeWorkspaceProject(cwd, { pnpm: true })
 
-      expect(pnpm.readWorkspace(cwd).manifests).toEqual([
-        { path: '.', name: 'ws-root' },
-        { path: 'packages/a', name: '@ws/a' },
-        { path: 'packages/b', name: '@ws/b' },
-      ])
-    } finally {
-      fs.rmSync(cwd, { recursive: true, force: true })
-    }
+    expect(pnpm.readWorkspace(cwd).manifests).toEqual([
+      { path: '.', name: 'ws-root' },
+      { path: 'packages/a', name: '@ws/a' },
+      { path: 'packages/b', name: '@ws/b' },
+    ])
   })
 
   it('reads quoted block items and flow lists', () => {
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-manifests-'))
-    try {
-      writeWorkspaceProject(cwd, { pnpm: true })
-      fs.writeFileSync(
-        path.join(cwd, 'pnpm-workspace.yaml'),
-        'packages: [\'packages/a\', "packages/b"] # members\n',
-      )
+    const cwd = tempDir('autd-pnpm-manifests-')
+    writeWorkspaceProject(cwd, { pnpm: true })
+    fs.writeFileSync(
+      path.join(cwd, 'pnpm-workspace.yaml'),
+      'packages: [\'packages/a\', "packages/b"] # members\n',
+    )
 
-      expect(pnpm.readWorkspace(cwd)).toMatchObject({
-        isWorkspace: true,
-        manifests: [
-          { path: '.' },
-          { path: 'packages/a' },
-          { path: 'packages/b' },
-        ],
-      })
-    } finally {
-      fs.rmSync(cwd, { recursive: true, force: true })
-    }
+    expect(pnpm.readWorkspace(cwd)).toMatchObject({
+      isWorkspace: true,
+      manifests: [
+        { path: '.' },
+        { path: 'packages/a' },
+        { path: 'packages/b' },
+      ],
+    })
   })
 })
