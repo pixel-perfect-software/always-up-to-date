@@ -23,7 +23,8 @@ const readYaml = (file: string): Record<string, YamlNode> => {
  * Verified on pnpm 12.16.1, 2026-11-03, with `pnpm install` against a local
  * registry with set publish times (p01-p19, the cases in `__tests__/releaseAgeGates.test.ts`):
  * - `minimumReleaseAge` in minutes, one day unless set (p01), 0 is off
- *   (p12); from `pnpm_config_minimum_release_age` (p10), then the project's
+ *   (p12), an empty key is unset (pnpm 12.18.0, 2026-11-12, #247); from
+ *   `pnpm_config_minimum_release_age` (p10), then the project's
  *   `pnpm-workspace.yaml` (p13), then the global `config.yaml` (p14);
  * - `minimumReleaseAgeExclude`: names and globs whose `*` crosses `/`
  *   (`p-*`, `@acme/*`), each with an optional `@<exact versions>`
@@ -50,7 +51,13 @@ export const pnpmReleaseAgeGate = (
     return files.find((file) => file[yamlKey] !== undefined)?.[yamlKey]
   }
 
-  const age = Number(setting('minimumReleaseAge', 'minimum-release-age'))
+  // An empty key (`minimumReleaseAge:`, null or blank) is unset to pnpm, so
+  // its default applies; `Number` would read it as 0, which is off (#247).
+  const rawAge = setting('minimumReleaseAge', 'minimum-release-age')
+  const age =
+    rawAge === null || rawAge === undefined || String(rawAge).trim() === ''
+      ? Number.NaN
+      : Number(rawAge)
   const exclude = setting(
     'minimumReleaseAgeExclude',
     'minimum-release-age-exclude',

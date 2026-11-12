@@ -383,6 +383,15 @@ describe('berry settings', () => {
       })
     })
 
+    it('keeps the one-day default for an empty npmMinimalAgeGate (#247)', () => {
+      for (const body of ['npmMinimalAgeGate:\n', 'npmMinimalAgeGate: ""\n']) {
+        write(at('parent', 'proj', '.yarnrc.yml'), body)
+        expect(
+          berryRegistryConfig(proj(), sourcesFor()).releaseAgeGate?.minutes,
+        ).toBe(1440)
+      }
+    })
+
     it('reads YARN_NPM_MINIMAL_AGE_GATE, and keeps the default for a value berry cannot parse', () => {
       expect(
         berryRegistryConfig(
