@@ -174,6 +174,28 @@ export const declaredDependency = (
 }
 
 /**
+ * The catalog a manifest's spec for `key` points at (`default` for
+ * `catalog:`), or undefined when it is no `catalog:` reference. The write for
+ * such a row lands in the catalog, which the report says.
+ */
+export const catalogOf = (
+  cwd: string,
+  workspace: string,
+  key: string,
+): string | undefined => {
+  const manifest = readManifestFile(cwd, workspace)
+  for (const field of DISCOVERED_FIELDS) {
+    const entries = manifest[field]
+    if (typeof entries !== 'object' || entries === null) continue
+    const spec = (entries as Record<string, unknown>)[key]
+    if (typeof spec !== 'string') continue
+    if (!spec.startsWith('catalog:')) return undefined
+    return spec.slice('catalog:'.length).trim() || 'default'
+  }
+  return undefined
+}
+
+/**
  * The registry dependencies every manifest declares: the root first, then the
  * members, as `manifests` lists them; per manifest the fields of
  * `DISCOVERED_FIELDS` in order, and a name in several fields is read from the

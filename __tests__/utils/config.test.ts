@@ -316,14 +316,14 @@ describe('depsDev', () => {
 })
 
 describe('saveJsonConfig', () => {
-  it('writes config as formatted JSON', () => {
+  it('writes config as formatted JSON with a final newline', () => {
     mockedFs.writeFileSync.mockImplementation(() => undefined)
 
     saveJsonConfig(DEFAULT_CONFIG, '/test/.always-up-to-date.json')
 
     expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
       '/test/.always-up-to-date.json',
-      JSON.stringify(DEFAULT_CONFIG, null, 2),
+      `${JSON.stringify(DEFAULT_CONFIG, null, 2)}\n`,
       'utf8',
     )
   })

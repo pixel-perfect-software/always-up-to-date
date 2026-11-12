@@ -5,7 +5,11 @@ import { applyPinned } from '@/managers/pin'
 import type { Project } from '@/project'
 import { type PipelineStep, StepError } from '@/stepError'
 import type { PackageInfo, UpdateResult } from '@/types'
-import { type Catalogs, declaredDependency } from '@/utils/dependencySpecs'
+import {
+  type Catalogs,
+  catalogOf,
+  declaredDependency,
+} from '@/utils/dependencySpecs'
 import { runningNode } from '@/utils/engines'
 import filterPackages, { splitUpdates } from '@/utils/filterPackages'
 import { checkApplied, readInstalledVersions } from '@/utils/installed'
@@ -142,16 +146,19 @@ export const findOutdated = async (
 
 /**
  * The outdated packages, with the human report: it plans them first, so each
- * one shows what `update` would do with it and why.
+ * one shows what `update` would do with it and why. `next` is the command
+ * that applies the plan, as the report prints it (the caller repeats the
+ * run's `--pm` and `--no-cache`).
  */
 export const check = async (
   project: Project,
+  { next = 'autd update' }: { next?: string } = {},
 ): Promise<Record<string, PackageInfo>> => {
   const found = await findOutdated(project)
   if (Object.keys(found).length > 0) {
     logger.report(await plan(project, found), project.adapter.name, 'plan', {
       member: project.member?.path,
-      next: 'autd update',
+      next,
     })
   }
   return found
@@ -202,16 +209,27 @@ export const plan = async (
     },
   })
   // The checker is pure and does not know the manager: the fix is named here.
+  // A row whose spec is a `catalog:` reference names its catalog for the
+  // report (not in `--json`): the write lands there, in no manifest.
+  const inCatalog = (result: UpdateResult): UpdateResult => {
+    if (result.workspace === undefined) return result
+    catalogs ??= adapter.readWorkspace(root).catalogs
+    if (Object.keys(catalogs).length === 0) return result
+    const catalog = catalogOf(root, result.workspace, result.name)
+    return catalog === undefined ? result : { ...result, catalog }
+  }
   return results.map((result) =>
-    result.reason.code === 'not-installed'
-      ? {
-          ...result,
-          reason: {
-            ...result.reason,
-            message: `${result.reason.message}: run ${adapter.name} install`,
-          },
-        }
-      : result,
+    inCatalog(
+      result.reason.code === 'not-installed'
+        ? {
+            ...result,
+            reason: {
+              ...result.reason,
+              message: `${result.reason.message}: run ${adapter.name} install`,
+            },
+          }
+        : result,
+    ),
   )
 }
 

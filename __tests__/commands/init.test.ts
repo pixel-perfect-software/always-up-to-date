@@ -97,6 +97,6 @@ describe('init command', () => {
 
     const file = path.join(tmp, 'packages', 'a', '.always-up-to-date.json')
     expect(mockedSaveJsonConfig).toHaveBeenCalledWith(expect.anything(), file)
-    expect(logger.clean).toHaveBeenCalledWith(expect.stringContaining(file))
+    expect(logger.success).toHaveBeenCalledWith(expect.stringContaining(file))
   })
 })

@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from 'util'
 import type { UpdateResult } from '@/types'
-import logger, { formatElapsed, pluralize } from '@/utils/logger'
+import logger, { emojiAllowed, formatElapsed, pluralize } from '@/utils/logger'
 import { groupResults, splitAtChange } from '@/utils/report'
 import { reasonFor } from '../fixtures/reasons'
 
@@ -289,11 +289,12 @@ describe('Logger', () => {
         '  motion       apps/web          14.6.0 → 14.7.1       released 3d ago',
         '\nHeld by cooldown (1 package)',
         '  vercel       (root)            65.2.0 → 65.4.0       released 14h ago, needs 2d',
-        '\nPast the range in package.json (1 package) · "beyondRange": "major" would move it',
+        '\nOutside the range in package.json (1 package)',
+        '  "beyondRange": "major" in .always-up-to-date.json would allow it',
         '  @types/node  (root), apps/web  25.9.9 → 26.6.5       major',
         '\nHeld by a rule (1 package)',
         '  prisma       apps/web          7.10.1 → 8.0.0-rc.27  rule "hold"',
-        '\n1 to update · 1 held by cooldown · 1 past the range · 1 held by a rule',
+        '\n1 to update · 1 held by cooldown · 1 outside the range · 1 held by a rule',
       ])
     })
 
@@ -316,7 +317,7 @@ describe('Logger', () => {
 
       expect(printed()).toEqual([
         '\nHeld by cooldown (1 package)',
-        '  react  18.2.0 → 18.3.1  released 929d ago, needs 3000d',
+        '  react  18.2.0 → 18.3.1  released 2.5y ago, needs 3000d',
         '\nNothing to update: 1 held by cooldown',
       ])
     })
@@ -426,7 +427,7 @@ describe('Logger', () => {
         'plan',
       )
       expect(printed()[1]).toBe(
-        '  a  1.0.0 → 1.0.2  1.0.3 held by cooldown (released 1d ago, needs 2d)',
+        '  a  1.0.0 → 1.0.2  1.0.3 held by cooldown (1d old, needs 2d)',
       )
     })
 
@@ -481,7 +482,7 @@ describe('Logger', () => {
         'plan',
       )
       expect(printed()[1]).toContain(
-        'rewrites its range · peer conflict: react-dom@18.3.1 needs react ^18.3.1',
+        'rewrites its range  ! peer conflict: react-dom@18.3.1 needs react ^18.3.1',
       )
     })
 
@@ -498,8 +499,9 @@ describe('Logger', () => {
         'npm',
         'plan',
       )
-      expect(printed().slice(0, 4)).toEqual([
-        '\nPast the range in package.json (3 packages) · "beyondRange": "minor" would move 1, "major" all 3',
+      expect(printed().slice(0, 5)).toEqual([
+        '\nOutside the range in package.json (3 packages)',
+        '  "beyondRange" in .always-up-to-date.json: "minor" would allow 1, "major" all 3',
         '  express     1.0.0 → 1.1.0  minor',
         '  typescript  1.0.0 → 2.0.0  major',
         '  zod         1.0.0 → 2.0.0  major',
@@ -644,6 +646,158 @@ describe('Logger', () => {
     ])('files %s under "%s"', (reason, heading) => {
       logger.report([held('p', reason)], 'npm', 'plan')
       expect(printed()[0]).toBe(`\n${heading} (1 package)`)
+    })
+  })
+
+  describe('report wording', () => {
+    const printed = () =>
+      logSpy.mock.calls.map(([line]) => stripVTControlCharacters(line))
+
+    it('says "released" once per note: the held version by its age, the moved one by its release (#225)', () => {
+      logger.report(
+        [
+          moved('axios', {
+            current: '1.4.0',
+            wanted: '1.20.0',
+            latest: '1.21.1',
+            target: '1.20.0',
+            releaseAge: 78,
+            reason: reasonFor(
+              'cooldown: 1.21.1 released 2d ago, requires 30d',
+              'cooldown-fallback',
+            ),
+          }),
+        ],
+        'npm',
+        'plan',
+      )
+      expect(printed()[1]).toBe(
+        '  axios  1.4.0 → 1.20.0  1.21.1 held by cooldown (2d old, needs 30d) · released 78d ago',
+      )
+    })
+
+    it('shows a held cooldown version older than a year in years too (#225)', () => {
+      logger.report(
+        [
+          held('ms', 'cooldown: released 929d ago, requires 3000d', {
+            updateType: 'minor',
+          }),
+        ],
+        'npm',
+        'plan',
+      )
+      expect(printed()[1]).toContain('released 2.5y ago, needs 3000d')
+    })
+
+    it('shows a release age past a year in years (#225)', () => {
+      logger.report([moved('ms', { releaseAge: 2775 })], 'npm', 'plan')
+      expect(printed()[1]).toContain('released 7.6y ago')
+      expect(printed()[1]).not.toContain('2775d')
+    })
+
+    it('shows a latest rule warning apart from the note, behind a ! marker (#225)', () => {
+      logger.report(
+        [
+          moved('react', {
+            wanted: '1.0.0',
+            target: '2.0.0',
+            latest: '2.0.0',
+            warnings: [reasonFor('license change: MIT → AGPL-3.0-or-later')],
+          }),
+        ],
+        'npm',
+        'plan',
+      )
+      expect(printed()[1]).toBe(
+        '  react  1.0.0 → 2.0.0  rewrites its range  ! license change: MIT → AGPL-3.0-or-later',
+      )
+    })
+
+    it('names the config file and says "allow" for a single level (#225)', () => {
+      logger.report(
+        [held('zod', 'major beyond the range', { updateType: 'major' })].map(
+          (row) => ({
+            ...row,
+            reason: { ...row.reason, code: 'outside-range' },
+          }),
+        ) as UpdateResult[],
+        'npm',
+        'plan',
+      )
+      expect(printed()[1]).toBe(
+        '  "beyondRange": "major" in .always-up-to-date.json would allow it',
+      )
+    })
+
+    it('names the catalog a row is written to, once for every manifest using it (#225)', () => {
+      logger.report(
+        [
+          moved('react', {
+            workspace: 'apps/web',
+            wanted: '1.0.0',
+            target: '2.0.0',
+            latest: '2.0.0',
+            catalog: 'default',
+          }),
+          moved('react', {
+            workspace: 'apps/docs',
+            wanted: '1.0.0',
+            target: '2.0.0',
+            latest: '2.0.0',
+            catalog: 'default',
+          }),
+          moved('ms', { workspace: 'apps/web' }),
+        ],
+        'pnpm',
+        'plan',
+      )
+      const lines = printed()
+      expect(lines.filter((l) => l.includes('react'))).toEqual([
+        '  react  catalog:default  1.0.0 → 2.0.0  rewrites its catalog entry',
+      ])
+      expect(lines.join('\n')).toContain('ms     apps/web')
+    })
+  })
+
+  describe('markers', () => {
+    afterEach(() => logger.setEmoji(false))
+
+    it('emojiAllowed: a terminal without NO_COLOR only', () => {
+      expect(emojiAllowed({ isTTY: true }, {})).toBe(true)
+      expect(emojiAllowed({ isTTY: false }, {})).toBe(false)
+      expect(emojiAllowed({}, {})).toBe(false)
+      expect(emojiAllowed({ isTTY: true }, { NO_COLOR: '1' })).toBe(false)
+      // FORCE_COLOR keeps color, not emoji, on a pipe.
+      expect(emojiAllowed({ isTTY: false }, { FORCE_COLOR: '1' })).toBe(false)
+    })
+
+    it('prints no emoji and an even margin when emoji are off (#225)', () => {
+      logger.setEmoji(false)
+      logger.info('hello')
+      logger.success('done')
+      logger.allUpToDate()
+      expect(
+        logSpy.mock.calls.map(([l]) => stripVTControlCharacters(l)),
+      ).toEqual(['hello', 'done', '\nAll packages are up to date.'])
+    })
+
+    it('marks a warning with ! and an error with error: when emoji are off', () => {
+      const errorSpy = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined)
+      logger.setEmoji(false)
+      logger.warn('careful')
+      logger.error('broke')
+      expect(
+        errorSpy.mock.calls.map(([l]) => stripVTControlCharacters(l)),
+      ).toEqual(['! careful', 'error: broke'])
+      errorSpy.mockRestore()
+    })
+
+    it('keeps the emoji on a terminal', () => {
+      logger.setEmoji(true)
+      logger.info('hello')
+      expect(stripVTControlCharacters(logSpy.mock.calls[0][0])).toBe('ℹ️ hello')
     })
   })
 

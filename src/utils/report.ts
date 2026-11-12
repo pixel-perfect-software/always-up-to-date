@@ -1,5 +1,6 @@
 import semver from 'semver'
 import type { ReasonCode, UpdateResult } from '@/types'
+import { formatAge } from './duration'
 
 /** Before apply (`check`, `--dry-run`, interactive) or after it. */
 export type ReportPhase = 'plan' | 'applied'
@@ -76,6 +77,10 @@ export interface ReportRow {
   level: UpdateResult['updateType']
   /** The reason, worded for the section it is in. */
   note?: string
+  /** What a `latest` rule moved despite (license, deprecation, peers, engines), apart from the note. */
+  warnings: string[]
+  /** The catalog the spec is in: the write lands there, once for every manifest using it. */
+  catalog?: string
 }
 
 interface ReportSection {
@@ -114,10 +119,17 @@ export const splitAtChange = (
 
 const STEPS = ['patch', 'minor', 'major'] as const
 
+/** The file the range hint names: where `beyondRange` goes. */
+const CONFIG_FILE = '.always-up-to-date.json'
+
 /**
- * The `beyondRange` level that would move each row past its range, said once
- * for the section: `"beyondRange": "major" would move them`, or with several
- * steps, how many each level moves (levels include the smaller steps).
+ * The `beyondRange` level that lets each row past its range, said once for
+ * the section, with where the setting goes: `"beyondRange": "major" in
+ * .always-up-to-date.json would allow them`, or with several steps, how many
+ * each level allows (levels include the smaller steps). It says "allow", not
+ * "move": the report sees the plan's rows only, and the passes after the
+ * policy (cooldown, peers, license, deprecation, engines) can still hold a
+ * row the level lets through, which only a plan run at that level would show.
  */
 const rangeHint = (rows: ReportRow[], packages: number): string | undefined => {
   const stepOf = new Map<string, number>()
@@ -128,20 +140,23 @@ const rangeHint = (rows: ReportRow[], packages: number): string | undefined => {
   }
   const steps = [...new Set(stepOf.values())].sort((a, b) => a - b)
   if (steps.length === 1) {
-    return `"beyondRange": "${STEPS[steps[0]]}" would move ${packages === 1 ? 'it' : 'them'}`
+    return `"beyondRange": "${STEPS[steps[0]]}" in ${CONFIG_FILE} would allow ${packages === 1 ? 'it' : 'them'}`
   }
-  const moved = (step: number) =>
+  const allowed = (step: number) =>
     [...stepOf.values()].filter((s) => s <= step).length
-  return `"beyondRange": ${steps
+  return `"beyondRange" in ${CONFIG_FILE}: ${steps
     .map((step, i) =>
       i === 0
-        ? `"${STEPS[step]}" would move ${moved(step)}`
+        ? `"${STEPS[step]}" would allow ${allowed(step)}`
         : i === steps.length - 1
           ? `"${STEPS[step]}" all ${packages}`
-          : `"${STEPS[step]}" ${moved(step)}`,
+          : `"${STEPS[step]}" ${allowed(step)}`,
     )
     .join(', ')}`
 }
+
+/** An age a reason message gave in whole days, as the report shows it: years past 365. */
+const yearsFor = (days: string): string => formatAge(Number(days))
 
 /** The notes of one row, as the report joins them. */
 export const NOTE_SEPARATOR = ' · '
@@ -166,28 +181,40 @@ const noteFor = (
         (semver.valid(target) !== null &&
           semver.valid(wanted) !== null &&
           semver.lt(target, wanted))
+      const what =
+        result.catalog === undefined ? 'its range' : 'its catalog entry'
       const notes = [
         within
           ? undefined
           : phase === 'plan'
-            ? 'rewrites its range'
-            : 'range rewritten',
-        // A cooldown fallback (#147) names the newer version it held.
+            ? `rewrites ${what}`
+            : what === 'its range'
+              ? 'range rewritten'
+              : 'catalog entry rewritten',
+        // A cooldown fallback (#147) names the newer version it held, by its
+        // age: the row's own "released … ago" is the version that moves.
         result.reason.code === 'cooldown-fallback'
           ? reason
               .replace(/^cooldown: (\S+) (.*)$/, '$1 held by cooldown ($2)')
+              .replace(/released (\S+) ago/, '$1 old')
+              .replace(/(\d+)d old/, (_, days) => `${yearsFor(days)} old`)
               .replace(/requires /, 'needs ')
           : undefined,
         // npm's engines preference (#200): the version the target needed Node for.
         result.reason.code === 'engines-fallback'
           ? reason.replace(/^engines: /, '')
           : undefined,
-        ...(result.warnings ?? []).map((w) => w.message),
       ]
       return notes.filter(Boolean).join(NOTE_SEPARATOR) || undefined
     }
     case 'cooldown':
-      return reason.replace(/^cooldown: /, '').replace(/requires /, 'needs ')
+      return reason
+        .replace(/^cooldown: /, '')
+        .replace(
+          /released (\d+)d ago/,
+          (_, days) => `released ${yearsFor(days)} ago`,
+        )
+        .replace(/requires /, 'needs ')
     // The step alone: the section's hint names the level that would move it.
     case 'range':
       return reason.replace(/ beyond the range$/, '')
@@ -224,7 +251,17 @@ export const groupResults = (
     const judged = result.target === undefined ? result.judged : undefined
     const to = result.target ?? judged ?? result.latest
     const note = noteFor(outcome, result, phase)
-    const key = [result.name, result.current, to, note].join('\0')
+    // A `latest` rule's warnings, shown apart from the note.
+    const warnings =
+      outcome === 'update' ? (result.warnings ?? []).map((w) => w.message) : []
+    const key = [
+      result.name,
+      result.current,
+      to,
+      note,
+      result.catalog,
+      ...warnings,
+    ].join('\0')
     let rows = sections.get(outcome)
     if (!rows) {
       rows = new Map()
@@ -246,6 +283,8 @@ export const groupResults = (
             ? semver.diff(result.current, judged)
             : result.updateType,
         note,
+        warnings,
+        ...(result.catalog === undefined ? {} : { catalog: result.catalog }),
       })
     }
   }

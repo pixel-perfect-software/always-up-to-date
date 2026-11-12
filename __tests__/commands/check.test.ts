@@ -61,7 +61,23 @@ describe('check command', () => {
     await program.parseAsync(['node', 'test', 'check'])
     expect(mockCheckPackageVersions).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: npm, root: expect.any(String) }),
+      { next: 'autd update' },
     )
+  })
+
+  it("repeats the run's --pm and --no-cache in the next-step command", async () => {
+    mockCheckPackageVersions.mockResolvedValue({})
+    await program.parseAsync([
+      'node',
+      'test',
+      'check',
+      '--pm',
+      'npm',
+      '--no-cache',
+    ])
+    expect(mockCheckPackageVersions).toHaveBeenCalledWith(expect.anything(), {
+      next: 'autd update --pm npm --no-cache',
+    })
   })
 
   it('uses the manager --pm names', async () => {
@@ -77,6 +93,7 @@ describe('check command', () => {
     )
     expect(mockCheckPackageVersions).toHaveBeenCalledWith(
       expect.objectContaining({ adapter: yarn }),
+      { next: 'autd update --pm yarn' },
     )
   })
 

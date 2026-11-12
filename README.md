@@ -32,25 +32,26 @@ Would update (16 packages)
   axios       1.4.0   → 1.20.0
   commander   9.0.0   → 9.5.0
   debug       4.3.1   → 4.3.7
-  zod         3.20.0  → 3.25.75  3.25.76 held by cooldown (released 1d ago, needs 2d)
+  zod         3.20.0  → 3.25.75  3.25.76 held by cooldown (1d old, needs 2d)
   …
 
 Held by cooldown (1 package)
   ms          2.1.2   → 2.1.3    released 1d ago, needs 2d
 
-Past the range in package.json (5 packages) · "beyondRange": "major" would move them
+Outside the range in package.json (5 packages)
+  "beyondRange": "major" in .always-up-to-date.json would allow them
   express     4.17.1  → 5.3.0    major
   react       18.2.0  → 19.3.1   major
   typescript  5.0.4   → 7.0.2    major
   …
 
-16 to update · 1 held by cooldown · 5 past the range
+16 to update · 1 held by cooldown · 5 outside the range
 Run autd update to apply.
 ```
 
-In a terminal, each new version is colored from the part that changes: red for a major step, yellow for a minor one, green for a patch. A move past the range rewrites the range in `package.json` (or the catalog), and the report says so. After `update`, the summary line says how long it took.
+In a terminal, each new version is colored from the part that changes: red for a major step, yellow for a minor one, green for a patch. A move outside the range rewrites the range in `package.json` (or the catalog, which the row names, as `catalog:default`), and the report says so. A warning from a `latest` rule (a license change, a deprecation, a peer conflict, an engines hold) is yellow, behind a `!`. Ages past a year show in years (`2.1y`). Emoji and the `!` marker follow the terminal: a pipe, a redirect or `NO_COLOR` gets plain text. The `beyondRange` hint counts what the level lets through the range; cooldown, peer, license, deprecation and engines holds still apply after it. The last line repeats the run's `--pm` and `--no-cache`. After `update`, the summary line says how long it took.
 
-`check` prints the same report, and `update` prints it once more after the package manager has run, with what it actually installed. Every package shows up once, under what happened to it: updated, left in place by the package manager, held by cooldown, past its range, or held by a rule, an override, a peer conflict, a deprecation or a license change.
+`check` prints the same report, and `update` prints it once more after the package manager has run, with what it actually installed. Every package shows up once, under what happened to it: updated, left in place by the package manager, held by cooldown, outside its range, or held by a rule, an override, a peer conflict, a deprecation or a license change.
 
 What happens to each kind of spec:
 
@@ -282,7 +283,7 @@ It holds derived version lists only, never a registry document, a header or anyt
 
 ## 🩺 Troubleshooting
 
-- **A package isn't updating.** Run `autd update --dry-run`: every held package shows why, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)`, `peer conflict: …`, `deprecated: …` or `license change: MIT → AGPL-3.0-or-later`. After `autd update`, a package your manager was asked to move but left where it was is listed under "left in place by …" and reported with `"outcome": "not-applied"` and `not applied by npm (installed …)`. npm does this to a package another dependency pins exactly, and to a workspace member's copy it dedupes onto the root's. In a workspace, `held with <path> (…)` means the same package is held in that manifest, so its other manifests wait for it.
+- **A package isn't updating.** Run `autd update --dry-run`: every held package shows why. The report words it as `outside the range` (with the step, `major`), `rule "hold"`, `held by an override`; `--json` carries the longer messages, such as `major beyond the range`, `held by rule`, `controlled by overrides (…)`, `peer conflict: …`, `deprecated: …` or `license change: MIT → AGPL-3.0-or-later`. After `autd update`, a package your manager was asked to move but left where it was is listed under "left in place by …" and reported with `"outcome": "not-applied"` and `not applied by npm (installed …)`. npm does this to a package another dependency pins exactly, and to a workspace member's copy it dedupes onto the root's. In a workspace, `held with <path> (…)` means the same package is held in that manifest, so its other manifests wait for it.
 - **`check` or `update` exits 1.** The message names the step that failed (`detect`, `discover` or `apply`) and says whether package.json was already written. Set `"debug": true` to see each package-manager command and its stderr.
 - **"No package manager detected".** package.json declares no manager and there's no lockfile in the current directory (from a workspace member: no package.json from the member's up to the workspace root's declares one, and the workspace root has no lockfile). Set `"packageManager"`, pass `--pm`, or run your package manager's install first.
 - **`cooldown` holds a package with `release date unknown`.** autd couldn't read that version's publish time from the registry. It reads `.npmrc` the way npm does: registries and scoped registries, per-registry auth, `ca` / `cafile` / `strict-ssl`, `https-proxy` / `proxy` / `noproxy`, `fetch-retries`, `fetch-timeout` and `maxsockets`. SOCKS proxies aren't supported. Set `"debug": true` to see the request that failed.

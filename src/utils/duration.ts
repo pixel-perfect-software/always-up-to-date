@@ -78,3 +78,13 @@ export const formatAgeDays = (ageDays: number | undefined): string => {
   }
   return `${Math.floor(ageDays)}d`
 }
+
+/**
+ * `formatAgeDays` for the report: past 365 days, years with one decimal
+ * (`2775d` is `7.6y`). `reason.message` text, which `--json` carries, keeps
+ * `formatAgeDays`' days.
+ */
+export const formatAge = (ageDays: number | undefined): string =>
+  ageDays !== undefined && ageDays > 365
+    ? `${(ageDays / 365).toFixed(1)}y`
+    : formatAgeDays(ageDays)

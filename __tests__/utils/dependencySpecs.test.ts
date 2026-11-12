@@ -4,6 +4,7 @@ import path from 'path'
 import { StepError } from '@/stepError'
 import {
   type Catalogs,
+  catalogOf,
   classifySpec,
   DEPENDENCY_FIELDS,
   DISCOVERED_FIELDS,
@@ -393,5 +394,27 @@ describe('classifySpec with a bare npm: alias', () => {
       name: '@scope/pkg',
       spec: { tag: 'latest' },
     })
+  })
+})
+
+describe('catalogOf', () => {
+  let cwd: string
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-catalogof-'))
+  })
+  afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }))
+
+  it('names the catalog a spec points at, `default` for `catalog:`', () => {
+    fs.mkdirSync(path.join(cwd, 'packages', 'a'), { recursive: true })
+    fs.writeFileSync(
+      path.join(cwd, 'packages', 'a', 'package.json'),
+      JSON.stringify({
+        dependencies: { react: 'catalog:', zod: 'catalog:tools', ms: '^2.0.0' },
+      }),
+    )
+    expect(catalogOf(cwd, 'packages/a', 'react')).toBe('default')
+    expect(catalogOf(cwd, 'packages/a', 'zod')).toBe('tools')
+    expect(catalogOf(cwd, 'packages/a', 'ms')).toBeUndefined()
+    expect(catalogOf(cwd, 'packages/a', 'absent')).toBeUndefined()
   })
 })

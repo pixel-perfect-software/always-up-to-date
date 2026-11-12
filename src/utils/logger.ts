@@ -1,6 +1,6 @@
 import { blue, bold, cyan, gray, green, red, yellow } from 'colorette'
 import type { AlwaysUpToDateConfig, UpdateResult } from '@/types'
-import { formatAgeDays } from './duration'
+import { formatAge } from './duration'
 import { scrub } from './redaction'
 import {
   groupResults,
@@ -48,8 +48,8 @@ const SECTIONS: Record<
     color: cyan,
   },
   range: {
-    heading: () => 'Past the range in package.json',
-    summary: () => 'past the range',
+    heading: () => 'Outside the range in package.json',
+    summary: () => 'outside the range',
     color: cyan,
   },
   rule: {
@@ -94,16 +94,85 @@ const SECTIONS: Record<
   },
 }
 
-/** The manifests a row covers: one or two by path, else a count. */
-const whereOf = (workspaces: string[]): string =>
-  workspaces.length <= 2
-    ? workspaces.map(workspaceLabel).join(', ')
-    : `${workspaces.length} manifests`
+/** The manifests a row covers: one or two by path, else a count; a catalog row names its catalog. */
+const whereOf = (row: Pick<ReportRow, 'workspaces' | 'catalog'>): string =>
+  row.catalog !== undefined
+    ? `catalog:${row.catalog}`
+    : row.workspaces.length <= 2
+      ? row.workspaces.map(workspaceLabel).join(', ')
+      : `${row.workspaces.length} manifests`
+
+/** Message kinds that carry a marker. */
+type Marker =
+  | 'info'
+  | 'success'
+  | 'warn'
+  | 'error'
+  | 'workspace'
+  | 'done'
+  | 'run'
+  | 'start'
+
+const EMOJI: Record<Marker, string> = {
+  info: 'ℹ️',
+  success: '✅',
+  warn: '⚠️',
+  error: '❌',
+  workspace: '🏢',
+  done: '🎉',
+  run: '🔄',
+  start: '🚀',
+}
+
+/** What stands in for each emoji where emoji are off: a warning keeps a mark, the rest need none. */
+const PLAIN: Record<Marker, string> = {
+  info: '',
+  success: '',
+  warn: '!',
+  error: 'error:',
+  workspace: '',
+  done: '',
+  run: '',
+  start: '',
+}
+
+/**
+ * Emoji only on a terminal that has not asked for plain output: not when the
+ * stream is piped or redirected, and not under `NO_COLOR`. `FORCE_COLOR` on a
+ * pipe keeps color (colorette's own rule) but not emoji: a pipe is read by a
+ * program or a log, where emoji are noise and their width is unreliable.
+ */
+export const emojiAllowed = (
+  stream: { isTTY?: boolean },
+  env: NodeJS.ProcessEnv,
+): boolean => stream.isTTY === true && !('NO_COLOR' in env)
 
 class Logger {
   private quiet = false
   private debugEnabled = false
   private jsonOutput = false
+  /** Decided once per process; stdout and stderr are separate streams. */
+  private emojiOut = emojiAllowed(process.stdout, process.env)
+  private emojiErr = emojiAllowed(process.stderr, process.env)
+
+  /** Test seam: force emoji on or off for both streams. */
+  setEmoji(on: boolean): void {
+    this.emojiOut = on
+    this.emojiErr = on
+  }
+
+  /** `<marker> text`, or the plain stand-in, or the text alone when there is none. */
+  private line(
+    kind: Marker,
+    text: string,
+    color: (s: string) => string,
+    stderr = false,
+  ): string {
+    const mark = (stderr ? this.emojiErr : this.emojiOut)
+      ? EMOJI[kind]
+      : PLAIN[kind]
+    return mark ? `${color(mark)} ${text}` : text
+  }
 
   /** Applies the loaded config. Until it is called, debug is off and output is not quiet. */
   configure(config: LoggerConfig): void {
@@ -139,11 +208,11 @@ class Logger {
   }
 
   info(message: string): void {
-    if (!this.muted) console.log(`${blue('ℹ️')} ${message}`)
+    if (!this.muted) console.log(this.line('info', message, blue))
   }
 
   success(message: string): void {
-    if (!this.muted) console.log(`${green('✅')} ${green(message)}`)
+    if (!this.muted) console.log(this.line('success', green(message), green))
   }
 
   /**
@@ -151,11 +220,11 @@ class Logger {
    * is set: for one that belongs to an error, such as a rewritten manifest.
    */
   warn(message: string, { always = false }: { always?: boolean } = {}): void {
-    this.diagnostic(`${yellow('⚠️')} ${yellow(message)}`, always)
+    this.diagnostic(this.line('warn', yellow(message), yellow, true), always)
   }
 
   error(message: string): void {
-    this.diagnostic(`${red('❌')} ${red(message)}`, true)
+    this.diagnostic(this.line('error', red(message), red, true), true)
   }
 
   /**
@@ -172,7 +241,11 @@ class Logger {
     const parts = [pluralize(manifests, 'manifest')]
     if (catalogs > 0) parts.push(pluralize(catalogs, 'catalog'))
     console.log(
-      `${blue('🏢')} ${blue(`${manager} workspace: ${parts.join(', ')}`)}`,
+      this.line(
+        'workspace',
+        blue(`${manager} workspace: ${parts.join(', ')}`),
+        blue,
+      ),
     )
   }
 
@@ -180,20 +253,28 @@ class Logger {
   memberRun(manager: string, memberPath: string, manifests: number): void {
     if (this.muted) return
     console.log(
-      `${blue('🏢')} ${blue(`${manager} workspace member ${memberPath} (1 of ${manifests} manifests)`)}`,
+      this.line(
+        'workspace',
+        blue(
+          `${manager} workspace member ${memberPath} (1 of ${manifests} manifests)`,
+        ),
+        blue,
+      ),
     )
   }
 
   allUpToDate(): void {
     if (!this.muted) {
-      console.log(`\n${green('🎉')} ${green('All packages are up to date.')}`)
+      console.log(
+        `\n${this.line('done', green('All packages are up to date.'), green)}`,
+      )
     }
   }
 
   updatingHeader(manager: string, packages: number): void {
     if (this.muted) return
     console.log(
-      `\n${blue('🔄')} ${bold(`Updating ${pluralize(packages, 'package')} with ${manager}`)}`,
+      `\n${this.line('run', bold(`Updating ${pluralize(packages, 'package')} with ${manager}`), blue)}`,
     )
   }
 
@@ -228,22 +309,22 @@ class Logger {
       member === undefined &&
       rows.some(
         (row) =>
-          row.workspaces.length > 1 || (row.workspaces[0] ?? '.') !== '.',
+          row.catalog !== undefined ||
+          row.workspaces.length > 1 ||
+          (row.workspaces[0] ?? '.') !== '.',
       )
     const widths = {
       name: Math.max(0, ...rows.map((r) => r.name.length)),
-      where: showWhere
-        ? Math.max(...rows.map((r) => whereOf(r.workspaces).length))
-        : 0,
+      where: showWhere ? Math.max(...rows.map((r) => whereOf(r).length)) : 0,
       current: Math.max(0, ...rows.map((r) => r.current.length)),
       to: Math.max(0, ...rows.map((r) => r.to.length)),
     }
     for (const section of sections) {
       const { heading, color } = SECTIONS[section.outcome]
-      const hint = section.hint ? `${NOTE_SEPARATOR}${section.hint}` : ''
       console.log(
-        `\n${bold(color(heading(phase, manager)))} ${gray(`(${pluralize(section.packages, 'package')})${hint}`)}`,
+        `\n${bold(color(heading(phase, manager)))} ${gray(`(${pluralize(section.packages, 'package')})`)}`,
       )
+      if (section.hint) console.log(`  ${gray(section.hint)}`)
       for (const row of section.rows) {
         const age =
           section.outcome === 'update' ? ages.get(row.name) : undefined
@@ -273,7 +354,9 @@ class Logger {
 
   starting(operation: string, manager: string): void {
     if (this.muted) return
-    console.log(`${blue('🚀')} ${blue(`${operation} with ${bold(manager)}`)}`)
+    console.log(
+      this.line('start', blue(`${operation} with ${bold(manager)}`), blue),
+    )
   }
 
   clean(message: string): void {
@@ -300,20 +383,22 @@ const formatRow = (
 ): string => {
   const name = bold(row.name.padEnd(widths.name))
   const where =
-    widths.where > 0
-      ? `  ${gray(whereOf(row.workspaces).padEnd(widths.where))}`
-      : ''
+    widths.where > 0 ? `  ${gray(whereOf(row).padEnd(widths.where))}` : ''
   const current = row.current.padEnd(widths.current)
   const tail = [row.note]
   if (releaseAge !== undefined)
-    tail.push(`released ${formatAgeDays(releaseAge)} ago`)
+    tail.push(`released ${formatAge(releaseAge)} ago`)
   const note = tail.filter(Boolean).join(NOTE_SEPARATOR)
   // The part of the version that changes, colored by the size of the step;
   // padded only when a note follows, outside the color codes.
   const [same, changed] = splitAtChange(row.current, row.to)
   const pad = note ? ' '.repeat(widths.to - row.to.length) : ''
   const to = `${same}${levelColor(row.level)(changed)}${pad}`
-  return `  ${name}${where}  ${current} ${gray('→')} ${to}${note ? `  ${gray(note)}` : ''}`.trimEnd()
+  // A `latest` rule's warnings stand out from the neutral notes: yellow, each
+  // behind a `!` that needs no emoji.
+  const warnings = row.warnings.map((w) => yellow(`! ${w}`)).join('  ')
+  const pad2 = note || !warnings ? '' : ' '.repeat(widths.to - row.to.length)
+  return `  ${name}${where}  ${current} ${gray('→')} ${to}${pad2}${note ? `  ${gray(note)}` : ''}${warnings ? `  ${warnings}` : ''}`.trimEnd()
 }
 
 /** Red for a major step, yellow for a minor one, green for a patch or an unknown one. */

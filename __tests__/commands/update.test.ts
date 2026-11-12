@@ -128,6 +128,42 @@ describe('update command', () => {
     )
   })
 
+  it("repeats the run's names, --pm and --no-cache in the dry-run's next step", async () => {
+    mockCheckPackageVersions.mockResolvedValue({
+      ms: { current: '2.0.0', wanted: '2.1.3', latest: '2.1.3' },
+    } as never)
+    jest.mocked(plan).mockResolvedValue([
+      {
+        name: 'ms',
+        current: '2.0.0',
+        wanted: '2.1.3',
+        latest: '2.1.3',
+        target: '2.1.3',
+        updateType: 'minor',
+        updated: true,
+        reason: reasonFor('within range'),
+      },
+    ])
+
+    await program.parseAsync([
+      'node',
+      'test',
+      'update',
+      'ms',
+      '--dry-run',
+      '--pm',
+      'npm',
+      '--no-cache',
+    ])
+
+    expect(logger.report).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      'plan',
+      { member: undefined, next: 'autd update ms --pm npm --no-cache' },
+    )
+  })
+
   it('runs dry-run without applying', async () => {
     mockCheckPackageVersions.mockResolvedValue({
       react: {
