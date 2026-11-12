@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import semver, { type ReleaseType } from 'semver'
+import semver from 'semver'
 import type {
   AlwaysUpToDateConfig,
   CooldownConfig,
@@ -28,8 +28,11 @@ import { sameLicense } from './license'
 import logger from './logger'
 import { fitRunningNode } from './nodeFit'
 import type { ControllingOverride } from './overrides'
-import { type PeerRequirement, readInstalledPeers } from './peers'
-import type { RegistrySession } from './registry'
+import { readInstalledPeers } from './peers'
+import { targetPeerRows } from './plan/peerConflicts'
+import { heldFor, stepType, withWarning } from './plan/rows'
+import { createSettle } from './plan/settle'
+import type { PlanRegistry } from './plan/types'
 import {
   readTargetManifests,
   type TargetManifests,
@@ -40,6 +43,9 @@ import updateChecker, {
   type UpdatePolicy,
 } from './updateChecker'
 import { byPath, expandWorkspaces } from './workspaceRows'
+
+// The tests and other callers import it from here.
+export { withWarning }
 
 interface FilterPackagesOptions {
   config: AlwaysUpToDateConfig
@@ -54,8 +60,7 @@ interface FilterPackagesOptions {
    * target still moving after that has its own manifest read
    * (`versionManifest`, #196); without it, none is.
    */
-  registry: Pick<RegistrySession, 'releaseTimes'> &
-    Partial<Pick<RegistrySession, 'lookup' | 'lookedUp' | 'versionManifest'>>
+  registry: PlanRegistry
   now?: number
   /** Packages pinned by an override the manager enforces; without it no package is held for one. */
   overrides?: Record<string, ControllingOverride>
@@ -95,230 +100,6 @@ interface FilterPackagesOptions {
    * newest version below it that fits (`fitRunningNode`). Default false.
    */
   skipsEnginesExcluded?: boolean
-}
-
-/**
- * `semver.diff`, or null when either version isn't semver: managers report
- * versions such as yarn v1's `exotic` for an npm: alias, and `semver.diff`
- * throws on them.
- */
-const stepType = (from: string, to: string): ReleaseType | null =>
-  semver.valid(from) && semver.valid(to) ? semver.diff(from, to) : null
-
-/**
- * A moving row's warnings, one after another; the same one (code and
- * message) is never added twice.
- */
-export const withWarning = (
-  result: UpdateResult,
-  warning: Reason,
-): UpdateResult =>
-  result.warnings?.some(
-    (w) => w.code === warning.code && w.message === warning.message,
-  )
-    ? result
-    : { ...result, warnings: [...(result.warnings ?? []), warning] }
-
-/**
- * A moving row held for `reason`: no target, and its `updateType` is `current
- * → latest`; `judged` keeps the target the hold judged (#221).
- */
-const heldFor = (result: UpdateResult, reason: Reason): UpdateResult => ({
-  ...result,
-  target: undefined,
-  judged: result.target ?? result.judged,
-  updated: false,
-  updateType: stepType(result.current, result.latest),
-  reason,
-})
-
-/**
- * Holds targets an installed package's peer range excludes. A range declared
- * by a package that is itself moving in this run doesn't count here: those
- * are the new version's peers, which `targetPeerConflict` checks from the
- * version document (#198). Holding one package can expose a
- * conflict for another, so this repeats until nothing changes. A `latest`
- * rule still moves, with the conflict as a warning.
- */
-const holdPeerConflicts = (
-  results: UpdateResult[],
-  peers: Map<string, PeerRequirement[]>,
-  policy: UpdatePolicy,
-): UpdateResult[] => {
-  let current = results
-  for (;;) {
-    const moving = new Set(current.filter((r) => r.updated).map((r) => r.name))
-    let changed = false
-
-    current = current.map((result) => {
-      const { name, target } = result
-      if (!result.updated || !target) return result
-
-      const conflict = (peers.get(name) ?? []).find(
-        (peer) =>
-          !moving.has(peer.name) &&
-          !semver.satisfies(target, peer.range, { includePrerelease: true }),
-      )
-      if (!conflict) return result
-
-      const reason: Reason = {
-        code: 'peer-conflict',
-        message: `peer conflict: ${conflict.name}@${conflict.version} needs ${name} ${conflict.range}`,
-      }
-      if (policy.ruleFor(name) === 'latest') return withWarning(result, reason)
-
-      changed = true
-      return heldFor(result, reason)
-    })
-
-    if (!changed) return current
-  }
-}
-
-/** What `targetPeerConflict` judges a target's peers against. */
-interface TargetPeers {
-  manifests: TargetManifests
-  /** Installed versions of the peers, by `rowKey`. */
-  installed: Record<string, string>
-  lookupName: (row: UpdateResult) => string
-}
-
-// Built once per array: `settle` makes a new array each pass and never
-// mutates one it has handed out, so an index can't go stale.
-const rowIndexes = new WeakMap<
-  readonly UpdateResult[],
-  Map<string, UpdateResult>
->()
-
-/** `rows` by workspace and name, the first of a pair winning as `find` would. */
-const indexOf = (rows: readonly UpdateResult[]): Map<string, UpdateResult> => {
-  let index = rowIndexes.get(rows)
-  if (!index) {
-    index = new Map()
-    for (const r of rows) {
-      const key = `${r.workspace ?? '.'}\0${r.name}`
-      if (!index.has(key)) index.set(key, r)
-    }
-    rowIndexes.set(rows, index)
-  }
-  return index
-}
-
-/**
- * The first peer of a moving row's target (its own version document, #198)
- * that the plan leaves outside the declared range, worded as the reason:
- * `peer conflict: react-redux@9.2.0 needs react ^18.0 || ^19 (installed
- * 17.0.2)`. The version a peer is left at is its row's target when that row
- * moves, else its current version, else (no row) the installed one. From a
- * workspace member, the member's row comes first, then the root's, as the
- * manager hoists a peer to the root; which of the two a member resolves is
- * a guess. A peer that isn't installed is fine: optional, or (with a debug
- * line, once) left to the manager, which installs it; an installed optional
- * peer must satisfy its range. A range `semver` can't read (`workspace:*`)
- * isn't checked.
- */
-const targetPeerConflict = (
-  row: UpdateResult,
-  rows: readonly UpdateResult[],
-  { manifests, installed, lookupName }: TargetPeers,
-  noted: Set<string>,
-): Reason | undefined => {
-  const { target } = row
-  if (!row.updated || !target) return undefined
-  const manifest = targetManifestOf(manifests, row, lookupName)
-  if (!manifest) return undefined
-  const name = lookupName(row)
-  const workspace = row.workspace ?? '.'
-  const note = (message: string) => {
-    if (noted.has(message)) return
-    noted.add(message)
-    logger.debug(message)
-  }
-
-  const plannedFor = (
-    peer: string,
-    where: string,
-  ): { version: string; moving: boolean } | undefined => {
-    const found = indexOf(rows).get(`${where}\0${peer}`)
-    if (!found) return undefined
-    if (found.updated && found.target) {
-      return { version: found.target, moving: true }
-    }
-    return found.current === 'missing'
-      ? undefined
-      : { version: found.current, moving: false }
-  }
-
-  for (const [peer, range] of Object.entries(manifest.peerDependencies)) {
-    if (peer === name) continue
-    if (semver.validRange(range) === null) {
-      note(
-        `peer ${peer} ${range} of ${name}@${target} is not a semver range; not checked`,
-      )
-      continue
-    }
-    const planned =
-      plannedFor(peer, workspace) ??
-      (workspace === '.' ? undefined : plannedFor(peer, '.'))
-    const version =
-      planned?.version ??
-      installed[rowKey({ name: peer, workspace: row.workspace })]
-    if (version === undefined) {
-      if (!manifest.optionalPeers.includes(peer)) {
-        note(
-          `${name}@${target} needs ${peer} ${range}, which isn't installed; left to the manager`,
-        )
-      }
-      continue
-    }
-    if (semver.valid(version) === null) continue
-    if (semver.satisfies(version, range, { includePrerelease: true })) continue
-    return {
-      code: 'target-peers',
-      message: `peer conflict: ${name}@${target} needs ${peer} ${range} (${planned?.moving ? 'moving to' : 'installed'} ${version})`,
-    }
-  }
-  return undefined
-}
-
-/**
- * A package moves in every manifest or none. The in-range commands are
- * workspace-wide, so a row held while its range allows newer (a cooldown,
- * a peer conflict, an override: holds that depend on the target) would move
- * anyway with its package's other rows. Those rows are held with it. An
- * exact pin (`wanted` equals `current`) has nothing to move and blocks
- * nothing.
- */
-const holdTogether = (results: UpdateResult[]): UpdateResult[] => {
-  const blocking = new Map<string, UpdateResult>()
-  for (const r of results) {
-    if (r.workspace === undefined || r.updated || blocking.has(r.name)) continue
-    if (
-      semver.valid(r.current) &&
-      semver.valid(r.wanted) &&
-      semver.gt(r.wanted, r.current)
-    ) {
-      blocking.set(r.name, r)
-    }
-  }
-  if (blocking.size === 0) return results
-
-  return results.map((r) => {
-    const by = blocking.get(r.name)
-    if (!by || !r.updated) return r
-    const where = by.workspace === '.' ? 'the root' : by.workspace
-    return {
-      ...r,
-      target: undefined,
-      judged: r.target,
-      updated: false,
-      updateType: stepType(r.current, r.latest),
-      reason: {
-        code: 'held-with',
-        message: `held with ${where} (${by.reason.message})`,
-      },
-    }
-  })
 }
 
 /**
@@ -764,40 +545,7 @@ const filterPackages = async (
     ? readInstalledPeers(cwd)
     : undefined
 
-  // A peer hold can hold a package's other rows (holdTogether), and a row
-  // held for any reason stops counting as moving for the peer check, so
-  // both repeat until nothing changes. Each only ever holds, so this ends.
-  // With `targetPeers` (#198) a moving target's own peers are checked too,
-  // after the installed ones. A row under a `latest` rule isn't held by
-  // them; it gets its warning once the plan is stable, so a peer that stops
-  // moving leaves no stale "moving to".
-  const noted = new Set<string>()
-  const settle = (
-    rows: UpdateResult[],
-    targetPeers?: TargetPeers,
-  ): UpdateResult[] => {
-    let current = rows
-    for (;;) {
-      const peered = peers ? holdPeerConflicts(current, peers, policy) : current
-      const checked = targetPeers
-        ? peered.map((row) => {
-            if (policy.ruleFor(row.name) === 'latest') return row
-            const conflict = targetPeerConflict(row, peered, targetPeers, noted)
-            return conflict ? heldFor(row, conflict) : row
-          })
-        : peered
-      const next = holdTogether(checked)
-      if (next.every((row, i) => row.updated === current[i].updated)) {
-        if (!targetPeers) return next
-        return next.map((row) => {
-          if (policy.ruleFor(row.name) !== 'latest') return row
-          const conflict = targetPeerConflict(row, next, targetPeers, noted)
-          return conflict ? withWarning(row, conflict) : row
-        })
-      }
-      current = next
-    }
-  }
+  const settle = createSettle(peers, policy)
 
   const results = settle(initialResults)
 
@@ -873,30 +621,7 @@ const filterPackages = async (
       (current, pass) => pass(current, { manifests, lookupName, policy }),
       licensed.rows,
     )
-    // Every peer a moving target needs: the plan's own rows answer for most,
-    // the installed copies for the rest.
-    // No manifests read (a session that can't): nothing to check.
-    const peerRows =
-      manifests.size === 0
-        ? []
-        : [
-            ...new Map(
-              passed.flatMap((row) => {
-                const manifest = targetManifestOf(manifests, row, lookupName)
-                return manifest
-                  ? Object.keys(manifest.peerDependencies).map((name) => {
-                      const peer = {
-                        name,
-                        ...(row.workspace === undefined
-                          ? {}
-                          : { workspace: row.workspace }),
-                      }
-                      return [rowKey(peer), peer] as const
-                    })
-                  : []
-              }),
-            ).values(),
-          ]
+    const peerRows = targetPeerRows(passed, manifests, lookupName)
     const readInstalled =
       options.installed ??
       ((asked) => readInstalledVersions(cwd, asked, { declaredOnly: false }))
