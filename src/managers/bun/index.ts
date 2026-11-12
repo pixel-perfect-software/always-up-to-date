@@ -1,6 +1,7 @@
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
+import { writeBeyondRange } from '@/managers/beyondRange'
 import {
   bunfigExact,
   bunRegistryConfig,
@@ -13,7 +14,7 @@ import {
   readManifest,
 } from '@/managers/workspaces'
 import { readBunCatalogs, updateBunCatalogs } from '@/utils/catalogs'
-import { splitCatalogUpdates, updatePackageJson } from '@/utils/manifests'
+import { updatePackageJson } from '@/utils/manifests'
 import {
   mergeNpmrcLayers,
   npmrcBoolean,
@@ -59,15 +60,11 @@ const bun: ManagerAdapter = {
 
     // A row whose owning spec is `catalog:` moves the catalog entry (in the
     // root package.json); every other row moves in the manifest that owns it.
-    const { catalogs: moved, byManifest } = splitCatalogUpdates(cwd, manifests)
-    const manifestWritten =
-      Object.keys(moved).length > 0 || byManifest.length > 0
-    for (const [catalog, versions] of Object.entries(moved)) {
-      await updateBunCatalogs(cwd, versions, style, catalog)
-    }
-    for (const m of byManifest) {
-      await updatePackageJson(path.join(cwd, m.path), m.versions, style)
-    }
+    const manifestWritten = await writeBeyondRange(cwd, manifests, {
+      style,
+      writeCatalog: updateBunCatalogs,
+      manager: bun.name,
+    })
 
     if (Object.keys(catalogs).length === 0) {
       await run(['update', ...names, '--filter', '*'], { manifestWritten })

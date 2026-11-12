@@ -3,13 +3,10 @@ import path from 'path'
 
 import { StepError } from '@/stepError'
 import type { ManifestPlan, PinnedRow } from '@/types'
-import {
-  readSpec,
-  splitCatalogUpdates,
-  updatePackageJson,
-} from '@/utils/manifests'
+import { readSpec } from '@/utils/manifests'
 import type { SaveStyle } from '@/utils/saveStyle'
 import type { ManagerAdapter, RunManager } from './adapter'
+import { writeBeyondRange } from './beyondRange'
 
 /** The rows as one beyond-range plan per manifest, which the writers take. */
 const plansFor = (rows: PinnedRow[]): ManifestPlan[] => {
@@ -44,19 +41,11 @@ export const applyPinned = async (
   const style = adapter.saveStyle(cwd)
 
   const write = async (plans: ManifestPlan[], as: SaveStyle) => {
-    const { catalogs, byManifest } = splitCatalogUpdates(cwd, plans)
-    for (const [catalog, versions] of Object.entries(catalogs)) {
-      if (!writeCatalog) {
-        throw new StepError(
-          'apply',
-          `${adapter.name} has no catalogs, but ${Object.keys(versions).join(', ')} read one`,
-        )
-      }
-      await writeCatalog(cwd, versions, as, catalog)
-    }
-    for (const m of byManifest) {
-      await updatePackageJson(path.join(cwd, m.path), m.versions, as)
-    }
+    await writeBeyondRange(cwd, plans, {
+      style: as,
+      writeCatalog,
+      manager: adapter.name,
+    })
   }
 
   // Every file a pin can touch: each row's manifest, and the catalogs (pnpm's
