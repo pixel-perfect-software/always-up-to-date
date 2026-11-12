@@ -9,6 +9,7 @@ import type {
 } from '@/types'
 import type { Catalogs } from '@/utils/dependencySpecs'
 import type { InstalledPackage } from '@/utils/installed'
+import type { InstalledGraph } from '@/utils/installedGraph'
 import type { NpmrcLayer, NpmrcSources, NpmrcView } from '@/utils/npmrcLoader'
 import type { ControllingOverride } from '@/utils/overrides'
 import type { PeerRequirement } from '@/utils/peers'
@@ -188,6 +189,14 @@ export interface ManagerAdapter {
    * package-lock.json's reader when the root has no node_modules.
    */
   installedFromLockfile?(cwd: string): LockedInstall | undefined
+  /**
+   * What is installed and what installed it, from the manager's lockfile, so
+   * the peer pass can tell an installed package the run replaces from one
+   * that stays (`src/utils/plan/keptInstalls.ts`). Read only when something
+   * moves. Undefined without a lockfile, or one it can't read: every
+   * installed peer range then counts.
+   */
+  installedGraph?(cwd: string): InstalledGraph | undefined
   /**
    * The manager's release-age gate (#168): versions younger than it are never
    * installed, so autd never proposes them. Read from the manager's own

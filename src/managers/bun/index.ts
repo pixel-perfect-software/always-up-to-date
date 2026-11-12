@@ -7,6 +7,7 @@ import {
   bunRegistryConfig,
   bunReleaseAgeGate,
 } from '@/managers/bun/bunfig'
+import { readBunGraph } from '@/managers/bun/graph'
 import { bunNpmrcLayers } from '@/managers/bun/npmrc'
 import {
   packageJsonWorkspace,
@@ -99,6 +100,9 @@ const bun: ManagerAdapter = {
 
   // bun's minimumReleaseAge (#168), off unless set.
   releaseAgeGate: (cwd, sources) => bunReleaseAgeGate(cwd, sources),
+
+  // `bun.lock`: what each installed copy depends on, whatever the linker.
+  installedGraph: (cwd) => readBunGraph(cwd),
 
   overrides: (cwd) => manifestOverrides(cwd, ['overrides', 'resolutions']),
 }

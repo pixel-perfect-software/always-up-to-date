@@ -711,6 +711,8 @@ describe('unreadable entries are misses', () => {
         version: '0.1.0',
         peerDependencies: {},
         optionalPeers: [],
+        dependencies: {},
+        optionalDependencies: {},
         deprecated: false,
       }
       rewrite(file, (entry) => {
@@ -723,6 +725,7 @@ describe('unreadable entries are misses', () => {
 
     const { name: _name, ...nameless } = REACT_REDUX
     const { deprecated: _deprecated, ...undecided } = REACT_REDUX
+    const { dependencies: _dependencies, ...beforeDependencies } = REACT_REDUX
     it.each<[string, unknown]>([
       ['no name', nameless],
       ['a version that is not a string', { ...REACT_REDUX, version: 9 }],
@@ -747,6 +750,12 @@ describe('unreadable entries are misses', () => {
         { ...REACT_REDUX, optionalPeers: [1] },
       ],
       ['no deprecated', undecided],
+      // Stored before the peer pass read them: read again once.
+      ['no dependencies', beforeDependencies],
+      [
+        'optional dependencies that are not a record',
+        { ...REACT_REDUX, optionalDependencies: 'x' },
+      ],
       [
         'a deprecated reason that is not a string',
         { ...REACT_REDUX, deprecatedReason: true },

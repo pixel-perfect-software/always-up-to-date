@@ -167,3 +167,56 @@ Captured for #200 with the same curl shape (`curl --compressed -sS -H 'Accept: a
 | `typescript.5.1.5.manifest.body` | `registry.npmjs.org/typescript/5.1.5` | 200    | `application/json` | 1741 B    | 3859 B       | no  |
 | `typescript.5.1.3.manifest.body` | `registry.npmjs.org/typescript/5.1.3` | 200    | `application/json` | 1740 B    | 3859 B       | no  |
 | `typescript.5.0.4.manifest.body` | `registry.npmjs.org/typescript/5.0.4` | 200    | `application/json` | 2499 B    | 4825 B       | no  |
+
+## tiptap peers (2026-11-12)
+
+Captured for the peer pass's tiptap deadlock (installed packages a moving row replaces) with `curl --compressed -s`, no credentials, the Aikido TLS proxy in the path. Every tiptap 3 package pins its peers to its own version (`@tiptap/extension-bold` 3.33.0 has `peerDependencies` `{ "@tiptap/core": "3.33.0" }`), and `@tiptap/starter-kit` 3.33.1 depends on each extension at exactly 3.33.1.
+
+- The 3.33.0 bodies are every `@tiptap/*` package `__tests__/fixtures/pnpm/tiptap-3.33.0.lock.body` installs (33, its `packages:` keys at 3.33.0); the 3.33.1 bodies are the nine catalog targets (`core`, `pm`, `react`, `starter-kit`, `extension-table`, `extension-text-align`, `extension-placeholder`, `extension-task-item`, `extension-task-list`). The file name drops the scope's `@` and writes `/` as `-`, as `types-ms` does.
+- Each body parses as a record whose `name` and `version` equal the request, and each was fetched a second time the same day, byte-identical.
+- The two pnpm records beside them are `node_modules/.pnpm/lock.yaml` from real pnpm 12.18.0 installs (Node 24.22.1) of a workspace shaped like the one the bug was found in: a member `apps/tenantsee` depending on the nine packages through `catalog:tiptap`, and a member `packages/editor` declaring seven of them as peers (`autoInstallPeers: true`, `minimumReleaseAge: 2880`). `tiptap-3.33.0.lock.body` is the install with the catalog at 3.33.0. `tiptap-partial-update.lock.body` is the install after autd 4.1.0's `update` moved only `starter-kit`, `extension-placeholder`, `extension-task-item` and `extension-task-list` to 3.33.1, which left two copies each of `@tiptap/core` and `@tiptap/pm`. Neither holds a local path. They keep the `.body` extension for the same reason the bodies here do: Biome formats YAML, and its rewrite (double quotes, expanded flow maps) is no longer pnpm's output.
+
+| File                                                    | Request                                                         | Status | Content type       | Wire size | Decoded size | gz  |
+| ------------------------------------------------------- | --------------------------------------------------------------- | ------ | ------------------ | --------- | ------------ | --- |
+| `tiptap-core.3.33.0.manifest.body`                      | `registry.npmjs.org/@tiptap%2fcore/3.33.0`                      | 200    | `application/json` | 1292 B    | 2719 B       | no  |
+| `tiptap-core.3.33.1.manifest.body`                      | `registry.npmjs.org/@tiptap%2fcore/3.33.1`                      | 200    | `application/json` | 1293 B    | 2719 B       | no  |
+| `tiptap-extension-blockquote.3.33.0.manifest.body`      | `registry.npmjs.org/@tiptap%2fextension-blockquote/3.33.0`      | 200    | `application/json` | 1205 B    | 2419 B       | no  |
+| `tiptap-extension-bold.3.33.0.manifest.body`            | `registry.npmjs.org/@tiptap%2fextension-bold/3.33.0`            | 200    | `application/json` | 1184 B    | 2325 B       | no  |
+| `tiptap-extension-bubble-menu.3.33.0.manifest.body`     | `registry.npmjs.org/@tiptap%2fextension-bubble-menu/3.33.0`     | 200    | `application/json` | 1235 B    | 2491 B       | no  |
+| `tiptap-extension-bullet-list.3.33.0.manifest.body`     | `registry.npmjs.org/@tiptap%2fextension-bullet-list/3.33.0`     | 200    | `application/json` | 1189 B    | 2401 B       | no  |
+| `tiptap-extension-code-block.3.33.0.manifest.body`      | `registry.npmjs.org/@tiptap%2fextension-code-block/3.33.0`      | 200    | `application/json` | 1201 B    | 2418 B       | no  |
+| `tiptap-extension-code.3.33.0.manifest.body`            | `registry.npmjs.org/@tiptap%2fextension-code/3.33.0`            | 200    | `application/json` | 1184 B    | 2326 B       | no  |
+| `tiptap-extension-document.3.33.0.manifest.body`        | `registry.npmjs.org/@tiptap%2fextension-document/3.33.0`        | 200    | `application/json` | 1188 B    | 2356 B       | no  |
+| `tiptap-extension-dropcursor.3.33.0.manifest.body`      | `registry.npmjs.org/@tiptap%2fextension-dropcursor/3.33.0`      | 200    | `application/json` | 1198 B    | 2394 B       | no  |
+| `tiptap-extension-floating-menu.3.33.0.manifest.body`   | `registry.npmjs.org/@tiptap%2fextension-floating-menu/3.33.0`   | 200    | `application/json` | 1230 B    | 2520 B       | no  |
+| `tiptap-extension-gapcursor.3.33.0.manifest.body`       | `registry.npmjs.org/@tiptap%2fextension-gapcursor/3.33.0`       | 200    | `application/json` | 1186 B    | 2387 B       | no  |
+| `tiptap-extension-hard-break.3.33.0.manifest.body`      | `registry.npmjs.org/@tiptap%2fextension-hard-break/3.33.0`      | 200    | `application/json` | 1183 B    | 2373 B       | no  |
+| `tiptap-extension-heading.3.33.0.manifest.body`         | `registry.npmjs.org/@tiptap%2fextension-heading/3.33.0`         | 200    | `application/json` | 1184 B    | 2349 B       | no  |
+| `tiptap-extension-horizontal-rule.3.33.0.manifest.body` | `registry.npmjs.org/@tiptap%2fextension-horizontal-rule/3.33.0` | 200    | `application/json` | 1204 B    | 2457 B       | no  |
+| `tiptap-extension-italic.3.33.0.manifest.body`          | `registry.npmjs.org/@tiptap%2fextension-italic/3.33.0`          | 200    | `application/json` | 1187 B    | 2341 B       | no  |
+| `tiptap-extension-link.3.33.0.manifest.body`            | `registry.npmjs.org/@tiptap%2fextension-link/3.33.0`            | 200    | `application/json` | 1223 B    | 2429 B       | no  |
+| `tiptap-extension-list-item.3.33.0.manifest.body`       | `registry.npmjs.org/@tiptap%2fextension-list-item/3.33.0`       | 200    | `application/json` | 1180 B    | 2384 B       | no  |
+| `tiptap-extension-list-keymap.3.33.0.manifest.body`     | `registry.npmjs.org/@tiptap%2fextension-list-keymap/3.33.0`     | 200    | `application/json` | 1189 B    | 2400 B       | no  |
+| `tiptap-extension-list.3.33.0.manifest.body`            | `registry.npmjs.org/@tiptap%2fextension-list/3.33.0`            | 200    | `application/json` | 1367 B    | 3603 B       | no  |
+| `tiptap-extension-ordered-list.3.33.0.manifest.body`    | `registry.npmjs.org/@tiptap%2fextension-ordered-list/3.33.0`    | 200    | `application/json` | 1190 B    | 2409 B       | no  |
+| `tiptap-extension-paragraph.3.33.0.manifest.body`       | `registry.npmjs.org/@tiptap%2fextension-paragraph/3.33.0`       | 200    | `application/json` | 1192 B    | 2365 B       | no  |
+| `tiptap-extension-placeholder.3.33.0.manifest.body`     | `registry.npmjs.org/@tiptap%2fextension-placeholder/3.33.0`     | 200    | `application/json` | 1193 B    | 2403 B       | no  |
+| `tiptap-extension-placeholder.3.33.1.manifest.body`     | `registry.npmjs.org/@tiptap%2fextension-placeholder/3.33.1`     | 200    | `application/json` | 1197 B    | 2403 B       | no  |
+| `tiptap-extension-strike.3.33.0.manifest.body`          | `registry.npmjs.org/@tiptap%2fextension-strike/3.33.0`          | 200    | `application/json` | 1183 B    | 2342 B       | no  |
+| `tiptap-extension-table.3.33.0.manifest.body`           | `registry.npmjs.org/@tiptap%2fextension-table/3.33.0`           | 200    | `application/json` | 1307 B    | 3169 B       | no  |
+| `tiptap-extension-table.3.33.1.manifest.body`           | `registry.npmjs.org/@tiptap%2fextension-table/3.33.1`           | 200    | `application/json` | 1301 B    | 3169 B       | no  |
+| `tiptap-extension-task-item.3.33.0.manifest.body`       | `registry.npmjs.org/@tiptap%2fextension-task-item/3.33.0`       | 200    | `application/json` | 1192 B    | 2384 B       | no  |
+| `tiptap-extension-task-item.3.33.1.manifest.body`       | `registry.npmjs.org/@tiptap%2fextension-task-item/3.33.1`       | 200    | `application/json` | 1192 B    | 2386 B       | no  |
+| `tiptap-extension-task-list.3.33.0.manifest.body`       | `registry.npmjs.org/@tiptap%2fextension-task-list/3.33.0`       | 200    | `application/json` | 1186 B    | 2385 B       | no  |
+| `tiptap-extension-task-list.3.33.1.manifest.body`       | `registry.npmjs.org/@tiptap%2fextension-task-list/3.33.1`       | 200    | `application/json` | 1185 B    | 2384 B       | no  |
+| `tiptap-extension-text-align.3.33.0.manifest.body`      | `registry.npmjs.org/@tiptap%2fextension-text-align/3.33.0`      | 200    | `application/json` | 1188 B    | 2373 B       | no  |
+| `tiptap-extension-text-align.3.33.1.manifest.body`      | `registry.npmjs.org/@tiptap%2fextension-text-align/3.33.1`      | 200    | `application/json` | 1188 B    | 2374 B       | no  |
+| `tiptap-extension-text.3.33.0.manifest.body`            | `registry.npmjs.org/@tiptap%2fextension-text/3.33.0`            | 200    | `application/json` | 1183 B    | 2324 B       | no  |
+| `tiptap-extension-underline.3.33.0.manifest.body`       | `registry.npmjs.org/@tiptap%2fextension-underline/3.33.0`       | 200    | `application/json` | 1189 B    | 2367 B       | no  |
+| `tiptap-extensions.3.33.0.manifest.body`                | `registry.npmjs.org/@tiptap%2fextensions/3.33.0`                | 200    | `application/json` | 1411 B    | 3858 B       | no  |
+| `tiptap-pm.3.33.0.manifest.body`                        | `registry.npmjs.org/@tiptap%2fpm/3.33.0`                        | 200    | `application/json` | 1549 B    | 4660 B       | no  |
+| `tiptap-pm.3.33.1.manifest.body`                        | `registry.npmjs.org/@tiptap%2fpm/3.33.1`                        | 200    | `application/json` | 1550 B    | 4660 B       | no  |
+| `tiptap-react.3.33.0.manifest.body`                     | `registry.npmjs.org/@tiptap%2freact/3.33.0`                     | 200    | `application/json` | 1396 B    | 3055 B       | no  |
+| `tiptap-react.3.33.1.manifest.body`                     | `registry.npmjs.org/@tiptap%2freact/3.33.1`                     | 200    | `application/json` | 1394 B    | 3055 B       | no  |
+| `tiptap-starter-kit.3.33.0.manifest.body`               | `registry.npmjs.org/@tiptap%2fstarter-kit/3.33.0`               | 200    | `application/json` | 1338 B    | 3109 B       | no  |
+| `tiptap-starter-kit.3.33.1.manifest.body`               | `registry.npmjs.org/@tiptap%2fstarter-kit/3.33.1`               | 200    | `application/json` | 1332 B    | 3109 B       | no  |

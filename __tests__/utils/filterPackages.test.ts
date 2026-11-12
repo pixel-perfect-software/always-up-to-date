@@ -8,8 +8,10 @@ import type {
 } from '@/types'
 import type filterPackagesType from '@/utils/filterPackages'
 import type { splitUpdates as splitUpdatesType } from '@/utils/filterPackages'
+import { rowKey } from '@/utils/installed'
 import { withWarning } from '@/utils/plan/rows'
 import type { RegistrySession } from '@/utils/registry'
+import { parseVersionManifest } from '@/utils/registryDocuments'
 import { wantedVersion } from '@/utils/wanted'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 import {
@@ -17,10 +19,12 @@ import {
   capturedManifest,
   capturedPackage,
   capturedRegistry,
+  derive,
   installCaptured,
+  readFixture,
   WORKSPACE_ENTRIES,
 } from '../fixtures'
-import { tempDir } from '../fixtures/files'
+import { tempDir, write } from '../fixtures/files'
 import { reasonFor } from '../fixtures/reasons'
 
 const mockLogger = {
@@ -74,6 +78,11 @@ function loadFilterWithConfig(
       readInstalledPeers: jest.fn(
         () => new Map(Object.entries(opts.installedPeers ?? {})),
       ),
+    }))
+    // The default cwd is this repository, whose own pnpm install is no
+    // test's graph: a test that needs one passes `installedGraph`.
+    jest.doMock('@/utils/installedGraph', () => ({
+      readInstalledGraph: jest.fn(() => undefined),
     }))
     // biome-ignore lint/style/noCommonJs: jest.isolateModules requires synchronous require
     const loaded = require('@/utils/filterPackages')
@@ -2717,5 +2726,246 @@ describe('withWarning', () => {
       peer,
       targetPeers,
     ])
+  })
+})
+
+describe('tiptap 3 pins its peers exactly (transitive peer deadlock)', () => {
+  const NINE = [
+    '@tiptap/core',
+    '@tiptap/pm',
+    '@tiptap/react',
+    '@tiptap/starter-kit',
+    '@tiptap/extension-table',
+    '@tiptap/extension-text-align',
+    '@tiptap/extension-placeholder',
+    '@tiptap/extension-task-item',
+    '@tiptap/extension-task-list',
+  ]
+  const FIVE = [
+    '@tiptap/core',
+    '@tiptap/pm',
+    '@tiptap/react',
+    '@tiptap/extension-table',
+    '@tiptap/extension-text-align',
+  ]
+  const BLOCKQUOTE_HOLD =
+    'peer conflict: @tiptap/extension-blockquote@3.33.0 needs @tiptap/core 3.33.0'
+
+  const captureOf = (name: string, version: string) =>
+    `tiptap-${name.replace('@tiptap/', '')}.${version}.manifest`
+  const captured = (name: string, version: string) => {
+    try {
+      return capturedManifest(name, version, captureOf(name, version))
+    } catch {
+      return undefined
+    }
+  }
+
+  /** The `name@version` ids of the lock's `packages:` section that are @tiptap's. */
+  const tiptapPackages = (lock: string): [string, string][] =>
+    [...lock.matchAll(/^ {2}'(@tiptap\/[^@']+)@([^':]+)':$/gm)].map(
+      (m): [string, string] => [m[1], m[2]],
+    )
+
+  /** The peers every installed capture declares, as `readInstalledPeers` keys them. */
+  const peersOf = (lock: string) => peersFrom(tiptapPackages(lock))
+
+  /** The peers each installed `[name, version]`'s capture declares. */
+  const peersFrom = (installed: [string, string][]) => {
+    const peers: Record<
+      string,
+      Array<{ name: string; version: string; range: string }>
+    > = {}
+    for (const [name, version] of installed) {
+      const manifest = captured(name, version)
+      for (const [peer, range] of Object.entries(
+        manifest?.peerDependencies ?? {},
+      )) {
+        peers[peer] = [...(peers[peer] ?? []), { name, version, range }]
+      }
+    }
+    return peers
+  }
+
+  /** Both versions of every capture, as the registry session serves them. */
+  const served =
+    (overrides: Record<string, VersionManifest> = {}) =>
+    async (name: string, version: string) =>
+      overrides[`${name}@${version}`] ?? captured(name, version)
+
+  const rows = (entries: string[]): ReturnType<typeof foldWorkspaceEntries> =>
+    foldWorkspaceEntries(
+      entries.map((name) => ({
+        name,
+        workspace: 'apps/tenantsee',
+        current: '3.33.0',
+        wanted: '3.33.0',
+        latest: '3.33.1',
+      })),
+    )
+
+  const installedAs = (lockFixture: string) => {
+    const cwd = tempDir('autd-tiptap-')
+    const lock = readFixture(lockFixture)
+    write(path.join(cwd, 'node_modules', '.pnpm', 'lock.yaml'), lock)
+    const { readInstalledGraph } = jest.requireActual<
+      typeof import('@/utils/installedGraph')
+    >('@/utils/installedGraph')
+    return { cwd, lock, graph: () => readInstalledGraph(cwd) }
+  }
+
+  const plan = (
+    entries: string[],
+    state: ReturnType<typeof installedAs>,
+    {
+      installedPeers,
+      installedGraph = state.graph,
+      versionManifest = served(),
+    }: {
+      installedPeers: ReturnType<typeof peersOf>
+      installedGraph?: () => ReturnType<typeof state.graph>
+      versionManifest?: RegistrySession['versionManifest'] | null
+    },
+  ) =>
+    loadFilterWithConfig(
+      { beyondRange: 'minor' },
+      {
+        installedPeers,
+        ...(versionManifest && { versionManifest }),
+      },
+    )(rows(entries), { cwd: state.cwd, installedGraph })
+
+  const outcome = (
+    results: Awaited<ReturnType<typeof plan>>,
+  ): Record<string, string | undefined> =>
+    Object.fromEntries(
+      results.map((r) => [r.name, r.updated ? r.target : r.reason.message]),
+    )
+
+  const allMove = (names: string[]) =>
+    Object.fromEntries(names.map((name) => [name, '3.33.1']))
+
+  it('moves all nine catalog packages when the only holders are installed for a package that is moving', async () => {
+    const state = installedAs('pnpm/tiptap-3.33.0.lock.body')
+
+    const results = await plan(NINE, state, {
+      installedPeers: peersOf(state.lock),
+      versionManifest: served() as RegistrySession['versionManifest'],
+    })
+
+    expect(outcome(results)).toEqual(allMove(NINE))
+  })
+
+  it('moves the five left after a partial update, held before by an optional dependency of a held package', async () => {
+    const state = installedAs('pnpm/tiptap-partial-update.lock.body')
+    // The 3.33.1 extensions this lock installs and no capture covers peer at
+    // 3.33.1, which the targets satisfy, so they cannot hold anything.
+    const results = await plan(FIVE, state, {
+      installedPeers: peersOf(state.lock),
+      versionManifest: served() as RegistrySession['versionManifest'],
+    })
+
+    expect(outcome(results)).toEqual(allMove(FIVE))
+  })
+
+  it('holds core when the target starter-kit still asks for the old blockquote', async () => {
+    const state = installedAs('pnpm/tiptap-3.33.0.lock.body')
+    const starterKit = parseVersionManifest(
+      JSON.parse(
+        derive<{ dependencies: Record<string, string> }>(
+          captureOf('@tiptap/starter-kit', '3.33.1'),
+          (body) => {
+            body.dependencies['@tiptap/extension-blockquote'] = '3.33.0'
+          },
+        ),
+      ),
+      { name: '@tiptap/starter-kit', version: '3.33.1' },
+    ) as VersionManifest
+
+    const results = await plan(NINE, state, {
+      installedPeers: peersOf(state.lock),
+      versionManifest: served({
+        '@tiptap/starter-kit@3.33.1': starterKit,
+      }) as RegistrySession['versionManifest'],
+    })
+
+    expect(results.find((r) => r.name === '@tiptap/core')).toMatchObject({
+      updated: false,
+      reason: reasonFor(BLOCKQUOTE_HOLD),
+    })
+  })
+
+  it('keeps what a moving row depended on when no manifests are read', async () => {
+    const state = installedAs('pnpm/tiptap-3.33.0.lock.body')
+
+    const results = await plan(NINE, state, {
+      installedPeers: peersOf(state.lock),
+      versionManifest: null,
+    })
+
+    expect(results.find((r) => r.name === '@tiptap/core')).toMatchObject({
+      updated: false,
+      reason: reasonFor(BLOCKQUOTE_HOLD),
+    })
+  })
+
+  it('holds core on every installed peer range when there is no installed graph', async () => {
+    const state = installedAs('pnpm/tiptap-3.33.0.lock.body')
+
+    const results = await plan(NINE, state, {
+      installedPeers: peersOf(state.lock),
+      installedGraph: () => undefined,
+      versionManifest: served() as RegistrySession['versionManifest'],
+    })
+
+    expect(results.find((r) => r.name === '@tiptap/core')).toMatchObject({
+      updated: false,
+      reason: expect.objectContaining({ code: 'peer-conflict' }),
+    })
+  })
+
+  it('moves all nine under npm, leaving a hoisted copy the run replaces to the manager', async () => {
+    // npm 11.19.1 hoists every extension to the root, so node_modules answers
+    // `@tiptap/extensions` 3.33.0 for the peer placeholder 3.33.1 needs at
+    // 3.33.1: a copy only starter-kit and the extensions that move installed.
+    const cwd = tempDir('autd-tiptap-npm-')
+    const text = readFixture('npm/tiptap-3.33.0.package-lock.body')
+    write(path.join(cwd, 'package-lock.json'), text)
+    const { readNpmGraph } = jest.requireActual<
+      typeof import('@/managers/npm/graph')
+    >('@/managers/npm/graph')
+    const { packages } = JSON.parse(text) as {
+      packages: Record<string, { version?: string }>
+    }
+    const hoisted = Object.fromEntries(
+      Object.entries(packages).flatMap(([key, entry]) =>
+        /^node_modules\/(?:@[^/]+\/)?[^/]+$/.test(key) && entry.version
+          ? [[key.slice('node_modules/'.length), entry.version]]
+          : [],
+      ),
+    )
+
+    const results = await loadFilterWithConfig(
+      { beyondRange: 'minor' },
+      {
+        installedPeers: peersFrom(
+          Object.entries(hoisted).filter(([name]) =>
+            name.startsWith('@tiptap/'),
+          ),
+        ),
+        versionManifest: served() as RegistrySession['versionManifest'],
+      },
+    )(rows(NINE), {
+      cwd,
+      installedGraph: () => readNpmGraph(cwd),
+      installed: (asked) =>
+        Object.fromEntries(
+          asked.flatMap((row) =>
+            hoisted[row.name] ? [[rowKey(row), hoisted[row.name]]] : [],
+          ),
+        ),
+    })
+
+    expect(outcome(results)).toEqual(allMove(NINE))
   })
 })

@@ -92,6 +92,16 @@ export const parsePackument = (body: unknown): ParsedPackument | undefined => {
   }
 }
 
+/** A dependency field's string-valued entries; nothing for anything else. */
+const stringEntries = (field: unknown): Record<string, string> =>
+  isRecord(field)
+    ? Object.fromEntries(
+        Object.entries(field).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string',
+        ),
+      )
+    : {}
+
 const trimmed = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined
   const text = value.trim()
@@ -118,12 +128,7 @@ export const parseVersionManifest = (
   const enginesNode = isRecord(body.engines)
     ? trimmed(body.engines.node)
     : undefined
-  const peerDependencies: Record<string, string> = {}
-  if (isRecord(body.peerDependencies)) {
-    for (const [peer, range] of Object.entries(body.peerDependencies)) {
-      if (typeof range === 'string') peerDependencies[peer] = range
-    }
-  }
+  const peerDependencies = stringEntries(body.peerDependencies)
   const meta = isRecord(body.peerDependenciesMeta)
     ? body.peerDependenciesMeta
     : {}
@@ -140,6 +145,8 @@ export const parseVersionManifest = (
     ...(enginesNode ? { enginesNode } : {}),
     peerDependencies,
     optionalPeers,
+    dependencies: stringEntries(body.dependencies),
+    optionalDependencies: stringEntries(body.optionalDependencies),
     deprecated: deprecated === true || Boolean(reason),
     ...(reason ? { deprecatedReason: reason } : {}),
   }
