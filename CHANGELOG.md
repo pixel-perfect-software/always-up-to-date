@@ -3,6 +3,19 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-11-12 — 4.1.1: installed peer ranges count only from packages that stay installed, so tiptap updates as one
+
+An update that moves a package together with the packages that pin it exactly no longer holds forever. `check` held `@tiptap/core` and `@tiptap/pm` through the exact peers of extensions that only the old `@tiptap/starter-kit` and `@tiptap/react` kept installed, and those parents waited on core in turn. Version manifests cached before 4.1.1 are fetched again once.
+
+### Changed
+
+- Version manifests now record `dependencies` and `optionalDependencies`, so manifests cached before 4.1.1 are read from the registry again once. The next run after upgrading sends those requests, and later runs use the cache.
+
+### Fixed
+
+- Installed peer ranges count only from packages that stay installed after the update, so packages that pin each other's versions exactly now move together ([#260](https://github.com/pixel-perfect-software/always-up-to-date/pull/260)). Before, with the nine `@tiptap/*` packages at 3.33.0 and 3.33.1 out, `check` held `@tiptap/core` through `peer conflict: @tiptap/extension-blockquote@3.33.0 needs @tiptap/core 3.33.0`, though that extension goes when `@tiptap/starter-kit` moves. Under pnpm, `update` moved part of the set and left two copies of `@tiptap/core` installed, and the next `check` moved nothing. What stays installed is read from each manager's lockfile: `node_modules/.pnpm/lock.yaml`, `package-lock.json`, `yarn.lock` (v1 and berry) and `bun.lock`. With no readable lockfile, every installed range counts, as before.
+- Under npm, yarn v1 and bun with `linker = "hoisted"`, a target's peer is no longer judged by an old hoisted copy that the update replaces. Before, `@tiptap/extension-placeholder` 3.33.1 was held for needing `@tiptap/extensions` 3.33.1 while 3.33.0 was installed.
+
 ## 2026-11-12 — 4.1.0: stricter config validation, errors on stderr in every mode, clearer `update <name>` failures and report wording
 
 A config file that used to load quietly can now fail `check` and `update`: an unreadable `cooldown`, a string where a boolean belongs (`"false"`), or a file that isn't a JSON object is an error, and an unknown key is a warning. Errors, warnings and debug lines now go to stderr in every mode. `update <name>` exits 1 for a name that isn't a dependency. The `--json` document is unchanged within version 1.
