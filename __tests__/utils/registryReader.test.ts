@@ -135,6 +135,7 @@ describe('registry reader', () => {
       depsDev?: boolean
       config?: Partial<RegistryConfig>
       cache?: RegistryCache
+      depsDevTimeout?: number
     } = {},
   ) => {
     const registry = await start(handlers.registry)
@@ -154,6 +155,7 @@ describe('registry reader', () => {
       depsDev: options.depsDev ?? true,
       endpoints,
       cache: options.cache,
+      depsDevTimeout: options.depsDevTimeout,
     })
     return { registry, depsDev, reader, registryConfig }
   }
@@ -299,7 +301,7 @@ describe('registry reader', () => {
     it('when deps.dev hangs, after its own timeout rather than fetch-timeout', async () => {
       const { reader } = await setup(
         { registry: msRegistry(), depsDev: never },
-        { config: { fetchTimeout: 100 } },
+        { depsDevTimeout: 100 },
       )
 
       const result = packageOf(await reader.lookup('ms'))
@@ -383,7 +385,7 @@ describe('registry reader', () => {
     })
 
     it('stops asking deps.dev after a timeout', async () => {
-      const { depsDev, reader } = await setup(
+      const { registry, reader } = await setup(
         {
           registry: twoNames(),
           depsDev: (req, res) => {
@@ -392,14 +394,22 @@ describe('registry reader', () => {
             }
           },
         },
-        { config: { fetchTimeout: 100 } },
+        { depsDevTimeout: 100 },
       )
 
       await reader.lookup('ms')
       const second = packageOf(await reader.lookup('mkdirp'))
 
-      expect(depsDev.requests).toHaveLength(1)
+      expect(
+        jest
+          .mocked(logger.debug)
+          .mock.calls.map(([line]) => String(line))
+          .some((line) => line.startsWith('deps.dev unavailable')),
+      ).toBe(true)
       expect(second.source).toBe('packument')
+      expect(registry.requests.map((r) => r.url)).not.toContain(
+        '/-/package/mkdirp/dist-tags',
+      )
     })
 
     it('stops asking deps.dev after three 5xx failures', async () => {

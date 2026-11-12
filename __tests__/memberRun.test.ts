@@ -14,12 +14,13 @@ import {
 } from './fixtures'
 
 jest.mock('@/utils/logger')
-jest.mock('@/utils', () => ({
-  ...jest.requireActual('@/utils'),
+jest.mock('@/utils/runProcess', () => ({
+  ...jest.requireActual('@/utils/runProcess'),
   runProcess: jest.fn(),
 }))
 
-import { logger, runProcess } from '@/utils'
+import logger from '@/utils/logger'
+import { runProcess } from '@/utils/runProcess'
 
 // When the workspace fixtures were captured, so no version drifts with the registry.
 const AS_OF = '2026-10-23T16:38:12-03:00'

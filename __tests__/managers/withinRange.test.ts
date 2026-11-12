@@ -6,7 +6,7 @@ import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
 import { check } from '@/pipeline'
-import { filterPackages } from '@/utils'
+import filterPackages from '@/utils/filterPackages'
 import { capturedRegistry, installPackages, projectFor } from '../fixtures'
 
 jest.mock('@/utils/logger')

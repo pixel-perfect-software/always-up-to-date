@@ -5,10 +5,11 @@ import { applyPinned } from '@/managers/pin'
 import type { Project } from '@/project'
 import { type PipelineStep, StepError } from '@/stepError'
 import type { PackageInfo, UpdateResult } from '@/types'
-import { filterPackages, logger, splitUpdates } from '@/utils'
 import { type Catalogs, declaredDependency } from '@/utils/dependencySpecs'
 import { runningNode } from '@/utils/engines'
+import filterPackages, { splitUpdates } from '@/utils/filterPackages'
 import { checkApplied, readInstalledVersions } from '@/utils/installed'
+import logger from '@/utils/logger'
 import { foldWorkspaceEntries } from '@/utils/workspaceRows'
 
 const runner = new CommandRunner()

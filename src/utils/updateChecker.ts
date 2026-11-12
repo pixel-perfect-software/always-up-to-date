@@ -14,7 +14,7 @@ export interface UpdatePolicy {
 }
 
 /** Where the package moves, or why it is held; either way, the reason. */
-export type UpdateDecision =
+type UpdateDecision =
   | { target: string; reason: Reason }
   | { target?: undefined; reason: Reason }
 

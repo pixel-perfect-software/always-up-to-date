@@ -70,6 +70,24 @@ describe('isExempt', () => {
 describe('gatePackage', () => {
   const ms = () => capturedPackage('ms')
 
+  it('applies a glob exemption by name and a version range per version', () => {
+    const now = MS_2_1_3 + 60 * 60_000
+    const gated = (pattern: string) =>
+      versionsOf(
+        gatePackage(
+          ms(),
+          gate({ exempt: [exemptionOf(pattern, 'segment')] }),
+          {},
+          now,
+        ),
+      )
+
+    expect(gated('m*@2.1.3')).toContain('2.1.3')
+    expect(gated('m*@2.1.3')).not.toContain('2.1.4')
+    expect(gated('x*@2.1.3')).not.toContain('2.1.3')
+    expect(gated('m*')).toEqual(versionsOf(ms()))
+  })
+
   it('drops versions younger than the gate, and moves latest to the newest that passes', () => {
     const gated = gatePackage(ms(), gate(), {}, MS_2_1_3 + 60 * 60_000)
     expect(gated?.latest).toBe('2.1.2')

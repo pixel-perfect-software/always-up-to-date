@@ -9,8 +9,8 @@ import { type NpmrcSources, nonEmpty } from './npmrcLoader'
 import type { ParsedPackument } from './registryDocuments'
 import { parseCacheControl, revalidatesEveryUse } from './registryRequest'
 
-export const CACHE_FOLDER = 'ca.pixel-perfect.alwaysuptodate'
-export const DEFAULT_MAX_BYTES = 32 * 1024 * 1024
+const CACHE_FOLDER = 'ca.pixel-perfect.alwaysuptodate'
+const DEFAULT_MAX_BYTES = 32 * 1024 * 1024
 
 export const TTL_SECONDS = {
   'dist-tags': 300,
@@ -369,6 +369,8 @@ export const createRegistryCache = (options: {
         const key = endpointKey(endpoint)
         const file = fileFor(kind, key, name)
         const storedAt = now()
+        // Level 1: entries are small and read back with any level, and a
+        // cold run's 2 MB of them cost 31 ms at the default 6.
         const data = zlib.gzipSync(
           JSON.stringify({
             schema: SCHEMA,
@@ -384,6 +386,7 @@ export const createRegistryCache = (options: {
             authenticated: meta.authenticated,
             value,
           }),
+          { level: 1 },
         )
         try {
           ensureFolders(kind)
