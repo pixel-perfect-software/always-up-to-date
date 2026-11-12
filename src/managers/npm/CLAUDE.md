@@ -9,6 +9,8 @@ What is specific to npm: its `.npmrc` layers (the default for any adapter withou
 | Path                       | Role                                                                                                                                                                       |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `index.ts`                 | The adapter; `readLockedPackages()` (installed versions from package-lock.json, #107), `readLockedPeers()` (the hoisted entries' peer ranges, #232), `npmReleaseAgeGate()` |
+| `lockfile.ts`              | `readLockfile()`: the `packages` of package-lock.json, undefined when missing or unreadable                                                                                |
+| `graph.ts`                 | `readNpmGraph()`: the installed graph from package-lock.json (importers, nested copies, resolved peers as edges) for the peer pass                                         |
 | `src/utils/npmrcLoader.ts` | `npmNpmrcLayers()`: npm's layers, which every adapter without `npmrcLayers` uses                                                                                           |
 
 ## `.npmrc` view
@@ -23,6 +25,8 @@ What is specific to npm: its `.npmrc` layers (the default for any adapter withou
 - `installedFromLockfile(root)` answers when the root has `package-lock.json` and no `node_modules` (`readLockedPackages`: a member's nested `<member>/node_modules/<key>` entry first, then the root's `node_modules/<key>`; a `link: true` entry is a member, so linked); with node_modules, node_modules decides. The pipeline logs which lockfile at debug level
 - Its `peers` (`LockedInstall.peers`, #232) stands in for `readInstalledPeers` in the plan's peer pass: `readLockedPeers` reads the `peerDependencies` of each `node_modules/<name>` entry (hoisted only, as the node_modules scan reads the root's node_modules; a `link: true` entry through the member entry it resolves to)
 - The license pass reads the installed version's manifest from the registry here (`registry.versionManifest(lookupName, current)`), since there is no installed copy
+
+- Installed graph for the peer pass (`installedGraph`, `readNpmGraph`, with or without node_modules; npm 11.19.1 captures, 2026-11-12): `''` and each key without `node_modules/` is a workspace, each other non-`link` key a node named by its `name` (an alias) else its folder. A dependency, optional dependency or resolved peer resolves to the nearest `node_modules` up the key, then the root's; a link is skipped
 
 ## Release-age gate (#168, probes n01-n11)
 

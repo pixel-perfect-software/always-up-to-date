@@ -7,6 +7,7 @@ import type { UpdatePolicy } from '@/utils/updateChecker'
 import { type KeptRules, keptInstalls } from './keptInstalls'
 import {
   holdPeerConflicts,
+  type Replaced,
   type StillInstalled,
   type TargetPeers,
   targetPeerConflict,
@@ -54,18 +55,25 @@ const holdTogether = (results: UpdateResult[]): UpdateResult[] => {
 }
 
 /**
- * Which installed packages' peer ranges still count (`StillInstalled`), from
- * the install's graph: those `keptInstalls` keeps, and any the graph doesn't
- * list. Before the targets' manifests are read (no `targetPeers`), what a
- * moving row depended on is taken as replaced, so a hold that depends on it
- * waits for the last settle, which asks each target whether it still wants
- * that version, and holds then; a target with no manifest keeps it all.
+ * What the install's graph says once a set of rows moves, asked by both peer
+ * checks: whether an installed package's peer ranges still count
+ * (`stillInstalled`: those `keptInstalls` keeps, and any the graph doesn't
+ * list), and whether an installed version the target-peer check would judge
+ * a peer by goes with the packages the run moves (`replaced`). Before the
+ * targets' manifests are read (no `targetPeers`), what a moving row depended
+ * on is taken as replaced, so a hold that depends on it waits for the last
+ * settle, which asks each target whether it still wants that version, and
+ * holds then; a target with no manifest keeps it all. One walk per rows
+ * array, which `settle` never mutates once handed out.
  */
-const stillInstalledFrom = (
+const graphView = (
   graph: InstalledGraph,
   peers: Map<string, PeerRequirement[]>,
   targetPeers: TargetPeers | undefined,
-): StillInstalled => {
+): {
+  stillInstalled: StillInstalled
+  replaced: (rows: readonly UpdateResult[]) => Replaced
+} => {
   const declared = new Set<string>()
   for (const [constrained, list] of peers) {
     for (const peer of list) {
@@ -92,14 +100,24 @@ const stillInstalledFrom = (
       },
     }),
   }
-  return (rows) => {
-    let kept: Set<string> | undefined
-    return (peer) => {
-      const id = `${peer.name}@${peer.version}`
-      if (!graph.dependencies.has(id)) return true
-      kept ??= keptInstalls(rows, graph, rules)
-      return kept.has(id)
+  const walks = new WeakMap<readonly UpdateResult[], Set<string>>()
+  const kept = (rows: readonly UpdateResult[]): Set<string> => {
+    let found = walks.get(rows)
+    if (!found) {
+      found = keptInstalls(rows, graph, rules)
+      walks.set(rows, found)
     }
+    return found
+  }
+  return {
+    stillInstalled: (rows) => (peer) => {
+      const id = `${peer.name}@${peer.version}`
+      return !graph.dependencies.has(id) || kept(rows).has(id)
+    },
+    replaced: (rows) => (name, version) => {
+      const id = `${name}@${version}`
+      return graph.dependencies.has(id) && !kept(rows).has(id)
+    },
   }
 }
 
@@ -126,17 +144,23 @@ export const createSettle = (
     rows: UpdateResult[],
     targetPeers?: TargetPeers,
   ): UpdateResult[] => {
-    const stillInstalled =
-      peers && graph ? stillInstalledFrom(graph, peers, targetPeers) : undefined
+    const view =
+      peers && graph ? graphView(graph, peers, targetPeers) : undefined
     let current = rows
     for (;;) {
       const peered = peers
-        ? holdPeerConflicts(current, peers, policy, stillInstalled)
+        ? holdPeerConflicts(current, peers, policy, view?.stillInstalled)
         : current
       const checked = targetPeers
         ? peered.map((row) => {
             if (policy.ruleFor(row.name) === 'latest') return row
-            const conflict = targetPeerConflict(row, peered, targetPeers, noted)
+            const conflict = targetPeerConflict(
+              row,
+              peered,
+              targetPeers,
+              noted,
+              view?.replaced(peered),
+            )
             return conflict ? heldFor(row, conflict) : row
           })
         : peered
@@ -145,7 +169,13 @@ export const createSettle = (
         if (!targetPeers) return next
         return next.map((row) => {
           if (policy.ruleFor(row.name) !== 'latest') return row
-          const conflict = targetPeerConflict(row, next, targetPeers, noted)
+          const conflict = targetPeerConflict(
+            row,
+            next,
+            targetPeers,
+            noted,
+            view?.replaced(next),
+          )
           return conflict ? withWarning(row, conflict) : row
         })
       }

@@ -16,6 +16,12 @@ export type StillInstalled = (
 ) => (peer: PeerRequirement) => boolean
 
 /**
+ * Whether an installed `name@version` goes with the packages the run moves,
+ * so it says nothing about what will be installed (`keptInstalls`).
+ */
+export type Replaced = (name: string, version: string) => boolean
+
+/**
  * Holds targets an installed package's peer range excludes. A range declared
  * by a package that is itself moving in this run doesn't count here: those
  * are the new version's peers, which `targetPeerConflict` checks from the
@@ -134,7 +140,8 @@ const indexOf = (rows: readonly UpdateResult[]): Map<string, UpdateResult> => {
  * manager hoists a peer to the root; which of the two a member resolves is
  * a guess. A peer that isn't installed is fine: optional, or (with a debug
  * line, once) left to the manager, which installs it; an installed optional
- * peer must satisfy its range. A range `semver` can't read (`workspace:*`)
+ * peer must satisfy its range. An installed copy the run replaces
+ * (`replaced`, from the install's graph) is left to the manager too. A range `semver` can't read (`workspace:*`)
  * isn't checked.
  */
 export const targetPeerConflict = (
@@ -142,6 +149,7 @@ export const targetPeerConflict = (
   rows: readonly UpdateResult[],
   { manifests, installed, lookupName }: TargetPeers,
   noted: Set<string>,
+  replaced?: Replaced,
 ): Reason | undefined => {
   const { target } = row
   if (!row.updated || !target || manifests.size === 0) return undefined
@@ -180,9 +188,18 @@ export const targetPeerConflict = (
     const planned =
       plannedFor(peer, workspace) ??
       (workspace === '.' ? undefined : plannedFor(peer, '.'))
-    const version =
-      planned?.version ??
-      installed[rowKey({ name: peer, workspace: row.workspace })]
+    const found = planned
+      ? undefined
+      : installed[rowKey({ name: peer, workspace: row.workspace })]
+    // A hoisted copy the run replaces (an extension `@tiptap/starter-kit`
+    // pins, under npm, yarn or bun) is not what the peer resolves to after it.
+    if (found !== undefined && replaced?.(peer, found)) {
+      note(
+        `${name}@${target} needs ${peer} ${range}; the installed ${found} goes with the packages this run moves, so it is left to the manager`,
+      )
+      continue
+    }
+    const version = planned?.version ?? found
     if (version === undefined) {
       if (!manifest.optionalPeers.includes(peer)) {
         note(

@@ -16,6 +16,7 @@ import {
   readWorkspaceManifests,
 } from '@/managers/workspaces'
 import { updatePNPMWorkspaceYAML } from '@/utils/catalogs'
+import { readInstalledGraph } from '@/utils/installedGraph'
 import { updatePackageJson } from '@/utils/manifests'
 import { overridesFromField } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
@@ -89,6 +90,8 @@ const pnpm: ManagerAdapter = {
   },
 
   /** `saveExact` / `savePrefix` in pnpm-workspace.yaml; pnpm 12 ignores .npmrc for these. */
+  // `node_modules/.pnpm/lock.yaml`: what each package was installed with.
+  installedGraph: (cwd) => readInstalledGraph(cwd),
   saveStyle: (cwd) => {
     const yaml = readPnpmWorkspaceYaml(cwd)
     return {

@@ -8,6 +8,7 @@ import type {
 } from '@/types'
 import type filterPackagesType from '@/utils/filterPackages'
 import type { splitUpdates as splitUpdatesType } from '@/utils/filterPackages'
+import { rowKey } from '@/utils/installed'
 import { withWarning } from '@/utils/plan/rows'
 import type { RegistrySession } from '@/utils/registry'
 import { parseVersionManifest } from '@/utils/registryDocuments'
@@ -2767,12 +2768,15 @@ describe('tiptap 3 pins its peers exactly (transitive peer deadlock)', () => {
     )
 
   /** The peers every installed capture declares, as `readInstalledPeers` keys them. */
-  const peersOf = (lock: string) => {
+  const peersOf = (lock: string) => peersFrom(tiptapPackages(lock))
+
+  /** The peers each installed `[name, version]`'s capture declares. */
+  const peersFrom = (installed: [string, string][]) => {
     const peers: Record<
       string,
       Array<{ name: string; version: string; range: string }>
     > = {}
-    for (const [name, version] of tiptapPackages(lock)) {
+    for (const [name, version] of installed) {
       const manifest = captured(name, version)
       for (const [peer, range] of Object.entries(
         manifest?.peerDependencies ?? {},
@@ -2918,5 +2922,50 @@ describe('tiptap 3 pins its peers exactly (transitive peer deadlock)', () => {
       updated: false,
       reason: expect.objectContaining({ code: 'peer-conflict' }),
     })
+  })
+
+  it('moves all nine under npm, leaving a hoisted copy the run replaces to the manager', async () => {
+    // npm 11.19.1 hoists every extension to the root, so node_modules answers
+    // `@tiptap/extensions` 3.33.0 for the peer placeholder 3.33.1 needs at
+    // 3.33.1: a copy only starter-kit and the extensions that move installed.
+    const cwd = tempDir('autd-tiptap-npm-')
+    const text = readFixture('npm/tiptap-3.33.0.package-lock.body')
+    write(path.join(cwd, 'package-lock.json'), text)
+    const { readNpmGraph } = jest.requireActual<
+      typeof import('@/managers/npm/graph')
+    >('@/managers/npm/graph')
+    const { packages } = JSON.parse(text) as {
+      packages: Record<string, { version?: string }>
+    }
+    const hoisted = Object.fromEntries(
+      Object.entries(packages).flatMap(([key, entry]) =>
+        /^node_modules\/(?:@[^/]+\/)?[^/]+$/.test(key) && entry.version
+          ? [[key.slice('node_modules/'.length), entry.version]]
+          : [],
+      ),
+    )
+
+    const results = await loadFilterWithConfig(
+      { beyondRange: 'minor' },
+      {
+        installedPeers: peersFrom(
+          Object.entries(hoisted).filter(([name]) =>
+            name.startsWith('@tiptap/'),
+          ),
+        ),
+        versionManifest: served() as RegistrySession['versionManifest'],
+      },
+    )(rows(NINE), {
+      cwd,
+      installedGraph: () => readNpmGraph(cwd),
+      installed: (asked) =>
+        Object.fromEntries(
+          asked.flatMap((row) =>
+            hoisted[row.name] ? [[rowKey(row), hoisted[row.name]]] : [],
+          ),
+        ),
+    })
+
+    expect(outcome(results)).toEqual(allMove(NINE))
   })
 })

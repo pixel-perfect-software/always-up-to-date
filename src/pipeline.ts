@@ -207,6 +207,9 @@ export const plan = async (
     // Installed peer ranges (#232): the lockfile's where it stands in for
     // node_modules (npm lockfile-only, berry PnP).
     ...(lockedPeers ? { installedPeers: () => lockedPeers(root) } : {}),
+    // What installed each package, so a range from one the run replaces
+    // doesn't hold it (the manager's lockfile).
+    installedGraph: () => adapter.installedGraph?.(root),
     declared: ({ name, workspace = '.' }) => {
       catalogs ??= adapter.readWorkspace(root).catalogs
       return declaredDependency(root, workspace, name, catalogs)

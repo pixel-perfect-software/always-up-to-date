@@ -2,6 +2,8 @@ import fs from 'fs'
 import path from 'path'
 
 import type { ManagerAdapter } from '@/managers/adapter'
+import { readNpmGraph } from '@/managers/npm/graph'
+import { readLockfile } from '@/managers/npm/lockfile'
 import {
   packageJsonWorkspace,
   packageJsonWorkspaceRoot,
@@ -15,27 +17,6 @@ import { loadNpmrc } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import type { PeerRequirement } from '@/utils/peers'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
-
-/** One `packages` entry of package-lock.json (lockfileVersion 2 and 3). */
-interface LockedEntry {
-  version?: unknown
-  link?: unknown
-  resolved?: unknown
-  peerDependencies?: unknown
-}
-
-const readLockfile = (cwd: string): Record<string, LockedEntry> | undefined => {
-  try {
-    const packages = JSON.parse(
-      fs.readFileSync(path.join(cwd, 'package-lock.json'), 'utf8'),
-    ).packages
-    return isRecord(packages)
-      ? (packages as Record<string, LockedEntry>)
-      : undefined
-  } catch {
-    return undefined
-  }
-}
 
 /**
  * The versions package-lock.json records for `rows`, keyed by `rowKey`, as
@@ -219,6 +200,10 @@ const npm: ManagerAdapter = {
           peers: readLockedPeers,
         }
       : undefined,
+
+  // `package-lock.json`: what each installed copy depends on, with or
+  // without node_modules.
+  installedGraph: (cwd) => readNpmGraph(cwd),
 
   overrides: (cwd) => manifestOverrides(cwd, ['overrides']),
 }

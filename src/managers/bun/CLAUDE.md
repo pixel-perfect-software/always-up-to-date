@@ -6,11 +6,12 @@ What is specific to bun 1.4: its `.npmrc` layers (the project file and one user 
 
 ## Key Files
 
-| Path        | Role                                                                                                                                                 |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`  | The adapter                                                                                                                                          |
-| `npmrc.ts`  | `bunNpmrcLayers()`, `bunUserNpmrc()`, `substituteBun()`: bun's `.npmrc` layers (project, one user file)                                              |
-| `bunfig.ts` | `bunfigExact()`, `parseBunfigRegistries()`, `bunRegistryConfig()`, `bunReleaseAgeGate()`: registry routes, credentials and the gate from bunfig.toml |
+| Path        | Role                                                                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `index.ts`  | The adapter                                                                                                                                                        |
+| `graph.ts`  | `readBunGraph()`: the installed graph from bun.lock (trailing commas stripped, nested copies keyed by `/`-joined names, resolved peers as edges) for the peer pass |
+| `npmrc.ts`  | `bunNpmrcLayers()`, `bunUserNpmrc()`, `substituteBun()`: bun's `.npmrc` layers (project, one user file)                                                            |
+| `bunfig.ts` | `bunfigExact()`, `parseBunfigRegistries()`, `bunRegistryConfig()`, `bunReleaseAgeGate()`: registry routes, credentials and the gate from bunfig.toml               |
 
 ## `.npmrc` layers (verified on bun 1.4.4, 2026-10-26, `bun install --lockfile-only`)
 
@@ -29,6 +30,10 @@ What is specific to bun 1.4: its `.npmrc` layers (the project file and one user 
 - A scope's inline credential is stored per URL prefix, as an `.npmrc` `//host/:_authToken` is, so it covers the whole prefix although bun sends it only for that scope (same host, so nothing crosses hosts); when it shares a prefix with the default route's credential, the default's wins and a debug line says so
 - `emptyRegistry`: bun skips an empty default and an empty scope
 - Not read in bunfig.toml: dotted keys (`scopes.acme = …`) and `scopes = { … }`
+
+## Installed graph (`graph.ts`, for the peer pass; bun 1.4.4, 2026-11-12, the isolated and hoisted linkers write the same lockfile)
+
+- `readBunGraph` reads `bun.lock` (not `bun.lockb`) after dropping the trailing commas outside strings. A `packages` key is a name (hoisted) or names joined by `/` for a nested copy: `debug/ms`, a member's own `b/debug` and `@nested/a/ms` (the workspace's `name`); an alias's key (`m`) holds its target's resolution (`ms@2.1.2`), and `name@workspace:<path>` is no node. A dependency, optional dependency or resolved peer resolves from the key's names up to the hoisted copy
 
 ## Release-age gate (#168, probes b01-b11)
 

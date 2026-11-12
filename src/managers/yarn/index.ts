@@ -14,6 +14,7 @@ import {
   readBerryLockPeers,
   yarnProjectDir,
 } from '@/managers/yarn/berry'
+import { readBerryGraph, readYarnV1Graph } from '@/managers/yarn/graph'
 import {
   type RangedDependency,
   rewriteBerryLock,
@@ -103,6 +104,11 @@ const yarn: ManagerAdapter = {
             : { peers: readBerryLockPeers }),
         }
       : undefined,
+
+  // `yarn.lock`, berry's or v1's: what each locked package depends on, PnP or
+  // node_modules alike.
+  installedGraph: (cwd) =>
+    isYarnBerry(cwd) ? readBerryGraph(cwd) : readYarnV1Graph(cwd),
 
   // berry resolves a range to its highest version, with no preference for
   // the `latest` tag (yarn 4.18.1, p-latest); v1 prefers `latest`.

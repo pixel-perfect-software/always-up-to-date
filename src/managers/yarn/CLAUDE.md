@@ -6,14 +6,15 @@ One adapter serves yarn v1 (1.22.22) and berry (2+, verified on 4.12.0 and 4.18.
 
 ## Key Files
 
-| Path           | Role                                                                                                                                                                                         |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`     | The adapter (v1 `upgrade`, berry's `install` / `up -R`), `isYarnBerry`                                                                                                                       |
-| `npmrc.ts`     | `yarnNpmrcLayers()`, `YARN_NPM_ENV`: yarn v1's `.npmrc` layers (cwd, user, prefix, parents); `yarnV1AuthOptions()`: what its credential rule reads (#126)                                    |
-| `yarnrc.ts`    | `parseYarnrc()`, `yarnrcRoutes()`, `yarnRegistryConfig()`: registry routes from yarn v1's `.yarnrc`                                                                                          |
-| `yarnrcYml.ts` | `parseYarnrcYml()` (a YAML subset), `substituteBerry()`, `berryRcFiles()`, `berrySettings()`, `berryRegistryConfig()`: yarn berry's registry settings from `.yarnrc.yml` and `YARN_*` (#107) |
-| `berry.ts`     | berry: `readBerryLock` (installed versions from yarn.lock, #107), `readBerryLockPeers` (#232), `applyBerry`, `yarnProjectDir`, `berryProjectRoot`                                            |
-| `lockfile.ts`  | `rewriteYarnV1Lock`, `rewriteBerryLock`: record a range against a version locked under another spec (pin relock, integration harness); v1 moves the range off any other entry (#127)         |
+| Path           | Role                                                                                                                                                                                                                   |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`     | The adapter (v1 `upgrade`, berry's `install` / `up -R`), `isYarnBerry`                                                                                                                                                 |
+| `npmrc.ts`     | `yarnNpmrcLayers()`, `YARN_NPM_ENV`: yarn v1's `.npmrc` layers (cwd, user, prefix, parents); `yarnV1AuthOptions()`: what its credential rule reads (#126)                                                              |
+| `yarnrc.ts`    | `parseYarnrc()`, `yarnrcRoutes()`, `yarnRegistryConfig()`: registry routes from yarn v1's `.yarnrc`                                                                                                                    |
+| `yarnrcYml.ts` | `parseYarnrcYml()` (a YAML subset), `substituteBerry()`, `berryRcFiles()`, `berrySettings()`, `berryRegistryConfig()`: yarn berry's registry settings from `.yarnrc.yml` and `YARN_*` (#107)                           |
+| `berry.ts`     | berry: `readBerryLock` (installed versions from yarn.lock, #107), `readBerryLockPeers` (#232), `applyBerry`, `yarnProjectDir`, `berryProjectRoot`                                                                      |
+| `lockfile.ts`  | `rewriteYarnV1Lock`, `rewriteBerryLock`: record a range against a version locked under another spec (pin relock, integration harness); v1 moves the range off any other entry (#127)                                   |
+| `graph.ts`     | `readYarnV1Graph()` (descriptors in yarn.lock, importers from the members' package.json), `readBerryGraph()` (yarn.lock entries, workspace entries as importers): the installed graph for the peer pass, no peer edges |
 
 ## v1 or berry
 
@@ -87,6 +88,10 @@ Berry has no `outdated` (`yarn outdated` runs a script of that name). Since #107
 - Overrides: berry `resolutions`
 - Not covered: yarn `catalog:` specs (the spec is not rewritten, so a beyond-range move is reported `not applied`)
 - Frozen install in the integration matrix: `yarn install --immutable`
+
+## Installed graph (`graph.ts`, for the peer pass; yarn 1.22.22 and 4.18.1 captures, 2026-11-12)
+
+- `installedGraph` reads yarn.lock for both, whatever the linker, with no peer edges (neither lockfile records a resolved peer). v1 has no workspace entries: importers come from each member's package.json, resolved by `name@range` descriptor, and a workspace package (no entry) is skipped; v1 text without its `# yarn lockfile v1` header is another format. Berry: an entry's `resolution` `<name>@npm:<version>` is a node (an alias's is its target), `@workspace:<path>` an importer; a patch, git or file resolution is no node, and a `__metadata`-less file is another format
 
 ## Cooldown fallbacks: relock (#147, #151, #152)
 

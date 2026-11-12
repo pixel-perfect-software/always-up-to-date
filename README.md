@@ -242,7 +242,7 @@ Keys are package names or `*` globs (`"@types/*"`, `"eslint-*"`, `"*"`). An exac
 
 ### What else holds an update
 
-- **Installed peer ranges.** An update an installed package's peer range would reject is held, naming that package: `react` stays on 18 while `@tanstack/react-query` 4, which accepts react up to 18, stays installed. A `"latest"` rule still moves it, with a warning. With pnpm, a range from a package the update itself replaces doesn't count: the tiptap extensions `@tiptap/starter-kit` pins, which each need `@tiptap/core` at exactly their own version, move with it rather than holding it.
+- **Installed peer ranges.** An update an installed package's peer range would reject is held, naming that package: `react` stays on 18 while `@tanstack/react-query` 4, which accepts react up to 18, stays installed. A `"latest"` rule still moves it, with a warning. A range from a package the update itself replaces doesn't count, read from the lockfile of every manager: the tiptap extensions `@tiptap/starter-kit` pins, which each need `@tiptap/core` at exactly their own version, move with it rather than holding it.
 - **Overrides.** A package your package manager pins with an override is held when the update would leave the override's range, with the reason `controlled by …`. That covers npm `overrides`, yarn berry `resolutions`, pnpm `overrides` in `pnpm-workspace.yaml`, and bun `overrides` or `resolutions`.
 
 ### How specs are rewritten
