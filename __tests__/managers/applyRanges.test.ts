@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -16,6 +15,7 @@ jest.mock('@/utils/runProcess', () => ({
 }))
 
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from '../fixtures/files'
 import { reasonFor } from '../fixtures/reasons'
 
 const mockedRunProcess = jest.mocked(runProcess)
@@ -41,12 +41,11 @@ const outdated: Record<string, PackageInfo> = {
 let npmConfigDir: string
 let restoreNpmConfig: () => void
 beforeEach(() => {
-  npmConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-config-'))
+  npmConfigDir = tempDir('autd-npm-config-')
   restoreNpmConfig = isolateNpmConfig(npmConfigDir)
 })
 afterEach(() => {
   restoreNpmConfig()
-  fs.rmSync(npmConfigDir, { recursive: true, force: true })
 })
 
 describe.each([
@@ -90,13 +89,9 @@ describe.each([
       JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'))
 
     beforeEach(() => {
-      cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-apply-${pm}-`))
+      cwd = tempDir(`autd-apply-${pm}-`)
       fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify(manifest))
       mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
-    })
-
-    afterEach(() => {
-      fs.rmSync(cwd, { recursive: true, force: true })
     })
 
     it('hands an in-range update to the manager without touching package.json', async () => {

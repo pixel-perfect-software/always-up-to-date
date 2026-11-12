@@ -1,11 +1,11 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import type { Pinning, RunManager } from '@/managers/adapter'
 import { applyPinned } from '@/managers/pin'
 import { StepError } from '@/stepError'
 import { updatePNPMWorkspaceYAML } from '@/utils/catalogs'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
+import { tempDir } from '../fixtures/files'
 
 describe('applyPinned (#147)', () => {
   let cwd: string
@@ -36,11 +36,7 @@ describe('applyPinned (#147)', () => {
   })
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pin-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-pin-')
   })
 
   it('installs the exact version, then puts the manifest back byte for byte and installs again', async () => {

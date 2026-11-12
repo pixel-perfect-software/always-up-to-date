@@ -1,11 +1,11 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { check, findOutdated, plan } from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import { isolateNpmConfig } from './fixtures'
+import { tempDir, write } from './fixtures/files'
 import {
   derive,
   type Reply,
@@ -32,10 +32,6 @@ const isManifestUrl = (url: string): boolean =>
 
 let tmp: string
 const at = (...parts: string[]) => path.join(tmp, ...parts)
-const write = (file: string, content: string) => {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, content)
-}
 
 /** A captured manifest with its version replaced, as `node_modules/<name>/package.json`. */
 const installAt = (name: string, capture: string, version: string) =>
@@ -53,9 +49,7 @@ describe('version manifests in the plan (#196)', () => {
   const projects: Project[] = []
 
   beforeEach(async () => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-manifests-')),
-    )
+    tmp = tempDir('autd-manifests-', { real: true })
     saved = { ...process.env }
     restoreNpm = isolateNpmConfig(at('npm-config'))
     process.env.XDG_CONFIG_HOME = at('xdg')
@@ -90,7 +84,6 @@ describe('version manifests in the plan (#196)', () => {
     restoreNpm()
     for (const key of Object.keys(process.env)) delete process.env[key]
     Object.assign(process.env, saved)
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   const open = (config: Record<string, unknown> = {}) => {

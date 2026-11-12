@@ -1,7 +1,6 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import type { ManagerAdapter } from '@/managers/adapter'
 import bun from '@/managers/bun'
@@ -15,6 +14,7 @@ import type { RegistryClient } from '@/utils/registryClient'
 import { type ParsedPackument, parsePackument } from '@/utils/registryDocuments'
 import { ABBREVIATED_ACCEPT } from '@/utils/registryRequest'
 import { withReleaseAgeGate } from '@/utils/releaseAgeGate'
+import { localRegistryConfig as configFor, tempDir } from '../fixtures/files'
 import {
   conditional,
   derive,
@@ -24,21 +24,6 @@ import {
   startRegistry,
   type TestRegistry,
 } from '../fixtures/registry'
-
-const configFor = (
-  registry: string,
-  overrides: Partial<RegistryConfig> = {},
-): RegistryConfig => ({
-  registry,
-  scopedRegistries: {},
-  credentials: {},
-  strictSSL: true,
-  proxy: {},
-  fetchRetries: 0,
-  fetchTimeout: 5000,
-  maxSockets: 15,
-  ...overrides,
-})
 
 /**
  * `@types/ms` on a registry that answers the abbreviated packument and the
@@ -828,62 +813,53 @@ describe('registry session', () => {
       })
 
       it('reads the full packument when a 304 revalidates an entry stored without modified', async () => {
-        const dir = path.join(
-          fs.realpathSync(
-            fs.mkdtempSync(path.join(os.tmpdir(), 'autd-session-')),
+        const dir = path.join(tempDir('autd-session-', { real: true }), 'cache')
+        const registry = await start(
+          conditional(
+            { body: registryBody('types-ms.packument') },
+            '"abbreviated"',
           ),
-          'cache',
         )
-        try {
-          const registry = await start(
-            conditional(
-              { body: registryBody('types-ms.packument') },
-              '"abbreviated"',
-            ),
-          )
-          const stored = parsePackument(
-            JSON.parse(registryBody('types-ms.packument')),
-          ) as ParsedPackument
-          const { modified: _dropped, ...older } = stored
-          const writer = createRegistryCache({ dir, now: () => 0 })
-          writer.put('packument', registry.url, '@types/ms', older, {
-            authenticated: false,
-            etag: '"abbreviated"',
-          })
-          writer.close()
-          const session = createRegistrySession('/project', {
-            loadConfig: () => configFor(registry.url),
-            depsDev: false,
-            endpoints: {
-              publicRegistries: [new URL(registry.url).origin],
-              depsDev: 'http://127.0.0.1:1/',
-            },
-            cache: { dir, now: () => 3_600_000 },
-          })
-          sessions.push(session)
-          // The server answers the full document for any other Accept.
-          registry.requests.length = 0
+        const stored = parsePackument(
+          JSON.parse(registryBody('types-ms.packument')),
+        ) as ParsedPackument
+        const { modified: _dropped, ...older } = stored
+        const writer = createRegistryCache({ dir, now: () => 0 })
+        writer.put('packument', registry.url, '@types/ms', older, {
+          authenticated: false,
+          etag: '"abbreviated"',
+        })
+        writer.close()
+        const session = createRegistrySession('/project', {
+          loadConfig: () => configFor(registry.url),
+          depsDev: false,
+          endpoints: {
+            publicRegistries: [new URL(registry.url).origin],
+            depsDev: 'http://127.0.0.1:1/',
+          },
+          cache: { dir, now: () => 3_600_000 },
+        })
+        sessions.push(session)
+        // The server answers the full document for any other Accept.
+        registry.requests.length = 0
 
-          const gated = withReleaseAgeGate(
-            session,
-            () => gate,
-            () => LATER,
-          )
-          const result = await gated.lookup('@types/ms')
+        const gated = withReleaseAgeGate(
+          session,
+          () => gate,
+          () => LATER,
+        )
+        const result = await gated.lookup('@types/ms')
 
-          expect(result.ok).toBe(true)
-          expect(
-            registry.requests.map((r) => [
-              r.headers.accept,
-              r.headers['if-none-match'],
-            ]),
-          ).toEqual([
-            [ABBREVIATED_ACCEPT, '"abbreviated"'],
-            ['application/json', undefined],
-          ])
-        } finally {
-          fs.rmSync(path.dirname(dir), { recursive: true, force: true })
-        }
+        expect(result.ok).toBe(true)
+        expect(
+          registry.requests.map((r) => [
+            r.headers.accept,
+            r.headers['if-none-match'],
+          ]),
+        ).toEqual([
+          [ABBREVIATED_ACCEPT, '"abbreviated"'],
+          ['application/json', undefined],
+        ])
       })
     })
   })
@@ -891,15 +867,7 @@ describe('registry session', () => {
   describe('the disk cache', () => {
     let dir: string
     beforeEach(() => {
-      dir = path.join(
-        fs.realpathSync(
-          fs.mkdtempSync(path.join(os.tmpdir(), 'autd-session-')),
-        ),
-        'cache',
-      )
-    })
-    afterEach(() => {
-      fs.rmSync(path.dirname(dir), { recursive: true, force: true })
+      dir = path.join(tempDir('autd-session-', { real: true }), 'cache')
     })
 
     const msServer = () =>
@@ -1045,11 +1013,8 @@ describe('registry session', () => {
   describe('routes read from the manager own files', () => {
     let tmp: string
     beforeEach(() => {
-      tmp = fs.realpathSync(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-route-')),
-      )
+      tmp = tempDir('autd-route-', { real: true })
     })
-    afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }))
 
     const sources = (): NpmrcSources => ({
       env: {},

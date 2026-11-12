@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -10,6 +9,7 @@ import type { AlwaysUpToDateConfig } from '@/types'
 import { planDocument } from '@/utils/jsonDocument'
 import packageJson from '../package.json'
 import { capturedRegistry, installPackages, projectFor } from './fixtures'
+import { tempDir } from './fixtures/files'
 import { validateOutput } from './fixtures/outputSchema'
 
 jest.mock('@/utils/logger')
@@ -50,37 +50,33 @@ const run = async (
   config: Partial<AlwaysUpToDateConfig>,
   operation: Operation,
 ): Promise<string> => {
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-single-json-'))
-  try {
-    fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify(manifest))
-    installPackages(cwd, '.', INSTALLED)
-    const registry = capturedRegistry(
-      ['zod', 'express', 'semver', 'dayjs', 'ms'],
-      { asOf: AS_OF },
-    )
-    // The manager moves each package to its target, so the post-apply check keeps it updated.
-    const apply = jest.fn(async (_run, dir: string, { beyondRange }) =>
-      installPackages(dir, '.', beyondRange),
-    )
-    const project = projectFor({ ...adapter, apply }, cwd, config, registry)
-    // check --json plans, as the action does: findOutdated, then plan.
-    const results =
-      operation === 'update'
-        ? await update(project)
-        : await plan(project, await findOutdated(project))
-    const document = planDocument({
-      command: operation === 'check' ? 'check' : 'update',
-      phase: operation === 'update' ? 'applied' : 'plan',
-      manager: adapter.name,
-      results,
-    })
-    validateOutput(document)
-    // The release PR bumps the version; the snapshot must not move with it.
-    expect(document.autd).toBe(packageJson.version)
-    return json({ ...document, autd: '<package version>' })
-  } finally {
-    fs.rmSync(cwd, { recursive: true, force: true })
-  }
+  const cwd = tempDir('autd-single-json-')
+  fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify(manifest))
+  installPackages(cwd, '.', INSTALLED)
+  const registry = capturedRegistry(
+    ['zod', 'express', 'semver', 'dayjs', 'ms'],
+    { asOf: AS_OF },
+  )
+  // The manager moves each package to its target, so the post-apply check keeps it updated.
+  const apply = jest.fn(async (_run, dir: string, { beyondRange }) =>
+    installPackages(dir, '.', beyondRange),
+  )
+  const project = projectFor({ ...adapter, apply }, cwd, config, registry)
+  // check --json plans, as the action does: findOutdated, then plan.
+  const results =
+    operation === 'update'
+      ? await update(project)
+      : await plan(project, await findOutdated(project))
+  const document = planDocument({
+    command: operation === 'check' ? 'check' : 'update',
+    phase: operation === 'update' ? 'applied' : 'plan',
+    manager: adapter.name,
+    results,
+  })
+  validateOutput(document)
+  // The release PR bumps the version; the snapshot must not move with it.
+  expect(document.autd).toBe(packageJson.version)
+  return json({ ...document, autd: '<package version>' })
 }
 
 const CONFIGS = [

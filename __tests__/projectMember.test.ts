@@ -4,22 +4,18 @@ jest.mock('@/utils/registry', () => ({
 }))
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import pnpm from '@/managers/pnpm'
 import { refuseMemberApply } from '@/pipeline'
 import { openProject } from '@/project'
 import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
+import { tempDir, write } from './fixtures/files'
 
 // The real project location, detection and config on temp directories (#123).
 describe('openProject from a workspace member', () => {
   let tmp: string
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
   const workspace = (manager: Record<string, unknown> = {}) => {
     write(
       at('package.json'),
@@ -33,12 +29,7 @@ describe('openProject from a workspace member', () => {
   }
 
   beforeEach(() => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-member-')),
-    )
-  })
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
+    tmp = tempDir('autd-member-', { real: true })
   })
 
   it('gives the root and the member', () => {

@@ -1,23 +1,19 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import yarn from '@/managers/yarn'
 import { yarnNpmrcLayers } from '@/managers/yarn/npmrc'
 import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import type { RegistryConfig } from '@/types'
-import {
-  mergeNpmrcLayers,
-  type NpmrcSources,
-  registryConfigFrom,
-} from '@/utils/npmrcLoader'
+import { mergeNpmrcLayers, registryConfigFrom } from '@/utils/npmrcLoader'
 import {
   authorizationFor,
   credentialsFor,
   packumentUrl,
   registryFor,
 } from '@/utils/registryRequest'
+import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 // Each decision below was probed on yarn 1.22.22, 2026-10-26; the ids (y20,
 // ...) name the probe rows. Rows that depend on the prefix ran on yarn.js
@@ -33,33 +29,18 @@ describe('yarn v1 .npmrc layers', () => {
   let tmp: string
 
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
   /** A workspace root at `<tmp>/proj` with a member at `<tmp>/proj/packages/app`. */
   const root = () => at('proj')
   const member = () => at('proj', 'packages', 'app')
   const home = (...parts: string[]) => at('home', ...parts)
   const prefixFile = () => at('prefix', 'etc', 'npmrc')
 
-  const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources => ({
-    env,
-    home: home(),
-    // node.exe sits in the prefix on Windows, in <prefix>/bin elsewhere.
-    execPath:
-      process.platform === 'win32'
-        ? at('prefix', 'node.exe')
-        : at('prefix', 'bin', 'node'),
-    platform: process.platform,
-  })
-
   /** The config autd builds for yarn v1 from `cwd`. */
   const configFor = (
     cwd: string,
     env: NodeJS.ProcessEnv = {},
   ): RegistryConfig => {
-    const sources = sourcesFor(env)
+    const sources = npmrcSources(tmp, env)
     const view = mergeNpmrcLayers(yarnNpmrcLayers(cwd, sources))
     return yarnRegistryConfig(
       cwd,
@@ -83,13 +64,9 @@ describe('yarn v1 .npmrc layers', () => {
   const token = (value: string, host = BH) => `//${host}/:_authToken=${value}\n`
 
   beforeEach(() => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarn-')))
+    tmp = tempDir('autd-yarn-', { real: true })
     write(path.join(root(), 'package.json'), '{"workspaces":["packages/*"]}')
     write(path.join(member(), 'package.json'), '{"name":"app"}')
-  })
-
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   describe('#122 evidence', () => {
@@ -262,7 +239,7 @@ describe('yarn v1 .npmrc layers', () => {
       ).not.toBe(B)
       expect(
         mergeNpmrcLayers(
-          yarnNpmrcLayers(root(), sourcesFor({ ...env, PORT: '4002' })),
+          yarnNpmrcLayers(root(), npmrcSources(tmp, { ...env, PORT: '4002' })),
         ).values['@acme:registry'],
       ).toBe('http://127.0.0.1:${PORT}/')
     })
@@ -312,7 +289,7 @@ describe('yarn v1 .npmrc layers', () => {
   describe('variables in files (b1, c1-c4)', () => {
     const tokenKey = `//${BH}/:_authToken`
     const tokenValue = (env: NodeJS.ProcessEnv = {}) =>
-      mergeNpmrcLayers(yarnNpmrcLayers(root(), sourcesFor(env))).values[
+      mergeNpmrcLayers(yarnNpmrcLayers(root(), npmrcSources(tmp, env))).values[
         tokenKey
       ]
 
@@ -378,7 +355,7 @@ describe('yarn v1 .npmrc layers', () => {
 
   describe('berry', () => {
     it('decides berry or v1 once per load: registryConfig follows npmrcLayers', () => {
-      const sources = sourcesFor()
+      const sources = npmrcSources(tmp)
       const route = (cwd: string) => {
         const layers = yarn.npmrcLayers?.(cwd, sources) ?? []
         const view = mergeNpmrcLayers(layers)
@@ -396,7 +373,7 @@ describe('yarn v1 .npmrc layers', () => {
     it('reads no .npmrc layers', () => {
       write(path.join(root(), '.yarnrc.yml'), 'nodeLinker: node-modules\n')
       write(path.join(root(), '.npmrc'), `registry=${A}\n`)
-      expect(yarn.npmrcLayers?.(root(), sourcesFor())).toEqual([])
+      expect(yarn.npmrcLayers?.(root(), npmrcSources(tmp))).toEqual([])
     })
   })
 })

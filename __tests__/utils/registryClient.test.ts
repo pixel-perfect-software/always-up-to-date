@@ -1,6 +1,5 @@
 import fs from 'fs'
 import type http from 'http'
-import os from 'os'
 import path from 'path'
 import tls from 'tls'
 import zlib from 'zlib'
@@ -10,7 +9,6 @@ import { type Npmrc, parseNpmrc } from '@/utils/npmrc'
 import {
   loadRegistryConfig,
   mergeNpmrcLayers,
-  type NpmrcSources,
   registryConfigFrom,
 } from '@/utils/npmrcLoader'
 import {
@@ -20,6 +18,7 @@ import {
   RegistryRequestError,
 } from '@/utils/registryClient'
 import { pathMarker } from '@/utils/registryRequest'
+import { npmrcSources, tempDir } from '../fixtures/files'
 import {
   conditional,
   type Handler,
@@ -48,18 +47,6 @@ describe('registry client', () => {
   let registries: TestRegistry[]
   let proxies: TestProxy[]
 
-  const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources => ({
-    env,
-    home: path.join(tmp, 'home'),
-    // Node's own layout, so npm's default prefix is <tmp>/prefix on both:
-    // node.exe sits in the prefix on Windows, in <prefix>/bin elsewhere.
-    execPath:
-      process.platform === 'win32'
-        ? path.join(tmp, 'prefix', 'node.exe')
-        : path.join(tmp, 'prefix', 'bin', 'node'),
-    platform: process.platform,
-  })
-
   const configFrom = (
     npmrc: string | Npmrc,
     env: NodeJS.ProcessEnv = {},
@@ -73,7 +60,7 @@ describe('registry client', () => {
         },
       ]),
       path.join(tmp, 'proj'),
-      sourcesFor(env),
+      npmrcSources(tmp, env),
     )
 
   const clientFor = (
@@ -117,9 +104,7 @@ describe('registry client', () => {
   const clientKey = path.join(TLS_DIR, 'client.key')
 
   beforeEach(() => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-client-')),
-    )
+    tmp = tempDir('autd-client-', { real: true })
     fs.mkdirSync(path.join(tmp, 'proj'))
     fs.writeFileSync(path.join(tmp, 'proj', 'package.json'), '{}')
     delays = []
@@ -131,7 +116,6 @@ describe('registry client', () => {
   afterEach(async () => {
     for (const client of clients) client.destroy()
     await Promise.all([...registries, ...proxies].map((s) => s.close()))
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   describe('ca, ca[], cafile and strict-ssl', () => {
@@ -165,7 +149,7 @@ describe('registry client', () => {
       const proj = path.join(tmp, 'proj')
       fs.writeFileSync(path.join(proj, 'ca.pem'), readTls('ca.pem'))
       fs.writeFileSync(path.join(proj, '.npmrc'), 'cafile="ca.pem"\n')
-      const config = loadRegistryConfig(proj, sourcesFor())
+      const config = loadRegistryConfig(proj, npmrcSources(tmp))
       expect(await get(config, server)).toEqual({ ok: 4 })
     })
 
@@ -175,7 +159,7 @@ describe('registry client', () => {
       fs.mkdirSync(path.join(tmp, 'home'))
       fs.writeFileSync(path.join(tmp, 'home', 'ca.pem'), readTls('ca.pem'))
       fs.writeFileSync(path.join(proj, '.npmrc'), 'cafile="~/ca.pem"\n')
-      const config = loadRegistryConfig(proj, sourcesFor())
+      const config = loadRegistryConfig(proj, npmrcSources(tmp))
       expect(await get(config, server)).toEqual({ ok: 5 })
     })
 
@@ -187,7 +171,7 @@ describe('registry client', () => {
         path.join(proj, '.npmrc'),
         `cafile="ca.pem"\nca=${JSON.stringify(readTls('client.pem'))}\n`,
       )
-      const config = loadRegistryConfig(proj, sourcesFor())
+      const config = loadRegistryConfig(proj, npmrcSources(tmp))
       expect(await get(config, server)).toEqual({ ok: 6 })
     })
 
@@ -1439,7 +1423,10 @@ describe('registry client', () => {
       const env = { [`npm_config_${key}`]: 'ENV' }
       const tokenFor = async (withEnv: boolean) => {
         server.requests.length = 0
-        const config = loadRegistryConfig(proj, sourcesFor(withEnv ? env : {}))
+        const config = loadRegistryConfig(
+          proj,
+          npmrcSources(tmp, withEnv ? env : {}),
+        )
         await get(config, server)
         return authOf(server)[0]
       }

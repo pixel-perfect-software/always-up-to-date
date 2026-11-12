@@ -1,5 +1,3 @@
-import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -8,23 +6,17 @@ import { packageJsonWorkspaceRoot } from '@/managers/workspaces'
 import yarn, { isYarnBerry } from '@/managers/yarn'
 import { berryProjectRoot } from '@/managers/yarn/berry'
 import { StepError } from '@/stepError'
+import { tempDir, write } from '../fixtures/files'
 
 // Each manager's project root for a directory (#123), on real temp directories.
 describe('projectRoot', () => {
   let tmp: string
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content = '') => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
   const manifest = (dir: string[], fields: Record<string, unknown> = {}) =>
     write(at(...dir, 'package.json'), JSON.stringify({ name: 'p', ...fields }))
 
   beforeEach(() => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-root-')))
-  })
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
+    tmp = tempDir('autd-root-', { real: true })
   })
 
   describe('packageJsonWorkspaceRoot (npm, yarn v1, bun)', () => {

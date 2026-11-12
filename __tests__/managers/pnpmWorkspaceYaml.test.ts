@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import pnpm from '@/managers/pnpm'
 import { pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
@@ -16,6 +15,7 @@ import {
 import { pnpmWorkspacePatterns, pnpmWorkspaceRoot } from '@/managers/workspaces'
 import { readPnpmCatalogs } from '@/utils/catalogs'
 import type { NpmrcSources } from '@/utils/npmrcLoader'
+import { tempDir } from '../fixtures/files'
 
 jest.mock('@/utils/logger')
 
@@ -29,14 +29,9 @@ const sources = (): NpmrcSources => ({
 })
 
 beforeEach(() => {
-  tmp = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-yaml-')),
-  )
+  tmp = tempDir('autd-pnpm-yaml-', { real: true })
   fs.mkdirSync(at('packages', 'a'), { recursive: true })
   fs.writeFileSync(at('packages', 'a', 'package.json'), '{}')
-})
-afterEach(() => {
-  fs.rmSync(tmp, { recursive: true, force: true })
 })
 
 /** What every consumer takes from one pnpm-workspace.yaml (#229). */

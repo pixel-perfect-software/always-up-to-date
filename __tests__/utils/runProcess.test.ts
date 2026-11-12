@@ -1,8 +1,8 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { buildWindowsCommand, runProcess } from '@/utils/runProcess'
 import { prependPath, writeNodeShim } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 
 // Real child processes: `node` itself stands in for a package manager.
 const windowsIt = process.platform === 'win32' ? it : it.skip
@@ -11,11 +11,7 @@ describe('runProcess', () => {
   let cwd: string
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-run-process-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-run-process-')
   })
 
   it('returns more than 1 MB of stdout without a buffer cap', async () => {

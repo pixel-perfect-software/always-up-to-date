@@ -1,9 +1,4 @@
-import type {
-  BerryAuth,
-  RegistryConfig,
-  RegistryCredentials,
-  YarnV1Auth,
-} from '@/types'
+import type { BerryAuth, RegistryCredentials, YarnV1Auth } from '@/types'
 import {
   ABBREVIATED_ACCEPT,
   authorizationFor,
@@ -33,18 +28,7 @@ import {
   yarnV1AuthorizationFor,
   yarnV1RegistryKeys,
 } from '@/utils/registryRequest'
-
-const config = (overrides: Partial<RegistryConfig> = {}): RegistryConfig => ({
-  registry: 'https://registry.npmjs.org/',
-  scopedRegistries: {},
-  credentials: {},
-  strictSSL: true,
-  proxy: {},
-  fetchRetries: 2,
-  fetchTimeout: 300_000,
-  maxSockets: 15,
-  ...overrides,
-})
+import { registryConfig as config } from '../fixtures/files'
 
 describe('packumentUrl', () => {
   it('joins the registry path and name', () => {

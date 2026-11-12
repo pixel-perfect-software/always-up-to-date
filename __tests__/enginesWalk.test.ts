@@ -4,12 +4,11 @@ jest.mock('@/utils/engines', () => ({
   runningNode: () => '12.22.12',
 }))
 
-import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { findOutdated, plan } from '@/pipeline'
 import { openProject, type Project } from '@/project'
 import { isolateNpmConfig } from './fixtures'
+import { tempDir, write } from './fixtures/files'
 import { reasonFor } from './fixtures/reasons'
 import {
   derive,
@@ -51,10 +50,6 @@ const isManifestUrl = (url: string): boolean =>
 
 let tmp: string
 const at = (...parts: string[]) => path.join(tmp, ...parts)
-const write = (file: string, content: string) => {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, content)
-}
 
 describe('npm engines walk-back, end to end (#200)', () => {
   let server: TestRegistry
@@ -63,9 +58,7 @@ describe('npm engines walk-back, end to end (#200)', () => {
   const projects: Project[] = []
 
   beforeEach(async () => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-engines-walk-')),
-    )
+    tmp = tempDir('autd-engines-walk-', { real: true })
     saved = { ...process.env }
     restoreNpm = isolateNpmConfig(at('npm-config'))
     process.env.XDG_CONFIG_HOME = at('xdg')
@@ -103,7 +96,6 @@ describe('npm engines walk-back, end to end (#200)', () => {
     restoreNpm()
     for (const key of Object.keys(process.env)) delete process.env[key]
     Object.assign(process.env, saved)
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   const open = (pm: 'npm' | 'pnpm' = 'npm') => {

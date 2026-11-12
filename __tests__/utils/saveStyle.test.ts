@@ -1,8 +1,8 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { adapterFor } from '@/managers'
 import { isolateNpmConfig } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 
 // Each case mirrors a real `add` on the manager's current version, which
 // wrote the spec shown in the comment.
@@ -16,17 +16,15 @@ describe('adapter.saveStyle', () => {
   let restoreNpmConfig: () => void
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-save-style-'))
+    cwd = tempDir('autd-save-style-')
     // Keep the developer's own ~/.npmrc out of these cases.
-    home = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-home-'))
+    home = tempDir('autd-home-')
     restoreNpmConfig = isolateNpmConfig(home)
     write('package.json', '{}')
   })
 
   afterEach(() => {
     restoreNpmConfig()
-    fs.rmSync(cwd, { recursive: true, force: true })
-    fs.rmSync(home, { recursive: true, force: true })
   })
 
   it('defaults to a caret for every manager', () => {

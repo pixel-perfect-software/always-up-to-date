@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -7,6 +6,7 @@ import pnpm from '@/managers/pnpm'
 import yarn from '@/managers/yarn'
 import { check, plan } from '@/pipeline'
 import { capturedRegistry, installPackages, projectFor } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 
 jest.mock('@/utils/logger')
 // The scratch project the fixtures come from: `dj` is an npm: alias.
@@ -41,7 +41,7 @@ describe.each([
   let lookup: jest.Mock
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-alias-${pm}-`))
+    cwd = tempDir(`autd-alias-${pm}-`)
     fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify(manifest))
     installPackages(cwd, '.', INSTALLED)
     const captured = capturedRegistry(
@@ -50,10 +50,6 @@ describe.each([
     )
     lookup = jest.fn(captured.lookup)
     registry = { ...captured, lookup }
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('reports the alias under its manifest key', async () => {

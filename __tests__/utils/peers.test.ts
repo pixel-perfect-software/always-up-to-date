@@ -1,7 +1,7 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { readInstalledPeers } from '@/utils/peers'
+import { tempDir } from '../fixtures/files'
 
 describe('readInstalledPeers', () => {
   let cwd: string
@@ -15,11 +15,7 @@ describe('readInstalledPeers', () => {
   }
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-peers-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-peers-')
   })
 
   it('collects peer ranges from hoisted packages, scoped ones included', () => {

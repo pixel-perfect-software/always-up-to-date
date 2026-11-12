@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import type { RegistryConfig } from '@/types'
 import {
@@ -10,42 +9,23 @@ import {
   mergeNpmrcLayers,
   NPM_ENV,
   type NpmrcLayer,
-  type NpmrcSources,
   npmNpmrcLayers,
   npmrcFileLayer,
 } from '@/utils/npmrcLoader'
+import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 describe('npmrc layers', () => {
   let tmp: string
 
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
-  const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources => ({
-    env,
-    home: at('home'),
-    execPath:
-      process.platform === 'win32'
-        ? path.join(tmp, 'prefix', 'node.exe')
-        : path.join(tmp, 'prefix', 'bin', 'node'),
-    platform: process.platform,
-  })
   const env = (values: Record<string, string>): NpmrcLayer => ({
     kind: 'env',
     values: Object.assign(Object.create(null), values),
   })
 
   beforeEach(() => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npmrc-layers-')),
-    )
+    tmp = tempDir('autd-npmrc-layers-', { real: true })
     write(at('proj', 'package.json'), '{}')
-  })
-
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   describe('mergeNpmrcLayers', () => {
@@ -214,7 +194,7 @@ describe('npmrc layers', () => {
       write(at('prefix', 'etc', 'npmrc'), 'g=1')
       const layers = npmNpmrcLayers(
         at('proj'),
-        sourcesFor({ npm_config_e: '1' }),
+        npmrcSources(tmp, { npm_config_e: '1' }),
       )
 
       expect(layers.map((l) => l.kind)).toEqual([
@@ -239,7 +219,7 @@ describe('npmrc layers', () => {
     it('merges to what loadNpmrc returns', () => {
       write(at('proj', '.npmrc'), 'k=project\nonly-p=1')
       write(at('home', '.npmrc'), 'k=user\nonly-u=1')
-      const sources = sourcesFor({ npm_config_only_e: '1' })
+      const sources = npmrcSources(tmp, { npm_config_only_e: '1' })
 
       expect({
         ...mergeNpmrcLayers(npmNpmrcLayers(at('proj'), sources)).values,
@@ -251,7 +231,7 @@ describe('npmrc layers', () => {
     it('gives an empty project layer when the project file is the user config', () => {
       write(at('proj', '.npmrc'), 'k=1')
       const layers = npmNpmrcLayers(at('proj'), {
-        ...sourcesFor(),
+        ...npmrcSources(tmp),
         home: at('proj'),
       })
       expect({ ...layers[1].values }).toEqual({})
@@ -271,7 +251,7 @@ describe('npmrc layers', () => {
           registryConfig: hook,
         },
         at('proj'),
-        sourcesFor(),
+        npmrcSources(tmp),
       )
       expect(config.registry).toBe('http://own.test/')
       expect(config.maxSockets).toBe(7)
@@ -285,9 +265,9 @@ describe('npmrc layers', () => {
 
     it("uses npm's layers and no adjustment for an adapter with neither hook", () => {
       write(at('proj', '.npmrc'), 'registry=http://npm.test/')
-      expect(managerRegistryConfig({}, at('proj'), sourcesFor()).registry).toBe(
-        'http://npm.test/',
-      )
+      expect(
+        managerRegistryConfig({}, at('proj'), npmrcSources(tmp)).registry,
+      ).toBe('http://npm.test/')
     })
   })
 })

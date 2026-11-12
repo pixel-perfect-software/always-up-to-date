@@ -1,11 +1,11 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import {
   listsMember,
   readWorkspaceManifests,
   workspacePatterns,
 } from '@/managers/workspaces'
+import { tempDir } from '../fixtures/files'
 
 jest.mock('@/utils/logger')
 
@@ -42,15 +42,11 @@ describe('readWorkspaceManifests', () => {
     readWorkspaceManifests(cwd, patterns).map((m) => m.path)
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-workspaces-'))
+    cwd = tempDir('autd-workspaces-')
     fs.writeFileSync(
       path.join(cwd, 'package.json'),
       JSON.stringify({ name: 'root' }),
     )
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('puts the root first, with its name', () => {
@@ -183,11 +179,7 @@ describe('listsMember', () => {
   let root: string
 
   beforeEach(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-lists-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(root, { recursive: true, force: true })
+    root = tempDir('autd-lists-')
   })
 
   const workspaces = (...patterns: string[]) =>

@@ -1,26 +1,17 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { locate } from '@/projectLocation'
+import { tempDir, write } from './fixtures/files'
 
 // Real temp directories: where a run belongs before a manager is known (#123).
 describe('locate', () => {
   let tmp: string
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
   const manifest = (dir: string[], fields: Record<string, unknown> = {}) =>
     write(at(...dir, 'package.json'), JSON.stringify({ name: 'p', ...fields }))
 
   beforeEach(() => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-locate-')),
-    )
-  })
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
+    tmp = tempDir('autd-locate-', { real: true })
   })
 
   it('is the root itself for a run from the root', () => {

@@ -1,6 +1,5 @@
 import { build, type Metafile } from 'esbuild'
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import {
   checkExternals,
@@ -12,6 +11,7 @@ import {
   packageOf,
   writeLicenses,
 } from '../../scripts/guards'
+import { tempDir } from '../fixtures/files'
 
 // The checks scripts/build.mts runs on its bundle, on metafiles esbuild wrote
 // for small projects in temp directories, never on hand-written ones.
@@ -21,10 +21,7 @@ type Files = Record<string, string>
 let tmp: string
 
 beforeEach(() => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-guards-')))
-})
-afterEach(() => {
-  fs.rmSync(tmp, { recursive: true, force: true })
+  tmp = tempDir('autd-guards-', { real: true })
 })
 
 const write = (files: Files) => {

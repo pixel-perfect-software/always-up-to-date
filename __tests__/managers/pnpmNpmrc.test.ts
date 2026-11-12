@@ -1,7 +1,6 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { pnpmConfigDir, pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
 import type { RegistryConfig } from '@/types'
@@ -16,6 +15,7 @@ import {
   packumentUrl,
   registryFor,
 } from '@/utils/registryRequest'
+import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 // Each decision below was probed on pnpm 12.15.0 and 12.14.0, 2026-10-26; the
 // ids (p20, …) name the probe rows. The config directory off macOS is read
@@ -35,20 +35,12 @@ describe('pnpm .npmrc layers', () => {
   const home = (...parts: string[]) => at('home', ...parts)
   /** pnpm's global directory with XDG_CONFIG_HOME set, as the probes ran. */
   const global = (...parts: string[]) => at('xdg', 'pnpm', ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
 
   const sourcesFor = (
     env: NodeJS.ProcessEnv = {},
     platform: NodeJS.Platform = 'linux',
-  ): NpmrcSources => ({
-    env,
-    home: home(),
-    execPath: at('prefix', 'bin', 'node'),
-    platform,
-  })
+  ): NpmrcSources =>
+    npmrcSources(tmp, env, { execPath: at('prefix', 'bin', 'node'), platform })
 
   /** The config autd builds for pnpm from `cwd`; XDG_CONFIG_HOME is `<tmp>/xdg` unless given. */
   const configFor = ({
@@ -85,12 +77,8 @@ describe('pnpm .npmrc layers', () => {
   const token = (value: string, host = BH) => `//${host}/:_authToken=${value}\n`
 
   beforeEach(() => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pnpm-')))
+    tmp = tempDir('autd-pnpm-', { real: true })
     write(path.join(project(), 'package.json'), '{}')
-  })
-
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   describe('#117 evidence', () => {

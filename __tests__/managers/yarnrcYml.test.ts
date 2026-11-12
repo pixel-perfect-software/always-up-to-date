@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import {
   berryRcFiles,
@@ -9,6 +8,7 @@ import {
   substituteBerry,
 } from '@/managers/yarn/yarnrcYml'
 import type { NpmrcSources } from '@/utils/npmrcLoader'
+import { npmrcSources, tempDir, write } from '../fixtures/files'
 import { readTls } from '../fixtures/registry'
 
 jest.mock('@/utils/logger')
@@ -131,23 +131,14 @@ describe('substituteBerry', () => {
 describe('berry settings', () => {
   let tmp: string
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
-  const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources => ({
-    env,
-    home: at('home'),
-    execPath: at('prefix', 'bin', 'node'),
-    platform: process.platform,
-  })
+  const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources =>
+    npmrcSources(tmp, env, { execPath: at('prefix', 'bin', 'node') })
   const proj = () => at('parent', 'proj')
 
   beforeEach(() => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yml-')))
+    tmp = tempDir('autd-yml-', { real: true })
     fs.mkdirSync(proj(), { recursive: true })
   })
-  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }))
 
   it('lists the directory, every parent, then the home file', () => {
     const files = berryRcFiles(proj(), sourcesFor())

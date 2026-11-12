@@ -1,7 +1,6 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import zlib from 'zlib'
 import type { PackageLookup, RegistryConfig } from '@/types'
@@ -20,6 +19,7 @@ import {
   ABBREVIATED_ACCEPT,
   type RegistryEndpoints,
 } from '@/utils/registryRequest'
+import { localRegistryConfig as configFor, tempDir } from '../fixtures/files'
 import {
   conditional,
   derive,
@@ -32,21 +32,6 @@ import {
 } from '../fixtures/registry'
 
 const DEPS_DEV_PREFIX = '/v3/systems/npm/packages/'
-
-const configFor = (
-  registry: string,
-  overrides: Partial<RegistryConfig> = {},
-): RegistryConfig => ({
-  registry,
-  scopedRegistries: {},
-  credentials: {},
-  strictSSL: true,
-  proxy: {},
-  fetchRetries: 0,
-  fetchTimeout: 5000,
-  maxSockets: 15,
-  ...overrides,
-})
 
 const ok = (name: string): Reply => ({ body: registryBody(name) })
 const packument = (name: string): Reply => ({
@@ -496,59 +481,47 @@ describe('registry reader', () => {
 
   describe('modified (#177)', () => {
     it('is on a public registry lookup read from its packument, and the cache holds it', async () => {
-      const dir = fs.realpathSync(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-reader-modified-')),
+      const dir = tempDir('autd-reader-modified-', { real: true })
+      const cache = createRegistryCache({ dir })
+      const { registry, reader } = await setup(
+        { registry: msRegistry() },
+        { depsDev: false, cache },
       )
-      try {
-        const cache = createRegistryCache({ dir })
-        const { registry, reader } = await setup(
-          { registry: msRegistry() },
-          { depsDev: false, cache },
-        )
 
-        const result = packageOf(await reader.lookup('ms'))
+      const result = packageOf(await reader.lookup('ms'))
 
-        expect(result.modified).toBe('2025-09-08T19:56:54.242Z')
-        expect(cache.get('packument', registry.url, 'ms')?.value.modified).toBe(
-          '2025-09-08T19:56:54.242Z',
-        )
-      } finally {
-        fs.rmSync(dir, { recursive: true, force: true })
-      }
+      expect(result.modified).toBe('2025-09-08T19:56:54.242Z')
+      expect(cache.get('packument', registry.url, 'ms')?.value.modified).toBe(
+        '2025-09-08T19:56:54.242Z',
+      )
     })
 
     it('is absent for a registry autd does not trust, while the cache still holds it', async () => {
-      const dir = fs.realpathSync(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-reader-modified-')),
+      const dir = tempDir('autd-reader-modified-', { real: true })
+      const mirror = await start(
+        replies({ '/mirror/ms': packument('ms.packument') }),
       )
-      try {
-        const mirror = await start(
-          replies({ '/mirror/ms': packument('ms.packument') }),
-        )
-        const registryConfig = configFor(`${mirror.url}mirror/`)
-        const client = createRegistryClient(registryConfig)
-        clients.push(client)
-        const cache = createRegistryCache({ dir })
-        const own = createRegistryReader({
-          registryConfig,
-          client: async () => client,
-          depsDev: true,
-          endpoints: {
-            publicRegistries: ['https://registry.npmjs.org'],
-            depsDev: 'http://127.0.0.1:1/',
-          },
-          cache,
-        })
+      const registryConfig = configFor(`${mirror.url}mirror/`)
+      const client = createRegistryClient(registryConfig)
+      clients.push(client)
+      const cache = createRegistryCache({ dir })
+      const own = createRegistryReader({
+        registryConfig,
+        client: async () => client,
+        depsDev: true,
+        endpoints: {
+          publicRegistries: ['https://registry.npmjs.org'],
+          depsDev: 'http://127.0.0.1:1/',
+        },
+        cache,
+      })
 
-        const result = packageOf(await own.lookup('ms'))
+      const result = packageOf(await own.lookup('ms'))
 
-        expect(result.modified).toBeUndefined()
-        expect(
-          cache.get('packument', `${mirror.url}mirror/`, 'ms')?.value.modified,
-        ).toBe('2025-09-08T19:56:54.242Z')
-      } finally {
-        fs.rmSync(dir, { recursive: true, force: true })
-      }
+      expect(result.modified).toBeUndefined()
+      expect(
+        cache.get('packument', `${mirror.url}mirror/`, 'ms')?.value.modified,
+      ).toBe('2025-09-08T19:56:54.242Z')
     })
 
     it('is absent for a scope routed to another registry', async () => {
@@ -1638,13 +1611,8 @@ describe('registry reader', () => {
     let clock: number
 
     beforeEach(() => {
-      dir = fs.realpathSync(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-reader-cache-')),
-      )
+      dir = tempDir('autd-reader-cache-', { real: true })
       clock = START
-    })
-    afterEach(() => {
-      fs.rmSync(dir, { recursive: true, force: true })
     })
 
     /** A handler a test can swap between runs. */

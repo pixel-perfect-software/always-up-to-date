@@ -1,7 +1,7 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { adapterFor } from '@/managers'
+import { tempDir } from '../fixtures/files'
 
 describe('adapter.overrides', () => {
   let cwd: string
@@ -14,11 +14,7 @@ describe('adapter.overrides', () => {
   }
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-overrides-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-overrides-')
   })
 
   describe('npm overrides', () => {

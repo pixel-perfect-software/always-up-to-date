@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import type {
   AlwaysUpToDateConfig,
@@ -21,6 +20,7 @@ import {
   installCaptured,
   WORKSPACE_ENTRIES,
 } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 import { reasonFor } from '../fixtures/reasons'
 
 const mockLogger = {
@@ -884,14 +884,8 @@ describe('filterPackages', () => {
     }
 
     beforeEach(() => {
-      cwd = fs.realpathSync(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'autd-license-')),
-      )
+      cwd = tempDir('autd-license-', { real: true })
       mockLogger.default.warn.mockClear()
-    })
-
-    afterEach(() => {
-      fs.rmSync(cwd, { recursive: true, force: true })
     })
 
     it('holds a target whose license differs from the installed one, naming both', async () => {
@@ -2335,15 +2329,9 @@ describe('engines.node (#199)', () => {
   }
 
   beforeEach(() => {
-    cwd = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-engines-')),
-    )
+    cwd = tempDir('autd-engines-', { real: true })
     mockLogger.default.warn.mockClear()
     mockLogger.default.debug.mockClear()
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('holds a target that excludes the declared range, naming both', async () => {
@@ -2521,17 +2509,11 @@ describe('npm engines walk-back (#200)', () => {
   let cwd: string
 
   beforeEach(() => {
-    cwd = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-engines-walk-')),
-    )
+    cwd = tempDir('autd-engines-walk-', { real: true })
     fs.writeFileSync(
       path.join(cwd, 'package.json'),
       JSON.stringify({ dependencies: { typescript: '>=5.0.0 <5.2.0' } }),
     )
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   const plan = async (

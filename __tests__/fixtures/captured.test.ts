@@ -1,7 +1,7 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import semver from 'semver'
+import { tempDir } from './files'
 import {
   capturedPackage,
   capturedRegistry,
@@ -101,11 +101,7 @@ describe('installPackages', () => {
   let cwd: string
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-install-fixture-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-install-fixture-')
   })
 
   it('writes node_modules entries under the root and a member, scoped names included', () => {

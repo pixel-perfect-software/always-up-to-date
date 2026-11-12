@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import type { UpdateResult } from '@/types'
 import {
@@ -9,6 +8,7 @@ import {
   readInstalledVersions,
 } from '@/utils/installed'
 import { installCaptured } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 import { reasonFor } from '../fixtures/reasons'
 
 describe('readInstalledVersions', () => {
@@ -27,11 +27,7 @@ describe('readInstalledVersions', () => {
     writeJson(path.join(cwd, dir, 'package.json'), pkg)
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-installed-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-installed-')
   })
 
   it('reads the installed version of a dependency and a devDependency', () => {
@@ -341,11 +337,7 @@ describe('readInstalledPackages', () => {
   }
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-installed-packages-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
+    cwd = tempDir('autd-installed-packages-')
   })
 
   it('marks a member linked from the root node_modules', () => {
@@ -400,24 +392,20 @@ describe('readInstalledPackages', () => {
   })
 
   it('does not mark a link that leaves the project', () => {
-    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-outside-'))
-    try {
-      writeJson(path.join(cwd, 'package.json'), {
-        dependencies: { lib: 'file:../lib' },
-      })
-      writeJson(path.join(outside, 'package.json'), {
-        name: 'lib',
-        version: '3.0.0',
-      })
-      fs.mkdirSync(path.join(cwd, 'node_modules'))
-      fs.symlinkSync(outside, path.join(cwd, 'node_modules/lib'), 'junction')
+    const outside = tempDir('autd-outside-')
+    writeJson(path.join(cwd, 'package.json'), {
+      dependencies: { lib: 'file:../lib' },
+    })
+    writeJson(path.join(outside, 'package.json'), {
+      name: 'lib',
+      version: '3.0.0',
+    })
+    fs.mkdirSync(path.join(cwd, 'node_modules'))
+    fs.symlinkSync(outside, path.join(cwd, 'node_modules/lib'), 'junction')
 
-      expect(readInstalledPackages(cwd, [{ name: 'lib' }])).toEqual({
-        lib: { version: '3.0.0', linked: false },
-      })
-    } finally {
-      fs.rmSync(outside, { recursive: true, force: true })
-    }
+    expect(readInstalledPackages(cwd, [{ name: 'lib' }])).toEqual({
+      lib: { version: '3.0.0', linked: false },
+    })
   })
 
   it('does not mark a plain directory', () => {
@@ -437,7 +425,7 @@ describe('readInstalledPackages link detection cost', () => {
   let cwd: string
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-installed-cost-'))
+    cwd = tempDir('autd-installed-cost-')
     fs.writeFileSync(
       path.join(cwd, 'package.json'),
       JSON.stringify({ dependencies: { a: '1.0.0', b: '1.0.0', c: '1.0.0' } }),
@@ -453,7 +441,6 @@ describe('readInstalledPackages link detection cost', () => {
 
   afterEach(() => {
     jest.restoreAllMocks()
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   const rows = [{ name: 'a' }, { name: 'b' }, { name: 'c' }]
@@ -498,7 +485,7 @@ describe('readInstalledManifests (#197)', () => {
   }
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-installed-lic-'))
+    cwd = tempDir('autd-installed-lic-')
     writeJson(path.join(cwd, 'package.json'), {
       dependencies: { ms: '~2.1.1' },
       workspaces: ['packages/*'],
@@ -507,10 +494,6 @@ describe('readInstalledManifests (#197)', () => {
       name: '@ws/a',
       dependencies: { ms: '2.1.2', mkdirp: '^0.3.0' },
     })
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it("reads a member's nested copy first, then the root's, with the license", () => {

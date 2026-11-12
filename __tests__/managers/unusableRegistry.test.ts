@@ -1,7 +1,6 @@
 import fs from 'fs'
 import http from 'http'
 import type { AddressInfo } from 'net'
-import os from 'os'
 import path from 'path'
 import { adapterFor } from '@/managers'
 import { check } from '@/pipeline'
@@ -18,6 +17,7 @@ import {
 import { createRegistrySession } from '@/utils/registry'
 import { describeUnusable, unusableRouteFor } from '@/utils/registryRequest'
 import { isolateNpmConfig } from '../fixtures'
+import { tempDir, write } from '../fixtures/files'
 
 // #129. Every row was probed 2026-10-27 against local registries and a
 // sentinel proxy for registry.npmjs.org: npm 11.19.1, pnpm 12.15.0, yarn
@@ -39,11 +39,6 @@ interface Setup {
 
 describe('a registry value the manager cannot use (#129)', () => {
   let tmp: string
-
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
 
   const route = (
     pm: SupportedPackageManager,
@@ -71,11 +66,7 @@ describe('a registry value the manager cannot use (#129)', () => {
   }
 
   beforeEach(() => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-bad-')))
-  })
-
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
+    tmp = tempDir('autd-bad-', { real: true })
   })
 
   const npmrc = (text: string): Setup => ({ project: { '.npmrc': text } })

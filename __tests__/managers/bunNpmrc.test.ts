@@ -1,7 +1,6 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import { bunNpmrcLayers } from '@/managers/bun/npmrc'
@@ -17,6 +16,7 @@ import {
   packumentUrl,
   registryFor,
 } from '@/utils/registryRequest'
+import { npmrcSources, tempDir, write } from '../fixtures/files'
 
 // Each decision below was probed on bun 1.4.4 (the latest), 2026-10-26; the
 // ids (b20, …) name the probe rows.
@@ -35,17 +35,12 @@ describe('bun .npmrc layers', () => {
   const home = (...parts: string[]) => at('home', ...parts)
   /** `$XDG_CONFIG_HOME/.npmrc`, with XDG_CONFIG_HOME = `<home>/.config` as the probes ran. */
   const xdgFile = () => home('.config', '.npmrc')
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
 
-  const sourcesFor = (env: NodeJS.ProcessEnv): NpmrcSources => ({
-    env,
-    home: home(),
-    execPath: at('prefix', 'bin', 'node'),
-    platform: 'linux',
-  })
+  const sourcesFor = (env: NodeJS.ProcessEnv): NpmrcSources =>
+    npmrcSources(tmp, env, {
+      execPath: at('prefix', 'bin', 'node'),
+      platform: 'linux',
+    })
 
   /** The config autd builds for bun from `cwd`; XDG_CONFIG_HOME is `<home>/.config` unless given. */
   const configFor = ({
@@ -78,12 +73,8 @@ describe('bun .npmrc layers', () => {
   const token = (value: string, host = BH) => `//${host}/:_authToken=${value}\n`
 
   beforeEach(() => {
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-bun-')))
+    tmp = tempDir('autd-bun-', { real: true })
     write(path.join(project(), 'package.json'), '{}')
-  })
-
-  afterEach(() => {
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   describe('#118 evidence', () => {

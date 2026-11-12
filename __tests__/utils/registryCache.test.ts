@@ -3,7 +3,6 @@ jest.mock('@/utils/logger')
 import { spawn } from 'child_process'
 import crypto from 'crypto'
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import zlib from 'zlib'
 import type { RegistryVersion } from '@/types'
@@ -22,6 +21,7 @@ import {
   parseDepsDevPackage,
   parseVersionManifest,
 } from '@/utils/registryDocuments'
+import { tempDir } from '../fixtures/files'
 import { registryBody } from '../fixtures/registry'
 
 const REGISTRY = 'https://registry.npmjs.org/'
@@ -32,12 +32,8 @@ let tmp: string
 let clock: number
 
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-cache-'))
+  tmp = tempDir('autd-cache-')
   clock = T0
-})
-
-afterEach(() => {
-  fs.rmSync(tmp, { recursive: true, force: true })
 })
 
 const open = (

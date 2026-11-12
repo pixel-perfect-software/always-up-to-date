@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { supportedManagers } from '@/managers/names'
 import npm from '@/managers/npm'
@@ -20,6 +19,7 @@ import {
   projectFor,
   writeWorkspaceProject,
 } from './fixtures'
+import { tempDir } from './fixtures/files'
 import {
   outputSchema,
   validateOutput,
@@ -108,10 +108,7 @@ const INSTALLED = {
 
 let cwd: string
 beforeEach(() => {
-  cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-output-schema-'))
-})
-afterEach(() => {
-  fs.rmSync(cwd, { recursive: true, force: true })
+  cwd = tempDir('autd-output-schema-')
 })
 
 describe('documents from real pipeline runs validate', () => {

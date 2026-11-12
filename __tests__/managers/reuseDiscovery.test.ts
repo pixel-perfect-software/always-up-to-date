@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -17,6 +16,7 @@ jest.mock('@/utils/runProcess', () => ({
 
 import logger from '@/utils/logger'
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from '../fixtures/files'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -38,16 +38,12 @@ describe.each([
   let cwd: string
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-reuse-${pm}-`))
+    cwd = tempDir(`autd-reuse-${pm}-`)
     fs.writeFileSync(
       path.join(cwd, 'package.json'),
       JSON.stringify({ dependencies: { dayjs: '^1.11.9' } }),
     )
     mockedRunProcess.mockResolvedValue({ stdout: '', stderr: '' })
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('applies without discovering again', async () => {

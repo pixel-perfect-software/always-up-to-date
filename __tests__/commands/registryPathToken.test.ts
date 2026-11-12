@@ -1,11 +1,11 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import reportFailure from '@/commands/reportFailure'
 import { update } from '@/pipeline'
 import { openProject } from '@/project'
 import logger from '@/utils/logger'
 import { isolateNpmConfig, prependPath, writeNodeShim } from '../fixtures'
+import { tempDir } from '../fixtures/files'
 import { replies, startRegistry, type TestRegistry } from '../fixtures/registry'
 
 const TOKEN = 'SECRET-path-token'
@@ -32,7 +32,7 @@ describe('a registry path token in a manager', () => {
     server = await startRegistry(replies({}))
     host = `127.0.0.1:${server.port}`
     const registry = `http://${host}/${TOKEN}/acme/`
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-redact-'))
+    root = tempDir('autd-redact-')
     const cwd = path.join(root, 'project')
     const bin = path.join(root, 'bin')
     fs.mkdirSync(cwd)
@@ -75,7 +75,6 @@ describe('a registry path token in a manager', () => {
     logger.setJsonOutput(false)
     logger.configure({})
     process.exitCode = undefined
-    fs.rmSync(root, { recursive: true, force: true })
   })
 
   it('stays out of the --json error object and the debug output', async () => {

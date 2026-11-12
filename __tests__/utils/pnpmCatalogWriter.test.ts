@@ -1,18 +1,15 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { readPnpmCatalogs, updatePNPMWorkspaceYAML } from '@/utils/catalogs'
 import { nextVersionSpec } from '@/utils/versionSpecs'
+import { tempDir } from '../fixtures/files'
 
 // The catalog writer and the one pnpm yaml reader agree on what is writable
 // (#230): every catalog entry `parsePnpmYaml` reads, the writer can move.
 
 let cwd: string
 beforeEach(() => {
-  cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-catalog-writer-'))
-})
-afterEach(() => {
-  fs.rmSync(cwd, { recursive: true, force: true })
+  cwd = tempDir('autd-catalog-writer-')
 })
 
 const write = async (

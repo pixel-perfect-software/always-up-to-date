@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -23,6 +22,7 @@ jest.mock('@/utils/runProcess', () => ({
 }))
 
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from '../fixtures/files'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -54,15 +54,11 @@ describe.each([
   let cwd: string
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), `autd-step-${pm}-`))
+    cwd = tempDir(`autd-step-${pm}-`)
     fs.writeFileSync(
       path.join(cwd, 'package.json'),
       JSON.stringify({ dependencies: { dayjs: '^1.11.9' } }),
     )
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('rejects with an apply StepError when an in-range apply fails', async () => {

@@ -1,7 +1,5 @@
 jest.mock('@/utils/logger')
 
-import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { bunReleaseAgeGate } from '@/managers/bun/bunfig'
 import { npmReleaseAgeGate } from '@/managers/npm'
@@ -11,6 +9,7 @@ import { openProject, type Project } from '@/project'
 import type { SupportedPackageManager } from '@/types'
 import type { NpmrcSources } from '@/utils/npmrcLoader'
 import { installPackages, isolateNpmConfig } from './fixtures'
+import { npmrcSources, tempDir, write } from './fixtures/files'
 import { startRegistry, type TestRegistry } from './fixtures/registry'
 
 // #168: each manager's release-age gate, a security setting autd never
@@ -20,22 +19,11 @@ import { startRegistry, type TestRegistry } from './fixtures/registry'
 
 let tmp: string
 const at = (...parts: string[]) => path.join(tmp, ...parts)
-const write = (file: string, content: string) => {
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, content)
-}
-const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources => ({
-  env,
-  home: at('home'),
-  execPath: at('prefix', 'bin', 'node'),
-  platform: process.platform,
-})
+const sourcesFor = (env: NodeJS.ProcessEnv = {}): NpmrcSources =>
+  npmrcSources(tmp, env, { execPath: at('prefix', 'bin', 'node') })
 
 beforeEach(() => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-age-')))
-})
-afterEach(() => {
-  fs.rmSync(tmp, { recursive: true, force: true })
+  tmp = tempDir('autd-age-', { real: true })
 })
 
 describe('pnpmReleaseAgeGate', () => {

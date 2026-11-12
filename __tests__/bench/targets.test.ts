@@ -1,4 +1,3 @@
-import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import {
@@ -10,6 +9,7 @@ import {
   startupMode,
   TARGETS,
 } from '../../bench/targets'
+import { tempDir } from '../fixtures/files'
 
 describe('selectedTargets', () => {
   it('runs every target when unset or blank', () => {
@@ -122,11 +122,7 @@ describe('jsonPathFrom', () => {
   let dir: string
 
   beforeEach(() => {
-    dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'autd-json-')))
-  })
-
-  afterEach(() => {
-    fs.rmSync(dir, { recursive: true, force: true })
+    dir = tempDir('autd-json-', { real: true })
   })
 
   it('writes no document when unset or blank', () => {
