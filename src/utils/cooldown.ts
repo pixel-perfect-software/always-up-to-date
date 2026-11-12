@@ -2,7 +2,7 @@ import type { ReleaseType } from 'semver'
 import type { CooldownByType, CooldownConfig } from '@/types'
 import { MS_PER_DAY, parseDuration } from './duration'
 
-export interface NormalizedCooldown {
+interface NormalizedCooldown {
   patch: number
   minor: number
   major: number
@@ -54,7 +54,7 @@ export const cooldownDaysFor = (
   }
 }
 
-export interface CooldownEvaluation {
+interface CooldownEvaluation {
   gated: boolean
   ageDays: number | undefined
   requiredDays: number

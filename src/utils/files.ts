@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import semver from 'semver'
+import { parsePnpmYaml, pnpmCatalogs } from '@/managers/pnpm/workspaceYaml'
 import type { ManifestPlan } from '@/types'
 import { parseAlias } from './aliasSpec'
 import { DEPENDENCY_FIELDS } from './dependencySpecs'
@@ -253,8 +254,9 @@ const splitYamlValue = (
  * gets the catalog's name, the entry's name and its spec; a spec it returns
  * replaces the entry's, `undefined` leaves the line alone. Every other block
  * (`overrides`, `peerDependencyRules`, …) and every other line stays as it
- * was, and an entry keeps its quotes and trailing comment. The writer and
- * `readPnpmCatalogs` share this walk, so they agree on what an entry is.
+ * was, and an entry keeps its quotes and trailing comment. Only the writer
+ * uses it; reading goes through `parsePnpmYaml` (#229), and a test keeps
+ * the two agreeing on what an entry is.
  */
 const mapPnpmCatalogEntries = (
   text: string,
@@ -346,18 +348,11 @@ export const updatePNPMWorkspaceYAML = async (
 
 /**
  * The catalogs of pnpm-workspace.yaml by name (`default` for `catalog:` and
- * for `catalogs: default:`), read by the walk the writer uses.
+ * for `catalogs: default:`), read by the one pnpm yaml reader (#229).
  */
 export const readPnpmCatalogs = (
   yaml: string,
-): Record<string, Record<string, string>> => {
-  const catalogs: Record<string, Record<string, string>> = {}
-  mapPnpmCatalogEntries(yaml, (catalog, name, spec) => {
-    ;(catalogs[catalog] ??= {})[name] = spec
-    return undefined
-  })
-  return catalogs
-}
+): Record<string, Record<string, string>> => pnpmCatalogs(parsePnpmYaml(yaml))
 
 /**
  * Where a bun package.json keeps its catalogs. Bun reads them from

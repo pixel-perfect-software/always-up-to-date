@@ -4,7 +4,8 @@ Status: proposed 2026-10-23 from an analysis of v1.0.31. M0 and M1 done and clos
 released as 2.0.0. M2 done and closed 2026-10-23, released as 2.1.0 on 2026-10-24. M3 planned
 2026-10-26 from a new baseline on 2.1.0, done and closed 2026-11-06, finished in 3.5.0 on
 2026-11-06. M4 planned 2026-11-06, done and closed 2026-11-09, released in 3.6.0 on 2026-11-08
-and 4.0.0 on 2026-11-09. M5 is next.
+and 4.0.0 on 2026-11-09. M4.1 planned 2026-11-12 from a UX, cleanup and performance audit of
+4.0.0; it lands before M5.
 
 Tracking: GitHub milestones M0 through M6 at
 https://github.com/pixel-perfect-software/always-up-to-date/milestones. Pull requests
@@ -226,6 +227,28 @@ Done when: an update that breaks a peer range, in either direction, or changes l
 reported with a reason and held unless a `latest` rule allows it; a deprecated target or an
 engines mismatch is flagged the same way; `--json` has a version and a reason on every row.
 
+### M4.1: Polish (medium)
+
+Goal: 4.x does what it says before the code is compiled to binaries in M5.
+
+- Settings fail closed: a typo in `cooldown`, or `"false"` as a string, is an error, not a
+  setting turned off. An unknown key is a warning.
+- No silent no-op: `update <name>` names a name it can't act on, `-i` without a terminal says
+  so, and errors go to stderr whatever `silent` says.
+- The report shows the version a hold judged, not `latest`.
+- `schema/output.schema.json` admits the fields and reason codes 4.x may add.
+- Tests are hermetic (no request off localhost) and pass under parallel load.
+- Dead code, unused exports and package cruft go; cheap CPU wins in discovery and plan land
+  (parse versions once, gzip level 1, no collator, fewer manifest parses).
+- The context docs are cut to a stated size and match the code.
+- Then the structural splits (`filterPackages` passes, the registry modules, one
+  `pnpm-workspace.yaml` reader, one beyond-range writer, shared test helpers) and three M4
+  follow-ups: the installed-peer hold without `node_modules`, the engines walk-back against a
+  declared range, and target manifests read during lookups.
+
+Done when: every M4.1 issue is closed; `pnpm test` passes 10 parallel runs with no failure and
+sends no request off localhost; `check` stays under 1 s cold and 0.3 s warm on the perf gate.
+
 ### M5: Portability and distribution (small, plus validation)
 
 Goal: a machine without Node can run autd.
@@ -337,3 +360,30 @@ Filed 2026-11-06, in pick-up order. #197, #198 and #199 depend on #196.
 | A target whose `engines` exclude the project's Node moves with no warning              | M4        | #199  |
 | Native `wanted` can pick a version whose `engines` exclude the running Node            | M4        | #200  |
 | `--json` has no version, moving rows have no reason, and `check --json` isn't an array | M4        | #201  |
+
+## M4.1 issues
+
+Filed 2026-11-12, in pick-up order. The first eleven are the pass itself; the rest follow it. #247 was found while verifying #229.
+
+| Gap or defect                                                                                  | Milestone | Issue |
+| ---------------------------------------------------------------------------------------------- | --------- | ----- |
+| Unit tests send a request to `npm-proxy.fury.io` and fail under load on 100 ms deadlines       | M4.1      | #216  |
+| A typo in `cooldown` turns the cooldown off, and `"silent": "false"` silences every line       | M4.1      | #217  |
+| `schema/output.schema.json` rejects fields and reason codes that 4.x may add within version 1  | M4.1      | #218  |
+| Dead stubs, the `src/utils` barrel and unused exports, and `pnpm publish` builds twice         | M4.1      | #219  |
+| Discovery re-parses versions on every sort comparison, and the cache gzips at level 6          | M4.1      | #220  |
+| A held row shows `latest` as its target, with the age and step of the version the plan judged  | M4.1      | #221  |
+| `autd update <name>` does nothing and exits 0 when the name isn't an outdated dependency       | M4.1      | #222  |
+| Errors and warnings print to stdout, and `silent: true` hides a failure's message              | M4.1      | #223  |
+| `autd help <command>` fails, and `--help` names the npm package and npm alone                  | M4.1      | #224  |
+| The report names a range hold four ways and prints a `latest` rule's warnings as plain notes   | M4.1      | #225  |
+| The context docs load about 21k tokens per session and contradict the code                     | M4.1      | #226  |
+| `filterPackages.ts` holds the plan's orchestrator and eight passes in 1,043 lines              | M4.1      | #227  |
+| `createRegistryReader` is one 617-line closure, and two registry modules mix two concerns each | M4.1      | #228  |
+| Six modules parse `pnpm-workspace.yaml`, each its own way                                      | M4.1      | #229  |
+| Each adapter repeats the beyond-range write, and `files.ts` mixes three concerns               | M4.1      | #230  |
+| Test helpers are redefined per file                                                            | M4.1      | #231  |
+| The installed-peer hold never fires without `node_modules`                                     | M4.1      | #232  |
+| npm's engines walk-back can stop at a version the declared `engines.node` then holds           | M4.1      | #233  |
+| Target manifests are read only after every lookup settles                                      | M4.1      | #234  |
+| An empty `minimumReleaseAge:` turns off autd's copy of pnpm's release-age gate                 | M4.1      | #247  |

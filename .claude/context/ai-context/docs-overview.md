@@ -21,13 +21,11 @@ Documentation registry and index for the Always Up To Date project. This file ma
 
 ### Tier 2 (Component-Level)
 
-| Component        | Path                        | Description                                                      |
-| ---------------- | --------------------------- | ---------------------------------------------------------------- |
-| Package Managers | `src/managers/CLAUDE.md`    | Manager abstraction, CommandRunner, detection, workspace support |
-| CLI Commands     | `src/commands/CLAUDE.md`    | Commander.js setup, command registration, binary aliases         |
-| Utilities        | `src/utils/CLAUDE.md`       | Config system, update logic, logging, file ops, package grouping |
-| Migrator         | `src/migrator/CLAUDE.md`    | Framework migration rules (stub)                                 |
-| PR Generator     | `src/prGenerator/CLAUDE.md` | Automated PR creation (stub)                                     |
+| Component        | Path                     | Description                                                      |
+| ---------------- | ------------------------ | ---------------------------------------------------------------- |
+| Package Managers | `src/managers/CLAUDE.md` | Manager abstraction, CommandRunner, detection, workspace support |
+| CLI Commands     | `src/commands/CLAUDE.md` | Commander.js setup, command registration, binary aliases         |
+| Utilities        | `src/utils/CLAUDE.md`    | Config system, update logic, logging, file ops, package grouping |
 
 ### Tier 3 (Feature-Specific)
 
@@ -53,10 +51,6 @@ src/
   managers/                 # One adapter per package manager (adapter.ts interface, index.ts registry, names.ts the manager names with no adapter import)
     CLAUDE.md
   utils/                    # Shared utilities
-    CLAUDE.md
-  migrator/                 # Framework migration (stub)
-    CLAUDE.md
-  prGenerator/              # PR automation (stub)
     CLAUDE.md
 scripts/
   build.mts                 # pnpm run build: empties dist/, bundles src/index.ts with esbuild into dist/index.js, fails on a warning, runs the checks in guards.ts, writes dist/third-party-licenses.txt; removes dist/ when a check fails (#109)
@@ -88,7 +82,7 @@ __tests__/
   releaseAgeGates.test.ts   # #168: pnpm, bun and npm release-age settings read from their files and env, and check through the real openProject against a local registry with set publish times, per manager's gate; a registry that is not public npm serving an old abbreviated `modified` still has a fresh version held (#177)
   integrationHarness.test.ts # The harness's pure helpers (pinWorkspaceYaml, the lockfile rewriters), and managerEnv keeping a developer's pnpm and bun global config out of a run (#175)
   pipeline.test.ts          # The pipeline plans with project.config and never loads it; reports a package the manager left in place; npm workspace rows; a cooldown fallback within the range package.json declares (#151) and an alias looked up by its target (#152); a deprecated target held from discovery's lookups, with no lookup of its own (#195); a license change held, a `latest` rule moving it with a warning, and one warning for rows with no manifest (#197); an npm lockfile-only project (no `node_modules`) holding a target whose own peer the lockfile's version fails (#198)
-  outputSchema.test.ts      # #201: schema/output.schema.json compiles under Ajv strict mode and agrees with the code (reason codes, outcomes, managers, semver diff types); documents from real pipeline runs (single package, workspace, member) validate; every code and outcome validates; error documents; negative cases (a bare 3.x array, damaged documents)
+  outputSchema.test.ts      # #201: schema/output.schema.json compiles under Ajv strict mode and agrees with the code (reason codes, outcomes, managers, semver diff types); documents from real pipeline runs (single package, workspace, member) validate; every code and outcome validates; error documents; negative cases (a bare 3.x array, damaged documents); a later 4.x document (extra fields, an unknown code) validates against the published schema and fails the strict form (#218)
   singlePackageJson.test.ts # Snapshot of single-package check/plan/update JSON documents (registry captures as of the capture date plus a written node_modules, `autd` normalised to a placeholder), identical for all four managers; reviewed once for #106 and regenerated once for #201: never update it to make a change pass
   commandRunner.test.ts     # Success checks, stderr-at-debug, failure messages
   commands/
@@ -97,13 +91,13 @@ __tests__/
     failures.test.ts        # Failed steps and a malformed config: exit code 1, one message, the JSON error document
     registryPathToken.test.ts # A token in a registry URL path never reaches a message: the client's errors, a fake npm's stderr, debug lines and the --json error object (#131)
   detectPackageManager.test.ts  # Detection order on real temp dirs: --pm, packageManager, devEngines, lockfiles; stray-lockfile logging; from a member, the root's declaration and lockfile, the member's own first, files named from the cwd (#123)
-  startup.test.ts           # Loading the CLI loads none of the tracked modules: no action, pipeline, project, manager, utils barrel, logger, config, semver, colorette or @inquirer/prompts, and never the registry client, reader or cache (#109; the build's startup check covers every bundled input)
+  startup.test.ts           # Loading the CLI loads none of the tracked modules: no action, pipeline, project, manager, logger, config, semver, colorette or @inquirer/prompts, and never the registry client, reader or cache (#109; the build's startup check covers every bundled input)
   fixtures/
     registry.ts, tls/       # Local registry/proxy servers (replies() for exact url tables, registryBody() which gunzips a .body.gz, derive()); test-only TLS material (generate.sh)
     registry/               # Verbatim curl captures (.body; .body.gz over 100 KB decoded) of dist-tags, deps.dev and packuments: ms, @types/ms, mkdirp, then yarn, pnpm, dayjs, debug, express, semver, zod, axios, lodash, next, qs, typescript for #106 (packuments only for yarn and pnpm); `<name>.<version>.manifest.body`, ten captures of one version's own document for #196 (async, minimatch, mkdirp, ms, @types/ms, react-redux, and a nonexistent ms version); README.md lists status, type, wire and decoded size and the checks; per-version manifests for #196-#197: ua-parser-js 1.0.39 (MIT) and 2.0.0 (AGPL-3.0-or-later), ms 2.1.1, pako 2.1.0 ((MIT AND Zlib)), and for #199 commander 14.0.0 (engines >=20) and eslint 9.0.0 (^18.18.0 || ^20.9.0 || >=21.1.0), listed in the README's "Licenses" section
     index.ts                # readFixture(), exitError(), fakeRegistry(), projectFor(), writeWorkspaceProject(), WORKSPACE_ENTRIES helpers; capturedPackage(name, { source, asOf }) and capturedRegistry(names, options) build RegistryPackage / a session from the captures, installPackages(cwd, dir, versions) writes node_modules, installCaptured(cwd, dir, name, version) writes one installed package from a version-manifest capture, capturedManifest(name, version) reads it, readRegistryBody() and derive() are re-exported from registry.ts
     bench/                  # document.json (a real `AUTD_BENCH_PM=npm AUTD_BENCH_JSON=… pnpm run bench` document, npm 11.19.1 on macOS arm64), check-debug.txt (a real `check` with `{ depsDev: false, debug: true, beyondRange: "major", cooldown: 7 }` on an installed `ms@2.0.0`, which prints the `Reading the full packument of ms` line; paths scrubbed, the sandbox's certificate-trust noise lines removed)
-    outputSchema.ts         # validateOutput(document): Ajv 8.17.1 (test-only devDependency) compiled once, strict mode, from schema/output.schema.json
+    outputSchema.ts         # validateOutput(document): Ajv 8.17.1 (test-only devDependency) compiled once, strict mode, from a strict form of schema/output.schema.json derived at load time (every object closed, reason.code an enum of REASON_CODES, #218); validatePublished(document) uses the schema as published
     reasons.ts              # reasonFor(message): the Reason a legacy reason string stands for, so tests state a row by its text
     cacheWriter.ts          # Child process for registryCache.test.ts's concurrent-writers test: puts one key repeatedly with a value only that writer could have made, so a reader can tell a whole entry from a torn one
     captured.test.ts        # The captured-registry helpers: sources, asOf, latest fallback, unplanned names, installPackages
@@ -120,6 +114,7 @@ __tests__/
     aliases.test.ts         # An npm: alias on all four managers: manifest key, looked up by the target, never by the key
     unusableRegistry.test.ts # #129: a registry value a manager cannot use (unparseable, not http(s), holding a variable) fails check/update with a discover StepError naming the file and key when a package routes through it, sending no request; pnpm's skip of a `${…}` in a project file; rows probed against npm, pnpm, yarn v1 and bun
     pnpmRegistries.test.ts  # pnpm yaml registry routes: both shapes, scopes, "@", ${…}, ecosystem, CRLF; env expansion for the global file; substitutePnpm
+    pnpmWorkspaceYaml.test.ts # #229: one pnpm-workspace.yaml through every consumer (packages, member root, catalogs, overrides, save style, nodeVersion, registries, fetchTimeout, release-age gate): CRLF, BOM, comments, quotes, flow forms, tabs, anchors, indentation, empty values, duplicate keys, a tab before content, YAML scalars; the shared accessors
     pnpmNpmrc.test.ts       # pnpm 12 layers on temp dirs: #117 evidence rows, one test per probe decision (p20-p55), config directory per platform (Linux and Windows source-read), workspace members, `fetchTimeout` / `fetchRetries` from yaml and env only (#125)
     yarnNpmrc.test.ts       # yarn v1 .npmrc layers on temp dirs: #122 evidence rows, the comment's example, one test per probe decision (y20-y32), the filesystem root, berry reads no .npmrc (#107)
     yarnrc.test.ts          # yarn v1 .yarnrc grammar (quotes, comments, CRLF, --registry), routes, precedence against .npmrc, env and ~/.yarnrc, workspace parents; what yarnV1Auth carries (#126)
@@ -137,6 +132,7 @@ __tests__/
     cooldown.test.ts        # Normalize/evaluate cooldown gate
     duration.test.ts        # parseDuration + formatAgeDays
     files.test.ts           # File operations and version parsing tests; readPnpmCatalogs / readBunCatalogs and their agreement with the pnpm writer
+    yaml.test.ts            # parseYaml: URL keys, `>=` ranges against block scalar headers, nested flow sequences, tabs in blank lines, the `flowMaps` and `anchors` options and their absence for berry (#229)
     nodeFit.test.ts         # fitRunningNode (#200) on the typescript captures: 5.1.6 walked to 5.0.4 in three descending reads, the cap, an unknown manifest, a fitting target and no Node reading nothing, a deprecated or cooldown-gated candidate skipped, one walk for rows sharing it, an invalid engines range walked
     targetManifests.test.ts # readTargetManifests / targetManifestOf (#196): one read per name/target pair, aliases by the looked-up name, held and unmoved rows skipped, empty without versionManifest
     filterPackages.test.ts  # Package filtering, manifests read only for rows still moving (#196); the engines pass (#199): held against a declared range (member then root) or the running Node, `latest` warning, no `engines.node` moving, a Bun runtime skipped, pnpm's `nodeVersion` label, targeting, cooldown integration, cooldown fallbacks and pinned rows (#147), a fallback only within the declared range (#151), an alias judged by its target (#152), releaseTimes asked with { current, target } and never for a zero-day step, splitUpdates with pinMembers (#127); deprecated targets on registry captures: held past the range, moved with a warning under a `latest` rule or from an installed version with the same deprecation, the message on one line (#195); the license pass on ua-parser-js 1.0.39 and 2.0.0 captures: held, warned under `latest`, installed license from node_modules or the version manifest, unknown manifests moving (#197); a target's own peers (#198): held against an installed or moving peer, `latest` warning, missing and optional peers, a `workspace:*` range skipped, member then root rows, the injected `installed` reader

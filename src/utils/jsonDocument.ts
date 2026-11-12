@@ -14,7 +14,7 @@ import type { OUTCOMES } from './reasons'
 export const OUTPUT_VERSION = 1
 
 /** One planned row, with every key always present. */
-export interface JsonRow {
+interface JsonRow {
   name: string
   /** The manifest's directory relative to the project root; `"."` for the root or a single package. */
   workspace: string
@@ -32,7 +32,7 @@ export interface JsonRow {
   releaseAgeDays: number | null
 }
 
-export interface PlanDocument {
+interface PlanDocument {
   version: typeof OUTPUT_VERSION
   /** The version of autd that printed the document. */
   autd: string

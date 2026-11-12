@@ -26,7 +26,7 @@ import {
  * collapsed each `\\` pair, so two backslashes before `${T}` read as one and
  * give the literal where bun sends `\VAL` (and three read as two, four as two).
  */
-export const substituteBun = (text: string, env: NodeJS.ProcessEnv): string => {
+const substituteBun = (text: string, env: NodeJS.ProcessEnv): string => {
   const whole = /^\\?\$([A-Za-z_][A-Za-z0-9_]*)$/.exec(text)
   if (whole) return env[whole[1]] ?? text.replace(/^\\/, '')
   return text.replace(
@@ -77,10 +77,7 @@ const exists = (file: string): boolean => {
  *    directory included (b20, b20b), and only for an absolute XDG (b21);
  * 3. `~/.npmrc`.
  */
-export const bunUserNpmrc = (
-  cwd: string,
-  { env, home }: NpmrcSources,
-): string => {
+const bunUserNpmrc = (cwd: string, { env, home }: NpmrcSources): string => {
   const configured =
     nonEmpty(env.NPM_CONFIG_USERCONFIG) ?? nonEmpty(env.npm_config_userconfig)
   if (configured !== undefined) {

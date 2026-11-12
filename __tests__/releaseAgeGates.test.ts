@@ -85,11 +85,46 @@ describe('pnpmReleaseAgeGate', () => {
   })
 })
 
+describe('pnpmReleaseAgeGate with an empty value (#247)', () => {
+  const xdg = (env: NodeJS.ProcessEnv = {}) =>
+    sourcesFor({ XDG_CONFIG_HOME: at('xdg'), ...env })
+
+  it.each([
+    ['a key with no value', 'minimumReleaseAge:\n'],
+    ['an empty string', "minimumReleaseAge: ''\n"],
+    ['a blank string', "minimumReleaseAge: '  '\n"],
+  ])('keeps the one-day default for %s', (_label, yaml) => {
+    write(at('pnpm-workspace.yaml'), yaml)
+    expect(pnpmReleaseAgeGate(tmp, xdg()).minutes).toBe(1440)
+  })
+
+  it('keeps the default for an empty config.yaml key and an empty env value', () => {
+    write(at('xdg', 'pnpm', 'config.yaml'), 'minimumReleaseAge:\n')
+    expect(pnpmReleaseAgeGate(tmp, xdg()).minutes).toBe(1440)
+    expect(
+      pnpmReleaseAgeGate(tmp, xdg({ pnpm_config_minimum_release_age: '' }))
+        .minutes,
+    ).toBe(1440)
+  })
+
+  it('still reads 0 as off', () => {
+    write(at('pnpm-workspace.yaml'), 'minimumReleaseAge: 0\n')
+    expect(pnpmReleaseAgeGate(tmp, xdg()).minutes).toBe(0)
+  })
+})
+
 describe('bunReleaseAgeGate', () => {
   const xdg = () => sourcesFor({ XDG_CONFIG_HOME: at('xdg') })
   beforeEach(() => write(at('package.json'), '{"name":"p"}'))
 
   it('is off with nothing set (b01)', () => {
+    expect(bunReleaseAgeGate(tmp, xdg())).toBeUndefined()
+  })
+
+  it('is off for an empty value, as for an unset one (#247)', () => {
+    write(at('bunfig.toml'), '[install]\nminimumReleaseAge =\n')
+    expect(bunReleaseAgeGate(tmp, xdg())).toBeUndefined()
+    write(at('bunfig.toml'), '[install]\nminimumReleaseAge = ""\n')
     expect(bunReleaseAgeGate(tmp, xdg())).toBeUndefined()
   })
 
@@ -115,6 +150,11 @@ describe('bunReleaseAgeGate', () => {
 describe('npmReleaseAgeGate', () => {
   it('is off with nothing set (n01)', () => {
     expect(npmReleaseAgeGate({})).toBeUndefined()
+  })
+
+  it('is off for an empty value, as for an unset one (#247)', () => {
+    expect(npmReleaseAgeGate({ 'min-release-age': '' })).toBeUndefined()
+    expect(npmReleaseAgeGate({ 'min-release-age': null })).toBeUndefined()
   })
 
   it('reads min-release-age in days, its excludes, and before (n02, n03, n10, n11)', () => {
@@ -205,6 +245,15 @@ describe('check under each manager’s gate', () => {
       'pnpm',
       'its one-day default (p01)',
       { '.npmrc': 'registry=REGISTRY\n' },
+      '1.0.1',
+    ],
+    [
+      'pnpm',
+      'an empty minimumReleaseAge, unset to pnpm 12.18.0 (#247)',
+      {
+        '.npmrc': 'registry=REGISTRY\n',
+        'pnpm-workspace.yaml': 'minimumReleaseAge:\n',
+      },
       '1.0.1',
     ],
     [

@@ -93,7 +93,6 @@ src/
 │   ├── index.ts          # Command exports
 │   ├── check.ts          # Check for outdated dependencies
 │   ├── update.ts         # Update dependencies
-│   ├── migrate.ts        # Migration command (in development)
 │   └── help.ts           # Help command
 ├── managers/              # Package manager implementations
 │   ├── index.ts          # Manager exports
@@ -102,11 +101,6 @@ src/
 │   ├── yarn/             # yarn implementation (coming soon)
 │   ├── pnpm/             # pnpm implementation (coming soon)
 │   └── bun/              # bun implementation (coming soon)
-├── migrator/              # Migration system (in development)
-│   ├── index.ts
-│   └── rules/            # Migration rules for packages
-├── prGenerator/           # PR generation system (in development)
-│   └── index.ts
 └── utils/                 # Utility functions
     ├── index.ts
     ├── logger.ts          # Logging utilities
@@ -209,13 +203,6 @@ class YarnManager extends CommandRunner {
 4. Add to `PackageManager` factory in `src/managers/packageManager.ts`
 5. Update lock file detection in `src/detectPackageManager.ts`
 6. Write tests for the new package manager
-
-### Adding Migration Rules
-
-1. Create rule files in `src/migrator/rules/[package-name]/`
-2. Follow the planned migration rule structure
-3. Register rules with the migrator system
-4. Write tests for migration rules
 
 ### Adding New Commands
 
@@ -337,9 +324,8 @@ Brief description of changes
 ### High Priority
 
 1. **Package Manager Support**: Complete yarn, pnpm, and bun implementations
-2. **Migration System**: Build out the migration rule system
-3. **Error Handling**: Improve error messages and handling
-4. **Testing**: Add comprehensive tests for existing functionality
+2. **Error Handling**: Improve error messages and handling
+3. **Testing**: Add comprehensive tests for existing functionality
 
 ### Medium Priority
 

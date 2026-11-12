@@ -66,6 +66,18 @@ describe('init command', () => {
     expect(mockedSaveJsonConfig).not.toHaveBeenCalled()
   })
 
+  it('writes the config when only a legacy .always-up-to-date file exists', async () => {
+    // loadConfig never reads the legacy file, so it must not stop init.
+    mockCheckIfFileExists.mockImplementation((file) =>
+      file.endsWith(`${path.sep}.always-up-to-date`),
+    )
+    await program.parseAsync(['node', 'test', 'init'])
+    expect(mockedSaveJsonConfig).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringMatching(/\.always-up-to-date\.json$/),
+    )
+  })
+
   it("writes where config is read: the nearest package.json's directory", async () => {
     const tmp = fs.realpathSync(
       fs.mkdtempSync(path.join(os.tmpdir(), 'autd-init-')),

@@ -30,7 +30,7 @@ export type Catalogs = Record<string, Record<string, string>>
 /** What a registry dependency asks for: a semver range, or the `latest` dist-tag. */
 export type DependencySpec = { range: string } | { tag: 'latest' }
 
-export type ClassifiedSpec =
+type ClassifiedSpec =
   | { kind: 'registry'; name: string; spec: DependencySpec }
   | {
       kind: 'skipped'

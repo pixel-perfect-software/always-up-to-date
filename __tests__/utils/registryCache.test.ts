@@ -365,6 +365,22 @@ describe('round trips', () => {
     },
   )
 
+  it('reads an entry gzipped at level 6, as earlier versions wrote them', () => {
+    const cache = open()
+    cache.put('deps.dev', 'https://api.deps.dev/v3/', 'pkg', next ?? [], PUBLIC)
+    const [file] = walk(kindDir(cache, 'deps.dev')).filter((f) =>
+      f.endsWith('.json.gz'),
+    )
+    const json = zlib.gunzipSync(fs.readFileSync(file))
+    const level1 = fs.statSync(file).size
+    fs.writeFileSync(file, zlib.gzipSync(json, { level: 6 }))
+
+    expect(fs.statSync(file).size).toBeLessThan(level1)
+    expect(cache.get('deps.dev', 'https://api.deps.dev/v3/', 'pkg')).toEqual(
+      expect.objectContaining({ value: next, fresh: true }),
+    )
+  })
+
   it('answers with the real deps.dev capture', () => {
     expect(next?.length).toBeGreaterThan(100)
   })

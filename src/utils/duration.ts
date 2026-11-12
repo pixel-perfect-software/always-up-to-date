@@ -29,37 +29,42 @@ const UNIT_TO_DAYS: Record<string, number> = {
   years: 365,
 }
 
+const DURATION = /^(\d+(?:\.\d+)?)\s*([a-z]*)$/
+
 /**
- * Parse a duration into days. Accepts:
- *   - a number (interpreted as days)
- *   - a string with a unit ('1 week', '7 days', '24h', '2 months')
+ * Read a duration into days, or undefined when it is not one. Accepts:
+ *   - a number of days: finite and not negative
+ *   - a string with a unit ('1 week', '7 days', '24h', '2 months', any case)
  *   - a bare numeric string ('7' → 7 days)
- * Returns 0 for anything unparseable so callers can fail open.
+ * Nothing else: no sign, exponent, hex or leading dot, which is also what
+ * `schema/config.schema.json`'s pattern allows. The config loader uses this
+ * to reject what it cannot read.
  */
-export const parseDuration = (value: number | string | undefined): number => {
+export const readDuration = (
+  value: number | string | undefined,
+): number | undefined => {
   if (typeof value === 'number') {
-    return Number.isFinite(value) && value >= 0 ? value : 0
+    return Number.isFinite(value) && value >= 0 ? value : undefined
   }
-  if (typeof value !== 'string') return 0
+  if (typeof value !== 'string') return undefined
 
-  const trimmed = value.trim().toLowerCase()
-  if (!trimmed) return 0
-
-  const bareNumber = Number(trimmed)
-  if (!Number.isNaN(bareNumber) && Number.isFinite(bareNumber)) {
-    return bareNumber >= 0 ? bareNumber : 0
-  }
-
-  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*([a-z]+)$/)
-  if (!match) return 0
+  const match = value.trim().toLowerCase().match(DURATION)
+  if (!match) return undefined
 
   const [, numStr, unit] = match
-  const multiplier = UNIT_TO_DAYS[unit]
-  if (multiplier === undefined) return 0
+  const multiplier = unit === '' ? 1 : UNIT_TO_DAYS[unit]
+  if (multiplier === undefined) return undefined
 
   const days = Number(numStr) * multiplier
-  return Number.isFinite(days) && days >= 0 ? days : 0
+  return Number.isFinite(days) ? days : undefined
 }
+
+/**
+ * `readDuration`, with 0 for anything unreadable so callers can fail open.
+ * The cooldown gate uses this on a config the loader has already validated.
+ */
+export const parseDuration = (value: number | string | undefined): number =>
+  readDuration(value) ?? 0
 
 /**
  * Render an age in days as a short human-readable string.

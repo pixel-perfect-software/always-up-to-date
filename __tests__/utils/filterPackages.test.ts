@@ -376,6 +376,21 @@ describe('filterPackages', () => {
       })
     })
 
+    it('keeps the version a peer hold judged (#221)', async () => {
+      const filter = loadFilterWithConfig(
+        { beyondRange: 'major' },
+        { installedPeers: peersOnReact },
+      )
+
+      const results = await filter(reactPair)
+
+      expect(results.find((r) => r.name === 'react')).toMatchObject({
+        updated: false,
+        target: undefined,
+        judged: '19.3.1',
+      })
+    })
+
     it('ignores the peer ranges of packages moving in the same run', async () => {
       const filter = loadFilterWithConfig(
         { beyondRange: 'major' },
@@ -1167,6 +1182,37 @@ describe('filterPackages', () => {
 
       expect(result).toMatchObject({ updated: true, target: '18.3.1' })
       expect(Math.round(result.releaseAge ?? 0)).toBe(30)
+    })
+
+    it('keeps the in-range version a cooldown hold judged, not latest (#221)', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 7 },
+        {
+          releaseTimes: {
+            react: { '18.3.1': daysAgo(1), '19.3.1': daysAgo(30) },
+          },
+        },
+      )
+
+      const [result] = await filter(
+        makeOutdated([
+          {
+            name: 'react',
+            current: '18.2.0',
+            wanted: '18.3.1',
+            latest: '19.3.1',
+          },
+        ]),
+        { now: NOW },
+      )
+
+      expect(result).toMatchObject({
+        updated: false,
+        target: undefined,
+        judged: '18.3.1',
+        updateType: 'minor',
+        reason: { code: 'cooldown' },
+      })
     })
 
     it('lets a package through once cooldown has elapsed', async () => {
@@ -2188,6 +2234,31 @@ describe("a target's own peers (#198)", () => {
     })
   })
 
+  it('asks for each distinct peer once, however many targets need it', async () => {
+    const installed = jest.fn((_asked: { name: string }[]) => ({
+      react: '18.3.1',
+    }))
+    await plan(
+      [
+        reduxRow,
+        {
+          name: 'redux-twin',
+          current: '8.1.3',
+          wanted: '9.2.0',
+          latest: '9.2.0',
+        },
+      ],
+      {
+        answers: { ...known, 'redux-twin@9.2.0': REDUX_9 },
+        options: { installed },
+      },
+    )
+
+    const asked = installed.mock.calls[0][0].map((peer) => peer.name)
+    expect(asked.sort()).toEqual([...new Set(asked)].sort())
+    expect(asked).toEqual(expect.arrayContaining(['react', 'redux']))
+  })
+
   it("checks a cooldown fallback's own document", async () => {
     const fallback: VersionManifest = {
       ...REDUX_9,
@@ -2470,14 +2541,26 @@ describe('npm engines walk-back (#200)', () => {
       node = '12.22.12',
       releaseTimes,
       now,
+      engines,
     }: {
       skipsEnginesExcluded?: boolean
       node?: string
       releaseTimes?: Record<string, string>
       now?: number
+      /** The project's declared `engines.node`. */
+      engines?: string
     } = {},
   ) => {
     const reads: string[] = []
+    if (engines !== undefined) {
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({
+          engines: { node: engines },
+          dependencies: { typescript: '>=5.0.0 <5.2.0' },
+        }),
+      )
+    }
     const session = capturedRegistry(['typescript'], { asOf: TS_AS_OF })
     await session.lookup('typescript')
     const filter = loadFilterWithConfig(config, {
@@ -2575,6 +2658,37 @@ describe('npm engines walk-back (#200)', () => {
     expect(results[0].releaseAge).toBeCloseTo(
       (now - Date.parse(times['5.0.4'])) / 86_400_000,
     )
+  })
+
+  it('moves to the newest version npm and the declared engines.node accept (#233)', async () => {
+    const { results } = await plan({}, { engines: '>=12.20' })
+
+    expect(results[0]).toMatchObject({
+      updated: true,
+      target: '5.0.4',
+      reason: reasonFor(
+        'engines: 5.1.6 needs node >=14.17 (the project declares >=12.20)',
+        'engines-fallback',
+      ),
+    })
+    expect(results[0].warnings).toBeUndefined()
+  })
+
+  it('walks when only the declared range excludes the target, not the running Node (#233)', async () => {
+    const { results } = await plan({}, { engines: '>=12.20', node: '24.22.1' })
+
+    expect(results[0]).toMatchObject({ updated: true, target: '5.0.4' })
+  })
+
+  it('holds the target when no version fits both npm and the declared range (#233)', async () => {
+    const { results } = await plan({}, { engines: '>=12.0.0' })
+
+    expect(results[0]).toMatchObject({
+      updated: false,
+      reason: reasonFor(
+        'engines: needs node >=14.17 (the project declares >=12.0.0)',
+      ),
+    })
   })
 
   it('pins the walked row and leaves it out of the names npm updates', async () => {

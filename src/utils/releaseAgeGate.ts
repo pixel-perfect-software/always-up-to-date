@@ -49,6 +49,19 @@ const globMatches = (
   return new RegExp(`^${pattern}$`).test(name)
 }
 
+const nameExempt = (exemption: ReleaseAgeExemption, name: string): boolean =>
+  exemption.name === name ||
+  (exemption.glob !== 'none' &&
+    globMatches(exemption.name, name, exemption.glob))
+
+const versionExempt = (
+  exemption: ReleaseAgeExemption,
+  version: string,
+): boolean =>
+  exemption.versions === undefined ||
+  (semver.validRange(exemption.versions) !== null &&
+    semver.satisfies(version, exemption.versions))
+
 /**
  * Whether one of `exemptions` lets `name@version` through: its name matches
  * (exactly, or as its manager's glob), and it lists no versions or the
@@ -59,18 +72,10 @@ export const isExempt = (
   version: string,
   exemptions: readonly ReleaseAgeExemption[],
 ): boolean =>
-  exemptions.some((exemption) => {
-    const matches =
-      exemption.name === name ||
-      (exemption.glob !== 'none' &&
-        globMatches(exemption.name, name, exemption.glob))
-    if (!matches) return false
-    if (exemption.versions === undefined) return true
-    return (
-      semver.validRange(exemption.versions) !== null &&
-      semver.satisfies(version, exemption.versions)
-    )
-  })
+  exemptions.some(
+    (exemption) =>
+      nameExempt(exemption, name) && versionExempt(exemption, version),
+  )
 
 /** A pattern written `<name>@<versions>` (a scope's `@` first is part of the name); `<name>` alone exempts every version. */
 export const exemptionOf = (
@@ -120,19 +125,20 @@ const clearedByModified = (
 }
 
 /**
- * Whether the gate lets `version` through: exempt, or published at least its
+ * Whether the gate lets `version` through: exempt (`exempt` holds the
+ * exemptions whose name already matched the package), or published at least its
  * minutes before `now` and not after its `notAfter`. A version with no known
  * time passes only where the manager lets one through (`missingTime`).
  */
 const passes = (
-  name: string,
+  exempt: readonly ReleaseAgeExemption[],
   version: string,
   published: string | undefined,
   minutes: number,
   gate: ReleaseAgeGate,
   now: number,
 ): boolean => {
-  if (isExempt(name, version, gate.exempt)) return true
+  if (exempt.some((exemption) => versionExempt(exemption, version))) return true
   const at = published === undefined ? Number.NaN : Date.parse(published)
   if (Number.isNaN(at)) return gate.missingTime === 'allowed'
   return clearsAge(at, minutes, gate, now)
@@ -151,9 +157,10 @@ export const gatePackage = (
 ): RegistryPackage | undefined => {
   const minutes = gateMinutesFor(pkg.name, gate)
   if (!isActive(pkg.name, gate)) return pkg
+  const exempt = gate.exempt.filter((e) => nameExempt(e, pkg.name))
   const versions = pkg.versions.filter((v) =>
     passes(
-      pkg.name,
+      exempt,
       v.version,
       v.publishedAt ?? times[v.version],
       minutes,
@@ -247,9 +254,10 @@ export const withReleaseAgeGate = <
       if (!active || !isActive(name, active)) return times
       const minutes = gateMinutesFor(name, active)
       const at = now()
+      const exempt = active.exempt.filter((e) => nameExempt(e, name))
       return Object.fromEntries(
         Object.entries(times).filter(([version, published]) =>
-          passes(name, version, published, minutes, active, at),
+          passes(exempt, version, published, minutes, active, at),
         ),
       )
     },

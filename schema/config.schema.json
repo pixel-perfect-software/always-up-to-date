@@ -81,8 +81,8 @@
         },
         {
           "type": "string",
-          "pattern": "^\\s*\\d+(\\.\\d+)?\\s*(s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours|d|day|days|w|wk|week|weeks|mo|month|months|y|yr|year|years)?\\s*$",
-          "description": "Duration string ('1 week', '24h', '7 days'). Bare numbers are interpreted as days."
+          "pattern": "^\\s*\\d+(\\.\\d+)?\\s*([sS]|[sS][eE][cC]|[sS][eE][cC][oO][nN][dD]|[sS][eE][cC][oO][nN][dD][sS]|[mM]|[mM][iI][nN]|[mM][iI][nN][uU][tT][eE]|[mM][iI][nN][uU][tT][eE][sS]|[hH]|[hH][rR]|[hH][oO][uU][rR]|[hH][oO][uU][rR][sS]|[dD]|[dD][aA][yY]|[dD][aA][yY][sS]|[wW]|[wW][kK]|[wW][eE][eE][kK]|[wW][eE][eE][kK][sS]|[mM][oO]|[mM][oO][nN][tT][hH]|[mM][oO][nN][tT][hH][sS]|[yY]|[yY][rR]|[yY][eE][aA][rR]|[yY][eE][aA][rR][sS])?\\s*$",
+          "description": "Duration string ('1 week', '24h', '7 days'), in any case. Bare numbers are interpreted as days."
         },
         {
           "type": "object",
@@ -103,7 +103,7 @@
         { "type": "number", "minimum": 0 },
         {
           "type": "string",
-          "pattern": "^\\s*\\d+(\\.\\d+)?\\s*(s|sec|second|seconds|m|min|minute|minutes|h|hr|hour|hours|d|day|days|w|wk|week|weeks|mo|month|months|y|yr|year|years)?\\s*$"
+          "pattern": "^\\s*\\d+(\\.\\d+)?\\s*([sS]|[sS][eE][cC]|[sS][eE][cC][oO][nN][dD]|[sS][eE][cC][oO][nN][dD][sS]|[mM]|[mM][iI][nN]|[mM][iI][nN][uU][tT][eE]|[mM][iI][nN][uU][tT][eE][sS]|[hH]|[hH][rR]|[hH][oO][uU][rR]|[hH][oO][uU][rR][sS]|[dD]|[dD][aA][yY]|[dD][aA][yY][sS]|[wW]|[wW][kK]|[wW][eE][eE][kK]|[wW][eE][eE][kK][sS]|[mM][oO]|[mM][oO][nN][tT][hH]|[mM][oO][nN][tT][hH][sS]|[yY]|[yY][rR]|[yY][eE][aA][rR]|[yY][eE][aA][rR][sS])?\\s*$"
         }
       ]
     }

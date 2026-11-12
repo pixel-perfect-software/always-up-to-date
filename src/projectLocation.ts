@@ -7,7 +7,7 @@ import {
   pnpmWorkspaceRoot,
 } from '@/managers/workspaces'
 
-export interface Location {
+interface Location {
   /** The nearest directory at or above the command's cwd with a package.json; the cwd when none has one. */
   dir: string
   /**
