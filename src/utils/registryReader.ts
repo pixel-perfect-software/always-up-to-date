@@ -42,6 +42,8 @@ export interface RegistryReaderOptions {
   endpoints?: RegistryEndpoints
   /** Answers lookups it holds fresh, and revalidates the rest; none reads or writes nothing. */
   cache?: RegistryCache
+  /** Longest a deps.dev request may take, capped by `fetch-timeout`; a test seam. */
+  depsDevTimeout?: number
 }
 
 export interface RegistryReader {
@@ -176,6 +178,7 @@ export const createRegistryReader = ({
   depsDev,
   endpoints = DEFAULT_ENDPOINTS,
   cache,
+  depsDevTimeout = DEPS_DEV_TIMEOUT_MS,
 }: RegistryReaderOptions): RegistryReader => {
   // One limiter per host, each the client's per-host agent cap, so a queued
   // request never waits in an agent queue and burns its timeout.
@@ -352,7 +355,7 @@ export const createRegistryReader = ({
       hit,
       parseDepsDevPackage,
       {
-        timeout: Math.min(registryConfig.fetchTimeout, DEPS_DEV_TIMEOUT_MS),
+        timeout: Math.min(registryConfig.fetchTimeout, depsDevTimeout),
         // The fallback is the retry; retries would multiply the timeout.
         retries: 0,
         skipIf: () => !depsDevUsable,

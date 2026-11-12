@@ -922,9 +922,8 @@ describe('registry client', () => {
       async (_label, handler, expected) => {
         const server = await registry(handler)
         const base = `${server.url}${TOKEN}/acme/`
-        const error = await clientFor(
-          configFrom('fetch-timeout=100\nfetch-retries=0'),
-        )
+        const timeout = expected === 'timed out' ? 'fetch-timeout=100\n' : ''
+        const error = await clientFor(configFrom(`${timeout}fetch-retries=0`))
           .getJson(`${base}pkg`, base)
           .catch((e: unknown) => e)
         expect(error).toBeInstanceOf(RegistryRequestError)
