@@ -6,14 +6,17 @@ import { update } from '@/pipeline'
 import { openProject } from '@/project'
 import logger from '@/utils/logger'
 import { isolateNpmConfig, prependPath, writeNodeShim } from '../fixtures'
+import { replies, startRegistry, type TestRegistry } from '../fixtures/registry'
 
 const TOKEN = 'SECRET-path-token'
-const REGISTRY = `https://npm-proxy.fury.io/${TOKEN}/acme/`
 
 const originalLog = Object.getPrototypeOf(console).log
 const originalError = Object.getPrototypeOf(console).error
 
 /**
+ * The registry is a server on 127.0.0.1 whose path carries the token, so the
+ * version manifest `plan` reads through it never leaves localhost.
+ *
  * A fake `npm` on PATH fails the way npm does on a registry error, printing
  * the request URL in its stderr. That text becomes the debug line and the
  * StepError message, so a registry path token has to be scrubbed on both.
@@ -22,8 +25,13 @@ describe('a registry path token in a manager', () => {
   let root: string
   let out: string[]
   let restore: Array<() => void>
+  let server: TestRegistry
+  let host: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    server = await startRegistry(replies({}))
+    host = `127.0.0.1:${server.port}`
+    const registry = `http://${host}/${TOKEN}/acme/`
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-redact-'))
     const cwd = path.join(root, 'project')
     const bin = path.join(root, 'bin')
@@ -34,7 +42,7 @@ describe('a registry path token in a manager', () => {
       path.join(cwd, 'package.json'),
       JSON.stringify({ dependencies: { 'left-pad': '^1.0.0' } }),
     )
-    fs.writeFileSync(path.join(cwd, '.npmrc'), `registry=${REGISTRY}\n`)
+    fs.writeFileSync(path.join(cwd, '.npmrc'), `registry=${registry}\n`)
     fs.writeFileSync(
       path.join(cwd, '.always-up-to-date.json'),
       JSON.stringify({ debug: true }),
@@ -42,7 +50,7 @@ describe('a registry path token in a manager', () => {
     fs.writeFileSync(
       path.join(bin, 'fake-npm.js'),
       [
-        `console.error(${JSON.stringify(`npm error code E404\nnpm error 404 GET ${REGISTRY}left-pad - Not found\nnpm error //npm-proxy.fury.io/${TOKEN}/acme/:_authToken`)})`,
+        `console.error(${JSON.stringify(`npm error code E404\nnpm error 404 GET ${registry}left-pad - Not found\nnpm error //${host}/${TOKEN}/acme/:_authToken`)})`,
         'process.exit(1)',
       ].join('\n'),
     )
@@ -61,7 +69,8 @@ describe('a registry path token in a manager', () => {
     process.exitCode = undefined
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await server.close()
     for (const undo of restore.reverse()) undo()
     logger.setJsonOutput(false)
     logger.configure({})
@@ -91,15 +100,20 @@ describe('a registry path token in a manager', () => {
       project.registry.close()
     }
 
+    const hostPattern = host.replace(/\./g, '\\.')
     const printed = out.join('\n')
     expect(printed).toContain('E404')
     expect(printed).toContain('stderr')
     expect(printed).not.toContain(TOKEN)
     expect(printed).toMatch(
-      /https:\/\/npm-proxy\.fury\.io\/…\[[0-9a-f]{6}\]\/left-pad/,
+      new RegExp(`http://${hostPattern}/…\\[[0-9a-f]{6}\\]/left-pad`),
     )
     expect(printed).toMatch(
-      /\/\/npm-proxy\.fury\.io\/…\[[0-9a-f]{6}\]\/:_authToken/,
+      new RegExp(`//${hostPattern}/…\\[[0-9a-f]{6}\\]/:_authToken`),
+    )
+    // The plan's registry read reached the local server, not a host off localhost.
+    expect(server.requests.map((r) => r.url)).toContain(
+      `/${TOKEN}/acme/left-pad`,
     )
   })
 })
