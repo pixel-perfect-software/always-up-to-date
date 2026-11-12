@@ -179,6 +179,27 @@ interface TargetPeers {
   lookupName: (row: UpdateResult) => string
 }
 
+// Built once per array: `settle` makes a new array each pass and never
+// mutates one it has handed out, so an index can't go stale.
+const rowIndexes = new WeakMap<
+  readonly UpdateResult[],
+  Map<string, UpdateResult>
+>()
+
+/** `rows` by workspace and name, the first of a pair winning as `find` would. */
+const indexOf = (rows: readonly UpdateResult[]): Map<string, UpdateResult> => {
+  let index = rowIndexes.get(rows)
+  if (!index) {
+    index = new Map()
+    for (const r of rows) {
+      const key = `${r.workspace ?? '.'}\0${r.name}`
+      if (!index.has(key)) index.set(key, r)
+    }
+    rowIndexes.set(rows, index)
+  }
+  return index
+}
+
 /**
  * The first peer of a moving row's target (its own version document, #198)
  * that the plan leaves outside the declared range, worded as the reason:
@@ -214,9 +235,7 @@ const targetPeerConflict = (
     peer: string,
     where: string,
   ): { version: string; moving: boolean } | undefined => {
-    const found = rows.find(
-      (r) => r.name === peer && (r.workspace ?? '.') === where,
-    )
+    const found = indexOf(rows).get(`${where}\0${peer}`)
     if (!found) return undefined
     if (found.updated && found.target) {
       return { version: found.target, moving: true }
@@ -841,17 +860,24 @@ const filterPackages = async (
     const peerRows =
       manifests.size === 0
         ? []
-        : passed.flatMap((row) => {
-            const manifest = targetManifestOf(manifests, row, lookupName)
-            return manifest
-              ? Object.keys(manifest.peerDependencies).map((name) => ({
-                  name,
-                  ...(row.workspace === undefined
-                    ? {}
-                    : { workspace: row.workspace }),
-                }))
-              : []
-          })
+        : [
+            ...new Map(
+              passed.flatMap((row) => {
+                const manifest = targetManifestOf(manifests, row, lookupName)
+                return manifest
+                  ? Object.keys(manifest.peerDependencies).map((name) => {
+                      const peer = {
+                        name,
+                        ...(row.workspace === undefined
+                          ? {}
+                          : { workspace: row.workspace }),
+                      }
+                      return [rowKey(peer), peer] as const
+                    })
+                  : []
+              }),
+            ).values(),
+          ]
     const readInstalled =
       options.installed ??
       ((asked) => readInstalledVersions(cwd, asked, { declaredOnly: false }))
