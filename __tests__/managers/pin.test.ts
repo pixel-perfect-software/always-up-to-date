@@ -4,7 +4,7 @@ import path from 'path'
 import type { Pinning, RunManager } from '@/managers/adapter'
 import { applyPinned } from '@/managers/pin'
 import { StepError } from '@/stepError'
-import { updatePNPMWorkspaceYAML } from '@/utils/files'
+import { updatePNPMWorkspaceYAML } from '@/utils/catalogs'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
 
 describe('applyPinned (#147)', () => {

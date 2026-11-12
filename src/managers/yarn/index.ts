@@ -23,11 +23,11 @@ import { yarnRegistryConfig } from '@/managers/yarn/yarnrc'
 import { berryRegistryConfig } from '@/managers/yarn/yarnrcYml'
 import { StepError } from '@/stepError'
 import { ancestorDirs } from '@/utils/ancestors'
-import { buildUpdateDescriptors } from '@/utils/files'
 import { readInstalledVersions } from '@/utils/installed'
 import logger from '@/utils/logger'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE, readTextFile, yamlValue } from '@/utils/saveStyle'
+import { buildUpdateDescriptors } from '@/utils/versionSpecs'
 
 /**
  * Yarn 2+ ("berry") for the project `dir` belongs to, the same from the root,

@@ -2,15 +2,17 @@ import fs from 'fs'
 import path from 'path'
 import type { PackageInfo } from '@/types'
 import {
-  checkIfFileExists,
   readBunCatalogs,
   readPnpmCatalogs,
+  updateBunCatalogs,
+  updatePNPMWorkspaceYAML,
+} from '@/utils/catalogs'
+import { checkIfFileExists } from '@/utils/files'
+import {
   readSpec,
   splitCatalogUpdates,
-  updateBunCatalogs,
   updatePackageJson,
-  updatePNPMWorkspaceYAML,
-} from '@/utils/files'
+} from '@/utils/manifests'
 
 jest.mock('fs')
 

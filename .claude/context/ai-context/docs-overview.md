@@ -131,7 +131,8 @@ __tests__/
     config.test.ts          # Config loading/saving tests (incl. cooldown variants, strict depsDev, the member's file else the root's)
     cooldown.test.ts        # Normalize/evaluate cooldown gate
     duration.test.ts        # parseDuration + formatAgeDays
-    files.test.ts           # File operations and version parsing tests; readPnpmCatalogs / readBunCatalogs and their agreement with the pnpm writer
+    pnpmCatalogWriter.test.ts # updatePNPMWorkspaceYAML on temp files: flow-map catalogs (default, named, anchored), a byte order mark, what it leaves alone, and every entry readPnpmCatalogs reads moved (#230)
+    files.test.ts           # checkIfFileExists, versionSpecs, manifests and catalogs (one file for the three modules split from files.ts, #230); readPnpmCatalogs / readBunCatalogs and their agreement with the pnpm writer
     yaml.test.ts            # parseYaml: URL keys, `>=` ranges against block scalar headers, nested flow sequences, tabs in blank lines, the `flowMaps` and `anchors` options and their absence for berry (#229)
     nodeFit.test.ts         # fitRunningNode (#200) on the typescript captures: 5.1.6 walked to 5.0.4 in three descending reads, the cap, an unknown manifest, a fitting target and no Node reading nothing, a deprecated or cooldown-gated candidate skipped, one walk for rows sharing it, an invalid engines range walked
     targetManifests.test.ts # readTargetManifests / targetManifestOf (#196): one read per name/target pair, aliases by the looked-up name, held and unmoved rows skipped, empty without versionManifest

@@ -1,7 +1,7 @@
-import path from 'path'
 import semver from 'semver'
 
 import type { ManagerAdapter } from '@/managers/adapter'
+import { writeBeyondRange } from '@/managers/beyondRange'
 import { pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
 import { pnpmReleaseAgeGate } from '@/managers/pnpm/releaseAge'
 import {
@@ -15,11 +15,8 @@ import {
   pnpmWorkspaceRoot,
   readWorkspaceManifests,
 } from '@/managers/workspaces'
-import {
-  splitCatalogUpdates,
-  updatePackageJson,
-  updatePNPMWorkspaceYAML,
-} from '@/utils/files'
+import { updatePNPMWorkspaceYAML } from '@/utils/catalogs'
+import { updatePackageJson } from '@/utils/manifests'
 import { overridesFromField } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
 
@@ -63,59 +60,31 @@ const pnpm: ManagerAdapter = {
     // moving past their range need their manifest spec rewritten first.
     const style = pnpm.saveStyle(cwd)
 
-    if (!isWorkspace) {
+    if (!isWorkspace && Object.keys(catalogs).length === 0) {
       const manifestWritten = Object.keys(beyondRange).length > 0
-      if (Object.keys(catalogs).length === 0) {
-        if (manifestWritten) await updatePackageJson(cwd, beyondRange, style)
-        await run(['update', ...names], { manifestWritten })
-        return
-      }
-
-      if (manifestWritten) {
-        // Versions live in pnpm-workspace.yaml catalogs or directly in the
-        // package.json: a `catalog:` spec moves its own catalog's entry, every
-        // other row the manifest.
-        const { catalogs: moved, byManifest } = splitCatalogUpdates(cwd, [
-          { path: '.', withinRange: [], beyondRange },
-        ])
-        for (const [catalog, versions] of Object.entries(moved)) {
-          await updatePNPMWorkspaceYAML(cwd, versions, style, catalog)
-        }
-        for (const m of byManifest) {
-          await updatePackageJson(cwd, m.versions, style)
-        }
-
-        // `pnpm install` re-reads both manifest and pnpm-workspace.yaml
-        // and relinks node_modules + lockfile reliably. `pnpm update`
-        // can miss catalog mutations.
-        await run(INSTALL_AFTER_WRITE, { manifestWritten })
-      }
-      if (withinRange.length > 0) {
-        await run(['update', ...withinRange], { manifestWritten })
-      }
+      if (manifestWritten) await updatePackageJson(cwd, beyondRange, style)
+      await run(['update', ...names], { manifestWritten })
       return
     }
 
-    // A row whose owning spec is `catalog:` moves the catalog entry in
-    // pnpm-workspace.yaml; every other row moves in the manifest that owns it.
-    const { catalogs: moved, byManifest } = splitCatalogUpdates(cwd, manifests)
-    const manifestWritten =
-      Object.keys(moved).length > 0 || byManifest.length > 0
-    for (const [catalog, versions] of Object.entries(moved)) {
-      await updatePNPMWorkspaceYAML(cwd, versions, style, catalog)
-    }
-    for (const m of byManifest) {
-      await updatePackageJson(path.join(cwd, m.path), m.versions, style)
-    }
+    // With catalogs, a single package is a workspace of one manifest: a row
+    // whose owning spec is `catalog:` moves the catalog entry in
+    // pnpm-workspace.yaml, every other row the manifest that owns it.
+    const manifestWritten = await writeBeyondRange(
+      cwd,
+      isWorkspace ? manifests : [{ path: '.', withinRange: [], beyondRange }],
+      { style, writeCatalog: updatePNPMWorkspaceYAML, manager: pnpm.name },
+    )
 
     // `pnpm install` re-reads every manifest and pnpm-workspace.yaml and
-    // relinks node_modules + lockfile reliably. `pnpm update -r` can miss
+    // relinks node_modules + lockfile reliably. `pnpm update` can miss
     // catalog mutations.
     if (manifestWritten) await run(INSTALL_AFTER_WRITE, { manifestWritten })
 
     // `install` leaves in-range packages where the lockfile has them.
     if (withinRange.length > 0) {
-      await run(['update', '-r', ...withinRange], { manifestWritten })
+      const recursive = isWorkspace ? ['-r'] : []
+      await run(['update', ...recursive, ...withinRange], { manifestWritten })
     }
   },
 

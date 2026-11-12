@@ -7,9 +7,9 @@ import {
   packageJsonWorkspaceRoot,
 } from '@/managers/workspaces'
 import type { ReleaseAgeGate } from '@/types'
-import { updatePackageJson } from '@/utils/files'
 import { type InstalledPackage, rowKey } from '@/utils/installed'
 import { isRecord } from '@/utils/isRecord'
+import { updatePackageJson } from '@/utils/manifests'
 import { loadNpmrc, npmrcBoolean } from '@/utils/npmrcLoader'
 import { manifestOverrides } from '@/utils/overrides'
 import { DEFAULT_SAVE_STYLE } from '@/utils/saveStyle'
