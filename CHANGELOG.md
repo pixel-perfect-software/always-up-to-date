@@ -3,6 +3,41 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-11-12 — 4.1.0: stricter config validation, errors on stderr in every mode, clearer `update <name>` failures and report wording
+
+A config file that used to load quietly can now fail `check` and `update`: an unreadable `cooldown`, a string where a boolean belongs (`"false"`), or a file that isn't a JSON object is an error, and an unknown key is a warning. Errors, warnings and debug lines now go to stderr in every mode. `update <name>` exits 1 for a name that isn't a dependency. The `--json` document is unchanged within version 1.
+
+### Changed
+
+- Config validation is strict ([#217](https://github.com/pixel-perfect-software/always-up-to-date/issues/217)). An unreadable `cooldown` (`"30 dyas"`), a string boolean such as `"silent": "false"`, and a file that is not a JSON object each fail the run with a message naming the key and the value. An unknown key prints a warning naming the closest known one. Before, a typo in `cooldown` turned the cooldown off, and `"silent": "false"` silenced every line.
+- Errors, warnings and debug lines go to stderr in every mode, and `silent` never hides an error ([#223](https://github.com/pixel-perfect-software/always-up-to-date/issues/223)). Before, human mode printed them on stdout, and `silent` hid a failure's message.
+- `update <name>` and its neighbors say what happened ([#222](https://github.com/pixel-perfect-software/always-up-to-date/issues/222)):
+  - A name that isn't a dependency fails with exit 1. A name that is already up to date says so.
+  - A directory with no `package.json` gets its own message.
+  - `update -i` is refused without a terminal, and with package names or `--dry-run`.
+  - After `update`, a run in which the manager moved nothing says `Nothing updated:`. A dependency that isn't installed reads `not installed: run <pm> install`.
+  - The refusal from a workspace member says why, and names the root to run it in.
+- `autd help <command>` works, and the usage line reads `Usage: autd`. The help names all four package managers ([#224](https://github.com/pixel-perfect-software/always-up-to-date/issues/224)).
+- Report wording ([#225](https://github.com/pixel-perfect-software/always-up-to-date/issues/225)):
+  - A hold by the manifest's range is named "outside the range", and the `beyondRange` hint names `.always-up-to-date.json`.
+  - Ages past 365 days are shown in years.
+  - A `latest` rule's warnings print as a yellow `!`.
+  - No emoji when the output isn't a terminal or `NO_COLOR` is set.
+  - The next-step line keeps the run's `--pm` and `--no-cache`.
+  - A `catalog:` row names its catalog.
+- `schema/output.schema.json` accepts added fields and reason codes, so a version 1 document that gains either still validates against an older copy ([#218](https://github.com/pixel-perfect-software/always-up-to-date/issues/218)).
+- Less CPU on `check`: versions are parsed once, cache entries are gzipped at level 1, and fewer installed manifests are parsed ([#220](https://github.com/pixel-perfect-software/always-up-to-date/issues/220)).
+- Contributors: `pnpm autd` replaces the `check-deps` and `update-deps` scripts ([#219](https://github.com/pixel-perfect-software/always-up-to-date/issues/219)).
+
+### Fixed
+
+- A held row shows the version the hold judged, with that version's age and step, instead of `latest` ([#221](https://github.com/pixel-perfect-software/always-up-to-date/issues/221)).
+- An empty pnpm `minimumReleaseAge:` keeps pnpm's one-day gate, where it used to turn the gate off ([#247](https://github.com/pixel-perfect-software/always-up-to-date/issues/247)).
+- The installed-package peer check works without `node_modules`, for npm with only a lockfile and for yarn berry under PnP ([#232](https://github.com/pixel-perfect-software/always-up-to-date/issues/232)). This closes the known issue from 3.6.0.
+- Under npm, the engines walk-back skips versions the project's declared `engines.node` excludes, so the row lands on one both accept ([#233](https://github.com/pixel-perfect-software/always-up-to-date/issues/233)).
+- pnpm catalogs written as a flow map, or in a file that starts with a byte order mark, are now rewritten on update, where they were reported `not applied` ([#230](https://github.com/pixel-perfect-software/always-up-to-date/issues/230)).
+- `pnpm-workspace.yaml` is read one way everywhere ([#229](https://github.com/pixel-perfect-software/always-up-to-date/issues/229)). For example, an unquoted `savePrefix: ~` now gives `^`, as pnpm reads it.
+
 ## 2026-11-09 — 4.0.0: every --json document is versioned and has one shape, and check --json plans
 
 **Breaking:** `check --json`, `update --dry-run --json` and `update --json` now print one versioned document, `{ "version": 1, "autd", "command", "phase", "manager", "member", "rows": [...] }`, and every row carries a reason. Any script that reads 3.x `--json` output needs updating. The README's "Upgrading from 3.x" maps each old field to its new one. Human output is unchanged.
