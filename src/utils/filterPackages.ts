@@ -119,10 +119,14 @@ export const withWarning = (
     ? result
     : { ...result, warnings: [...(result.warnings ?? []), warning] }
 
-/** A moving row held for `reason`: no target, and its step is `current → latest`. */
+/**
+ * A moving row held for `reason`: no target, and its `updateType` is `current
+ * → latest`; `judged` keeps the target the hold judged (#221).
+ */
 const heldFor = (result: UpdateResult, reason: Reason): UpdateResult => ({
   ...result,
   target: undefined,
+  judged: result.target ?? result.judged,
   updated: false,
   updateType: stepType(result.current, result.latest),
   reason,
@@ -287,6 +291,7 @@ const holdTogether = (results: UpdateResult[]): UpdateResult[] => {
     return {
       ...r,
       target: undefined,
+      judged: r.target,
       updated: false,
       updateType: stepType(r.current, r.latest),
       reason: {
@@ -702,6 +707,7 @@ const filterPackages = async (
           wanted,
           latest,
           updateType: stepType(current, latest),
+          ...(target === undefined ? {} : { judged: target }),
           updated: false,
           reason: {
             code: 'override',
@@ -939,6 +945,7 @@ const filterPackages = async (
         return {
           ...result,
           target: undefined,
+          judged: result.target,
           updated: false,
           reason: { code: 'cooldown', message: `cooldown: ${held}` },
           releaseAge: evaluation.ageDays,

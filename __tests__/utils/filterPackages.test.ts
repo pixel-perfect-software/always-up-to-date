@@ -376,6 +376,21 @@ describe('filterPackages', () => {
       })
     })
 
+    it('keeps the version a peer hold judged (#221)', async () => {
+      const filter = loadFilterWithConfig(
+        { beyondRange: 'major' },
+        { installedPeers: peersOnReact },
+      )
+
+      const results = await filter(reactPair)
+
+      expect(results.find((r) => r.name === 'react')).toMatchObject({
+        updated: false,
+        target: undefined,
+        judged: '19.3.1',
+      })
+    })
+
     it('ignores the peer ranges of packages moving in the same run', async () => {
       const filter = loadFilterWithConfig(
         { beyondRange: 'major' },
@@ -1167,6 +1182,37 @@ describe('filterPackages', () => {
 
       expect(result).toMatchObject({ updated: true, target: '18.3.1' })
       expect(Math.round(result.releaseAge ?? 0)).toBe(30)
+    })
+
+    it('keeps the in-range version a cooldown hold judged, not latest (#221)', async () => {
+      const filter = loadFilterWithConfig(
+        { cooldown: 7 },
+        {
+          releaseTimes: {
+            react: { '18.3.1': daysAgo(1), '19.3.1': daysAgo(30) },
+          },
+        },
+      )
+
+      const [result] = await filter(
+        makeOutdated([
+          {
+            name: 'react',
+            current: '18.2.0',
+            wanted: '18.3.1',
+            latest: '19.3.1',
+          },
+        ]),
+        { now: NOW },
+      )
+
+      expect(result).toMatchObject({
+        updated: false,
+        target: undefined,
+        judged: '18.3.1',
+        updateType: 'minor',
+        reason: { code: 'cooldown' },
+      })
     })
 
     it('lets a package through once cooldown has elapsed', async () => {
