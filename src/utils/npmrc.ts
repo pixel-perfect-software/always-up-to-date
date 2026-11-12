@@ -1,3 +1,5 @@
+import path from 'path'
+
 export type NpmrcScalar = string | boolean | null
 export type NpmrcValue = NpmrcScalar | NpmrcScalar[]
 /** A parsed .npmrc: flat keys, built without a prototype. */
@@ -114,4 +116,32 @@ export const parseNpmrc = (
   }
 
   return result
+}
+
+/** A string with something in it: npm treats an empty setting as unset (`||`). */
+export const nonEmpty = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined
+
+/** A boolean .npmrc value (`true` / `false`, as a string or a boolean). */
+export const npmrcBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return undefined
+}
+
+/** A path from config: `~/` is the home directory, the rest is relative to cwd. */
+export const resolveNpmPath = (
+  value: string,
+  home: string,
+  cwd: string,
+  platform: NodeJS.Platform,
+): string => {
+  if (
+    value.startsWith('~/') ||
+    (platform === 'win32' && value.startsWith('~\\'))
+  ) {
+    return path.resolve(home, value.slice(2))
+  }
+  return path.resolve(cwd, value)
 }
