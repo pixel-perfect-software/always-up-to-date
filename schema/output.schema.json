@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/pixel-perfect-software/always-up-to-date/main/schema/output.schema.json",
   "title": "Always Up To Date --json output",
-  "description": "The one JSON document `autd check --json`, `autd update --dry-run --json` and `autd update --json` print on stdout: a plan document with rows, or an error document. Within version 1, fields and reason codes may be added; consumers branch on `outcome`.",
+  "description": "The one JSON document `autd check --json`, `autd update --dry-run --json` and `autd update --json` print on stdout: a plan document with rows, or an error document. Within version 1, 4.x may add fields and reason codes, so objects allow additional properties and `reason.code` is any string: ignore a field you do not know, and branch on `outcome`. `version`, `command`, `phase`, `outcome` and the other enums are closed: a new value there is a new version.",
   "oneOf": [
     { "$ref": "#/definitions/planDocument" },
     { "$ref": "#/definitions/errorDocument" }
@@ -10,7 +10,7 @@
   "definitions": {
     "planDocument": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "required": [
         "version",
         "autd",
@@ -52,7 +52,7 @@
     },
     "errorDocument": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "required": ["version", "autd", "command", "error"],
       "description": "What a failed command prints; the exit code is 1.",
       "properties": {
@@ -67,7 +67,7 @@
         },
         "error": {
           "type": "object",
-          "additionalProperties": false,
+          "additionalProperties": true,
           "required": ["step", "message", "manifestWritten"],
           "description": "The failure.",
           "properties": {
@@ -86,7 +86,7 @@
     },
     "row": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "required": [
         "name",
         "workspace",
@@ -157,12 +157,14 @@
     },
     "reason": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "required": ["code", "message"],
       "description": "Why a row moves or is held.",
       "properties": {
         "code": {
-          "enum": [
+          "description": "A stable code. Moving: within-range, past-range, rule-latest, cooldown-fallback, engines-fallback. Held: invalid-version, not-installed, not-newer, rule-hold, rule-follow-range, outside-range, override, peer-conflict, target-peers, cooldown, deprecated, license-change, engines, held-with. After apply or not asked for: not-applied, not-targeted. The list is the set 4.0.0 defines (see examples), not a closed set: within version 1, codes may be added in 4.x without a version bump. Branch on outcome, and treat an unknown code like its outcome.",
+          "type": "string",
+          "examples": [
             "within-range",
             "past-range",
             "rule-latest",
@@ -184,8 +186,7 @@
             "held-with",
             "not-applied",
             "not-targeted"
-          ],
-          "description": "A stable code. Moving: within-range, past-range, rule-latest, cooldown-fallback, engines-fallback. Held: invalid-version, not-installed, not-newer, rule-hold, rule-follow-range, outside-range, override, peer-conflict, target-peers, cooldown, deprecated, license-change, engines, held-with. After apply or not asked for: not-applied, not-targeted. Within version 1, codes may be added in 4.x without a version bump: branch on outcome, and treat an unknown code like its outcome."
+          ]
         },
         "message": {
           "type": "string",

@@ -20,7 +20,11 @@ import {
   projectFor,
   writeWorkspaceProject,
 } from './fixtures'
-import { outputSchema, validateOutput } from './fixtures/outputSchema'
+import {
+  outputSchema,
+  validateOutput,
+  validatePublished,
+} from './fixtures/outputSchema'
 
 jest.mock('@/utils/logger')
 jest.mock('@/utils', () => ({
@@ -41,8 +45,15 @@ describe('schema/output.schema.json', () => {
     expect(() => validateOutput({})).toThrow()
   })
 
-  it('lists exactly the reason codes the code defines', () => {
-    expect(enumOf('reason', 'code')).toEqual([...REASON_CODES])
+  it('documents exactly the reason codes the code defines, without closing the set (#218)', () => {
+    const code = definitions.reason.properties.code as {
+      type: string
+      enum?: unknown
+      examples: unknown[]
+    }
+    expect(code.type).toBe('string')
+    expect(code.enum).toBeUndefined()
+    expect(code.examples).toEqual([...REASON_CODES])
   })
 
   it('lists exactly the outcomes the code defines', () => {
@@ -366,5 +377,82 @@ describe('the schema rejects', () => {
 
   it('rejects a bare array, the 3.x shape', () => {
     expect(() => validateOutput([])).toThrow()
+    expect(() => validatePublished([])).toThrow()
+  })
+
+  describe('a later 4.x document (#218)', () => {
+    type Obj = Record<string, unknown>
+    const grown = () =>
+      mutate((d) => {
+        d.futureTopLevel = 1
+        const row = (d.rows as Obj[])[0]
+        row.futureField = { nested: true }
+        ;(row.reason as Obj).code = 'future-code'
+        ;(row.reason as Obj).futureDetail = 'x'
+      })
+
+    it('validates against the published schema', () => {
+      expect(() => validatePublished(grown())).not.toThrow()
+    })
+
+    it('fails the strict form the suite uses', () => {
+      expect(() => validateOutput(grown())).toThrow()
+    })
+
+    it('fails the strict form for an extra row field alone', () => {
+      const document = mutate((d) => {
+        ;(d.rows as Obj[])[0].futureField = 1
+      })
+      expect(() => validatePublished(document)).not.toThrow()
+      expect(() => validateOutput(document)).toThrow(/additional properties/)
+    })
+
+    it('fails the strict form for an unknown reason code alone', () => {
+      const document = mutate((d) => {
+        ;((d.rows as Obj[])[0].reason as Obj).code = 'future-code'
+      })
+      expect(() => validatePublished(document)).not.toThrow()
+      expect(() => validateOutput(document)).toThrow(/allowed values/)
+    })
+
+    it('keeps version, command, phase and outcome closed in the published schema', () => {
+      for (const change of [
+        (d: Obj) => (d.version = 2),
+        (d: Obj) => (d.command = 'upgrade'),
+        (d: Obj) => (d.phase = 'later'),
+        (d: Obj) => ((d.rows as Obj[])[0].outcome = 'skipped'),
+      ]) {
+        expect(() => validatePublished(mutate(change))).toThrow()
+      }
+    })
+
+    it('still rejects documents that break a required field or a type', () => {
+      for (const change of [
+        (d: Obj) => delete (d.rows as Obj[])[0].reason,
+        (d: Obj) => ((d.rows as Obj[])[0].warnings = ['x']),
+        (d: Obj) => (d.rows = {}),
+        (d: Obj) => delete ((d.rows as Obj[])[0].reason as Obj).code,
+        (d: Obj) => (((d.rows as Obj[])[0].reason as Obj).code = 7),
+      ]) {
+        expect(() => validatePublished(mutate(change))).toThrow()
+      }
+    })
+
+    it('opens the error document too', () => {
+      const document = {
+        version: 1,
+        autd: '4.0.0',
+        command: 'check',
+        futureTopLevel: true,
+        error: {
+          step: 'detect',
+          message: 'm',
+          manifestWritten: false,
+          futureDetail: 1,
+        },
+      }
+      expect(() => validatePublished(document)).not.toThrow()
+      expect(() => validateOutput(document)).toThrow()
+    })
   })
 })

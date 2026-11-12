@@ -109,7 +109,7 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 
 ## 🧾 JSON output
 
-`check --json`, `update --dry-run --json` and `update --json` print one JSON document on stdout and nothing else; progress, warnings and debug lines go to stderr. `check --json` plans the way `update --dry-run --json` does, so both print the same `rows`. [`schema/output.schema.json`](schema/output.schema.json) (JSON Schema draft-07) describes every document.
+`check --json`, `update --dry-run --json` and `update --json` print one JSON document on stdout and nothing else; progress, warnings and debug lines go to stderr. `check --json` plans the way `update --dry-run --json` does, so both print the same `rows`. [`schema/output.schema.json`](schema/output.schema.json) (JSON Schema draft-07) describes every document. It stays open where 4.x may grow: objects allow additional properties and `reason.code` is any string, with the codes 4.0.0 defines listed as `examples`, so a copy of the schema from one 4.x release validates the documents of a later one. `version`, `command`, `phase` and `outcome` are closed.
 
 ```json
 {
