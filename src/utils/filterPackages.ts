@@ -1,42 +1,28 @@
-import fs from 'fs'
-import path from 'path'
 import semver from 'semver'
 import type {
   AlwaysUpToDateConfig,
   ManifestPlan,
   PackageInfo,
   PinnedRow,
-  Reason,
   UpdateResult,
-  VersionManifest,
 } from '@/types'
 import { isCooldownEnabled } from './cooldown'
-import { declaredNodeRange, enginesHold, runningNode } from './engines'
-import {
-  readInstalledManifests,
-  readInstalledVersions,
-  rowKey,
-} from './installed'
-import { sameLicense } from './license'
+import { runningNode } from './engines'
+import { readInstalledVersions } from './installed'
 import logger from './logger'
-import { fitRunningNode } from './nodeFit'
 import type { ControllingOverride } from './overrides'
 import { readInstalledPeers } from './peers'
 import { holdCooldown, versionCooldown } from './plan/cooldownPass'
-import { holdDeprecated, oneLine } from './plan/deprecationPass'
+import { holdDeprecated } from './plan/deprecationPass'
+import { declaredEnginesReader, enginesPass } from './plan/enginesPass'
+import { holdLicenseChanges } from './plan/licensePass'
+import { fitRunningNode } from './plan/nodeFit'
 import { targetPeerRows } from './plan/peerConflicts'
-import { heldFor, stepType, withWarning } from './plan/rows'
+import { stepType, withWarning } from './plan/rows'
 import { createSettle } from './plan/settle'
-import type { DeclaredOf, PlanRegistry } from './plan/types'
-import {
-  readTargetManifests,
-  type TargetManifests,
-  targetManifestOf,
-} from './targetManifests'
-import updateChecker, {
-  policyFromConfig,
-  type UpdatePolicy,
-} from './updateChecker'
+import type { DeclaredOf, ManifestPass, PlanRegistry } from './plan/types'
+import { readTargetManifests } from './targetManifests'
+import updateChecker, { policyFromConfig } from './updateChecker'
 import { byPath, expandWorkspaces } from './workspaceRows'
 
 // The tests and other callers import it from here.
@@ -92,223 +78,6 @@ interface FilterPackagesOptions {
    * newest version below it that fits (`fitRunningNode`). Default false.
    */
   skipsEnginesExcluded?: boolean
-}
-
-/** Characters of a license shown in a reason or warning; the rest is cut. */
-const LICENSE_SHOWN = 40
-
-/** A declared license (undefined: none) as a reason shows it: one line, cut. */
-const shownLicense = (license: string | undefined): string => {
-  const line = license === undefined ? '' : oneLine(license)
-  if (line === '') return 'none'
-  return line.length > LICENSE_SHOWN
-    ? `${line.slice(0, LICENSE_SHOWN).trimEnd()}…`
-    : line
-}
-
-/**
- * Holds a moving row whose target declares a different license from the
- * installed version (`license change: MIT → AGPL-3.0-or-later`, #197); a
- * `latest` rule moves it with the text as a warning. `none` stands for a
- * known manifest that declares no license, and a move to or from it is a
- * change too. Only the rows still moving are read: the current version's
- * license comes from `node_modules` when the installed copy is that version,
- * else from its own manifest (one request per name and version). A row
- * whose target manifest or current manifest is unknown moves unchecked, and
- * is returned in `unchecked` as `name@version`, the target's and the
- * installed version's apart, since a registry problem and a version the
- * registry no longer lists are fixed differently. Without a registry that
- * can read manifests, nothing is judged.
- */
-const holdLicenseChanges = async (
-  rows: UpdateResult[],
-  manifests: TargetManifests,
-  {
-    registry,
-    policy,
-    lookupName,
-    cwd,
-  }: {
-    registry: FilterPackagesOptions['registry']
-    policy: UpdatePolicy
-    lookupName: (row: UpdateResult) => string
-    cwd: string
-  },
-): Promise<{
-  rows: UpdateResult[]
-  unchecked: { targets: string[]; installed: string[] }
-}> => {
-  const { versionManifest } = registry
-  if (!versionManifest)
-    return { rows, unchecked: { targets: [], installed: [] } }
-  // A `missing` or non-semver current has no license to compare.
-  const moving = rows.filter(
-    (row) => row.updated && row.target && semver.valid(row.current),
-  )
-  const targets = new Set<string>()
-  const installedUnknown = new Set<string>()
-  const unchecked = () => ({
-    targets: [...targets],
-    installed: [...installedUnknown],
-  })
-  const judged = moving.filter((row) => {
-    if (targetManifestOf(manifests, row, lookupName)) return true
-    targets.add(`${lookupName(row)}@${row.target}`)
-    return false
-  })
-  if (judged.length === 0) return { rows, unchecked: unchecked() }
-
-  const installed = readInstalledManifests(cwd, judged)
-  const read = new Map<string, Promise<VersionManifest | undefined>>()
-  const currentOf = async (
-    row: UpdateResult,
-  ): Promise<{ known: boolean; license?: string }> => {
-    const found = installed[rowKey(row)]
-    if (found?.version === row.current) {
-      return { known: true, license: found.license }
-    }
-    const name = lookupName(row)
-    const key = `${name}@${row.current}`
-    let pending = read.get(key)
-    if (!pending) {
-      pending = versionManifest(name, row.current)
-      read.set(key, pending)
-    }
-    const manifest = await pending
-    return manifest
-      ? { known: true, license: manifest.license }
-      : { known: false }
-  }
-
-  const held = new Map<UpdateResult, UpdateResult>()
-  await Promise.all(
-    judged.map(async (row) => {
-      const target = targetManifestOf(manifests, row, lookupName)
-      if (!target) return
-      const current = await currentOf(row)
-      if (!current.known) {
-        installedUnknown.add(`${lookupName(row)}@${row.current}`)
-        return
-      }
-      if (sameLicense(current.license, target.license)) return
-      const reason: Reason = {
-        code: 'license-change',
-        message: `license change: ${shownLicense(current.license)} → ${shownLicense(target.license)}`,
-      }
-      held.set(
-        row,
-        policy.ruleFor(row.name) === 'latest'
-          ? withWarning(row, reason)
-          : heldFor(row, reason),
-      )
-    }),
-  )
-  return {
-    rows: rows.map((row) => held.get(row) ?? row),
-    unchecked: unchecked(),
-  }
-}
-
-/**
- * A pass that judges each moving row by its target's own manifest (`engines.node`
- * today; license and peers are judged elsewhere): it holds or warns, never
- * moves a row. An unknown manifest (undefined) is a state each pass decides
- * for itself.
- */
-type ManifestPass = (
-  rows: UpdateResult[],
-  context: {
-    manifests: TargetManifests
-    lookupName: (row: UpdateResult) => string
-    policy: UpdatePolicy
-  },
-) => UpdateResult[]
-
-/**
- * The `engines.node` a row's owning manifest declares (a member's own, else
- * the root's), read once per manifest; shared by the walk-back and the pass.
- */
-const declaredEnginesReader = (
-  cwd: string,
-): ((row: UpdateResult) => string | undefined) => {
-  const declaredIn = new Map<string, string | undefined>()
-  const declaredAt = (dir: string): string | undefined => {
-    if (!declaredIn.has(dir)) {
-      const file = path.join(cwd, dir, 'package.json')
-      let range: string | undefined
-      try {
-        const manifest: unknown = JSON.parse(fs.readFileSync(file, 'utf8'))
-        const engines =
-          typeof manifest === 'object' && manifest !== null
-            ? (manifest as { engines?: unknown }).engines
-            : undefined
-        range = declaredNodeRange(
-          typeof engines === 'object' && engines !== null
-            ? (engines as { node?: unknown }).node
-            : undefined,
-          dir === '.' ? 'package.json' : `${dir}/package.json`,
-        )
-      } catch {
-        range = undefined
-      }
-      declaredIn.set(dir, range)
-    }
-    return declaredIn.get(dir)
-  }
-  return (row) => {
-    const owner = row.workspace ?? '.'
-    return declaredAt(owner) ?? (owner === '.' ? undefined : declaredAt('.'))
-  }
-}
-
-/**
- * Holds a moving row whose target's `engines.node` excludes the project's
- * Node (#199): the `engines.node` the row's manifest declares (a member's
- * own, else the root's) when there is one, else `node`. A `latest` rule moves
- * it with the text as a warning. A known document without `engines.node`
- * is no constraint; an unknown one is left to the caller's warning.
- */
-const enginesPass = ({
-  declaredOf,
-  node,
-  nodeLabel,
-}: {
-  declaredOf: (row: UpdateResult) => string | undefined
-  node: string | null
-  nodeLabel?: string
-}): ManifestPass => {
-  let noted = false
-  return (rows, { manifests, lookupName, policy }) =>
-    manifests.size === 0
-      ? rows
-      : rows.map((row) => {
-          const range = targetManifestOf(
-            manifests,
-            row,
-            lookupName,
-          )?.enginesNode
-          if (!range) return row
-          const declared = declaredOf(row)
-          if (declared === undefined && node === null) {
-            if (!noted) {
-              noted = true
-              logger.debug(
-                "No Node runs autd and the project declares no engines.node: engines aren't checked",
-              )
-            }
-            return row
-          }
-          const message = enginesHold(range, {
-            ...(declared === undefined ? {} : { declared }),
-            running: node,
-            ...(nodeLabel === undefined ? {} : { runningLabel: nodeLabel }),
-          })
-          if (!message) return row
-          const reason: Reason = { code: 'engines', message }
-          return policy.ruleFor(row.name) === 'latest'
-            ? withWarning(row, reason)
-            : heldFor(row, reason)
-        })
 }
 
 /**
