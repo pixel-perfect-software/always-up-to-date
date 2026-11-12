@@ -257,7 +257,7 @@ class Logger {
         ? ''
         : gray(`  (took ${formatElapsed(elapsedMs)})`)
     console.log(
-      `\n${moving ? '' : bold('Nothing to update: ')}${counts.join(gray(NOTE_SEPARATOR))}${took}`,
+      `\n${moving ? '' : bold(phase === 'applied' ? 'Nothing updated: ' : 'Nothing to update: ')}${counts.join(gray(NOTE_SEPARATOR))}${took}`,
     )
     if (moving && next) {
       const where = member === undefined ? '' : ' in the workspace root'

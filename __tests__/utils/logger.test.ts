@@ -288,6 +288,12 @@ describe('Logger', () => {
       ])
     })
 
+    it('starts the applied summary Nothing updated, the plan Nothing to update (#222)', () => {
+      logger.report([held('a', 'held by rule')], 'npm', 'applied')
+
+      expect(printed().at(-1)).toBe('\nNothing updated: 1 held by a rule')
+    })
+
     it('leaves the manifest column out when every row is the root', () => {
       logger.report([moved('a', { workspace: '.' })], 'pnpm', 'plan')
       expect(printed()[1]).toBe('  a  1.0.0 → 1.0.1')

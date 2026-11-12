@@ -83,6 +83,18 @@ describe.each(ADAPTERS)('a member run with $pm', ({ adapter }) => {
     )
   })
 
+  it('names a target the member does not declare, though the root does (#222)', async () => {
+    const p = project()
+    const lookup = jest.spyOn(p.registry, 'lookup')
+
+    await expect(findOutdated(p, ['ms'])).rejects.toMatchObject({
+      step: 'discover',
+      message: "ms isn't a dependency of this workspace member packages/b",
+    })
+    expect(lookup).not.toHaveBeenCalled()
+    await expect(findOutdated(p, ['dayjs'])).resolves.toHaveProperty('dayjs')
+  })
+
   it('plans rows that carry the member path', async () => {
     const p = project()
     const rows = await plan(p, await findOutdated(p))
@@ -108,7 +120,7 @@ describe.each(ADAPTERS)('a member run with $pm', ({ adapter }) => {
     await expect(update(p)).rejects.toMatchObject({
       step: 'apply',
       manifestWritten: false,
-      message: expect.stringContaining(`run autd update in ${cwd}`),
+      message: expect.stringContaining(`run it in ${cwd}, or preview`),
     })
     await expect(
       update(p, { targetPackages: ['dayjs'] }),

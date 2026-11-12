@@ -98,7 +98,10 @@ const updateChecker = (
     return {
       reason: {
         code: current === 'missing' ? 'not-installed' : 'invalid-version',
-        message: `invalid version (current ${current}, latest ${latest})`,
+        message:
+          current === 'missing'
+            ? 'not installed'
+            : `invalid version (current ${current}, latest ${latest})`,
       },
     }
   }

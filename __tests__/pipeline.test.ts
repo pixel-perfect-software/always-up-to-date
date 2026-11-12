@@ -94,6 +94,71 @@ describe('pipeline', () => {
     expect(moved.find((r) => r.name === 'dayjs')?.updated).toBe(true)
   })
 
+  describe('named targets (#222)', () => {
+    const declare = (dependencies: Record<string, string>) =>
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({ dependencies }),
+      )
+
+    it('fails for a name the manifest does not declare, before any lookup', async () => {
+      const registry = registryFor('dayjs')
+      const lookup = jest.spyOn(registry, 'lookup')
+      const p = projectFor(npm, cwd, {}, registry)
+
+      await expect(findOutdated(p, ['leftpad-nope'])).rejects.toMatchObject({
+        step: 'discover',
+        message: "leftpad-nope isn't a dependency of this project",
+      })
+      await expect(
+        update(p, { targetPackages: ['dayjs', 'a-nope', 'b-nope'] }),
+      ).rejects.toMatchObject({
+        step: 'discover',
+        message: "a-nope, b-nope aren't dependencies of this project",
+      })
+
+      expect(lookup).not.toHaveBeenCalled()
+      expect(logger.starting).not.toHaveBeenCalled()
+      expect(runProcess).not.toHaveBeenCalled()
+    })
+
+    it('names a dependency that is already current and still plans the rest', async () => {
+      declare({ dayjs: '1.11.9', ms: '2.1.3' })
+      installPackages(cwd, '.', { dayjs: '1.11.9', ms: '2.1.3' })
+      const p = projectFor(npm, cwd, {}, registryFor('dayjs', 'ms'))
+
+      const outdated = await findOutdated(p, ['ms', 'dayjs'])
+
+      expect(Object.keys(outdated)).toEqual(['dayjs'])
+      expect(logger.info).toHaveBeenCalledTimes(1)
+      expect(logger.info).toHaveBeenCalledWith('ms is already up to date')
+    })
+
+    it('names the current dependency when the update has nothing to move', async () => {
+      declare({ ms: '2.1.3' })
+      installPackages(cwd, '.', { ms: '2.1.3' })
+      const p = projectFor(npm, cwd, {}, registryFor('ms'))
+
+      await expect(update(p, { targetPackages: ['ms'] })).resolves.toEqual([])
+
+      expect(logger.info).toHaveBeenCalledWith('ms is already up to date')
+    })
+
+    it('reads a dependency that is not installed as missing, naming the fix', async () => {
+      declare({ ms: '2.1.3' })
+      fs.rmSync(path.join(cwd, 'node_modules'), { recursive: true })
+      installPackages(cwd, '.', { dayjs: '1.11.9' })
+      const p = projectFor(npm, cwd, {}, registryFor('ms'))
+
+      const [row] = await plan(p, await findOutdated(p))
+
+      expect(row.reason).toEqual({
+        code: 'not-installed',
+        message: 'not installed: run npm install',
+      })
+    })
+  })
+
   describe('a cooldown fallback (#151)', () => {
     // Publish times of ms, relative to the run: plan reads the real clock.
     const DAY = 24 * 60 * 60 * 1000
