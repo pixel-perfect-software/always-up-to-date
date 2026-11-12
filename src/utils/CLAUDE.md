@@ -24,7 +24,7 @@ utils/
   runProcess.ts       # runProcess() (execFile + args, no output cap), buildWindowsCommand()
   config.ts           # loadConfig(workingDir, fallbackDir?), configFileFor(), saveJsonConfig(), DEFAULT_CONFIG, INITIAL_CONFIG, ConfigError
   cooldown.ts         # normalizeCooldown(), isCooldownEnabled(), cooldownDaysFor(), evaluateCooldown()
-  duration.ts         # parseDuration() (number | '1 week' | '24h' → days), formatAgeDays(), MS_PER_DAY
+  duration.ts         # readDuration() (undefined when unreadable), parseDuration() (number | '1 week' | '24h' → days, 0 when unreadable), formatAgeDays(), MS_PER_DAY
   npmrc.ts            # parseNpmrc(text, env, substitute?), substituteEnv(): the .npmrc parser (pure); `Substitute` is how `${VAR}` expands
   npmrcLoader.ts      # NpmrcLayer / EnvRule / NpmrcView, envLayer(), npmrcFileLayer(), mergeNpmrcLayers(), npmNpmrcLayers() (npm 12's layers), loadNpmrc() (their merge), registryConfigFrom() → RegistryConfig; adapters supply `npmrcLayers?` and adjust with `registryConfig?`
   redaction.ts        # trackRegistries(load) at openProject, scrub(text): configured registry paths shown as `…[marker]` in logger output and reportFailure
@@ -65,12 +65,13 @@ utils/
 ### Configuration (`config.ts`)
 
 - Config file: `.always-up-to-date.json` in project root
-- `loadConfig(workingDir?, fallbackDir?)` reads JSON, merges with `DEFAULT_CONFIG`. `configFileFor(workingDir, fallbackDir?)` is the file it reads: the working directory's own, else the fallback's, with no per-key merge. A member run (#123) passes the member's directory and the workspace root, so a member's file replaces the root's whole. Only `openProject` (`src/project.ts`) calls it for a command run; everything else takes the loaded config as a parameter
+- `loadConfig(workingDir?, fallbackDir?, onWarning?)` reads JSON, merges with `DEFAULT_CONFIG`. `configFileFor(workingDir, fallbackDir?)` is the file it reads: the working directory's own, else the fallback's, with no per-key merge. A member run (#123) passes the member's directory and the workspace root, so a member's file replaces the root's whole. Only `openProject` (`src/project.ts`) calls it for a command run; everything else takes the loaded config as a parameter. `onWarning` receives the unknown-key warnings: `openProject` collects them and prints them with `logger.warn` right after `logger.configure`, since the logger's `silent` and `--json` handling come from the config being loaded
 - `saveJsonConfig(config, filePath)` writes formatted JSON; `autd init` writes `INITIAL_CONFIG` (`beyondRange`, `rules`, `cooldown`, `debug`, `silent`), never the deprecated fields
 - Schema: `AlwaysUpToDateConfig` (see `src/types.ts`); `ConfigFile` is any subset of it plus `$schema`
 - `beyondRange` and `rules` are validated strictly: an unknown level or rule throws instead of being ignored (ignoring `"react": "hodl"` would update a package meant to be held). `beyondRange` stays `undefined` when absent so the deprecated fields can still decide
 - Every load failure (malformed JSON, invalid value) is a `ConfigError`. `openProject` throws it inside the command's `try`, so `reportFailure` prints it as one `❌` line with exit 1 (or the `--json` error object). Importing the CLI, `--help`, `--version` and `init` never load the config
-- `cooldown` accepts: number (days), duration string (`'1 week'`, `'24h'`), or per-update-type object `{ patch, minor, major }` whose values are themselves numbers or duration strings
+- `cooldown` accepts: number (days), duration string (`'1 week'`, `'24h'`), or per-update-type object `{ patch, minor, major }` whose values are themselves numbers or duration strings. Anything `readDuration` cannot read (`"30 dyas"`, `-3`, `""`, `null`) and any other per-type key (`mnior`) is a `ConfigError` naming the key and the value (#217): a typo must not turn a supply-chain gate off
+- `debug`, `silent`, `depsDev` and the deprecated `allowMinorUpdates` / `allowMajorUpdates` take `true` or `false` only (`"false"` and `1` are errors, not coerced). A top level that is not a JSON object (an array, `null`, a string) is a `ConfigError`. An unknown top-level key is a warning naming it and the known key within two edits of it, case ignored (`beyondrange` → `beyondRange`); `$schema` and the deprecated keys are known. `schema/config.schema.json`'s duration patterns accept the same strings as `readDuration` (a test compares them)
 
 ### Update Policy (`updateChecker.ts`)
 
@@ -87,7 +88,7 @@ utils/
 ### Cooldown (`cooldown.ts` + `duration.ts`)
 
 - `cooldown.ts` is gate logic: normalize the user's config to `{ patch, minor, major }` days, decide if a release is too fresh given its update type and timestamp
-- `duration.ts` is the generic time/format layer: `parseDuration` accepts numbers, bare numeric strings, and `<n><unit>` (s/min/h/d/w/mo/y) — fails to 0 so callers can fail open
+- `duration.ts` is the generic time/format layer: `readDuration` accepts numbers, bare numeric strings (`7`, not `-3`, `1e3`, `0x10` or `.5`), and `<n><unit>` (s/min/h/d/w/mo/y, any case) and returns undefined for the rest; the config loader uses it to reject a bad `cooldown`. `parseDuration` is `readDuration` with 0 for undefined, so callers can fail open: `cooldown.ts` uses it, on a config the loader already validated
 - `evaluateCooldown` returns `{ gated, ageDays, requiredDays }` — gating is a soft signal, callers decide what to do
 - Cooldown gating judges the chosen `target` version, not `latest`, and only runs for packages with a target, so held packages never trigger network calls. It reads the release dates and deprecations of the name discovery looked up (`declared`): an `npm:` alias's target, never the package its manifest key names (#152)
 - A target the gate holds falls back to the newest version between `current` and the target that is past cooldown for its own step and not deprecated (`lookup`, when the registry has it), a pre-release only when the target is one (#147). The row moves there with reason `cooldown: <target> released …`, which the report shows as `<target> held by cooldown (released …, needs Nd)`; it is held only when there is none. Below `wanted`, the fallback must also satisfy the range the manifest declares (the `declared` option, which the pipeline reads with `declaredDependency()` in `dependencySpecs.ts`): `applyPinned` puts that range back, and a range with a gap such as `^1 || ^3` doesn't cover every version below `wanted` (#151). With no range known, nothing below `wanted` qualifies

@@ -213,6 +213,8 @@ You only need a config file to go further than your package.json ranges. Run `au
 | `debug`       | `false`  | Print each package-manager command and its stderr.                                                                                                                                                                                                                                                                                                                                                                                          |
 | `silent`      | `false`  | Suppress all output.                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
+autd checks the file. A `cooldown` it can't read (`"30 dyas"`, `-3`), a `debug` or `silent` that isn't `true` or `false`, or a file that isn't a JSON object fails `check` and `update` with a message that names the key and the value. An unknown key is a warning that names it and the nearest known key (`beyondrange`: did you mean `beyondRange`?).
+
 ### Rules
 
 `rules` overrides the policy for single packages or groups:

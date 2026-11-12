@@ -37,18 +37,6 @@ describe('loadConfig', () => {
     expect(config.updateAllowlist).toEqual([]) // default
   })
 
-  it('coerces non-boolean values to booleans', () => {
-    mockedCheckIfFileExists.mockReturnValue(true)
-    mockedFs.readFileSync.mockReturnValue(
-      JSON.stringify({ allowMinorUpdates: 'yes', debug: 1 }),
-    )
-
-    const config = loadConfig('/test')
-
-    expect(config.allowMinorUpdates).toBe(true)
-    expect(config.debug).toBe(true)
-  })
-
   it('falls back to default for non-array allowlist/denylist', () => {
     mockedCheckIfFileExists.mockReturnValue(true)
     mockedFs.readFileSync.mockReturnValue(
@@ -149,22 +137,157 @@ describe('loadConfig', () => {
       })
     })
 
-    it('drops invalid entries from the per-type object', () => {
+    it('accepts a bare numeric string and a compact duration', () => {
       mockedCheckIfFileExists.mockReturnValue(true)
-      mockedFs.readFileSync.mockReturnValue(
-        JSON.stringify({
-          cooldown: { patch: -3, minor: '1 week', major: null },
-        }),
-      )
-      expect(loadConfig('/test').cooldown).toEqual({ minor: '1 week' })
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify({ cooldown: '7' }))
+      expect(loadConfig('/test').cooldown).toBe('7')
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify({ cooldown: '24h' }))
+      expect(loadConfig('/test').cooldown).toBe('24h')
     })
 
-    it('falls back to default for invalid scalar values', () => {
+    it('accepts a per-type object with only some keys', () => {
       mockedCheckIfFileExists.mockReturnValue(true)
-      mockedFs.readFileSync.mockReturnValue(JSON.stringify({ cooldown: -5 }))
-      expect(loadConfig('/test').cooldown).toBe(0)
+      mockedFs.readFileSync.mockReturnValue(
+        JSON.stringify({ cooldown: { major: '30 days' } }),
+      )
+      expect(loadConfig('/test').cooldown).toEqual({ major: '30 days' })
+    })
+
+    it.each([
+      ['"30 dyas"', 'cooldown', '"30 dyas"'],
+      ['"1 wek"', 'cooldown', '"1 wek"'],
+      ['-3', 'cooldown', '-3'],
+      ['""', 'cooldown', '""'],
+      ['true', 'cooldown', 'true'],
+      ['null', 'cooldown', 'null'],
+      ['{ "minor": "1 wek" }', 'cooldown.minor', '"1 wek"'],
+      ['{ "patch": -3 }', 'cooldown.patch', '-3'],
+      ['{ "major": null }', 'cooldown.major', 'null'],
+    ])(
+      'rejects cooldown %s, naming the key and the value',
+      (value, key, shown) => {
+        mockedCheckIfFileExists.mockReturnValue(true)
+        mockedFs.readFileSync.mockReturnValue(`{ "cooldown": ${value} }`)
+        expect(() => loadConfig('/test')).toThrow(ConfigError)
+        expect(() => loadConfig('/test')).toThrow(
+          `${key} must be a number of days or a duration like "1 week" (got ${shown})`,
+        )
+      },
+    )
+
+    it('rejects an unknown per-type key, listing the known ones', () => {
+      mockedCheckIfFileExists.mockReturnValue(true)
+      mockedFs.readFileSync.mockReturnValue(
+        JSON.stringify({ cooldown: { mnior: 3 } }),
+      )
+      expect(() => loadConfig('/test')).toThrow(ConfigError)
+      expect(() => loadConfig('/test')).toThrow(
+        'cooldown has an unknown key "mnior"; use "patch", "minor", "major"',
+      )
     })
   })
+})
+
+describe('booleans', () => {
+  beforeEach(() => mockedCheckIfFileExists.mockReturnValue(true))
+
+  it.each(['debug', 'silent', 'allowMinorUpdates', 'allowMajorUpdates'])(
+    'reads true and false for %s',
+    (key) => {
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify({ [key]: true }))
+      expect(loadConfig('/test')).toMatchObject({ [key]: true })
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify({ [key]: false }))
+      expect(loadConfig('/test')).toMatchObject({ [key]: false })
+    },
+  )
+
+  it.each([
+    ['silent', '"false"'],
+    ['debug', '1'],
+    ['debug', '"true"'],
+    ['silent', 'null'],
+    ['allowMinorUpdates', '"no"'],
+    ['allowMajorUpdates', '0'],
+  ])('rejects %s: %s instead of coercing it', (key, value) => {
+    mockedFs.readFileSync.mockReturnValue(`{ "${key}": ${value} }`)
+    expect(() => loadConfig('/test')).toThrow(ConfigError)
+    expect(() => loadConfig('/test')).toThrow(
+      `${key} must be true or false (got ${value})`,
+    )
+  })
+})
+
+describe('unknown top-level keys', () => {
+  beforeEach(() => mockedCheckIfFileExists.mockReturnValue(true))
+
+  const warningsFor = (json: unknown) => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(json))
+    const warnings: string[] = []
+    loadConfig('/test', undefined, (m) => warnings.push(m))
+    return warnings
+  }
+
+  it('warns with the nearest known key for a misspelling', () => {
+    const warnings = warningsFor({ beyondrange: 'major' })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('unknown key "beyondrange"')
+    expect(warnings[0]).toContain('did you mean "beyondRange"?')
+    expect(warningsFor({ cooldwon: 7 })[0]).toContain(
+      'did you mean "cooldown"?',
+    )
+  })
+
+  it('names the file', () => {
+    expect(warningsFor({ beyondrange: 'major' })[0]).toContain(
+      path.join('/test', '.always-up-to-date.json'),
+    )
+  })
+
+  it('warns without a suggestion when no key is close', () => {
+    const [warning] = warningsFor({ somethingElseEntirely: 1 })
+    expect(warning).toContain('unknown key "somethingElseEntirely"')
+    expect(warning).not.toContain('did you mean')
+  })
+
+  it('does not warn for known keys, $schema or the deprecated ones', () => {
+    expect(
+      warningsFor({
+        $schema: 'https://example.com/schema.json',
+        beyondRange: 'none',
+        rules: {},
+        allowMinorUpdates: false,
+        allowMajorUpdates: false,
+        debug: false,
+        silent: false,
+        updateAllowlist: [],
+        updateDenylist: [],
+        cooldown: 0,
+        depsDev: true,
+      }),
+    ).toEqual([])
+  })
+
+  it('still loads the file, ignoring the unknown key', () => {
+    mockedFs.readFileSync.mockReturnValue(
+      JSON.stringify({ beyondrange: 'major' }),
+    )
+    expect(loadConfig('/test').beyondRange).toBeUndefined()
+  })
+})
+
+describe('a top level that is not an object', () => {
+  beforeEach(() => mockedCheckIfFileExists.mockReturnValue(true))
+
+  it.each(['[]', '[{ "cooldown": 7 }]', '5', '"cooldown"', 'null', 'true'])(
+    'rejects %s with a ConfigError',
+    (json) => {
+      mockedFs.readFileSync.mockReturnValue(json)
+      expect(() => loadConfig('/test')).toThrow(ConfigError)
+      expect(() => loadConfig('/test')).toThrow(
+        'the file must hold a JSON object',
+      )
+    },
+  )
 })
 
 describe('depsDev', () => {

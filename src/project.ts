@@ -52,8 +52,11 @@ export const openProject = (
   { pm, cache = true }: { pm?: SupportedPackageManager; cache?: boolean } = {},
 ): Project => {
   const { dir, workspaceRoot } = locate(cwd)
-  let config = loadConfig(dir, workspaceRoot)
+  // Warnings wait for the logger: `silent` and `--json` come from the config.
+  let warnings: string[] = []
+  let config = loadConfig(dir, workspaceRoot, (m) => warnings.push(m))
   logger.configure(config)
+  for (const warning of warnings) logger.warn(warning)
   const adapter = adapterFor(
     detectPackageManager(workspaceRoot, pm, { from: dir, cwd }),
   )
@@ -69,8 +72,10 @@ export const openProject = (
         `${adapter.name} treats ${root} as the project, but detection there finds ${found}. Pass --pm to choose one.`,
       )
     }
-    config = loadConfig(dir, root)
+    warnings = []
+    config = loadConfig(dir, root, (m) => warnings.push(m))
     logger.configure(config)
+    for (const warning of warnings) logger.warn(warning)
   }
   const member = root === dir ? undefined : memberAt(root, dir)
   logger.debug(
