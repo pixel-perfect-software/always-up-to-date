@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -21,6 +20,7 @@ jest.mock('@/utils/runProcess', () => ({
 
 import logger from '@/utils/logger'
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from './fixtures/files'
 
 // When the workspace fixtures were captured, so no version drifts with the registry.
 const AS_OF = '2026-10-23T16:38:12-03:00'
@@ -35,11 +35,7 @@ const ADAPTERS = [
 let cwd: string
 
 beforeEach(() => {
-  cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-member-run-'))
-})
-
-afterEach(() => {
-  fs.rmSync(cwd, { recursive: true, force: true })
+  cwd = tempDir('autd-member-run-')
 })
 
 describe.each(ADAPTERS)('a member run with $pm', ({ adapter }) => {

@@ -1,11 +1,11 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 
 import bun from '@/managers/bun'
 import pnpm from '@/managers/pnpm'
 import { pnpmConfigDir } from '@/managers/pnpm/npmrc'
 import { managerRegistryConfig, processSources } from '@/utils/npmrcLoader'
+import { tempDir, write } from './fixtures/files'
 import { managerEnv, pinWorkspaceYaml } from './integration/harness'
 import {
   type RangedDependency,
@@ -552,10 +552,8 @@ describe('managerEnv', () => {
 
   beforeEach(() => {
     before = Object.fromEntries(touched.map((k) => [k, process.env[k]]))
-    developer = fs.realpathSync.native(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-dev-machine-')),
-    )
-    project = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-dev-project-'))
+    developer = fs.realpathSync.native(tempDir('autd-dev-machine-'))
+    project = tempDir('autd-dev-project-')
   })
 
   afterEach(() => {
@@ -565,14 +563,7 @@ describe('managerEnv', () => {
       if (before[k] === undefined) delete process.env[k]
       else process.env[k] = before[k]
     }
-    fs.rmSync(developer, { recursive: true, force: true })
-    fs.rmSync(project, { recursive: true, force: true })
   })
-
-  const write = (file: string, content: string): void => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
 
   const authTokens = (adapter: typeof pnpm | typeof bun): string[] =>
     Object.entries(

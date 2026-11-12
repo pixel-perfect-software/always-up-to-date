@@ -1,10 +1,10 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { openProject, type Project } from '@/project'
 import { registryFor } from '@/utils/registryRequest'
+import { tempDir, write } from './fixtures/files'
 import { startRegistry, type TestRegistry } from './fixtures/registry'
 
 // The real project, session and adapter hook on temp directories: which files
@@ -17,10 +17,6 @@ describe('openProject registry config from a workspace member', () => {
   let home: string | undefined
   const projects: Project[] = []
   const at = (...parts: string[]) => path.join(tmp, ...parts)
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
   const registryOf = (cwd: string, pm: 'pnpm' | 'bun') => {
     const project = openProject(cwd, { pm })
     projects.push(project)
@@ -28,9 +24,7 @@ describe('openProject registry config from a workspace member', () => {
   }
 
   beforeEach(() => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-member-')),
-    )
+    tmp = tempDir('autd-member-', { real: true })
     home = process.env.HOME
     process.env.HOME = at('home')
     write(at('package.json'), '{"name":"root","workspaces":["packages/*"]}')
@@ -39,7 +33,6 @@ describe('openProject registry config from a workspace member', () => {
   afterEach(() => {
     for (const project of projects.splice(0)) project.registry.close()
     process.env.HOME = home
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   it('pnpm: uses the root pnpm-workspace.yaml and .npmrc, ignoring the member .npmrc', () => {
@@ -104,10 +97,6 @@ describe('openProject registry config from a .yarnrc', () => {
   let tmp: string
   let home: string | undefined
   const projects: Project[] = []
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
   const registryOf = () => {
     const project = openProject(tmp)
     projects.push(project)
@@ -115,9 +104,7 @@ describe('openProject registry config from a .yarnrc', () => {
   }
 
   beforeEach(() => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarnrc-')),
-    )
+    tmp = tempDir('autd-yarnrc-', { real: true })
     home = process.env.HOME
     process.env.HOME = path.join(tmp, 'home')
     write(
@@ -129,7 +116,6 @@ describe('openProject registry config from a .yarnrc', () => {
   afterEach(() => {
     for (const project of projects.splice(0)) project.registry.close()
     process.env.HOME = home
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   it('routes the default registry and a scope from .yarnrc', () => {
@@ -159,10 +145,6 @@ describe('openProject registry config from a yarn workspace member', () => {
   let tmp: string
   let home: string | undefined
   const projects: Project[] = []
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
   const registryOfMember = () => {
     const project = openProject(path.join(tmp, 'packages', 'a'), { pm: 'yarn' })
     projects.push(project)
@@ -170,9 +152,7 @@ describe('openProject registry config from a yarn workspace member', () => {
   }
 
   beforeEach(() => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarn-member-')),
-    )
+    tmp = tempDir('autd-yarn-member-', { real: true })
     home = process.env.HOME
     process.env.HOME = path.join(tmp, 'home')
     write(path.join(tmp, 'yarn.lock'), '')
@@ -182,7 +162,6 @@ describe('openProject registry config from a yarn workspace member', () => {
   afterEach(() => {
     for (const project of projects.splice(0)) project.registry.close()
     process.env.HOME = home
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   it("a berry member ignores the root's .yarnrc", () => {
@@ -235,10 +214,6 @@ describe('openProject registry credentials for yarn v1', () => {
   let saved: { HOME?: string; PREFIX?: string }
   let server: TestRegistry
   const projects: Project[] = []
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
   const authorizationFor = async (
     pm: 'yarn' | 'npm',
     name: string,
@@ -251,9 +226,7 @@ describe('openProject registry credentials for yarn v1', () => {
   }
 
   beforeEach(async () => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-yarn-auth-')),
-    )
+    tmp = tempDir('autd-yarn-auth-', { real: true })
     saved = { HOME: process.env.HOME, PREFIX: process.env.PREFIX }
     process.env.HOME = path.join(tmp, 'home')
     process.env.PREFIX = path.join(tmp, 'prefix')
@@ -277,7 +250,6 @@ describe('openProject registry credentials for yarn v1', () => {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
     }
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   it('sends no token for an unscoped package, where npm sends the host token', async () => {
@@ -315,10 +287,6 @@ describe('openProject registry config for yarn berry', () => {
   let saved: string | undefined
   let server: TestRegistry
   const projects: Project[] = []
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, content)
-  }
   const open = () => {
     const project = openProject(tmp, { pm: 'yarn', cache: false })
     projects.push(project)
@@ -326,9 +294,7 @@ describe('openProject registry config for yarn berry', () => {
   }
 
   beforeEach(async () => {
-    tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-berry-registry-')),
-    )
+    tmp = tempDir('autd-berry-registry-', { real: true })
     saved = process.env.HOME
     process.env.HOME = path.join(tmp, 'home')
     write(
@@ -355,7 +321,6 @@ describe('openProject registry config for yarn berry', () => {
     await server.close()
     if (saved === undefined) delete process.env.HOME
     else process.env.HOME = saved
-    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   it("routes a scope to its npmScopes registry and sends the scope's token", async () => {

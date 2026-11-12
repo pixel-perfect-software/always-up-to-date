@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { discoverFromRegistry } from '@/discovery'
 import bun from '@/managers/bun'
@@ -26,6 +25,7 @@ jest.mock('@/utils/runProcess', () => ({
 
 import logger from '@/utils/logger'
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from './fixtures/files'
 
 const mockedRunProcess = jest.mocked(runProcess)
 
@@ -42,11 +42,7 @@ const ADAPTERS = [
 let cwd: string
 
 beforeEach(() => {
-  cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-discovery-'))
-})
-
-afterEach(() => {
-  fs.rmSync(cwd, { recursive: true, force: true })
+  cwd = tempDir('autd-discovery-')
 })
 
 const writeJson = (file: string, content: object): void => {

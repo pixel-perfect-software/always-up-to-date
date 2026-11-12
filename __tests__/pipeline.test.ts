@@ -1,5 +1,4 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import npm from '@/managers/npm'
 import { check, findOutdated, plan, update } from '@/pipeline'
@@ -27,18 +26,18 @@ jest.mock('@/utils/runProcess', () => ({
 import { loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
 import { runProcess } from '@/utils/runProcess'
+import { tempDir } from './fixtures/files'
 import { reasonFor } from './fixtures/reasons'
 
 // Keep the developer's own npm configuration out of every case.
 let npmConfigDir: string
 let restoreNpmConfig: () => void
 beforeEach(() => {
-  npmConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-npm-config-'))
+  npmConfigDir = tempDir('autd-npm-config-')
   restoreNpmConfig = isolateNpmConfig(npmConfigDir)
 })
 afterEach(() => {
   restoreNpmConfig()
-  fs.rmSync(npmConfigDir, { recursive: true, force: true })
 })
 
 // The newest fixture these cases were written against (the workspace fixtures).
@@ -50,17 +49,13 @@ describe('pipeline', () => {
   let cwd: string
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-pipeline-'))
+    cwd = tempDir('autd-pipeline-')
     fs.writeFileSync(
       path.join(cwd, 'package.json'),
       JSON.stringify({ dependencies: { dayjs: '1.11.9' } }),
     )
     installPackages(cwd, '.', { dayjs: '1.11.9' })
     jest.mocked(runProcess).mockResolvedValue({ stdout: '', stderr: '' })
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('reads the config from the project and never loads it', async () => {

@@ -1,6 +1,5 @@
 import { Command } from 'commander'
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 
 jest.mock('@/utils/logger')
@@ -11,6 +10,7 @@ import initCommand from '@/commands/init'
 import { saveJsonConfig } from '@/utils/config'
 import { checkIfFileExists } from '@/utils/files'
 import logger from '@/utils/logger'
+import { tempDir } from '../fixtures/files'
 
 const mockedSaveJsonConfig = jest.mocked(saveJsonConfig)
 const mockCheckIfFileExists = jest.mocked(checkIfFileExists)
@@ -79,9 +79,7 @@ describe('init command', () => {
   })
 
   it("writes where config is read: the nearest package.json's directory", async () => {
-    const tmp = fs.realpathSync(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'autd-init-')),
-    )
+    const tmp = tempDir('autd-init-', { real: true })
     fs.mkdirSync(path.join(tmp, 'packages', 'a', 'src'), { recursive: true })
     fs.writeFileSync(path.join(tmp, 'packages', 'a', 'package.json'), '{}')
     jest
@@ -89,11 +87,7 @@ describe('init command', () => {
       .mockReturnValue(path.join(tmp, 'packages', 'a', 'src'))
     mockCheckIfFileExists.mockReturnValue(false)
 
-    try {
-      await program.parseAsync(['node', 'test', 'init'])
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true })
-    }
+    await program.parseAsync(['node', 'test', 'init'])
 
     const file = path.join(tmp, 'packages', 'a', '.always-up-to-date.json')
     expect(mockedSaveJsonConfig).toHaveBeenCalledWith(expect.anything(), file)

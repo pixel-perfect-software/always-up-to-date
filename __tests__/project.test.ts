@@ -15,27 +15,18 @@ import detectPackageManager from '@/detectPackageManager'
 import bun from '@/managers/bun'
 import pnpm from '@/managers/pnpm'
 import { openProject } from '@/project'
-import type { RegistryConfig } from '@/types'
 import { DEFAULT_CONFIG, loadConfig } from '@/utils/config'
 import logger from '@/utils/logger'
 import { createRegistrySession } from '@/utils/registry'
 import { fakeRegistry } from './fixtures'
+import { registryConfig, tempDir } from './fixtures/files'
 
 // openProject needs a package.json at or above its directory.
 const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-project-'))
 fs.writeFileSync(path.join(cwd, 'package.json'), '{"name":"project"}')
 afterAll(() => fs.rmSync(cwd, { recursive: true, force: true }))
 
-const registryDefaults: RegistryConfig = {
-  registry: 'https://registry.npmjs.org/',
-  scopedRegistries: {},
-  credentials: {},
-  strictSSL: true,
-  proxy: {},
-  fetchRetries: 2,
-  fetchTimeout: 300_000,
-  maxSockets: 15,
-}
+const registryDefaults = registryConfig()
 
 describe('openProject', () => {
   it('returns the directory, the loaded config and the detected adapter', () => {
@@ -280,18 +271,14 @@ describe('openProject', () => {
   })
 
   it('fails with no package.json in the directory or any parent, before detection (#222)', () => {
-    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-empty-'))
-    try {
-      expect(() => openProject(empty)).toThrow(
-        `No package.json in ${empty} or any parent directory`,
-      )
-      expect(detectPackageManager).not.toHaveBeenCalled()
-      // --pm does not skip the check.
-      expect(() => openProject(empty, { pm: 'npm' })).toThrow(
-        /No package.json in/,
-      )
-    } finally {
-      fs.rmSync(empty, { recursive: true, force: true })
-    }
+    const empty = tempDir('autd-empty-')
+    expect(() => openProject(empty)).toThrow(
+      `No package.json in ${empty} or any parent directory`,
+    )
+    expect(detectPackageManager).not.toHaveBeenCalled()
+    // --pm does not skip the check.
+    expect(() => openProject(empty, { pm: 'npm' })).toThrow(
+      /No package.json in/,
+    )
   })
 })

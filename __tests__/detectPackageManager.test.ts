@@ -1,11 +1,11 @@
 jest.mock('@/utils/logger')
 
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import detectPackageManager from '@/detectPackageManager'
 import { StepError } from '@/stepError'
 import logger from '@/utils/logger'
+import { tempDir } from './fixtures/files'
 
 describe('detectPackageManager', () => {
   let cwd: string
@@ -17,12 +17,8 @@ describe('detectPackageManager', () => {
   const debugLines = () => jest.mocked(logger.debug).mock.calls.map(([l]) => l)
 
   beforeEach(() => {
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'autd-detect-'))
+    cwd = tempDir('autd-detect-')
     manifest({})
-  })
-
-  afterEach(() => {
-    fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   describe('from the lockfile, when package.json declares nothing', () => {
