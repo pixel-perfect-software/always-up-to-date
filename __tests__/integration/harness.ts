@@ -32,7 +32,7 @@ export const LAYOUTS: Record<Manager, readonly string[]> = {
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..')
 const TEST_REPOS = path.join(REPO_ROOT, 'testRepos')
-export const CLI = path.join(REPO_ROOT, 'dist', 'index.js')
+export const CLI = path.join(REPO_ROOT, 'dist', 'index.cjs')
 
 export const YARN_VERSIONS = { yarn: '1.22.22', berry: '4.18.1' } as const
 

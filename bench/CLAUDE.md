@@ -14,7 +14,7 @@
 | `report.ts`          | hyperfine JSON parsing, the `BenchDocument` types and `parseBenchDocument`, `medianDifference`, `fullPackumentReads`, `formatDifference`, `movingRows` (the rows with outcome `update` of a v1 document; a 3.x array still reads, for `AUTD_BENCH_CLI`), tables |
 | `budgets.ts`         | Pure: `BUDGETS`, `legFrom`, `attemptOf`, `nextStep`, `verdictOf`, `exitCodeOf`, `annotationsOf`, `renderSummary`                                                                                                                                                |
 | `gate.ts`            | `runGate` with injected `runBench` / `sleep` / `writeSummary` / `log`; the real spawn of `run.ts` and the entry point                                                                                                                                           |
-| `register.cjs`       | swc loader for `run.ts` and `gate.ts`; maps the `@/*` path aliases itself                                                                                                                                                                                       |
+| `register.cjs`       | swc loader for `run.ts` and `gate.ts`; maps the `@/*` path aliases itself; it also hands `.ts` entry points that Node's ESM loader starts (the package is `"type": "module"`) back to the CommonJS loader through a `module.registerHooks` load hook            |
 
 ## `pnpm run bench`
 
@@ -33,7 +33,7 @@
 
 - `AUTD_BENCH_PM=npm,bun` selects rows (an unknown name fails fast)
 - `AUTD_BENCH_RUNS=n` sets the timed runs of each `check` measurement
-- `AUTD_BENCH_CLI=/path/to/other/dist/index.js` times another build, so a branch can be compared with `main`
+- `AUTD_BENCH_CLI=/path/to/other/dist/index.cjs` times another build, so a branch can be compared with `main`
 - `AUTD_BENCH_PROJECT=ranges` uses `bench/ranges/` (12 of the 40 on `^`/`~`)
 - `AUTD_BENCH_JSON=<path>` also writes the machine-readable document (`BenchDocument` in `bench/report.ts`, read back by `parseBenchDocument`: `version: 1`, the autd version, Node, platform, arch, project, one row per target with `status` `measured` (every timing's mean, stddev, median, runs and peak memory, `targets`, `fullPackuments`), `failed` or `throttled` (an `error` and no numbers), and `startup` as `measured` or `failed`), against the cwd, in a folder that must exist, and written before the tables are printed even when rows failed
 - `AUTD_BENCH_STARTUP=only|skip` times only startup (no manager is installed or measured, and the tables of rows are not printed) or leaves it out; an unset or blank value times both, and a bad value fails fast like `AUTD_BENCH_RUNS`

@@ -44,7 +44,7 @@ import {
 
 const BENCH = __dirname
 const REPO_ROOT = path.join(BENCH, '..')
-const DIST_CLI = path.join(REPO_ROOT, 'dist', 'index.js')
+const DIST_CLI = path.join(REPO_ROOT, 'dist', 'index.cjs')
 
 // Timed runs per measurement. Berry's warm check takes seconds and bun's cold
 // one over ten, so the counts stay small; AUTD_BENCH_RUNS replaces the check ones.
@@ -78,7 +78,7 @@ const output = (error: unknown): string => {
   ).trim()
 }
 
-/** `AUTD_BENCH_CLI`: the autd build to time, the checkout's own `dist/index.js` unless set. */
+/** `AUTD_BENCH_CLI`: the autd build to time, the checkout's own `dist/index.cjs` unless set. */
 const cliPath = (given: string | undefined): string => {
   const cli = given ? path.resolve(given) : DIST_CLI
   if (!fs.existsSync(cli)) {

@@ -6,7 +6,7 @@ Fixtures for the integration matrix (`pnpm run test:integration`). Each director
 
 The suite never runs in these directories. It copies one into the OS temp directory,
 installs its dependencies at the lowest version each range allows, restores the ranges,
-and runs the built CLI (`dist/index.js`) against the copy. So the checkout stays clean and
+and runs the built CLI (`dist/index.cjs`) against the copy. So the checkout stays clean and
 the copy sits outside this repository's own pnpm workspace, Biome and git. After autd's
 `update --json` on the copy, the manager's frozen install must still pass.
 

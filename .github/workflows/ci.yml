@@ -58,8 +58,8 @@ jobs:
       - name: The built CLI starts
         shell: bash
         run: |
-          test "$(node dist/index.js --version)" = "$(node -p "require('./package.json').version")"
-          node dist/index.js help
+          test "$(node dist/index.cjs --version)" = "$(node -p "require('./package.json').version")"
+          node dist/index.cjs help
 
   integration:
     # Real package managers against temp copies of testRepos/. One job per manager, so each

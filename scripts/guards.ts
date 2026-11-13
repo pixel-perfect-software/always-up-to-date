@@ -12,7 +12,7 @@ import { isBuiltin } from 'node:module'
 import path from 'node:path'
 import type { Metafile } from 'esbuild'
 
-export const OUTFILE = 'dist/index.js'
+export const OUTFILE = 'dist/index.cjs'
 const LICENSES_FILE = 'dist/third-party-licenses.txt'
 
 /**
@@ -195,7 +195,7 @@ function licenseText(name: string, dir: string, root: string): string {
 }
 
 /**
- * Writes the notice of every package bundled into dist/index.js, under
+ * Writes the notice of every package bundled into dist/index.cjs, under
  * `root` (the repository). MIT and ISC require it in copies, and bundling
  * leaves no installed copy to carry it. Returns how many packages it covers.
  */

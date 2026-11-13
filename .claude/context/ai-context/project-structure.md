@@ -24,7 +24,7 @@ src/
   utils/                    # Shared utilities
     CLAUDE.md
 scripts/
-  build.mts                 # pnpm run build: empties dist/, bundles src/index.ts with esbuild into dist/index.js, fails on a warning, runs the checks in guards.ts, writes dist/third-party-licenses.txt; removes dist/ when a check fails (#109)
+  build.mts                 # pnpm run build: empties dist/, bundles src/index.ts with esbuild into dist/index.cjs, fails on a warning, runs the checks in guards.ts, writes dist/third-party-licenses.txt; removes dist/ when a check fails (#109)
   guards.ts                 # GuardError, STARTUP_SOURCES / STARTUP_PACKAGES, packageOf, checkStartup (the metafile walk), checkExternals, writeLicenses: pure, so __tests__/scripts/ imports them
   package.json              # { "type": "module" }: Node loads guards.ts from build.mts as ESM with no MODULE_TYPELESS_PACKAGE_JSON warning (not a workspace member)
   tsconfig.json             # Type-checks scripts/ (module nodenext, erasableSyntaxOnly, allowImportingTsExtensions); check-types runs it after the root tsc
@@ -143,7 +143,7 @@ __tests__/
 
 ## Tech Stack
 
-- **Language:** TypeScript, type-checked by `tsc` (which emits nothing) and bundled by esbuild 0.28.2 into one CommonJS file, `dist/index.js` (`scripts/build.mts`)
+- **Language:** TypeScript, type-checked by `tsc` (which emits nothing) and bundled by esbuild 0.28.2 into one CommonJS file, `dist/index.cjs` (`scripts/build.mts`; the extension is `.cjs` because the package is `"type": "module"`, so a `.js` file would load as ESM)
 - **CLI Framework:** Commander.js
 - **Package Manager:** pnpm (>=12.0.0)
 - **Node:** ^22.23.0 || >=24.17.0 (`.tool-versions` pins 24.22.1)
@@ -154,7 +154,7 @@ __tests__/
 
 ## Build and type check
 
-- `pnpm run build` - `scripts/build.mts` (it runs on Node's type stripping, so erasable syntax only): empties `dist/`, bundles `src/index.ts` with esbuild into `dist/index.js` (one CommonJS file, no minification or sourcemap; commander, colorette and semver inlined), fails on any esbuild warning, runs the startup check (`src/commands/CLAUDE.md`) and the externals check (every import left for Node to resolve is a builtin or a `dependencies` entry, and a dependency loads with `import()`), then writes `dist/third-party-licenses.txt` (name, version and license text of every bundled package; MIT and ISC need the notice in copies, and bundling removes the installed ones). `@inquirer/prompts` is the one runtime dependency: external, ESM-only, loaded by `update -i` with `await import()`. When a check fails, the build removes `dist/` and exits 1. tsc emits nothing (`noEmit` in `tsconfig.json`), so the build does not type-check
+- `pnpm run build` - `scripts/build.mts` (it runs on Node's type stripping, so erasable syntax only): empties `dist/`, bundles `src/index.ts` with esbuild into `dist/index.cjs` (one CommonJS file, `.cjs` because the package is `"type": "module"` and a `.js` file would load as ESM; no minification or sourcemap; commander, colorette and semver inlined), fails on any esbuild warning, runs the startup check (`src/commands/CLAUDE.md`) and the externals check (every import left for Node to resolve is a builtin or a `dependencies` entry, and a dependency loads with `import()`), then writes `dist/third-party-licenses.txt` (name, version and license text of every bundled package; MIT and ISC need the notice in copies, and bundling removes the installed ones). `@inquirer/prompts` is the one runtime dependency: external, ESM-only, loaded by `update -i` with `await import()`. When a check fails, the build removes `dist/` and exits 1. tsc emits nothing (`noEmit` in `tsconfig.json`), so the build does not type-check
 - `pnpm run check-types` - Type check without emitting files: `tsc --noEmit` over `src`, `__tests__` and `bench`, then `tsc -p scripts` over `scripts/` (its own `scripts/tsconfig.json`: `module: nodenext` for `import.meta`; `scripts/package.json` is `type: module`, so Node loads `guards.ts` from `build.mts` as ESM without a warning)
 - Path aliases: `@/*` maps to `src/*`. esbuild resolves them from `tsconfig.json` `paths` when it bundles; Jest (`moduleNameMapper`) and `bench/register.cjs` map them themselves
 

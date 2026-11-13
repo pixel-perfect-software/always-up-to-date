@@ -1,5 +1,5 @@
 /**
- * `pnpm run build`: dist/index.js as one esbuild bundle.
+ * `pnpm run build`: dist/index.cjs as one esbuild bundle.
  *
  * Runs on Node's type stripping, so it keeps to erasable syntax. In order it
  * empties dist/, bundles src/index.ts, fails on any esbuild warning, checks

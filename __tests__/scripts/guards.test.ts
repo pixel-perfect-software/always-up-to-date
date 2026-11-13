@@ -408,7 +408,7 @@ describe('checkExternals', () => {
     const output = await outputWith("import('left-pad')", ['left-pad'])
 
     expect(guardMessage(() => checkExternals(output, ['commander']))).toContain(
-      'dist/index.js imports left-pad, which is not in "dependencies"',
+      'dist/index.cjs imports left-pad, which is not in "dependencies"',
     )
   })
 
@@ -436,7 +436,7 @@ describe('checkExternals', () => {
       expect(
         guardMessage(() => checkExternals(output, ['@inquirer/prompts'])),
       ).toContain(
-        'dist/index.js loads @inquirer/prompts statically (require-call',
+        'dist/index.cjs loads @inquirer/prompts statically (require-call',
       )
     },
   )
@@ -473,7 +473,7 @@ describe('writeLicenses', () => {
       [
         'Third-party licenses',
         '',
-        'dist/index.js bundles the packages below. Their licenses follow.',
+        'dist/index.cjs bundles the packages below. Their licenses follow.',
         '',
         'JSONStream 1.3.5 (MIT)',
         '----------------------',
@@ -532,7 +532,7 @@ describe('writeLicenses', () => {
     const output = await outputImporting('unlicensed')
 
     expect(guardMessage(() => writeLicenses(output, tmp))).toContain(
-      'unlicensed is bundled into dist/index.js and has no license file in node_modules/unlicensed.',
+      'unlicensed is bundled into dist/index.cjs and has no license file in node_modules/unlicensed.',
     )
   })
 

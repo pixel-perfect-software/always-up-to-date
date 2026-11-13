@@ -8,7 +8,7 @@ Always Up To Date (`autd`) is a CLI that keeps a project's dependencies up to da
 
 ## Development Commands
 
-- `pnpm run build` - Bundle `src/index.ts` with esbuild into `dist/index.js` and run the startup and externals checks (detail in `.claude/context/ai-context/project-structure.md`). tsc emits nothing, so the build does not type-check
+- `pnpm run build` - Bundle `src/index.ts` with esbuild into `dist/index.cjs` and run the startup and externals checks (detail in `.claude/context/ai-context/project-structure.md`). tsc emits nothing, so the build does not type-check
 - `pnpm run check-types` - `tsc --noEmit` over `src`, `__tests__` and `bench`, then `tsc -p scripts`
 - `pnpm run clean` - Remove `dist/`
 - `pnpm test` - The unit suite (silent). One file: `pnpm test -- __tests__/path/to/test.test.ts`
@@ -16,7 +16,7 @@ Always Up To Date (`autd`) is a CLI that keeps a project's dependencies up to da
 - `pnpm run test:integration` - The integration matrix: the built CLI against real npm, pnpm, yarn v1, berry and bun (`__tests__/CLAUDE.md`)
 - `pnpm run bench` / `pnpm run bench:gate` - The benchmark and the perf gate CI's `perf` job runs (`bench/CLAUDE.md`)
 - `pnpm run format-and-lint` / `pnpm run format-and-lint:fix` - Check or fix formatting and linting with Biome (Markdown included)
-- `pnpm run autd <command>` - Run the built CLI (`node dist/index.js <command>`) in the current directory, e.g. `pnpm run autd init`, `pnpm run autd check`; build first
+- `pnpm run autd <command>` - Run the built CLI (`node dist/index.cjs <command>`) in the current directory, e.g. `pnpm run autd init`, `pnpm run autd check`; build first
 - Releasing: `/ship:release <major|minor|patch>`, then a `v<version>` tag on `main` runs `.github/workflows/release.yml`. Publish only through `release.yml`, never from a local checkout, and never rename it (it is npm's trusted publisher). Detail in `project-structure.md`
 
 ## Invariants

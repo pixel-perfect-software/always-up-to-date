@@ -76,7 +76,7 @@ With `--json`, stdout carries exactly one versioned JSON document (#201): a plan
 
 ### Binary Aliases
 
-Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodate`, `always-up-to-date`. All point to `dist/index.js`.
+Published as three aliases in `package.json` `bin` field: `autd`, `alwaysuptodate`, `always-up-to-date`. All point to `dist/index.cjs`.
 
 ## Integration Points
 

@@ -64,9 +64,9 @@ describe('scripts/build.mts', () => {
 
     expect(code).toBe(0)
     expect(stdout.trim()).toMatch(
-      /^dist\/index\.js: \d+\.\d KB, 2 inputs on the startup path, 0 bundled packages licensed$/,
+      /^dist\/index\.cjs: \d+\.\d KB, 2 inputs on the startup path, 0 bundled packages licensed$/,
     )
-    expect(fs.existsSync(at('dist', 'index.js'))).toBe(true)
+    expect(fs.existsSync(at('dist', 'index.cjs'))).toBe(true)
     expect(fs.existsSync(at('dist', 'third-party-licenses.txt'))).toBe(true)
   })
 
