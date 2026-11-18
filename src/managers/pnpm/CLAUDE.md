@@ -49,7 +49,7 @@ Layers, highest first, each key from the first that sets it, with no `registryCo
 
 ## Engines
 
-pnpm 12.18.0 judges engines by `nodeVersion` when set, else the running Node, and installs the highest satisfying version whatever the engines (probed 2026-11-07), so it has no `skipsEnginesExcluded`.
+pnpm 12.21.0 judges engines by `nodeVersion` when set, else the running Node, and installs the highest satisfying version whatever the engines (probed 2026-11-07), so it has no `skipsEnginesExcluded`.
 
 ## Apply
 

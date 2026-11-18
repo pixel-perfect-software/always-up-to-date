@@ -237,7 +237,7 @@ describe('check under each manager’s gate', () => {
     ],
     [
       'pnpm',
-      'an empty minimumReleaseAge, unset to pnpm 12.18.0 (#247)',
+      'an empty minimumReleaseAge, unset to pnpm 12.21.0 (#247)',
       {
         '.npmrc': 'registry=REGISTRY\n',
         'pnpm-workspace.yaml': 'minimumReleaseAge:\n',

@@ -18,7 +18,7 @@ const PNPM_DEFAULT_RELEASE_AGE = 1440
  * Verified on pnpm 12.16.1, 2026-11-03, with `pnpm install` against a local
  * registry with set publish times (p01-p19, the cases in `__tests__/releaseAgeGates.test.ts`):
  * - `minimumReleaseAge` in minutes, one day unless set (p01), 0 is off
- *   (p12), an empty key is unset (pnpm 12.18.0, 2026-11-12, #247); from
+ *   (p12), an empty key is unset (pnpm 12.21.0, 2026-11-12, #247); from
  *   `pnpm_config_minimum_release_age` (p10), then the project's
  *   `pnpm-workspace.yaml` (p13), then the global `config.yaml` (p14);
  * - `minimumReleaseAgeExclude`: names and globs whose `*` crosses `/`

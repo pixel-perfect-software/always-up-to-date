@@ -34,7 +34,7 @@ What is specific to npm: its `.npmrc` layers (the default for any adapter withou
 
 ## Engines (#200)
 
-`skipsEnginesExcluded` is true for npm only: npm installs the newest in-range version whose `engines.node` fits its Node (npm-pick-manifest's `engineOk` sort; `npmAcceptsNode` in `src/utils/engines.ts`, which fails an invalid range), probed on npm 12.2.2 and 11.19.1 (they agree; only `--node-version` became an unknown config). npm has no `nodeVersion` hook: it judges by the running Node. pnpm 12.18.0 and bun 1.4.4 install the highest satisfying version whatever the engines (probed 2026-11-07). The plan's walk-back is in `src/utils/plan/CLAUDE.md`.
+`skipsEnginesExcluded` is true for npm only: npm installs the newest in-range version whose `engines.node` fits its Node (npm-pick-manifest's `engineOk` sort; `npmAcceptsNode` in `src/utils/engines.ts`, which fails an invalid range), probed on npm 12.2.2 and 11.19.1 (they agree; only `--node-version` became an unknown config). npm has no `nodeVersion` hook: it judges by the running Node. pnpm 12.21.0 and bun 1.4.4 install the highest satisfying version whatever the engines (probed 2026-11-07). The plan's walk-back is in `src/utils/plan/CLAUDE.md`.
 
 ## Apply
 
