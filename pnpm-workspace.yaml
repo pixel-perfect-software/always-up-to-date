@@ -13,7 +13,7 @@ catalog:
   colorette: 2.0.20
   commander: 15.1.0
   semver: 7.8.6
-  "@biomejs/biome": 2.6.6
+  "@biomejs/biome": 2.6.8
   "@swc/core": 1.16.22
   "@swc/jest": "0.2.39"
   "@types/jest": 30.0.0

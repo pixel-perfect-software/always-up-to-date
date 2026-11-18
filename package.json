@@ -69,6 +69,7 @@
     "esbuild": "catalog:",
     "jest": "catalog:",
     "jest-coverage-badges": "catalog:",
+    "provino": "file:/Users/tylerrobertson/personal_dev/provino/.refs/tarballs/provino-0.0.0.tgz",
     "semver": "catalog:",
     "typescript": "catalog:"
   }
