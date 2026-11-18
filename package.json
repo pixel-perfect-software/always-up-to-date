@@ -13,11 +13,11 @@
     "format-and-lint": "biome check .",
     "format-and-lint:fix": "biome check . --write",
     "prepack": "pnpm run build",
-    "test": "jest --silent",
-    "test:integration": "pnpm run build && jest --config jest.integration.config.ts",
+    "test": "provino jest --silent",
+    "test:integration": "pnpm run build && provino jest --config jest.integration.config.ts",
     "bench": "pnpm run build && node -r ./bench/register.cjs bench/run.ts",
     "bench:gate": "pnpm run build && node -r ./bench/register.cjs bench/gate.ts",
-    "test:coverage": "jest --coverage --silent",
+    "test:coverage": "provino jest --coverage --silent",
     "test:badges": "pnpm test:coverage && jest-coverage-badges --output ./badges",
     "clean": "rm -rf dist",
     "autd": "node dist/index.cjs"
@@ -69,7 +69,7 @@
     "esbuild": "catalog:",
     "jest": "catalog:",
     "jest-coverage-badges": "catalog:",
-    "provino": "file:/Users/tylerrobertson/personal_dev/provino/.refs/tarballs/provino-0.0.0.tgz",
+    "provino": "catalog:",
     "semver": "catalog:",
     "typescript": "catalog:"
   }
