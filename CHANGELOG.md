@@ -3,6 +3,20 @@
 Notable changes to `@pixel-perfect-software/always-up-to-date`, newest first. Versions before
 2.0.0 were published without a changelog.
 
+## 2026-11-19 — 4.2.0: standalone binaries and a Homebrew formula, and `update --accept-license`
+
+`autd` now also ships as a standalone binary that needs no Node, on every release and through Homebrew. The npm package installs the way it did in 4.1.1. `update --accept-license <packages…>` moves a package held for a license change once you have reviewed it.
+
+### Added
+
+- `autd update --accept-license <packages…>` moves the named packages held for a license change, with the `license change: …` reason shown as a warning ([#263](https://github.com/pixel-perfect-software/always-up-to-date/issues/263), [#264](https://github.com/pixel-perfect-software/always-up-to-date/pull/264)). The report's license section now prints that command after its heading. Only the license hold is lifted: the rule, cooldown, release-age gate, peer, deprecation and engines holds still apply. A bare `--accept-license` is refused, and so is `-i --accept-license`.
+- Every release carries standalone binaries that need no Node: macOS arm64 and x64, Linux x64 and arm64, and Windows x64, with a `SHA256SUMS` file and a build provenance attestation for each archive ([#265](https://github.com/pixel-perfect-software/always-up-to-date/issues/265), [#267](https://github.com/pixel-perfect-software/always-up-to-date/issues/267)). Verify a download with `gh attestation verify <archive> --repo pixel-perfect-software/always-up-to-date`. The binary reads npm's and yarn v1's global and builtin `.npmrc` through the `node` on PATH, so a `min-release-age` set there still gates every lookup ([#269](https://github.com/pixel-perfect-software/always-up-to-date/issues/269)). CI runs the integration matrix against it on Ubuntu, Windows and macOS, and on a machine with no Node ([#266](https://github.com/pixel-perfect-software/always-up-to-date/issues/266)).
+- Homebrew on macOS and Linux, with no Node needed: `brew install pixel-perfect-software/tap/always-up-to-date` ([#268](https://github.com/pixel-perfect-software/always-up-to-date/issues/268)). It installs `autd`, `alwaysuptodate` and `always-up-to-date`.
+
+### Changed
+
+- The npm package's entry file is `dist/index.cjs`, where it was `dist/index.js`. The `autd`, `alwaysuptodate` and `always-up-to-date` commands are unchanged.
+
 ## 2026-11-12 — 4.1.1: installed peer ranges count only from packages that stay installed, so tiptap updates as one
 
 An update that moves a package together with the packages that pin it exactly no longer holds forever. `check` held `@tiptap/core` and `@tiptap/pm` through the exact peers of extensions that only the old `@tiptap/starter-kit` and `@tiptap/react` kept installed, and those parents waited on core in turn. Version manifests cached before 4.1.1 are fetched again once.
