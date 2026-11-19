@@ -29,6 +29,8 @@ import { byPath, expandWorkspaces } from './workspaceRows'
 interface FilterPackagesOptions {
   config: AlwaysUpToDateConfig
   targetPackages?: string[]
+  /** Packages whose license change the user reviewed (`--accept-license`, #263); only a license hold on them is lifted. */
+  acceptLicense?: string[]
   cwd?: string
   /**
    * Where the cooldown gate reads publish times and (`lookup`, when given)
@@ -236,6 +238,7 @@ const filterPackages = async (
       policy,
       lookupName,
       cwd,
+      accepted: options.acceptLicense,
     })
     const passes: readonly ManifestPass[] = [
       enginesPass({

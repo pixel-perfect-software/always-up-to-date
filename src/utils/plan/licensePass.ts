@@ -23,7 +23,8 @@ const shownLicense = (license: string | undefined): string => {
 /**
  * Holds a moving row whose target declares a different license from the
  * installed version (`license change: MIT → AGPL-3.0-or-later`, #197); a
- * `latest` rule moves it with the text as a warning. `none` stands for a
+ * `latest` rule, or `--accept-license` naming the package (#263), moves it with
+ * the text as a warning; no other hold changes. `none` stands for a
  * known manifest that declares no license, and a move to or from it is a
  * change too. Only the rows still moving are read: the current version's
  * license comes from `node_modules` when the installed copy is that version,
@@ -42,11 +43,14 @@ export const holdLicenseChanges = async (
     policy,
     lookupName,
     cwd,
+    accepted = [],
   }: {
     registry: PlanRegistry
     policy: UpdatePolicy
     lookupName: (row: UpdateResult) => string
     cwd: string
+    /** Names whose license change `--accept-license` reviewed: they move, as a `latest` rule moves them. */
+    accepted?: readonly string[]
   },
 ): Promise<{
   rows: UpdateResult[]
@@ -111,7 +115,7 @@ export const holdLicenseChanges = async (
       }
       held.set(
         row,
-        policy.ruleFor(row.name) === 'latest'
+        policy.ruleFor(row.name) === 'latest' || accepted.includes(row.name)
           ? withWarning(row, reason)
           : heldFor(row, reason),
       )

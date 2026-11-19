@@ -172,6 +172,7 @@ export const plan = async (
   { adapter, root, config, registry }: Project,
   outdated: Record<string, PackageInfo>,
   targetPackages?: string[],
+  { acceptLicense }: { acceptLicense?: string[] } = {},
 ): Promise<UpdateResult[]> => {
   const locked = adapter.installedFromLockfile?.(root)
   const lockedPeers = locked?.peers
@@ -181,6 +182,7 @@ export const plan = async (
   const results = await filterPackages(outdated, {
     config,
     targetPackages,
+    acceptLicense,
     cwd: root,
     registry,
     overrides: adapter.overrides(root),
@@ -264,8 +266,11 @@ export const update = async (
   {
     targetPackages,
     discovered,
+    acceptLicense,
   }: {
     targetPackages?: string[]
+    /** Packages whose license change the user reviewed (`--accept-license`). */
+    acceptLicense?: string[]
     discovered?: Record<string, PackageInfo>
   } = {},
 ): Promise<UpdateResult[]> => {
@@ -279,7 +284,9 @@ export const update = async (
   // discover already printed allUpToDate.
   if (Object.keys(outdated).length === 0) return []
 
-  const results = await plan(project, outdated, targetPackages)
+  const results = await plan(project, outdated, targetPackages, {
+    acceptLicense,
+  })
   const { names, withinRange, beyondRange, manifests, pinned } = splitUpdates(
     results,
     {

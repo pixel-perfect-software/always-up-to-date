@@ -155,6 +155,12 @@ const rangeHint = (rows: ReportRow[], packages: number): string | undefined => {
     .join(', ')}`
 }
 
+/** The license section's hint: the command that moves what it holds, once the license is reviewed (#263). */
+const licenseHint = (rows: ReportRow[], packages: number): string => {
+  const names = [...new Set(rows.map((row) => row.name))]
+  return `Review the ${packages === 1 ? 'license' : 'licenses'}, then: autd update --accept-license ${names.join(' ')}`
+}
+
 /** An age a reason message gave in whole days, as the report shows it: years past 365. */
 const yearsFor = (days: string): string => formatAge(Number(days))
 
@@ -299,7 +305,12 @@ export const groupResults = (
           byPath(a.workspaces[0] ?? '.', b.workspaces[0] ?? '.'),
       )
     const packages = new Set(sorted.map((row) => row.name)).size
-    const hint = outcome === 'range' ? rangeHint(sorted, packages) : undefined
+    const hint =
+      outcome === 'range'
+        ? rangeHint(sorted, packages)
+        : outcome === 'license'
+          ? licenseHint(sorted, packages)
+          : undefined
     return [{ outcome, rows: sorted, packages, ...(hint ? { hint } : {}) }]
   })
 }

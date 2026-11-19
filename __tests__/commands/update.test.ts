@@ -100,6 +100,79 @@ describe('update command', () => {
     )
   })
 
+  describe('--accept-license (#263)', () => {
+    afterEach(() => {
+      process.exitCode = undefined
+    })
+
+    it('hands the named packages to the plan as the accepted ones', async () => {
+      mockUpdatePackages.mockResolvedValue([])
+
+      await program.parseAsync([
+        'node',
+        'test',
+        'update',
+        '--accept-license',
+        'ms',
+      ])
+
+      expect(mockUpdatePackages).toHaveBeenCalledWith(expect.anything(), {
+        targetPackages: ['ms'],
+        acceptLicense: ['ms'],
+      })
+    })
+
+    it('hands them to the dry-run plan too', async () => {
+      mockCheckPackageVersions.mockResolvedValue({
+        ms: { name: 'ms', current: '1.0.0', wanted: '1.0.1', latest: '1.0.1' },
+      })
+
+      await program.parseAsync([
+        'node',
+        'test',
+        'update',
+        'ms',
+        '--accept-license',
+        '--dry-run',
+      ])
+
+      expect(mockPlan).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        ['ms'],
+        { acceptLicense: ['ms'] },
+      )
+    })
+
+    it('is refused bare, before the project opens, as a refusal', async () => {
+      jest.mocked(openProject).mockClear()
+
+      await program.parseAsync(['node', 'test', 'update', '--accept-license'])
+
+      expect(process.exitCode).toBe(1)
+      expect(openProject).not.toHaveBeenCalled()
+      expect(mockUpdatePackages).not.toHaveBeenCalled()
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('--accept-license needs the packages'),
+      )
+    })
+
+    it('cannot be combined with -i, which names no packages', async () => {
+      jest.mocked(openProject).mockClear()
+
+      await expect(
+        program.parseAsync([
+          'node',
+          'test',
+          'update',
+          '-i',
+          '--accept-license',
+        ]),
+      ).rejects.toThrow(/cannot be used with/)
+      expect(openProject).not.toHaveBeenCalled()
+    })
+  })
+
   it('uses the manager --pm names, with package names around it', async () => {
     mockDetectPackageManager.mockReturnValueOnce('bun')
     mockUpdatePackages.mockResolvedValue([])

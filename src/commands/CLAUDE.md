@@ -26,7 +26,7 @@ commands/
   options.ts  # pmOption() (--pm, choices from supportedManagers), noCacheOption(): shared by check and update
   init.ts     # Definition of `init`: loads actions/init
   check.ts    # Definition of `check` (--json, --pm, --no-cache), CheckOptions: loads actions/check
-  update.ts   # Definition of `update [packages...]` (--dry-run, -i, --json, --pm, --no-cache), UpdateOptions: loads actions/update
+  update.ts   # Definition of `update [packages...]` (--dry-run, -i, --json, --accept-license, --pm, --no-cache), UpdateOptions: loads actions/update
   reportFailure.ts  # Reports a failed command once (human or JSON) and sets exit code 1
   actions/    # The bodies, each loaded with await import() when its command runs
     init.ts   # Creates .always-up-to-date.json with INITIAL_CONFIG (beyondRange, rules, cooldown, debug, silent) in the nearest package.json's directory (else the cwd), where `loadConfig` reads it
@@ -59,6 +59,7 @@ commands/
 - From a workspace member (#123) `update` that writes is refused: plain, by name and `-i` all call `refuseMemberApply(project)` (`src/pipeline.ts`), which throws an `apply` `StepError` (`manifestWritten: false`, `refusal: true`: `reportFailure` prints the message with no "Failed during" prefix) naming the workspace root, before any discovery, registry lookup, manager subprocess or prompt. `--json` prints the usual error object. A pnpm directory with its own `pnpm-workspace.yaml` and a directory no root lists are projects of their own and update normally
 - `--dry-run` - Preview without making changes (also from a member, where it plans that member's manifest only): the report `check` prints, for the targeted packages (`findOutdated(project, targets)`, which fails on a name no manifest declares and names one that is current, then `plan`, then `logger.report(…, 'plan', { member })`, `member` being the member's path from a member run)
 - `-i, --interactive` - Select packages to update from an interactive checklist (uses `@inquirer/prompts`). Refused before `openProject` (`refuseInteractive`, `actions/update.ts`) without a terminal (`process.stdin.isTTY`), with package names, or with `--dry-run`, each message naming the form to use instead. The checklist has one choice per package, listing its manifests in a workspace project; targeting stays by name. Discovery runs once: the checklist's `findOutdated` result is passed to `update(project, { targetPackages: selected, discovered })`
+- `--accept-license` (#263) - One-off: the named packages' `license change: …` holds move, with the reason as a warning; nothing else changes (cooldown, gates, overrides, peers, engines, deprecation, range). Bare (no names) it is refused before `openProject` with a plain `Error`, as `refuseInteractive`'s are (no step). The action passes the names as `acceptLicense` to `plan` (dry-run) and `update`. Conflicts with `--interactive`, which names no packages
 - `--json` - Print the plan document: `phase: 'plan'` with `--dry-run`, `'applied'` after `update` has run; the same row shape as `check` (`rows` is `[]` when nothing is outdated). Conflicts with `--interactive`
 
 ### JSON output

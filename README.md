@@ -94,19 +94,20 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 
 ## ⌨️ Commands
 
-| Command                                                   | Description                                                                                                 |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `autd check`                                              | List outdated dependencies                                                                                  |
-| `autd check --json`                                       | The same rows `update --dry-run` plans, as a versioned JSON document (see [JSON output](#-json-output))     |
-| `autd update`                                             | Update every eligible dependency                                                                            |
-| `autd update [packages...]`                               | Update only the named packages                                                                              |
-| `autd update --dry-run`                                   | Show where each package would move, or why it's held, without changing anything                             |
-| `autd update -i, --interactive`                           | Pick the packages to update from a checklist                                                                |
-| `autd update --json`                                      | Print the update results as a versioned JSON document (combines with `--dry-run`, not with `--interactive`) |
-| `autd check --no-cache`, `autd update --no-cache`         | Ask the registries instead of using autd's cache (see [Cache](#-cache))                                     |
-| `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager                                         |
-| `autd init`                                               | Create `.always-up-to-date.json` in the nearest package.json's directory                                    |
-| `autd help [command]`                                     | Show the commands, or one command's options                                                                 |
+| Command                                                   | Description                                                                                                               |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `autd check`                                              | List outdated dependencies                                                                                                |
+| `autd check --json`                                       | The same rows `update --dry-run` plans, as a versioned JSON document (see [JSON output](#-json-output))                   |
+| `autd update`                                             | Update every eligible dependency                                                                                          |
+| `autd update [packages...]`                               | Update only the named packages                                                                                            |
+| `autd update --dry-run`                                   | Show where each package would move, or why it's held, without changing anything                                           |
+| `autd update -i, --interactive`                           | Pick the packages to update from a checklist                                                                              |
+| `autd update --accept-license <packages…>`                | Move named packages held for a license change, after you reviewed it; every other hold still applies, and bare is refused |
+| `autd update --json`                                      | Print the update results as a versioned JSON document (combines with `--dry-run`, not with `--interactive`)               |
+| `autd check --no-cache`, `autd update --no-cache`         | Ask the registries instead of using autd's cache (see [Cache](#-cache))                                                   |
+| `autd check --pm <manager>`, `autd update --pm <manager>` | Use `npm`, `pnpm`, `yarn` or `bun` instead of detecting the manager                                                       |
+| `autd init`                                               | Create `.always-up-to-date.json` in the nearest package.json's directory                                                  |
+| `autd help [command]`                                     | Show the commands, or one command's options                                                                               |
 
 ## 🧾 JSON output
 
@@ -243,6 +244,7 @@ Keys are package names or `*` globs (`"@types/*"`, `"eslint-*"`, `"*"`). An exac
 ### What else holds an update
 
 - **Installed peer ranges.** An update an installed package's peer range would reject is held, naming that package: `react` stays on 18 while `@tanstack/react-query` 4, which accepts react up to 18, stays installed. A `"latest"` rule still moves it, with a warning. A range from a package the update itself replaces doesn't count, read from the lockfile of every manager: the tiptap extensions `@tiptap/starter-kit` pins, which each need `@tiptap/core` at exactly their own version, move with it rather than holding it.
+- **License changes.** A package whose new version declares a different license than the installed one (`none → MIT` counts) is held, with the reason `license change: MIT → AGPL-3.0-or-later`. The report's license section names the command: review the license, then run `autd update --accept-license <package…>`. The flag applies to the packages named on that command line only, moves them with the license change as a warning, and changes no other hold: cooldown, release-age gates, overrides, peers, engines, deprecation and the range still apply. A bare `--accept-license` is refused. Nothing is saved: once the new version is installed, it is the license the next version is compared with.
 - **Overrides.** A package your package manager pins with an override is held when the update would leave the override's range, with the reason `controlled by …`. That covers npm `overrides`, yarn berry `resolutions`, pnpm `overrides` in `pnpm-workspace.yaml`, and bun `overrides` or `resolutions`.
 
 ### How specs are rewritten
