@@ -1,7 +1,9 @@
+import { spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { toPosix } from '@/managers/workspaces'
 import jestConfig from '../jest.config'
+import { tempDir, write } from './fixtures/files'
 import { escapeRegExp } from './integration/lockfiles'
 
 const repoRoot = path.resolve(__dirname, '..')
@@ -95,6 +97,24 @@ describe('CI workflow', () => {
     expect(job).not.toMatch(/continue-on-error/)
   })
 
+  it('installs the release formula with a real Homebrew on both OSes', () => {
+    const job = /^ {2}homebrew-formula:\n((?:(?: {4}.*)?\n)+)/m.exec(
+      workflow,
+    )?.[1]
+    expect(job).toMatch(/os: \[ ?macos-15, ubuntu-24\.04 ?\]/)
+    expect(job).toMatch(/^\s+pnpm run build:binary$/m)
+    expect(job).toMatch(/shellcheck packaging\/homebrew\/render\.sh/)
+    expect(job).toMatch(/render\.sh .*"file:\/\/\$PWD\/dist-binary"/s)
+    expect(job).toMatch(/brew tap-new --no-git local\/autd/)
+    expect(job).toMatch(/brew install local\/autd\/always-up-to-date/)
+    expect(job).toMatch(/brew test local\/autd\/always-up-to-date/)
+    expect(job).toMatch(/for name in autd alwaysuptodate always-up-to-date/)
+    expect(job).toMatch(/HOMEBREW_NO_AUTO_UPDATE: 1/)
+    expect(job).toMatch(/HOMEBREW_NO_INSTALL_FROM_API: 1/)
+    expect(job).toMatch(/\/home\/linuxbrew\/\.linuxbrew\/bin/)
+    expect(job).not.toMatch(/continue-on-error/)
+  })
+
   it('enforces the perf gate per target', () => {
     expect(workflow).toMatch(
       /target: \[ ?startup, npm, pnpm, yarn, berry, berry-nm, bun ?\]/,
@@ -173,7 +193,206 @@ describe('release workflow', () => {
     expect(upload).toBeGreaterThan(attest)
     expect(release).toMatch(/--json assets/)
   })
+
+  it('renders the Homebrew formula once the archives are on the release', () => {
+    const homebrew = job('homebrew')
+    expect(homebrew).toMatch(/^ {4}needs: \[ check, binaries-release \]$/m)
+    expect(homebrew).toMatch(/^ {4}permissions:\n {6}contents: read$/m)
+    expect(homebrew).not.toMatch(/write/)
+    expect(homebrew).toMatch(/repository: pixel-perfect-software\/homebrew-tap/)
+    expect(homebrew).toMatch(/packaging\/homebrew\/render\.sh/)
+    expect(homebrew).toMatch(/dist-binary\/SHA256SUMS/)
+    expect(homebrew).toMatch(/--message "always-up-to-date \$VERSION"/)
+    // The tap's token reaches the tap checkout only, never the built-in token's jobs.
+    expect(homebrew.match(/TAP_TOKEN/g)).toHaveLength(1)
+    expect(homebrew).toMatch(
+      /token: \$\{\{ secrets\.TAP_TOKEN \}\}\n\s+path: tap/,
+    )
+    expect(workflow.match(/TAP_TOKEN/g)?.length).toBeGreaterThan(
+      homebrew.match(/TAP_TOKEN/g)?.length ?? 0,
+    ) // the header comment names it too
+    // A tap failure can't hold up npm, the release or the binaries.
+    for (const name of ['publish', 'binaries', 'binaries-release']) {
+      expect(job(name)).not.toMatch(/homebrew|TAP_TOKEN/)
+    }
+    expect(workflow).not.toMatch(/needs: .*homebrew/)
+  })
+
+  it('never downgrades the tap when an older tag reruns', () => {
+    const homebrew = job('homebrew')
+    const guard = homebrew.indexOf('sort -V')
+    expect(guard).toBeGreaterThan(-1)
+    expect(homebrew.indexOf('packaging/homebrew/render.sh')).toBeGreaterThan(
+      guard,
+    )
+    expect(homebrew).toMatch(/releases\/download\/v/)
+  })
 })
+
+// render.sh is POSIX sh, with sed and awk: the unit suite also runs on Windows, which has none.
+;(process.platform === 'win32' ? describe.skip : describe)(
+  'Homebrew formula',
+  () => {
+    const render = path.join(repoRoot, 'packaging/homebrew/render.sh')
+    const version = '9.9.9'
+    const triples = [
+      'aarch64-apple-darwin',
+      'x86_64-apple-darwin',
+      'x86_64-unknown-linux-gnu',
+      'aarch64-unknown-linux-gnu',
+    ]
+    const hashes = Object.fromEntries(
+      triples.map((triple, index) => [
+        triple,
+        String.fromCharCode(97 + index).repeat(64),
+      ]),
+    )
+    // sha256sum's format: `<hash>  <name>`, the archives and the Windows zip.
+    const sumsLines = (omit?: string): string[] => [
+      ...triples
+        .filter((triple) => triple !== omit)
+        .map(
+          (triple) =>
+            `${hashes[triple]}  always-up-to-date-${version}-${triple}.tar.gz`,
+        ),
+      `${'e'.repeat(64)}  always-up-to-date-${version}-x86_64-pc-windows-msvc.zip`,
+    ]
+
+    const run = (omit?: string) => {
+      const root = tempDir('autd-formula-')
+      const sums = path.join(root, 'SHA256SUMS')
+      write(sums, `${sumsLines(omit).join('\n')}\n`)
+      const tap = path.join(root, 'tap')
+      const result = spawnSync('sh', [render, version, sums, tap], {
+        encoding: 'utf8',
+      })
+      return { result, tap }
+    }
+
+    // The block opened by `on_<name> do` in the formula.
+    const block = (source: string, name: string): string =>
+      new RegExp(`^ {2}${name} do\\n((?: {4}.*\\n)+)`, 'm').exec(source)?.[1] ??
+      ''
+
+    it('puts each archive and its checksum in its own platform block', () => {
+      const { result, tap } = run()
+      expect(result.status).toBe(0)
+      const formula = fs.readFileSync(
+        path.join(tap, 'Formula/always-up-to-date.rb'),
+        'utf8',
+      )
+      expect(formula).toMatch(/^class AlwaysUpToDate < Formula$/m)
+      expect(formula).not.toMatch(/@\w+@/)
+      const macos = block(formula, 'on_macos')
+      const linux = block(formula, 'on_linux')
+      const entry = (source: string, arch: string, triple: string): string => {
+        const inner = new RegExp(
+          `^ {4}${arch} do\\n((?: {6}.*\\n)+)`,
+          'm',
+        ).exec(source)?.[1]
+        expect(inner).toBe(
+          `      url "https://github.com/pixel-perfect-software/always-up-to-date/releases/download/v${version}/always-up-to-date-${version}-${triple}.tar.gz"\n` +
+            `      sha256 "${hashes[triple]}"\n`,
+        )
+        return inner ?? ''
+      }
+      entry(macos, 'on_arm', 'aarch64-apple-darwin')
+      entry(macos, 'on_intel', 'x86_64-apple-darwin')
+      entry(linux, 'on_intel', 'x86_64-unknown-linux-gnu')
+      entry(linux, 'on_arm', 'aarch64-unknown-linux-gnu')
+    })
+
+    it('installs autd with both aliases and the three license files', () => {
+      const { tap } = run()
+      const formula = fs.readFileSync(
+        path.join(tap, 'Formula/always-up-to-date.rb'),
+        'utf8',
+      )
+      expect(formula).toContain('bin.install "autd"')
+      expect(formula).toContain(
+        'bin.install_symlink "autd" => "alwaysuptodate"',
+      )
+      expect(formula).toContain(
+        'bin.install_symlink "autd" => "always-up-to-date"',
+      )
+      expect(formula).toContain(
+        'prefix.install "LICENSE", "third-party-licenses.txt", "BUN-LICENSE.md"',
+      )
+      expect(formula).toContain('strategy :github_latest')
+    })
+
+    it('takes the archives from a base URL when given one', () => {
+      const root = tempDir('autd-formula-')
+      const sums = path.join(root, 'SHA256SUMS')
+      write(sums, `${sumsLines().join('\n')}\n`)
+      const tap = path.join(root, 'tap')
+      const base = 'file:///work/dist-binary'
+      const result = spawnSync('sh', [render, version, sums, tap, base], {
+        encoding: 'utf8',
+      })
+      expect(result.status).toBe(0)
+      const formula = fs.readFileSync(
+        path.join(tap, 'Formula/always-up-to-date.rb'),
+        'utf8',
+      )
+      const urls = formula.match(/^\s+url ".*"$/gm) ?? []
+      expect(urls).toHaveLength(4)
+      for (const triple of triples) {
+        expect(formula).toContain(
+          `url "${base}/always-up-to-date-${version}-${triple}.tar.gz"`,
+        )
+      }
+      expect(formula).not.toContain('/releases/download/')
+    })
+
+    it.each(['1.2', 'v1.2.3', '1.2.3/../x', '1.2.3&x', '1.2.3 4', ''])(
+      'refuses the version %j and writes nothing',
+      (bad) => {
+        const root = tempDir('autd-formula-')
+        const sums = path.join(root, 'SHA256SUMS')
+        write(sums, `${sumsLines().join('\n')}\n`)
+        const tap = path.join(root, 'tap')
+        const result = spawnSync('sh', [render, bad, sums, tap], {
+          encoding: 'utf8',
+        })
+        expect(result.status).not.toBe(0)
+        expect(result.stderr).toContain('invalid version')
+        expect(fs.existsSync(tap)).toBe(false)
+      },
+    )
+
+    it('accepts a prerelease version', () => {
+      const root = tempDir('autd-formula-')
+      const sums = path.join(root, 'SHA256SUMS')
+      write(
+        sums,
+        `${sumsLines()
+          .map((line) => line.replace(version, '10.0.0-rc.1'))
+          .join('\n')}\n`,
+      )
+      const result = spawnSync(
+        'sh',
+        [render, '10.0.0-rc.1', sums, path.join(root, 'tap')],
+        { encoding: 'utf8' },
+      )
+      expect(result.status).toBe(0)
+    })
+
+    it.each(triples)(
+      'fails, naming the archive, without the %s line',
+      (triple) => {
+        const { result, tap } = run(triple)
+        expect(result.status).not.toBe(0)
+        expect(result.stderr).toContain(
+          `no checksum for always-up-to-date-${version}-${triple}.tar.gz`,
+        )
+        expect(
+          fs.existsSync(path.join(tap, 'Formula/always-up-to-date.rb')),
+        ).toBe(false)
+      },
+    )
+  },
+)
 
 describe('integration matrix', () => {
   it('stays out of pnpm test', () => {

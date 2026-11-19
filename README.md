@@ -77,11 +77,19 @@ What happens to each kind of spec:
 
 ## 🚀 Install
 
+With Homebrew (macOS and Linux, no Node.js needed):
+
+```bash
+brew install pixel-perfect-software/tap/always-up-to-date
+```
+
+Or from npm:
+
 ```bash
 npm install -g @pixel-perfect-software/always-up-to-date
 ```
 
-The command is `autd`; `alwaysuptodate` and `always-up-to-date` work too.
+Either installs the command `autd`, with `alwaysuptodate` and `always-up-to-date` as aliases.
 
 Each GitHub release also carries standalone binaries that need no Node.js (macOS arm64 and x64, Linux x64 and arm64, Windows x64), with a `SHA256SUMS` file. Verify a download with `gh attestation verify <archive> --repo pixel-perfect-software/always-up-to-date`.
 

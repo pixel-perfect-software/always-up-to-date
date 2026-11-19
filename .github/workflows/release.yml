@@ -22,6 +22,13 @@ name: Release
 # To verify a download, from the release's assets:
 #   gh attestation verify <archive> --repo pixel-perfect-software/always-up-to-date
 # and compare the archive with its line in SHA256SUMS (`sha256sum --check --ignore-missing`).
+#
+# Once the archives are on the release, `homebrew` (#268) renders the formula from
+# packaging/homebrew with that SHA256SUMS and pushes it to pixel-perfect-software/homebrew-tap.
+# It needs the `TAP_TOKEN` secret, a fine-grained token with Contents read and write on
+# homebrew-tap only (the built-in token can't write to another repository). It sits in nobody's
+# needs, so a tap failure leaves npm, the release and the binaries as they are, and "Re-run failed
+# jobs" runs it alone.
 
 on:
   push:
@@ -311,3 +318,55 @@ jobs:
           if ! grep -qxF SHA256SUMS <<< "$existing"; then
             gh release upload "$GITHUB_REF_NAME" dist-binary/SHA256SUMS --repo "$GITHUB_REPOSITORY"
           fi
+
+  # The formula points at the release's archives, so this waits for binaries-release. The built-in
+  # token stays read-only: only the tap checkout holds TAP_TOKEN. A rerun when the tap already
+  # describes the version changes nothing.
+  homebrew:
+    needs: [ check, binaries-release ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: dist-binary
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: pixel-perfect-software/homebrew-tap
+          token: ${{ secrets.TAP_TOKEN }}
+          path: tap
+      - name: Update the tap
+        run: |
+          # Rerunning an older tag's job must not downgrade the tap: skip when it already
+          # describes a newer version (an equal or older one proceeds).
+          current=$(sed -n 's|.*/releases/download/v\([^/]*\)/.*|\1|p' tap/Formula/always-up-to-date.rb 2>/dev/null | head -n 1)
+          if [ -n "$current" ] && [ "$current" != "$VERSION" ] \
+            && [ "$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -n 1)" = "$current" ]; then
+            echo "The tap already describes $current, newer than $VERSION: leaving it."
+            exit 0
+          fi
+          packaging/homebrew/render.sh "$VERSION" dist-binary/SHA256SUMS tap
+          cd tap
+          git add Formula
+          if git diff --cached --quiet; then
+            echo "The tap already describes $VERSION."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --message "always-up-to-date $VERSION"
+          # Another release may have pushed to the tap meanwhile.
+          for attempt in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main
+          done
+          echo "::error::Couldn't push the update to homebrew-tap."
+          exit 1
