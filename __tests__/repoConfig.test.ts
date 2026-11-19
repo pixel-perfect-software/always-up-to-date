@@ -81,6 +81,20 @@ describe('CI workflow', () => {
     expect(workflow).toMatch(/^\s+run: pnpm run test:integration\s*$/m)
   })
 
+  it('runs the matrix against the compiled binary, and the binary without Node', () => {
+    expect(workflow).toMatch(/cli: \[ ?bundle, binary ?\]/)
+    expect(workflow).toMatch(/os: macos-latest, pm: bun, cli: binary/)
+    expect(workflow).toMatch(/^\s+pnpm run build:binary --target host\s*$/m)
+    expect(workflow).toMatch(/AUTD_INTEGRATION_CLI=/)
+    const job = /^ {2}binary-without-node:\n((?:(?: {4}.*)?\n)+)/m.exec(
+      workflow,
+    )?.[1]
+    // The run proves Node is absent before it starts the binary.
+    expect(job).toMatch(/command -v "\$name"/)
+    expect(job).toMatch(/bun install --frozen-lockfile/)
+    expect(job).not.toMatch(/continue-on-error/)
+  })
+
   it('enforces the perf gate per target', () => {
     expect(workflow).toMatch(
       /target: \[ ?startup, npm, pnpm, yarn, berry, berry-nm, bun ?\]/,

@@ -6,7 +6,11 @@ import pnpm from '@/managers/pnpm'
 import { pnpmConfigDir } from '@/managers/pnpm/npmrc'
 import { managerRegistryConfig, processSources } from '@/utils/npmrcLoader'
 import { tempDir, write } from './fixtures/files'
-import { managerEnv, pinWorkspaceYaml } from './integration/harness'
+import {
+  cliInvocation,
+  managerEnv,
+  pinWorkspaceYaml,
+} from './integration/harness'
 import {
   type RangedDependency,
   rewriteBerryLock,
@@ -670,5 +674,27 @@ describe('managerEnv', () => {
 
     expect(process.env.XDG_CONFIG_HOME).toBeUndefined()
     expect(fs.existsSync(scratch)).toBe(false)
+  })
+})
+
+describe('cliInvocation (AUTD_INTEGRATION_CLI)', () => {
+  it('runs the Node bundle when unset or blank', () => {
+    for (const given of [undefined, '', '  ']) {
+      const cli = cliInvocation(given)
+      expect(cli.binary).toBe(false)
+      expect(cli.file).toBe(process.execPath)
+      expect(cli.args).toEqual([cli.path])
+      expect(path.basename(cli.path)).toBe('index.cjs')
+    }
+  })
+
+  it('runs the given executable directly, resolved to an absolute path', () => {
+    const cli = cliInvocation('some/autd')
+    expect(cli).toEqual({
+      file: path.resolve('some/autd'),
+      args: [],
+      path: path.resolve('some/autd'),
+      binary: true,
+    })
   })
 })
