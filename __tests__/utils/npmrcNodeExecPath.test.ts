@@ -122,23 +122,50 @@ describe('the node npm runs under (#269)', () => {
         )
       })
 
-      it('runs node through cmd.exe on Windows, where 9009 means no node', () => {
-        onPlatform('win32')
-        const exec = printsNode()
-        const { loader } = load(exec)
+      describe('on Windows', () => {
+        const hadPath = process.env.PATH
+        afterEach(() => {
+          process.env.PATH = hadPath
+        })
 
-        expect(loader.npmNodeExecPath({ cwd: at('proj') })).toBe(nodePath())
-        expect(exec).toHaveBeenCalledWith(
-          'node -p process.execPath',
-          expect.objectContaining({ shell: true, cwd: at('proj') }),
-        )
+        it('runs node through cmd.exe once PATH holds a node (a .cmd shim counts)', () => {
+          onPlatform('win32')
+          write(at('winbin', 'node.cmd'), '@echo off\r\n')
+          process.env.PATH = at('winbin')
+          const exec = printsNode()
+          const { loader } = load(exec)
 
-        const missing = load(
-          jest.fn(() => {
-            throw Object.assign(new Error('Command failed'), { status: 9009 })
-          }),
-        )
-        expect(missing.loader.npmNodeExecPath()).toBeUndefined()
+          expect(loader.npmNodeExecPath({ cwd: at('proj') })).toBe(nodePath())
+          expect(exec).toHaveBeenCalledWith(
+            'node -p process.execPath',
+            expect.objectContaining({ shell: true, cwd: at('proj') }),
+          )
+        })
+
+        it('is undefined with no node on PATH, starting no cmd.exe (#266: an empty PATH under Bun)', () => {
+          onPlatform('win32')
+          process.env.PATH = at('empty')
+          const exec = printsNode()
+          const { loader } = load(exec)
+
+          expect(loader.npmNodeExecPath()).toBeUndefined()
+          expect(exec).not.toHaveBeenCalled()
+        })
+
+        it('still reads cmd.exe status 9009 as no node', () => {
+          onPlatform('win32')
+          write(at('winbin', 'node.exe'), '')
+          process.env.PATH = at('winbin')
+          const { loader } = load(
+            jest.fn(() => {
+              throw Object.assign(new Error('Command failed'), {
+                status: 9009,
+              })
+            }),
+          )
+
+          expect(loader.npmNodeExecPath()).toBeUndefined()
+        })
       })
 
       it('asks once per directory, since a version manager picks node by directory', () => {
