@@ -110,7 +110,8 @@ describe('CI workflow', () => {
     expect(job).toMatch(/brew test local\/autd\/always-up-to-date/)
     expect(job).toMatch(/for name in autd alwaysuptodate always-up-to-date/)
     expect(job).toMatch(/HOMEBREW_NO_AUTO_UPDATE: 1/)
-    expect(job).toMatch(/HOMEBREW_NO_INSTALL_FROM_API: 1/)
+    // API mode: turning it off makes the install clone homebrew/core (#268's first CI run).
+    expect(job).not.toMatch(/HOMEBREW_NO_INSTALL_FROM_API:/)
     expect(job).toMatch(/\/home\/linuxbrew\/\.linuxbrew\/bin/)
     expect(job).not.toMatch(/continue-on-error/)
   })

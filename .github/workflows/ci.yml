@@ -220,9 +220,10 @@ jobs:
         os: [ macos-15, ubuntu-24.04 ]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    # Homebrew stays in its JSON-API mode: HOMEBREW_NO_INSTALL_FROM_API would make the install
+    # git-clone homebrew/core, which the Linux runner can't create (Permission denied).
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
-      HOMEBREW_NO_INSTALL_FROM_API: 1
       HOMEBREW_NO_ANALYTICS: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
