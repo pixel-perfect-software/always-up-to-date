@@ -126,7 +126,7 @@ autd init               # optional: create .always-up-to-date.json to go past yo
 ```json
 {
   "version": 1,
-  "autd": "4.1.1",
+  "autd": "4.2.0",
   "command": "check",
   "phase": "plan",
   "manager": "npm",
@@ -193,7 +193,7 @@ A failed command prints an error document and exits 1:
 ```json
 {
   "version": 1,
-  "autd": "4.1.1",
+  "autd": "4.2.0",
   "command": "update",
   "error": { "step": "apply", "message": "…", "manifestWritten": true }
 }
