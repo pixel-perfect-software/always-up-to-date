@@ -15,7 +15,7 @@ What is specific to npm: its `.npmrc` layers (the default for any adapter withou
 
 ## `.npmrc` view
 
-- `npmNpmrcLayers(cwd, sources)`, highest first: `npm_config_*` env (any case, `_` → `-`), project, user (`~/.npmrc`), global (`<prefix>/etc/npmrc`), builtin, `${VAR}` expanded everywhere. The project file is the `.npmrc` of the npm project root: from a workspace member, the root's. `loadNpmrc` is its merge
+- `npmNpmrcLayers(cwd, sources)`, highest first: `npm_config_*` env (any case, `_` → `-`), project, user (`~/.npmrc`), global (`<prefix>/etc/npmrc`), builtin, `${VAR}` expanded everywhere. The default prefix is the install of the node npm runs under (`NpmrcSources.execPath`, `src/utils/REGISTRY.md`): in the compiled binary, the `node` on PATH, so a global `min-release-age` holds the same rows as under Node (verified 2026-11-19, npm 12.2.3, #269); with no `node` there is no builtin or default global layer. The project file is the `.npmrc` of the npm project root: from a workspace member, the root's. `loadNpmrc` is its merge
 - Unscoped `_authToken` and `always-auth` are ignored, as npm 9+ does
 - `emptyRegistry` is npm's `{ registry: true, scopes: false }` (the default for every adapter): npm fails on an empty default and skips an empty scope
 - `saveStyle`: `.npmrc` `save-exact` / `save-prefix`. Overrides: npm `overrides` (`src/utils/overrides.ts`)

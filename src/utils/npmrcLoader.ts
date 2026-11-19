@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -8,6 +9,7 @@ import {
   toPosix,
   workspacePatterns,
 } from '@/managers/workspaces'
+import { StepError } from '@/stepError'
 import type { RegistryConfig } from '@/types'
 import {
   type Npmrc,
@@ -24,14 +26,119 @@ import { registryConfigFrom } from './registryConfig'
 export interface NpmrcSources {
   env: NodeJS.ProcessEnv
   home: string
-  execPath: string
+  /**
+   * The node npm and yarn v1 run under, whose install is their default
+   * prefix; undefined when there is none (`npmNodeExecPath`, #269).
+   */
+  execPath: string | undefined
   platform: NodeJS.Platform
 }
 
-export const processSources = (): NpmrcSources => ({
+/** cmd.exe's exit status for a command it can't find. */
+const CMD_NOT_FOUND = 9009
+
+/**
+ * Asks the `node` npm would run in `cwd` (its `#!/usr/bin/env node`, or
+ * npm.cmd's `node`) for its own `process.execPath`. A version manager's shim
+ * (asdf, volta, mise) picks the version by directory and only resolves by
+ * running it, so the probe runs where autd runs the manager. On Windows it
+ * goes through cmd.exe, which a `.cmd` shim needs; the command is a fixed
+ * string. Undefined when there is no `node`; any other failure is a
+ * `discover` StepError, since a global `.npmrc` read from the wrong place can
+ * drop a manager's release-age gate.
+ *
+ * Synchronous, unlike `runProcess`, because `registryConfig()` is: it runs
+ * once per directory, only under Bun.
+ */
+const probeNodeExecPath = (
+  cwd: string,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined => {
+  const options = {
+    cwd,
+    encoding: 'utf8' as const,
+    env: process.env,
+    stdio: ['ignore', 'pipe', 'pipe'] as ['ignore', 'pipe', 'pipe'],
+    timeout: 30_000,
+    windowsHide: true,
+  }
+  try {
+    const printed = (
+      platform === 'win32'
+        ? execFileSync('node -p process.execPath', { ...options, shell: true })
+        : execFileSync('node', ['-p', 'process.execPath'], options)
+    ).trim()
+    if (printed === '') throw new Error('it printed nothing')
+    return printed
+  } catch (error) {
+    const { code, status } = error as NodeJS.ErrnoException & {
+      status?: number | null
+    }
+    if (
+      code === 'ENOENT' ||
+      (platform === 'win32' && status === CMD_NOT_FOUND)
+    ) {
+      return undefined
+    }
+    throw new StepError(
+      'discover',
+      `couldn't ask node for its path, which npm's global .npmrc is found from: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    )
+  }
+}
+
+// Per directory, once per run; a failure is kept too, so node isn't started again.
+const probedNode = new Map<
+  string,
+  { ok: true; execPath: string | undefined } | { ok: false; error: unknown }
+>()
+
+const probeNodeOnce = (cwd: string): string | undefined => {
+  let result = probedNode.get(cwd)
+  if (!result) {
+    try {
+      result = { ok: true, execPath: probeNodeExecPath(cwd) }
+    } catch (error) {
+      result = { ok: false, error }
+    }
+    probedNode.set(cwd, result)
+  }
+  if (!result.ok) throw result.error
+  return result.execPath
+}
+
+/**
+ * The node npm runs under in `cwd` (#269). Under Node it is this process's
+ * own `process.execPath`, as before. Under Bun (the compiled binary)
+ * `process.execPath` is autd itself, so the `node` npm would run there is
+ * asked (`probe`, injectable for tests).
+ */
+export const npmNodeExecPath = ({
+  cwd = process.cwd(),
+  versions = process.versions,
+  execPath = process.execPath,
+  probe = probeNodeOnce,
+}: {
+  cwd?: string
+  versions?: { node?: string; bun?: string }
+  execPath?: string
+  probe?: (cwd: string) => string | undefined
+} = {}): string | undefined => (versions.bun ? probe(cwd) : execPath)
+
+/**
+ * The machine's sources for the manager's settings at `cwd`, where autd runs
+ * the manager (the project root, #127).
+ */
+export const processSources = (cwd: string = process.cwd()): NpmrcSources => ({
   env: process.env,
   home: process.env.HOME || os.homedir(),
-  execPath: process.execPath,
+  // A getter: under Bun, finding node starts it, so only a reader of npm's or
+  // yarn v1's prefix pays for it (#269). Nothing in src spreads the sources;
+  // a spread would read it, and start node, at once.
+  get execPath() {
+    return npmNodeExecPath({ cwd })
+  },
   platform: process.platform,
 })
 
@@ -198,13 +305,19 @@ export const findNpmProjectRoot = (cwd: string): string => {
 
 /**
  * The directory npm treats as the global prefix: node's own install, found
- * from the running node. DESTDIR (npm prefixes the default prefix with it on
- * posix) is not supported.
+ * from the node npm runs under (`NpmrcSources.execPath`); undefined with no
+ * node. DESTDIR (npm prefixes the default prefix with it on posix) is not
+ * supported.
  */
-export const execPrefix = ({ execPath, platform }: NpmrcSources): string =>
-  platform === 'win32'
+export const execPrefix = ({
+  execPath,
+  platform,
+}: NpmrcSources): string | undefined => {
+  if (execPath === undefined) return undefined
+  return platform === 'win32'
     ? path.dirname(execPath)
     : path.dirname(path.dirname(execPath))
+}
 
 /**
  * npm's layers, highest first: `npm_config_*` environment variables → the
@@ -213,7 +326,7 @@ export const execPrefix = ({ execPath, platform }: NpmrcSources): string =>
  */
 export const npmNpmrcLayers = (
   cwd: string,
-  sources: NpmrcSources = processSources(),
+  sources: NpmrcSources = processSources(cwd),
 ): NpmrcLayer[] => {
   const { env, home, platform } = sources
   const envL = envLayer(env, NPM_ENV)
@@ -236,15 +349,22 @@ export const npmNpmrcLayers = (
 
   const user = npmrcFileLayer(userconfigOf(project.values), env)
 
+  // With no node to run npm under, there is no builtin file and no default
+  // prefix (#269); PREFIX, `prefix` and `globalconfig` still name the global one.
   const prefixDir = execPrefix(sources)
-  const builtin = npmrcFileLayer(
-    platform === 'win32'
-      ? path.join(prefixDir, 'node_modules', 'npm', 'npmrc')
-      : path.join(prefixDir, 'lib', 'node_modules', 'npm', 'npmrc'),
-    env,
-  )
+  const builtin =
+    prefixDir === undefined
+      ? undefined
+      : npmrcFileLayer(
+          platform === 'win32'
+            ? path.join(prefixDir, 'node_modules', 'npm', 'npmrc')
+            : path.join(prefixDir, 'lib', 'node_modules', 'npm', 'npmrc'),
+          env,
+        )
 
-  const layers = [envL, project, user, builtin]
+  const layers = builtin
+    ? [envL, project, user, builtin]
+    : [envL, project, user]
   const pick = (key: string): string | undefined => {
     for (const layer of layers) {
       const value = stringValue(layer.values[key])
@@ -253,26 +373,28 @@ export const npmNpmrcLayers = (
     return undefined
   }
 
-  const prefix = resolveNpmPath(
-    pick('prefix') ?? nonEmpty(env.PREFIX) ?? prefixDir,
-    home,
-    cwd,
-    platform,
-  )
-  const globalconfig = resolveNpmPath(
-    pick('globalconfig') ?? path.resolve(prefix, 'etc/npmrc'),
-    home,
-    cwd,
-    platform,
-  )
+  const prefixSetting = pick('prefix') ?? nonEmpty(env.PREFIX) ?? prefixDir
+  const prefix =
+    prefixSetting === undefined
+      ? undefined
+      : resolveNpmPath(prefixSetting, home, cwd, platform)
+  const globalSetting =
+    pick('globalconfig') ??
+    (prefix === undefined ? undefined : path.resolve(prefix, 'etc/npmrc'))
+  const globalLayer =
+    globalSetting === undefined
+      ? undefined
+      : npmrcFileLayer(resolveNpmPath(globalSetting, home, cwd, platform), env)
 
-  return [envL, project, user, npmrcFileLayer(globalconfig, env), builtin]
+  return [envL, project, user, globalLayer, builtin].filter(
+    (layer): layer is NpmrcLayer => layer !== undefined,
+  )
 }
 
 /** The merged .npmrc settings, as npm resolves them (see `npmNpmrcLayers`). */
 export const loadNpmrc = (
   cwd: string,
-  sources: NpmrcSources = processSources(),
+  sources: NpmrcSources = processSources(cwd),
 ): Npmrc => mergeNpmrcLayers(npmNpmrcLayers(cwd, sources)).values
 
 /**
@@ -282,7 +404,7 @@ export const loadNpmrc = (
  */
 export const loadRegistryConfig = (
   cwd: string,
-  sources: NpmrcSources = processSources(),
+  sources: NpmrcSources = processSources(cwd),
 ): RegistryConfig => {
   const view = mergeNpmrcLayers(npmNpmrcLayers(cwd, sources))
   return registryConfigFrom(view, cwd, sources)

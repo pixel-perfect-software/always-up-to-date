@@ -122,17 +122,16 @@ export const yarnNpmrcLayers = (
     typeof userconfig === 'string' && userconfig !== ''
       ? path.resolve(cwd, userconfig)
       : path.join(home, '.npmrc')
-  const prefixFile = path.join(
-    nonEmpty(env.PREFIX) ?? execPrefix(sources),
-    'etc',
-    'npmrc',
-  )
+  // With no node to run yarn under and no PREFIX, there is no prefix file (#269).
+  const prefixDir = nonEmpty(env.PREFIX) ?? execPrefix(sources)
   const [project, ...parents] = ancestorFiles(cwd, '.npmrc')
   return [
     envL,
     yarnFileLayer(project, env),
     yarnFileLayer(userFile, env),
-    yarnFileLayer(prefixFile, env),
+    ...(prefixDir === undefined
+      ? []
+      : [yarnFileLayer(path.join(prefixDir, 'etc', 'npmrc'), env)]),
     ...parents.slice(0, -1).map((file) => yarnFileLayer(file, env)),
   ]
 }
