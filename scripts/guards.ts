@@ -195,11 +195,15 @@ function licenseText(name: string, dir: string, root: string): string {
 }
 
 /**
- * Writes the notice of every package bundled into dist/index.cjs, under
- * `root` (the repository). MIT and ISC require it in copies, and bundling
- * leaves no installed copy to carry it. Returns how many packages it covers.
+ * The notices of every package in `output`, read under `root` (the
+ * repository), as the body of a licenses file: each package under its
+ * heading, in code-unit order (not localeCompare), so the text is the same on
+ * every machine.
  */
-export function writeLicenses(output: Output, root: string): number {
+export function licenseNotices(
+  output: Output,
+  root: string,
+): { count: number; text: string } {
   const packages = new Map<string, string>()
   for (const file of Object.keys(output.inputs)) {
     const owner = packageOf(file)
@@ -220,13 +224,22 @@ export function writeLicenses(output: Output, root: string): number {
       `${heading}\n${'-'.repeat(heading.length)}\n\n${licenseText(owner.name, owner.dir, root)}`,
     )
   }
-  // Code-unit order, not localeCompare: the file is the same on every machine.
   const notices = [...packages.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([, notice]) => notice)
+  return { count: packages.size, text: notices.join('\n\n\n') }
+}
+
+/**
+ * Writes the notice of every package bundled into dist/index.cjs, under
+ * `root` (the repository). MIT and ISC require it in copies, and bundling
+ * leaves no installed copy to carry it. Returns how many packages it covers.
+ */
+export function writeLicenses(output: Output, root: string): number {
+  const { count, text } = licenseNotices(output, root)
   writeFileSync(
     path.join(root, LICENSES_FILE),
-    `Third-party licenses\n\n${OUTFILE} bundles the packages below. Their licenses follow.\n\n${notices.join('\n\n\n')}\n`,
+    `Third-party licenses\n\n${OUTFILE} bundles the packages below. Their licenses follow.\n\n${text}\n`,
   )
-  return packages.size
+  return count
 }
