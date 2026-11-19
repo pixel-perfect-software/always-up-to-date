@@ -83,6 +83,8 @@ npm install -g @pixel-perfect-software/always-up-to-date
 
 The command is `autd`; `alwaysuptodate` and `always-up-to-date` work too.
 
+Each GitHub release also carries standalone binaries that need no Node.js (macOS arm64 and x64, Linux x64 and arm64, Windows x64), with a `SHA256SUMS` file. Verify a download with `gh attestation verify <archive> --repo pixel-perfect-software/always-up-to-date`.
+
 ## 🧭 Getting started
 
 ```bash

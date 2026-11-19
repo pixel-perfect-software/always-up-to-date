@@ -8,6 +8,20 @@ name: Release
 # repository. It needs this workflow registered once as the package's trusted publisher on
 # npmjs.com (organization pixel-perfect-software, repository always-up-to-date, workflow
 # release.yml).
+#
+# Beside the publish, the same tag builds the standalone binaries (#267) and attaches them to
+# that release. `binaries` compiles all five targets with `pnpm run build:binary` on a macOS
+# runner, so the darwin pair is re-signed ad hoc with the identifier
+# ca.pixel-perfect.alwaysuptodate. `binaries-smoke` runs each one on a runner of its own OS and
+# architecture (`--version` must equal the tag, and `check --json` runs on a bun project).
+# `binaries-release` attests the five archives with actions/attest-build-provenance and uploads
+# them and SHA256SUMS to the release `publish` creates. Nothing about npm or the release waits on the binaries: a failed binary job leaves
+# the publish and the release as they are, and "Re-run failed jobs" runs only the binary jobs
+# again. The upload skips every asset the release already has, so a rerun replaces nothing.
+#
+# To verify a download, from the release's assets:
+#   gh attestation verify <archive> --repo pixel-perfect-software/always-up-to-date
+# and compare the archive with its line in SHA256SUMS (`sha256sum --check --ignore-missing`).
 
 on:
   push:
@@ -111,3 +125,189 @@ jobs:
           ' CHANGELOG.md > notes.md
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "$VERSION" --notes-file notes.md
+
+  # The binaries run beside publish, never in its needs: a failure here can't hold up npm or the
+  # release, and can be rerun alone. macOS builds all five targets, since only a macOS runner
+  # can re-sign the darwin pair; Bun cross-compiles the other three.
+  binaries:
+    needs: check
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: tools
+        run: echo "pnpm=$(awk '$1 == "pnpm" { print $2 }' .tool-versions)" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tools.outputs.pnpm }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+          package-manager-cache: false
+      # The binary build compiles with Bun.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .tool-versions
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run build:binary
+      - name: The archives carry the tag's version
+        run: |
+          count=$(find dist-binary -maxdepth 1 -type f \( -name "always-up-to-date-$VERSION-*.tar.gz" -o -name "always-up-to-date-$VERSION-*.zip" \) | wc -l)
+          total=$(find dist-binary -maxdepth 1 -type f -name 'always-up-to-date-*' | wc -l)
+          if [ "$count" -ne 5 ] || [ "$total" -ne 5 ]; then
+            echo "::error::Expected five archives named for $VERSION."
+            ls -la dist-binary
+            exit 1
+          fi
+          test -s dist-binary/SHA256SUMS
+      # The archives and SHA256SUMS only, not the build's staging directory.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binaries
+          path: |
+            dist-binary/*.tar.gz
+            dist-binary/*.zip
+            dist-binary/SHA256SUMS
+          if-no-files-found: error
+          # Long enough for "Re-run failed jobs" on the smoke or release job weeks later, with
+          # the same bytes; a full rerun rebuilds them, which the upload step checks.
+          retention-days: 30
+
+  # Each binary runs on a runner of its own OS and architecture before anything is attached to
+  # the release. These jobs set up no Node or pnpm, but the runner images carry Node; ci.yml's
+  # binary-without-node job is the proof that the binary runs without it (#266).
+  binaries-smoke:
+    name: binaries-smoke (${{ matrix.triple }})
+    needs: [ check, binaries ]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, triple: aarch64-apple-darwin }
+          - { os: macos-15-intel, triple: x86_64-apple-darwin }
+          - { os: ubuntu-24.04, triple: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm, triple: aarch64-unknown-linux-gnu }
+          - { os: windows-latest, triple: x86_64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: dist-binary
+      - name: Smoke the binary
+        if: runner.os != 'Windows'
+        run: |
+          dest="$RUNNER_TEMP/autd-binary"
+          mkdir -p "$dest"
+          tar -xzf "dist-binary/always-up-to-date-$VERSION-${{ matrix.triple }}.tar.gz" -C "$dest"
+          actual=$("$dest/autd" --version)
+          if [ "$actual" != "$VERSION" ]; then
+            echo "::error::autd --version printed '$actual', not $VERSION."
+            exit 1
+          fi
+          "$dest/autd" help
+      - name: The darwin binary carries the release identifier
+        if: runner.os == 'macOS'
+        run: |
+          signature=$(codesign -dv "$RUNNER_TEMP/autd-binary/autd" 2>&1)
+          echo "$signature"
+          echo "$signature" | grep -qx 'Identifier=ca.pixel-perfect.alwaysuptodate'
+      - name: Smoke the binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'autd-binary'
+          Expand-Archive -Path "dist-binary/always-up-to-date-$env:VERSION-${{ matrix.triple }}.zip" -DestinationPath $dest
+          $actual = (& "$dest\autd.exe" --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:VERSION) {
+            Write-Error "autd --version printed '$actual', not $env:VERSION."
+            exit 1
+          }
+          & "$dest\autd.exe" help
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      # The released binary on a real project, with Bun set up: check --json on a copy
+      # of testRepos/bun-single, installed with bun (#267's Done when, on every target).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: source
+          sparse-checkout: testRepos/bun-single
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: source/.tool-versions
+      - name: Check a bun project with the binary
+        shell: bash
+        run: |
+          autd="$RUNNER_TEMP/autd-binary/autd"
+          if [ "$RUNNER_OS" = Windows ]; then autd="$autd.exe"; fi
+          work="$RUNNER_TEMP/bun-single"
+          cp -R source/testRepos/bun-single "$work"
+          cd "$work"
+          mv package.fixture.json package.json
+          bun install
+          "$autd" check --json > check.json
+          grep -q '"command": "check"' check.json
+          grep -q '"manager": "bun"' check.json
+
+  # publish creates the release, so this waits for it. Every archive is attested before the first
+  # upload, so no asset is ever published without an attestation.
+  binaries-release:
+    needs: [ publish, binaries-smoke ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # to upload the release's assets
+      id-token: write # the attestation's signing identity
+      attestations: write # to store the attestation
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: dist-binary
+      - name: Attest the archives
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist-binary/SHA256SUMS
+      # Only what the release doesn't have yet: a rerun replaces nothing already uploaded. The
+      # build isn't byte-reproducible, so after "Re-run all jobs" an asset already on the release
+      # can come from another build: each one is downloaded and compared with this run's files,
+      # and a mismatch fails the step rather than leave archives SHA256SUMS doesn't describe.
+      # SHA256SUMS goes up last, once every archive is there.
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          previous="$RUNNER_TEMP/release-assets"
+          mkdir -p "$previous"
+          archives=()
+          for file in dist-binary/*.tar.gz dist-binary/*.zip dist-binary/SHA256SUMS; do
+            name=$(basename "$file")
+            if grep -qxF "$name" <<< "$existing"; then
+              gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$name" --dir "$previous" --clobber
+              if ! cmp -s "$file" "$previous/$name"; then
+                echo "::error::$name on the release is from another build. Delete the release's binary assets (gh release delete-asset $GITHUB_REF_NAME <name>) and run this job again."
+                exit 1
+              fi
+              echo "$name is already on the release, with these bytes."
+            elif [ "$name" != SHA256SUMS ]; then
+              archives+=("$file")
+            fi
+          done
+          if [ "${#archives[@]}" -gt 0 ]; then
+            gh release upload "$GITHUB_REF_NAME" "${archives[@]}" --repo "$GITHUB_REPOSITORY"
+          fi
+          if ! grep -qxF SHA256SUMS <<< "$existing"; then
+            gh release upload "$GITHUB_REF_NAME" dist-binary/SHA256SUMS --repo "$GITHUB_REPOSITORY"
+          fi
