@@ -97,7 +97,8 @@ export const openProject = (
     depsDev: config.depsDev,
     cache:
       cache && !cacheDisabledBy(process.env.AUTD_NO_CACHE) ? {} : undefined,
-    loadConfig: () => managerRegistryConfig(adapter, root, processSources()),
+    loadConfig: () =>
+      managerRegistryConfig(adapter, root, processSources(root)),
   })
   // The manager's release-age gate (#166) on every lookup, so nothing it
   // would refuse is proposed: discovery, the plan and cooldown fallbacks.
