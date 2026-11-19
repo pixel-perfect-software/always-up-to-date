@@ -110,6 +110,71 @@ describe('CI workflow', () => {
   })
 })
 
+describe('release workflow', () => {
+  const workflow = fs.readFileSync(
+    path.join(repoRoot, '.github/workflows/release.yml'),
+    'utf8',
+  )
+
+  const job = (name: string): string =>
+    new RegExp(`^ {2}${name}:\\n((?:(?: {4}.*)?\\n)+)`, 'm').exec(
+      workflow,
+    )?.[1] ?? ''
+
+  it("keeps its name: it is npm's trusted publisher", () => {
+    expect(workflow).toMatch(/^name: Release$/m)
+  })
+
+  it('keeps the read-only default and restores no cache', () => {
+    expect(workflow).toMatch(/^permissions:\n {2}contents: read$/m)
+    expect(workflow).not.toMatch(/^\s+cache: /m)
+    expect(workflow).not.toMatch(/actions\/cache@/)
+  })
+
+  it('builds all five binaries on macOS, beside the publish', () => {
+    const binaries = job('binaries')
+    expect(binaries).toMatch(/^ {4}needs: check$/m)
+    expect(binaries).toMatch(/^ {4}runs-on: macos-15$/m)
+    expect(binaries).toMatch(/^\s+- run: pnpm run build:binary$/m)
+    expect(binaries).toMatch(/package-manager-cache: false/)
+    expect(binaries).toMatch(/dist-binary\/SHA256SUMS/)
+    // Nothing the npm publish or the release needs waits on the binaries.
+    expect(job('publish')).toMatch(/^ {4}needs: check$/m)
+    expect(job('publish')).not.toMatch(/binaries/)
+  })
+
+  it('smokes every target on a runner of its own OS and architecture', () => {
+    const smoke = job('binaries-smoke')
+    expect(smoke).toMatch(/needs: \[ check, binaries \]/)
+    for (const [os, triple] of [
+      ['macos-15', 'aarch64-apple-darwin'],
+      ['macos-15-intel', 'x86_64-apple-darwin'],
+      ['ubuntu-24.04', 'x86_64-unknown-linux-gnu'],
+      ['ubuntu-24.04-arm', 'aarch64-unknown-linux-gnu'],
+      ['windows-latest', 'x86_64-pc-windows-msvc'],
+    ]) {
+      expect(smoke).toContain(`{ os: ${os}, triple: ${triple} }`)
+    }
+    expect(smoke).toMatch(/^ {4}permissions:\n {6}contents: read$/m)
+    expect(smoke).toMatch(/Identifier=ca\.pixel-perfect\.alwaysuptodate/)
+    expect(smoke).not.toMatch(/continue-on-error/)
+  })
+
+  it('attests the archives before it uploads any, once the release exists', () => {
+    const release = job('binaries-release')
+    expect(release).toMatch(/needs: \[ publish, binaries-smoke \]/)
+    expect(release).toMatch(/contents: write/)
+    expect(release).toMatch(/id-token: write/)
+    expect(release).toMatch(/attestations: write/)
+    expect(release).toMatch(/subject-checksums: dist-binary\/SHA256SUMS/)
+    const attest = release.indexOf('actions/attest-build-provenance@')
+    const upload = release.indexOf('gh release upload')
+    expect(attest).toBeGreaterThan(-1)
+    expect(upload).toBeGreaterThan(attest)
+    expect(release).toMatch(/--json assets/)
+  })
+})
+
 describe('integration matrix', () => {
   it('stays out of pnpm test', () => {
     expect(jestConfig.testPathIgnorePatterns).toContain(
