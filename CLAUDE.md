@@ -50,7 +50,7 @@ Each line names where the detail lives. `pipeline.md` is `.claude/context/ai-con
 - `src/utils/`: config, policy, logger, installed versions, specs (`src/utils/CLAUDE.md`); registry, `.npmrc` and cache (`src/utils/REGISTRY.md`); the plan's passes (`src/utils/plan/CLAUDE.md`); writers (`src/utils/MANIFESTS.md`); report and rows (`src/utils/OUTPUT.md`)
 - `schema/`: `config.schema.json` (referenced by the `$schema` `init` writes) and `output.schema.json` (every `--json` document)
 - `scripts/`: the build, its guards and the standalone binaries (`project-structure.md`)
-- `packaging/`: what ships beside the binaries (`bun/`: Bun's license notice, its version kept equal to `.tool-versions` by a test)
+- `packaging/`: what ships beside the binaries (`bun/`: Bun's license notice, its version kept equal to `.tool-versions` by a test; `homebrew/`: the formula template and `render.sh` the release's `homebrew` job pushes to the tap)
 - `bench/`, `__tests__/`, `testRepos/`: `bench/CLAUDE.md`, `__tests__/CLAUDE.md`
 
 ## Documentation System

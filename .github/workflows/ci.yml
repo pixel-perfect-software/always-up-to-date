@@ -207,6 +207,90 @@ jobs:
             jq -e ".version == 1 and .command == \"update\" and .phase == \"applied\" and .manager == \"bun\" and ([.rows[] | select(.outcome == \"update\")] | length) > 0" update.json
           '
 
+  homebrew-formula:
+    # The release's formula, installed by a real Homebrew before any release (#268): Homebrew may
+    # rewrite an installed executable (relinking and re-signing on macOS, patchelf on Linux), which
+    # could break a compiled Bun binary's appended payload. The formula is rendered from the
+    # archives this job builds, through render.sh's file:// base URL, into a local tap, and then
+    # `brew install`, `brew test` and the three command names run on it.
+    name: homebrew-formula (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ macos-15, ubuntu-24.04 ]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    # Homebrew stays in its JSON-API mode: HOMEBREW_NO_INSTALL_FROM_API would make the install
+    # git-clone homebrew/core, which the Linux runner can't create (Permission denied).
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_ANALYTICS: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: tools
+        shell: bash
+        run: echo "pnpm=$(awk '$1 == "pnpm" { print $2 }' .tool-versions)" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tools.outputs.pnpm }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+          cache: pnpm
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .tool-versions
+      - name: Lint the render script
+        if: runner.os == 'Linux'
+        run: shellcheck packaging/homebrew/render.sh
+      - run: pnpm install --frozen-lockfile
+      # All five targets, so render.sh finds the four tarballs; the darwin pair is only re-signed
+      # on macOS.
+      - name: Build the binaries
+        run: |
+          pnpm run build
+          pnpm run build:binary
+      - name: Put Homebrew on PATH
+        if: runner.os == 'Linux'
+        run: echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+      - name: Render the formula into a local tap
+        run: |
+          eval "$(brew shellenv)"
+          version=$(node -p "require('./package.json').version")
+          brew tap-new --no-git local/autd
+          packaging/homebrew/render.sh "$version" dist-binary/SHA256SUMS \
+            "$RUNNER_TEMP/tap" "file://$PWD/dist-binary"
+          cp "$RUNNER_TEMP/tap/Formula/always-up-to-date.rb" \
+            "$(brew --repository)/Library/Taps/local/homebrew-autd/Formula/"
+      - name: Install and test the formula
+        run: |
+          eval "$(brew shellenv)"
+          brew install local/autd/always-up-to-date
+          brew test local/autd/always-up-to-date
+      - name: Run each command name and check a bun project
+        env:
+          WORK: ${{ runner.temp }}/bun-single
+        run: |
+          eval "$(brew shellenv)"
+          version=$(node -p "require('./package.json').version")
+          for name in autd alwaysuptodate always-up-to-date; do
+            actual=$("$(brew --prefix)/bin/$name" --version)
+            if [ "$actual" != "$version" ]; then
+              echo "::error::$name --version printed '$actual', not $version."
+              exit 1
+            fi
+          done
+          cp -R testRepos/bun-single "$WORK"
+          mv "$WORK/package.fixture.json" "$WORK/package.json"
+          cd "$WORK"
+          bun install
+          autd check --json > check.json
+          grep -q '"command": "check"' check.json
+          grep -q '"manager": "bun"' check.json
+
   perf:
     # The performance budgets (pnpm run bench:gate, bench/budgets.ts) on a real runner: one job
     # per manager, plus startup, which needs no manager and is measured once. Each leg writes
