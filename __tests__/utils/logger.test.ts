@@ -245,6 +245,43 @@ describe('Logger', () => {
     const printed = () =>
       logSpy.mock.calls.map(([line]) => stripVTControlCharacters(line))
 
+    it('names the command that accepts a license change, once, after the heading (#263)', () => {
+      logger.report(
+        [
+          held('ua-parser-js', 'license change: MIT → AGPL-3.0-or-later'),
+          held('remotion', 'license change: none → MIT'),
+        ],
+        'npm',
+        'plan',
+      )
+      logger.report(
+        [held('ua-parser-js', 'license change: MIT → AGPL-3.0-or-later')],
+        'npm',
+        'plan',
+      )
+
+      const lines = printed()
+      expect(lines).toContain(
+        '  Review the licenses, then: autd update --accept-license remotion ua-parser-js',
+      )
+      expect(lines).toContain(
+        '  Review the license, then: autd update --accept-license ua-parser-js',
+      )
+    })
+
+    it('sends the license command to the workspace root from a member (#263, #123)', () => {
+      logger.report(
+        [held('ua-parser-js', 'license change: MIT → AGPL-3.0-or-later')],
+        'npm',
+        'plan',
+        { member: 'packages/a' },
+      )
+
+      expect(printed()).toContain(
+        '  Review the license, then: autd update --accept-license ua-parser-js in the workspace root',
+      )
+    })
+
     it('prints every candidate once, under its outcome, then one summary line (#138)', () => {
       // The shape of the 2026-10-27 run in #138: a 2-day cooldown,
       // beyondRange "minor", rules hold prisma and zod.

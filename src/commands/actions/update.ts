@@ -24,6 +24,11 @@ export const updateAction = async (
   try {
     // Refused before the project is opened: nothing is read or looked up.
     if (options.interactive) refuseInteractive(packages, options)
+    if (options.acceptLicense && packages.length === 0) {
+      throw new Error(
+        '--accept-license needs the packages whose license you reviewed: autd update --accept-license <packages…>',
+      )
+    }
     project = openProject(process.cwd(), {
       pm: options.pm,
       cache: options.cache,
@@ -40,7 +45,8 @@ export const updateAction = async (
       return
     }
 
-    const results = await runUpdate(project, { targetPackages })
+    const acceptLicense = options.acceptLicense ? targetPackages : undefined
+    const results = await runUpdate(project, { targetPackages, acceptLicense })
 
     if (options.json) {
       printJson(
@@ -89,7 +95,9 @@ const dryRun = async (
 
   const results =
     Object.keys(outdatedPackages).length > 0
-      ? await plan(project, outdatedPackages, targetPackages)
+      ? await plan(project, outdatedPackages, targetPackages, {
+          acceptLicense: options.acceptLicense ? targetPackages : undefined,
+        })
       : []
 
   if (json) {

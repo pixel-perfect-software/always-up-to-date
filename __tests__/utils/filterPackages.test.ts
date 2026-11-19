@@ -933,6 +933,65 @@ describe('filterPackages', () => {
       })
     })
 
+    describe('--accept-license (#263)', () => {
+      const ua = (config = {}) => {
+        installUa()
+        const { versionManifest } = registryOf({ 'ua-parser-js@2.0.0': UA_2 })
+        const filter = loadFilterWithConfig(config, { versionManifest })
+        return (options: { cwd: string; acceptLicense?: string[] }) =>
+          filter(makeOutdated([uaRow]), options)
+      }
+
+      it('moves a named license-held row, with the text as a warning', async () => {
+        const [result] = await ua()({ cwd, acceptLicense: ['ua-parser-js'] })
+
+        expect(result).toMatchObject({
+          updated: true,
+          target: '2.0.0',
+          warnings: [reasonFor('license change: MIT → AGPL-3.0-or-later')],
+        })
+      })
+
+      it('keeps holding a license row nobody named', async () => {
+        const [result] = await ua()({ cwd, acceptLicense: ['other'] })
+
+        expect(result).toMatchObject({
+          updated: false,
+          reason: reasonFor('license change: MIT → AGPL-3.0-or-later'),
+        })
+      })
+
+      it('keeps holding a named row another hold holds (rule, cooldown)', async () => {
+        const [ruled] = await ua({ rules: { 'ua-parser-js': 'hold' } })({
+          cwd,
+          acceptLicense: ['ua-parser-js'],
+        })
+        expect(ruled).toMatchObject({ updated: false })
+        expect(ruled.reason.code).toBe('rule-hold')
+
+        installUa()
+        const { versionManifest } = registryOf({ 'ua-parser-js@2.0.0': UA_2 })
+        const NOW = Date.parse('2026-04-29T12:00:00Z')
+        const [cooled] = await loadFilterWithConfig(
+          { cooldown: 7 },
+          {
+            versionManifest,
+            releaseTimes: {
+              'ua-parser-js': {
+                '2.0.0': new Date(NOW - 2 * 86_400_000).toISOString(),
+              },
+            },
+          },
+        )(makeOutdated([uaRow]), {
+          cwd,
+          now: NOW,
+          acceptLicense: ['ua-parser-js'],
+        })
+        expect(cooled).toMatchObject({ updated: false })
+        expect(cooled.reason.code).toBe('cooldown')
+      })
+    })
+
     it('does not flag the same license spelled another way', async () => {
       writeJson(at('package.json'), { dependencies: { ms: '2.1.1' } })
       installCaptured(cwd, '.', 'ms', 'ms.2.1.1.manifest')

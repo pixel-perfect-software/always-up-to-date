@@ -324,7 +324,14 @@ class Logger {
       console.log(
         `\n${bold(color(heading(phase, manager)))} ${gray(`(${pluralize(section.packages, 'package')})`)}`,
       )
-      if (section.hint) console.log(`  ${gray(section.hint)}`)
+      if (section.hint) {
+        // The license hint is an `update` command, which a member refuses (#123).
+        const where =
+          section.outcome === 'license' && member !== undefined
+            ? ' in the workspace root'
+            : ''
+        console.log(`  ${gray(`${section.hint}${where}`)}`)
+      }
       for (const row of section.rows) {
         const age =
           section.outcome === 'update' ? ages.get(row.name) : undefined

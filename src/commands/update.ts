@@ -6,6 +6,7 @@ export interface UpdateOptions {
   dryRun?: boolean
   interactive?: boolean
   json?: boolean
+  acceptLicense?: boolean
   pm?: SupportedPackageManager
   cache?: boolean
 }
@@ -36,6 +37,12 @@ const update = (program: Command) =>
       new Option(
         '--json',
         'Output a versioned JSON document (schema/output.schema.json)',
+      ).conflicts('interactive'),
+    )
+    .addOption(
+      new Option(
+        '--accept-license',
+        'Move the named packages whose license changed, once you reviewed it (needs package names)',
       ).conflicts('interactive'),
     )
     .addOption(pmOption())
