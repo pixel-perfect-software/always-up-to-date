@@ -32,7 +32,27 @@ export const LAYOUTS: Record<Manager, readonly string[]> = {
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..')
 const TEST_REPOS = path.join(REPO_ROOT, 'testRepos')
-export const CLI = path.join(REPO_ROOT, 'dist', 'index.cjs')
+const BUNDLE = path.join(REPO_ROOT, 'dist', 'index.cjs')
+
+/**
+ * `AUTD_INTEGRATION_CLI`: an autd executable (the compiled binary of
+ * `pnpm run build:binary`, #266) to run directly, resolved against the current
+ * directory; unset or blank runs `node dist/index.cjs`. Returns the file to
+ * start and the arguments that come before the command's own.
+ */
+export const cliInvocation = (
+  given: string | undefined = process.env.AUTD_INTEGRATION_CLI,
+): { file: string; args: string[]; path: string; binary: boolean } =>
+  given && given.trim() !== ''
+    ? {
+        file: path.resolve(given),
+        args: [],
+        path: path.resolve(given),
+        binary: true,
+      }
+    : { file: process.execPath, args: [BUNDLE], path: BUNDLE, binary: false }
+
+const CLI = cliInvocation()
 
 export const YARN_VERSIONS = { yarn: '1.22.22', berry: '4.18.1' } as const
 
@@ -535,10 +555,14 @@ export const cleanup = (
   })
 }
 
-/** `beforeAll`: the CLI is built. */
+/** `beforeAll`: the CLI is built (or, with `AUTD_INTEGRATION_CLI`, exists). */
 export const assertBuilt = (): void => {
-  if (!fs.existsSync(CLI)) {
-    throw new Error(`${CLI} is missing: run pnpm run build`)
+  if (!fs.existsSync(CLI.path)) {
+    throw new Error(
+      CLI.binary
+        ? `AUTD_INTEGRATION_CLI: ${CLI.path} does not exist`
+        : `${CLI.path} is missing: run pnpm run build`,
+    )
   }
 }
 
@@ -551,7 +575,7 @@ export const runCli = async (cwd: string, args: string[]): Promise<unknown> => {
   const command = `autd ${args.join(' ')} in ${cwd}`
   let result: { stdout: string; stderr: string }
   try {
-    result = await runProcess(process.execPath, [CLI, ...args], { cwd })
+    result = await runProcess(CLI.file, [...CLI.args, ...args], { cwd })
   } catch (error) {
     const failure = error as { stdout?: string; stderr?: string }
     throw new Error(
@@ -608,7 +632,7 @@ export const runCliExpectingFailure = (
   withoutManagers(async () => {
     const command = `autd ${args.join(' ')} in ${cwd}`
     try {
-      await runProcess(process.execPath, [CLI, ...args], { cwd })
+      await runProcess(CLI.file, [...CLI.args, ...args], { cwd })
     } catch (error) {
       const failure = error as { code?: unknown; stdout?: string }
       if (failure.code !== 1) {

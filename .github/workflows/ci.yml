@@ -67,11 +67,22 @@ jobs:
     # repo's own install: the suite's pnpm installs use a store in a temp directory
     # (pnpm_config_store_dir), and no manager's cache for testRepos is saved, so each run
     # resolves from the registry like a fresh machine.
+    # cli is what the matrix runs: the Node bundle (dist/index.cjs), or the compiled Bun
+    # binary of this runner's OS (#266: pnpm run build:binary --target host, extracted, and
+    # named by AUTD_INTEGRATION_CLI). The binary also runs on macOS, which the bundle does not.
+    name: integration (${{ matrix.os }}, ${{ matrix.pm }}, ${{ matrix.cli }})
     strategy:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, windows-latest ]
         pm: [ npm, pnpm, yarn, berry, bun ]
+        cli: [ bundle, binary ]
+        include:
+          - { os: macos-latest, pm: npm, cli: binary }
+          - { os: macos-latest, pm: pnpm, cli: binary }
+          - { os: macos-latest, pm: yarn, cli: binary }
+          - { os: macos-latest, pm: berry, cli: binary }
+          - { os: macos-latest, pm: bun, cli: binary }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -95,8 +106,9 @@ jobs:
       - name: Enable yarn through Corepack
         if: matrix.pm == 'yarn' || matrix.pm == 'berry'
         run: corepack enable yarn
+      # The binary build compiles with Bun, so every binary job needs it, not only bun's.
       - name: Set up Bun
-        if: matrix.pm == 'bun'
+        if: matrix.pm == 'bun' || matrix.cli == 'binary'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .tool-versions
@@ -106,11 +118,94 @@ jobs:
           node --version; npm --version; pnpm --version
           if [ "$AUTD_INTEGRATION_PM" = bun ]; then bun --version; fi
       - run: pnpm install --frozen-lockfile
+      - name: Build the host binary
+        if: matrix.cli == 'binary'
+        run: |
+          pnpm run build
+          pnpm run build:binary --target host
+      - name: Extract the binary
+        if: matrix.cli == 'binary' && runner.os != 'Windows'
+        run: |
+          dest="$RUNNER_TEMP/autd-binary"
+          mkdir -p "$dest"
+          tar -xzf dist-binary/*.tar.gz -C "$dest"
+          "$dest/autd" --version
+          echo "AUTD_INTEGRATION_CLI=$dest/autd" >> "$GITHUB_ENV"
+      - name: Extract the binary
+        if: matrix.cli == 'binary' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'autd-binary'
+          Expand-Archive -Path (Get-ChildItem dist-binary -Filter *.zip).FullName -DestinationPath $dest
+          & "$dest\autd.exe" --version
+          "AUTD_INTEGRATION_CLI=$dest\autd.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Run the integration matrix
         run: pnpm run test:integration
       - name: The suite leaves the checkout untouched
         shell: bash
         run: test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }
+
+  binary-without-node:
+    # The compiled binary needs no Node (#266, M5's Done when): check and update on a bun
+    # project, then bun's frozen install, with a PATH that holds bun and the system
+    # directories and no node. Building needs Node, so the binary is built first, in the
+    # same job, and only the run is restricted.
+    name: binary without Node (ubuntu-latest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: tools
+        shell: bash
+        run: echo "pnpm=$(awk '$1 == "pnpm" { print $2 }' .tool-versions)" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ steps.tools.outputs.pnpm }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+          cache: pnpm
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .tool-versions
+      - run: pnpm install --frozen-lockfile
+      - name: Build the host binary
+        run: |
+          pnpm run build
+          pnpm run build:binary --target host
+      - name: Extract the binary
+        run: |
+          mkdir -p "$RUNNER_TEMP/autd-binary"
+          tar -xzf dist-binary/*.tar.gz -C "$RUNNER_TEMP/autd-binary"
+      - name: Run check and update with no Node on PATH
+        env:
+          AUTD_BIN: ${{ runner.temp }}/autd-binary/autd
+          WORK: ${{ runner.temp }}/bun-single
+        run: |
+          cp -R testRepos/bun-single "$WORK"
+          mv "$WORK/package.fixture.json" "$WORK/package.json"
+          # A plain bun install takes every range to its newest version, so nothing moves
+          # within the ranges; "minor" lets dayjs (an exact pin) and debug (~4.3.1) move past
+          # theirs, which update writes and bun's frozen install must then accept.
+          echo '{ "beyondRange": "minor" }' > "$WORK/.always-up-to-date.json"
+          # bun's directory and the system's: the runner's Node lives in neither.
+          safe_path="$(dirname "$(command -v bun)"):/usr/bin:/bin"
+          env PATH="$safe_path" bash -euo pipefail -c '
+            for name in node nodejs; do
+              if command -v "$name"; then echo "$name is on PATH" >&2; exit 1; fi
+            done
+            command -v bun
+            cd "$WORK"
+            bun install
+            "$AUTD_BIN" check --json > check.json
+            "$AUTD_BIN" update --json > update.json
+            bun install --frozen-lockfile
+            jq -e ".version == 1 and .command == \"check\" and .phase == \"plan\" and .manager == \"bun\" and ([.rows[] | select(.outcome == \"update\")] | length) > 0" check.json
+            jq -e ".version == 1 and .command == \"update\" and .phase == \"applied\" and .manager == \"bun\" and ([.rows[] | select(.outcome == \"update\")] | length) > 0" update.json
+          '
 
   perf:
     # The performance budgets (pnpm run bench:gate, bench/budgets.ts) on a real runner: one job

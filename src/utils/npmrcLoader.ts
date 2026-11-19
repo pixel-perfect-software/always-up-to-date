@@ -38,14 +38,34 @@ export interface NpmrcSources {
 const CMD_NOT_FOUND = 9009
 
 /**
+ * Whether a `node` cmd.exe would run is on PATH: a file named `node` plus one
+ * of PATHEXT's extensions in one of PATH's directories. Under Bun, cmd.exe's
+ * "not recognized" doesn't come back as status 9009 (#266's Windows CI, with
+ * an empty PATH), and its message is localized, so the lookup decides.
+ */
+const nodeOnWindowsPath = (env: NodeJS.ProcessEnv): boolean => {
+  const dirs = (env.PATH ?? env.Path ?? '')
+    .split(path.win32.delimiter)
+    .filter(Boolean)
+  const extensions = (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
+    .split(path.win32.delimiter)
+    .filter(Boolean)
+  return dirs.some((dir) =>
+    extensions.some((extension) =>
+      fs.existsSync(path.join(dir, `node${extension.toLowerCase()}`)),
+    ),
+  )
+}
+
+/**
  * Asks the `node` npm would run in `cwd` (its `#!/usr/bin/env node`, or
  * npm.cmd's `node`) for its own `process.execPath`. A version manager's shim
  * (asdf, volta, mise) picks the version by directory and only resolves by
  * running it, so the probe runs where autd runs the manager. On Windows it
- * goes through cmd.exe, which a `.cmd` shim needs; the command is a fixed
- * string. Undefined when there is no `node`; any other failure is a
- * `discover` StepError, since a global `.npmrc` read from the wrong place can
- * drop a manager's release-age gate.
+ * goes through cmd.exe, which a `.cmd` shim needs, once PATH holds a `node`;
+ * the command is a fixed string. Undefined when there is no `node`; any other
+ * failure is a `discover` StepError, since a global `.npmrc` read from the
+ * wrong place can drop a manager's release-age gate.
  *
  * Synchronous, unlike `runProcess`, because `registryConfig()` is: it runs
  * once per directory, only under Bun.
@@ -54,6 +74,9 @@ const probeNodeExecPath = (
   cwd: string,
   platform: NodeJS.Platform = process.platform,
 ): string | undefined => {
+  if (platform === 'win32' && !nodeOnWindowsPath(process.env)) {
+    return undefined
+  }
   const options = {
     cwd,
     encoding: 'utf8' as const,

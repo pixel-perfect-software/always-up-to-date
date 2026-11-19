@@ -180,7 +180,17 @@ async function buildTarget(
 
   const file = archiveName(version, target)
   const archive = path.join(OUT_DIR, file)
-  if (target.os === 'windows') {
+  if (target.os === 'windows' && process.platform === 'win32') {
+    // A Windows runner may have no `zip`, but Windows ships bsdtar, which
+    // writes a zip with -a. Named by its path, since Git's GNU tar (no zip)
+    // can come first on PATH.
+    const bsdtar = path.join(
+      process.env.SystemRoot ?? 'C:\\Windows',
+      'System32',
+      'tar.exe',
+    )
+    await exec(bsdtar, ['-a', '-cf', archive, binary, ...ARCHIVE_FILES], dir)
+  } else if (target.os === 'windows') {
     await exec('zip', ['-q', archive, binary, ...ARCHIVE_FILES], dir)
   } else {
     await exec('tar', ['-czf', archive, binary, ...ARCHIVE_FILES], dir)
