@@ -12,6 +12,7 @@
     "check-types": "tsc --noEmit && tsc -p scripts",
     "format-and-lint": "biome check .",
     "format-and-lint:fix": "biome check . --write",
+    "build:binary": "node scripts/buildBinary.mts",
     "prepack": "pnpm run build",
     "test": "provino jest --silent",
     "test:integration": "pnpm run build && provino jest --config jest.integration.config.ts",
@@ -19,7 +20,7 @@
     "bench:gate": "pnpm run build && node -r ./bench/register.cjs bench/gate.ts",
     "test:coverage": "provino jest --coverage --silent",
     "test:badges": "pnpm test:coverage && jest-coverage-badges --output ./badges",
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist dist-binary",
     "autd": "node dist/index.cjs"
   },
   "bin": {

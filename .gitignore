@@ -1,5 +1,7 @@
 node_modules
 dist
+# pnpm run build:binary writes the standalone archives here.
+dist-binary
 *.log
 coverage
 .DS_Store

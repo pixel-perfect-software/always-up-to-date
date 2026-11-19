@@ -9,8 +9,9 @@ Always Up To Date (`autd`) is a CLI that keeps a project's dependencies up to da
 ## Development Commands
 
 - `pnpm run build` - Bundle `src/index.ts` with esbuild into `dist/index.cjs` and run the startup and externals checks (detail in `.claude/context/ai-context/project-structure.md`). tsc emits nothing, so the build does not type-check
+- `pnpm run build:binary` - After a build, compile `dist/index.cjs` with Bun (the `.tool-versions` version, on PATH) into `dist-binary/always-up-to-date-<version>-<triple>.tar.gz` (`.zip` for Windows) and `SHA256SUMS`, all five targets; `-- --target host` (or a Bun target or triple, repeatable) builds a subset (#265; detail in `project-structure.md`)
 - `pnpm run check-types` - `tsc --noEmit` over `src`, `__tests__` and `bench`, then `tsc -p scripts`
-- `pnpm run clean` - Remove `dist/`
+- `pnpm run clean` - Remove `dist/` and `dist-binary/`
 - `pnpm test` - The unit suite (silent). One file: `pnpm test -- __tests__/path/to/test.test.ts`
 - `pnpm run test:coverage` - The unit suite with coverage; `pnpm run test:badges` regenerates `./badges` (commit them)
 - `pnpm run test:integration` - The integration matrix: the built CLI against real npm, pnpm, yarn v1, berry and bun (`__tests__/CLAUDE.md`)
@@ -48,7 +49,8 @@ Each line names where the detail lives. `pipeline.md` is `.claude/context/ai-con
 - `src/managers/`: one adapter per manager, the workspace member map, cooldown pins, the beyond-range writer (`src/managers/CLAUDE.md`, then `npm/`, `pnpm/`, `yarn/`, `bun/` `CLAUDE.md`)
 - `src/utils/`: config, policy, logger, installed versions, specs (`src/utils/CLAUDE.md`); registry, `.npmrc` and cache (`src/utils/REGISTRY.md`); the plan's passes (`src/utils/plan/CLAUDE.md`); writers (`src/utils/MANIFESTS.md`); report and rows (`src/utils/OUTPUT.md`)
 - `schema/`: `config.schema.json` (referenced by the `$schema` `init` writes) and `output.schema.json` (every `--json` document)
-- `scripts/`: the build and its guards (`project-structure.md`)
+- `scripts/`: the build, its guards and the standalone binaries (`project-structure.md`)
+- `packaging/`: what ships beside the binaries (`bun/`: Bun's license notice, its version kept equal to `.tool-versions` by a test)
 - `bench/`, `__tests__/`, `testRepos/`: `bench/CLAUDE.md`, `__tests__/CLAUDE.md`
 
 ## Documentation System
