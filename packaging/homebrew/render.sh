@@ -5,7 +5,10 @@
 # from the base URL, by default the release v<version> on GitHub; ci.yml passes a file:// URL
 # to install the formula from the archives it just built.
 set -eu
-[ $# -ge 3 ] && [ $# -le 4 ] || { echo "usage: $0 <version> <SHA256SUMS> <tap dir> [<base URL>]" >&2; exit 2; }
+if [ $# -lt 3 ] || [ $# -gt 4 ]; then
+  echo "usage: $0 <version> <SHA256SUMS> <tap dir> [<base URL>]" >&2
+  exit 2
+fi
 version=$1 sums=$2 out=$3
 # The version goes into sed replacements and the formula: nothing but a semver may.
 printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$' \
