@@ -5,7 +5,9 @@ released as 2.0.0. M2 done and closed 2026-10-23, released as 2.1.0 on 2026-10-2
 2026-10-26 from a new baseline on 2.1.0, done and closed 2026-11-06, finished in 3.5.0 on
 2026-11-06. M4 planned 2026-11-06, done and closed 2026-11-09, released in 3.6.0 on 2026-11-08
 and 4.0.0 on 2026-11-09. M4.1 planned 2026-11-12 from a UX, cleanup and performance audit of
-4.0.0, done and closed 2026-11-12, not yet released. M5 is next.
+4.0.0, done and closed 2026-11-12, released in 4.1.0 on 2026-11-12. M5 planned 2026-11-19 from
+probes of `bun build --compile` on 4.1.1, done and closed 2026-11-19, released in 4.2.0 on
+2026-11-19. M6 is next.
 
 Tracking: GitHub milestones M0 through M6 at
 https://github.com/pixel-perfect-software/always-up-to-date/milestones. Pull requests
@@ -249,24 +251,43 @@ Goal: 4.x does what it says before the code is compiled to binaries in M5.
 Done when: every M4.1 issue is closed; `pnpm test` passes 10 parallel runs with no failure and
 sends no request off localhost; `check` stays under 1 s cold and 0.3 s warm on the perf gate.
 
-### M5: Portability and distribution (small, plus validation)
+### M5: Portability and distribution (small, plus validation, done)
 
 Goal: a machine without Node can run autd.
 
-- Bundled npm package with few runtime dependencies. Largely done by #109: `dist/index.js` is one
+- Bundled npm package with few runtime dependencies, done by #109: `dist/index.cjs` is one
   esbuild bundle and `@inquirer/prompts` is the only runtime dependency.
-- Standalone binaries via `bun build --compile`, re-signed after build (Bun 1.4.0 emits
-  an invalid ad-hoc signature on arm64 macOS; `codesign --force --sign -` fixes it, a
-  Developer ID is used for release and notarization). The signing identifier is
-  `ca.pixel-perfect.alwaysuptodate`, the scheme env-router uses (`ca.pixel-perfect.envrouter`),
-  and the same name M3's cache folder takes.
-- Release workflow builds macOS arm64 and x64, Linux and Windows, signs each, attaches
-  them to GitHub releases. Homebrew tap formula downloads the matching asset.
-- The test suite and integration matrix also run against the compiled binary, since it
-  runs on Bun's runtime rather than Node.
-- The compiled binary has no Node to judge `engines.node` against, so it judges only the range the project declares (#199).
+- Standalone binaries (#265): `pnpm run build:binary` compiles `dist/index.cjs` with
+  `bun build --compile` (the `.tool-versions` Bun, 1.4.4) for macOS arm64 and x64, Linux x64 and
+  arm64, and Windows x64. Bun 1.4.4's own ad-hoc linker signature runs on arm64 macOS: the
+  invalid signature 1.4.0 emitted is gone. On a macOS runner the darwin pair is re-signed ad hoc
+  as `ca.pixel-perfect.alwaysuptodate`, the scheme env-router uses. The plan's Developer ID and
+  notarization were dropped: the org has none, as env-router's release says, and Homebrew
+  doesn't quarantine a formula's downloads. Each archive carries `LICENSE`,
+  `third-party-licenses.txt` (every npm package compiled in) and `BUN-LICENSE.md` (Bun's notice:
+  it statically links JavaScriptCore under the LGPL-2).
+- Measured 2026-11-19 on macOS arm64 (`hyperfine -N`, 40 runs): the binary's `autd --version`
+  takes 24.5 ms, against 37.0 ms for `node dist/index.cjs --version` and 28.9 ms for bare
+  `node -e 0`. The binary is 89 MB, and the archives are 40 to 55 MB.
+- On Bun's runtime, `process.execPath` is autd itself, so npm's and yarn v1's global and builtin
+  `.npmrc` are found from the `node` npm would run, asked once per directory (#269). Without
+  that, a `min-release-age` set in npm's global npmrc was skipped. The binary has no Node to
+  judge `engines.node` against, so it judges only the range the project declares (#199).
+- CI runs the integration matrix against the compiled binary on Ubuntu, Windows and macOS, and
+  `check` and `update` on a bun project with no Node on PATH (#266). Its first run found the
+  Windows node probe treating an empty PATH as a failure.
+- Each release builds the five archives, runs each on a native runner, attests them
+  (`actions/attest-build-provenance`) and attaches them with `SHA256SUMS` (#267). Nothing about
+  the npm publish waits on them.
+- Homebrew (#268): the release pushes `Formula/always-up-to-date.rb` to
+  `pixel-perfect-software/homebrew-tap` with `TAP_TOKEN`, so
+  `brew install pixel-perfect-software/tap/always-up-to-date` installs `autd`, `alwaysuptodate`
+  and `always-up-to-date`. CI's `homebrew-formula` job installs and tests the formula with a
+  real Homebrew on macOS and Linux before any release. Homebrew's install step leaves the Bun
+  binary working on both.
 
-Done when: `autd check` runs on a bun project on a machine with no Node installed.
+Done when: `autd check` runs on a bun project on a machine with no Node installed. Met:
+CI's `binary without Node` job, and 4.2.0's release.
 
 ### M6: Second ecosystem and the language gate (medium)
 
@@ -388,3 +409,15 @@ Filed 2026-11-12, in pick-up order. The first eleven are the pass itself; the re
 | Target manifests are read only after every lookup settles                                      | M4.1      | #234 (not planned) |
 | An empty `minimumReleaseAge:` turns off autd's copy of pnpm's release-age gate                 | M4.1      | #247               |
 | Moved registry and plan code is still imported through re-exports at its old paths             | M4.1      | #255               |
+
+## M5 issues
+
+Filed 2026-11-19, in pick-up order. #269 was found by review while verifying #265, and #267 waited on it, so no release shipped the binary before it was fixed.
+
+| Gap or defect                                                                                | Milestone | Issue |
+| -------------------------------------------------------------------------------------------- | --------- | ----- |
+| There is no standalone binary of autd                                                        | M5        | #265  |
+| The integration matrix only runs the Node bundle                                             | M5        | #266  |
+| The compiled binary reads npm's global and builtin `.npmrc` next to `autd`, not next to node | M5        | #269  |
+| Releases attach no binaries                                                                  | M5        | #267  |
+| autd can't be installed with Homebrew                                                        | M5        | #268  |
