@@ -18,3 +18,6 @@ testRepos/**/.pnp.*
 .claude/context/ai-context/handoff.md
 # Plans are working notes for a session, never committed.
 .claude/plans/
+# Claude Code session worktrees and personal settings, never committed.
+.claude/worktrees/
+.claude/settings.local.json

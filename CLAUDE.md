@@ -16,7 +16,7 @@ Always Up To Date (`autd`) is a CLI that keeps a project's dependencies up to da
 - `pnpm run test:coverage` - The unit suite with coverage; `pnpm run test:badges` regenerates `./badges` (commit them)
 - `pnpm run test:integration` - The integration matrix: the built CLI against real npm, pnpm, yarn v1, berry and bun (`__tests__/CLAUDE.md`)
 - `pnpm run bench` / `pnpm run bench:gate` - The benchmark and the perf gate CI's `perf` job runs (`bench/CLAUDE.md`)
-- `pnpm run format-and-lint` / `pnpm run format-and-lint:fix` - Check or fix formatting and linting with Biome (Markdown included)
+- `pnpm run format-and-lint` / `pnpm run format-and-lint:fix` - Check or fix formatting and linting with Biome. Markdown is excluded (`!**/*.md` in `biome.json`): Biome's Markdown formatter flattens YAML frontmatter and rewrites `*` in globs as `_`
 - `pnpm run autd <command>` - Run the built CLI (`node dist/index.cjs <command>`) in the current directory, e.g. `pnpm run autd init`, `pnpm run autd check`; build first
 - Releasing: `/ship:release <major|minor|patch>`, then a `v<version>` tag on `main` runs `.github/workflows/release.yml`. Publish only through `release.yml`, never from a local checkout, and never rename it (it is npm's trusted publisher). Detail in `project-structure.md`
 
@@ -33,6 +33,12 @@ Always Up To Date (`autd`) is a CLI that keeps a project's dependencies up to da
 - **Output**: human output goes through `logger`, never `console.log`. With `--json`, stdout is exactly one versioned document (#201, `schema/output.schema.json`); errors, warnings and debug lines go to stderr in every mode (#223)
 - **The config is loaded once per run**, by `openProject`, and passed down as `project.config`; `--help`, `--version` and `init` never read it. Validation is strict (#217): a typo must not turn a gate off
 - Path aliases: `@/*` maps to `src/*` (`import logger from "@/utils/logger"`, always a leaf module)
+
+## Workflow
+
+- **One issue, one branch, one pull request**, from `main`: `fix/`, `feat/`, `refactor/` or `docs/<issue>-<slug>` (the names `/build:feature`, `/build:fix` and `/build:refactor` create). The user merges; never commit to or push `main`
+- Commits and pull requests follow `docs/contributing.md` (Commits, Pull requests); `/ship:commit` and `/ship:pr` write them in that shape
+- Releases: `/ship:release`, as under Development Commands
 
 ## Module map
 
