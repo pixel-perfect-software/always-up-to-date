@@ -9,7 +9,7 @@ allowBuilds:
   unrs-resolver: true
 
 catalog:
-  "@inquirer/prompts": 8.7.5
+  "@inquirer/prompts": 8.8.0
   colorette: 2.0.20
   commander: 15.1.0
   semver: 7.8.6
@@ -23,7 +23,7 @@ catalog:
   esbuild: 0.28.2
   jest: 30.5.2
   jest-coverage-badges: 1.1.2
-  provino: 0.1.0-rc.5
+  provino: 0.1.0-rc.6
   typescript: 7.0.2
 
 minimumReleaseAgeExclude:
