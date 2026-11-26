@@ -9,7 +9,7 @@ allowBuilds:
   unrs-resolver: true
 
 catalog:
-  "@inquirer/prompts": 8.7.5
+  "@inquirer/prompts": 8.8.1
   colorette: 2.0.20
   commander: 15.1.0
   semver: 7.8.6
