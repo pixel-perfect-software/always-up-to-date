@@ -59,6 +59,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
+    "@provino/dialect-jest": "catalog:",
     "@swc/core": "catalog:",
     "@swc/jest": "catalog:",
     "@types/jest": "catalog:",
