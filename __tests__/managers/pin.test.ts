@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, fn, it } from 'provino'
 import type { Pinning, RunManager } from '@/managers/adapter'
 import { applyPinned } from '@/managers/pin'
 import { StepError } from '@/stepError'
@@ -108,7 +109,7 @@ describe('applyPinned (#147)', () => {
   it('relocks each restored spec against its pinned version before the second install', async () => {
     write('package.json', '{"dependencies":{"ms":"^2.0.0"}}')
     const order: string[] = []
-    const relock = jest.fn(() => {
+    const relock = fn(() => {
       order.push('relock')
     })
     const run: RunManager = async (args) => {

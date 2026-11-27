@@ -1,3 +1,4 @@
+import { expect } from 'provino'
 import type { Manager } from './harness'
 
 /**

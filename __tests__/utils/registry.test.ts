@@ -1,4 +1,18 @@
-jest.mock('@/utils/logger')
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  isolateModulesAsync,
+  it,
+  mock,
+  mocked,
+  requireActual,
+  spyOn,
+} from 'provino'
+
+mock('@/utils/logger')
 
 import fs from 'fs'
 import path from 'path'
@@ -210,7 +224,7 @@ describe('registry session', () => {
 
   it('reads no config until a request, then once for the whole run', async () => {
     const server = await start(typesMs)
-    const loadConfig = jest.fn(() => configFor(server.url))
+    const loadConfig = fn(() => configFor(server.url))
     const session = createRegistrySession('/project', { loadConfig })
     sessions.push(session)
 
@@ -264,18 +278,18 @@ describe('registry session', () => {
     const server = await start(typesMs)
     const created: RegistryClient[] = []
     let fresh: typeof import('@/utils/registry') | undefined
-    await jest.isolateModulesAsync(async () => {
-      jest.doMock('@/utils/registryClient', () => {
-        const actual = jest.requireActual<
-          typeof import('@/utils/registryClient')
-        >('@/utils/registryClient')
+    await isolateModulesAsync(async () => {
+      mock('@/utils/registryClient', () => {
+        const actual = requireActual<typeof import('@/utils/registryClient')>(
+          '@/utils/registryClient',
+        )
         return {
           ...actual,
           createRegistryClient: (
             ...args: Parameters<typeof actual.createRegistryClient>
           ) => {
             const client = actual.createRegistryClient(...args)
-            jest.spyOn(client, 'destroy')
+            spyOn(client, 'destroy')
             created.push(client)
             return client
           },
@@ -341,7 +355,7 @@ describe('registry session', () => {
 
     it('shares the client and the config load with releaseTimes', async () => {
       const server = await msServer()
-      const loadConfig = jest.fn(() => configFor(server.url))
+      const loadConfig = fn(() => configFor(server.url))
       const session = createRegistrySession('/project', {
         loadConfig,
         depsDev: false,
@@ -459,7 +473,7 @@ describe('registry session', () => {
 
     it('loads and reads nothing before the call, then reads through the reader', async () => {
       const server = await start(msWithManifest)
-      const loadConfig = jest.fn(() => configFor(server.url))
+      const loadConfig = fn(() => configFor(server.url))
       const session = createRegistrySession('/project', {
         loadConfig,
         depsDev: false,
@@ -495,11 +509,9 @@ describe('registry session', () => {
       expect(await session.versionManifest('@acme/ui', '1.0.0')).toBeUndefined()
       expect(server.requests).toEqual([])
       expect(
-        jest
-          .mocked(logger.debug)
-          .mock.calls.some(([line]) =>
-            String(line).startsWith('Not asking for @acme/ui@1.0.0: '),
-          ),
+        mocked(logger.debug).mock.calls.some(([line]) =>
+          String(line).startsWith('Not asking for @acme/ui@1.0.0: '),
+        ),
       ).toBe(true)
     })
 
@@ -536,7 +548,7 @@ describe('registry session', () => {
       session.close()
 
       expect(logger.warn).toHaveBeenCalledTimes(1)
-      expect(jest.mocked(logger.warn).mock.calls[0][0]).toContain(
+      expect(mocked(logger.warn).mock.calls[0][0]).toContain(
         `127.0.0.1:${server.port} (1 request)`,
       )
     })
@@ -585,7 +597,7 @@ describe('registry session', () => {
       session.close()
 
       expect(logger.warn).toHaveBeenCalledTimes(1)
-      const [text] = jest.mocked(logger.warn).mock.calls[0]
+      const [text] = mocked(logger.warn).mock.calls[0]
       expect(text).toContain(`127.0.0.1:${registry.port} (1 request)`)
     })
 
@@ -624,7 +636,7 @@ describe('registry session', () => {
       session.close()
 
       expect(logger.warn).toHaveBeenCalledTimes(1)
-      const [text] = jest.mocked(logger.warn).mock.calls[0]
+      const [text] = mocked(logger.warn).mock.calls[0]
       expect(text).toContain(`127.0.0.1:${depsDev.port} (1 request)`)
       expect(text).not.toContain(`127.0.0.1:${registry.port}`)
     })
@@ -649,7 +661,7 @@ describe('registry session', () => {
       session.close()
 
       expect(logger.warn).toHaveBeenCalledTimes(1)
-      const [text] = jest.mocked(logger.warn).mock.calls[0]
+      const [text] = mocked(logger.warn).mock.calls[0]
       expect(text).toContain(`127.0.0.1:${registry.port} (2 requests)`)
     })
   })
@@ -890,8 +902,7 @@ describe('registry session', () => {
       return session
     }
     const debugLines = () =>
-      jest
-        .mocked(logger.debug)
+      mocked(logger.debug)
         .mock.calls.map(([line]) => String(line))
         .filter((line) => line.startsWith('registry cache'))
 
@@ -965,7 +976,7 @@ describe('registry session', () => {
       const first = sessionWith(server, { dir })
       await first.lookup('ms')
       first.close()
-      jest.mocked(logger.debug).mockClear()
+      mocked(logger.debug).mockClear()
 
       const second = sessionWith(server, { dir })
       await second.lookup('ms')
@@ -993,7 +1004,7 @@ describe('registry session', () => {
       const first = open()
       await first.releaseTimes('@types/ms')
       first.close()
-      jest.mocked(logger.debug).mockClear()
+      mocked(logger.debug).mockClear()
 
       clock += 301 * 1000
       const second = open()

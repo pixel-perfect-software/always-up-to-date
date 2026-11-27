@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'provino'
 import type { AlwaysUpToDateConfig, BeyondRange, PackageRule } from '@/types'
 import updateChecker, {
   policyFromConfig,

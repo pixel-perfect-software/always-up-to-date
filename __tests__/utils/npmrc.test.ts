@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'provino'
 /*
  * Cases ported from ini 7.0.0's test suite (test/foo.js, bar.js,
  * duplicate-properties.js, proto.js, win32.js), adapted to parseNpmrc.

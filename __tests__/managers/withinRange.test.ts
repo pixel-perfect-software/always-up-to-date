@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, it, mock } from 'provino'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
@@ -9,7 +10,7 @@ import filterPackages from '@/utils/filterPackages'
 import { capturedRegistry, installPackages, projectFor } from '../fixtures'
 import { tempDir } from '../fixtures/files'
 
-jest.mock('@/utils/logger')
+mock('@/utils/logger')
 
 /**
  * What `npm update` installed on the mixed-range benchmark project (12 of 40

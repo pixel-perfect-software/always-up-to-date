@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, fn, it, mock } from 'provino'
 import type { RegistryPackage, UpdateResult, VersionManifest } from '@/types'
 import { ENGINES_WALK_LIMIT, fitRunningNode } from '@/utils/plan/nodeFit'
 import {
@@ -13,8 +14,8 @@ import {
 import { reasonFor } from '../fixtures/reasons'
 import { derive } from '../fixtures/registry'
 
-const mockDebug = jest.fn()
-jest.mock('@/utils/logger', () => ({
+const mockDebug = fn()
+mock('@/utils/logger', () => ({
   __esModule: true,
   default: { debug: (...args: unknown[]) => mockDebug(...args) },
 }))
@@ -226,7 +227,7 @@ describe('fitRunningNode (#200)', () => {
   })
 
   it('skips a candidate the cooldown gates', async () => {
-    const cooldownOf = jest.fn(async (_row: UpdateResult, version: string) => ({
+    const cooldownOf = fn(async (_row: UpdateResult, version: string) => ({
       gated: version === '5.0.4',
       ageDays: undefined,
     }))

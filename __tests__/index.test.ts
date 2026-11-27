@@ -1,4 +1,14 @@
-jest.mock('@/cli', () => {
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type MockInstance,
+  mock,
+  spyOn,
+} from 'provino'
+
+mock('@/cli', () => {
   throw new Error(
     'boom at https://registry.example.com/SECRET-TOKEN/acme/left-pad',
   )
@@ -12,17 +22,15 @@ const originalError = Object.getPrototypeOf(console).error
 
 describe('CLI entry', () => {
   let stderr: string[]
-  let exit: jest.SpyInstance
+  let exit: MockInstance<typeof process.exit>
 
   beforeEach(() => {
     stderr = []
     console.error = originalError
-    jest
-      .spyOn(console, 'error')
-      .mockImplementation((...parts) => stderr.push(parts.join(' ')))
-    exit = jest
-      .spyOn(process, 'exit')
-      .mockImplementation(() => undefined as never)
+    spyOn(console, 'error').mockImplementation((...parts) =>
+      stderr.push(parts.join(' ')),
+    )
+    exit = spyOn(process, 'exit').mockImplementation(() => undefined as never)
   })
 
   it('reports a failure to start the CLI once, scrubbed, and exits 1', async () => {

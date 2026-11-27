@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { describe, expect, fn, it, mock, requireActual } from 'provino'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
@@ -12,10 +13,10 @@ import { capturedRegistry, installPackages, projectFor } from './fixtures'
 import { tempDir } from './fixtures/files'
 import { validateOutput } from './fixtures/outputSchema'
 
-jest.mock('@/utils/logger')
-jest.mock('@/utils/runProcess', () => ({
-  ...jest.requireActual('@/utils/runProcess'),
-  runProcess: jest.fn(),
+mock('@/utils/logger')
+mock('@/utils/runProcess', () => ({
+  ...requireActual('@/utils/runProcess'),
+  runProcess: fn(),
 }))
 
 const manifest = {
@@ -58,7 +59,7 @@ const run = async (
     { asOf: AS_OF },
   )
   // The manager moves each package to its target, so the post-apply check keeps it updated.
-  const apply = jest.fn(async (_run, dir: string, { beyondRange }) =>
+  const apply = fn<typeof npm.apply>(async (_run, dir, { beyondRange }) =>
     installPackages(dir, '.', beyondRange),
   )
   const project = projectFor({ ...adapter, apply }, cwd, config, registry)

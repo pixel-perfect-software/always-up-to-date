@@ -1,11 +1,24 @@
-jest.mock('@/detectPackageManager', () => ({
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  mocked,
+  spyOn,
+} from 'provino'
+
+mock('@/detectPackageManager', () => ({
   __esModule: true,
-  default: jest.fn(),
+  default: fn(),
 }))
-jest.mock('@/utils/config')
-jest.mock('@/utils/logger')
-jest.mock('@/utils/registry', () => ({
-  createRegistrySession: jest.fn(),
+mock('@/utils/config')
+mock('@/utils/logger')
+mock('@/utils/registry', () => ({
+  createRegistrySession: fn(),
 }))
 
 import fs from 'fs'
@@ -35,10 +48,10 @@ describe('openProject', () => {
       beyondRange: 'minor' as const,
       depsDev: true,
     }
-    jest.mocked(loadConfig).mockReturnValue(config)
-    jest.mocked(detectPackageManager).mockReturnValue('pnpm')
+    mocked(loadConfig).mockReturnValue(config)
+    mocked(detectPackageManager).mockReturnValue('pnpm')
     const session = fakeRegistry()
-    jest.mocked(createRegistrySession).mockReturnValue(session)
+    mocked(createRegistrySession).mockReturnValue(session)
 
     const project = openProject(cwd)
 
@@ -61,10 +74,8 @@ describe('openProject', () => {
   })
 
   it("hands the config's depsDev switch to the registry session", () => {
-    jest
-      .mocked(loadConfig)
-      .mockReturnValue({ ...DEFAULT_CONFIG, depsDev: false })
-    jest.mocked(detectPackageManager).mockReturnValue('npm')
+    mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG, depsDev: false })
+    mocked(detectPackageManager).mockReturnValue('npm')
 
     openProject(cwd)
 
@@ -76,8 +87,8 @@ describe('openProject', () => {
 
   describe('the registry cache', () => {
     const cacheOption = (env: string | undefined, options = {}) => {
-      jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
-      jest.mocked(detectPackageManager).mockReturnValue('npm')
+      mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+      mocked(detectPackageManager).mockReturnValue('npm')
       const saved = process.env.AUTD_NO_CACHE
       if (env === undefined) delete process.env.AUTD_NO_CACHE
       else process.env.AUTD_NO_CACHE = env
@@ -87,7 +98,7 @@ describe('openProject', () => {
         if (saved === undefined) delete process.env.AUTD_NO_CACHE
         else process.env.AUTD_NO_CACHE = saved
       }
-      return jest.mocked(createRegistrySession).mock.calls[0][1]?.cache
+      return mocked(createRegistrySession).mock.calls[0][1]?.cache
     }
 
     it('is on by default', () => {
@@ -138,16 +149,16 @@ describe('openProject', () => {
     })
 
     const openWith = (pm: 'pnpm' | 'npm') => {
-      jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
-      jest.mocked(detectPackageManager).mockReturnValue(pm)
+      mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+      mocked(detectPackageManager).mockReturnValue(pm)
       openProject(cwd)
-      const options = jest.mocked(createRegistrySession).mock.calls[0][1]
+      const options = mocked(createRegistrySession).mock.calls[0][1]
       if (!options?.loadConfig) throw new Error('no loadConfig seam')
       return options.loadConfig
     }
 
     it('is not built by openProject, only by the session on first use', () => {
-      const layers = jest.spyOn(pnpm, 'npmrcLayers')
+      const layers = spyOn(pnpm, 'npmrcLayers')
       const loadConfigForSession = openWith('pnpm')
       expect(layers).not.toHaveBeenCalled()
 
@@ -180,11 +191,11 @@ describe('openProject', () => {
     // #127: the view is read where autd runs the manager, the project root,
     // whichever directory the session was opened from.
     it('hands registryConfig the root and the merged view, and builds nothing in openProject', () => {
-      const hook = jest.spyOn(bun, 'registryConfig')
-      jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
-      jest.mocked(detectPackageManager).mockReturnValue('bun')
+      const hook = spyOn(bun, 'registryConfig')
+      mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+      mocked(detectPackageManager).mockReturnValue('bun')
       const { root } = openProject(cwd)
-      const options = jest.mocked(createRegistrySession).mock.calls[0][1]
+      const options = mocked(createRegistrySession).mock.calls[0][1]
       expect(hook).not.toHaveBeenCalled()
 
       const adjusted = {
@@ -206,8 +217,8 @@ describe('openProject', () => {
   })
 
   it('hands --pm to detection', () => {
-    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
-    jest.mocked(detectPackageManager).mockReturnValue('bun')
+    mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+    mocked(detectPackageManager).mockReturnValue('bun')
 
     expect(openProject(cwd, { pm: 'bun' }).adapter).toBe(bun)
     expect(detectPackageManager).toHaveBeenCalledWith(cwd, 'bun', {
@@ -218,8 +229,8 @@ describe('openProject', () => {
 
   it('loads the config once and configures the logger with it', () => {
     const config = { ...DEFAULT_CONFIG, debug: true }
-    jest.mocked(loadConfig).mockReturnValue(config)
-    jest.mocked(detectPackageManager).mockReturnValue('npm')
+    mocked(loadConfig).mockReturnValue(config)
+    mocked(detectPackageManager).mockReturnValue('npm')
 
     openProject(cwd)
 
@@ -229,39 +240,37 @@ describe('openProject', () => {
   })
 
   it('prints the config warnings through the logger once it is configured', () => {
-    jest.mocked(loadConfig).mockImplementation((_dir, _fallback, onWarning) => {
+    mocked(loadConfig).mockImplementation((_dir, _fallback, onWarning) => {
       onWarning?.('Ignoring unknown key "beyondrange"')
       return { ...DEFAULT_CONFIG, silent: true }
     })
-    jest.mocked(detectPackageManager).mockReturnValue('npm')
+    mocked(detectPackageManager).mockReturnValue('npm')
 
     openProject(cwd)
 
     expect(logger.warn).toHaveBeenCalledWith(
       'Ignoring unknown key "beyondrange"',
     )
-    expect(
-      jest.mocked(logger.configure).mock.invocationCallOrder[0],
-    ).toBeLessThan(jest.mocked(logger.warn).mock.invocationCallOrder[0])
+    expect(mocked(logger.configure).mock.invocationCallOrder[0]).toBeLessThan(
+      mocked(logger.warn).mock.invocationCallOrder[0],
+    )
   })
 
   it('configures the logger before it detects the manager', () => {
-    jest.mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
-    jest.mocked(detectPackageManager).mockImplementation(() => {
+    mocked(loadConfig).mockReturnValue({ ...DEFAULT_CONFIG })
+    mocked(detectPackageManager).mockImplementation(() => {
       throw new Error('No package manager detected in the current directory.')
     })
 
     expect(() => openProject(cwd)).toThrow('No package manager')
     expect(logger.configure).toHaveBeenCalledTimes(1)
-    expect(
-      jest.mocked(logger.configure).mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      jest.mocked(detectPackageManager).mock.invocationCallOrder[0],
+    expect(mocked(logger.configure).mock.invocationCallOrder[0]).toBeLessThan(
+      mocked(detectPackageManager).mock.invocationCallOrder[0],
     )
   })
 
   it('stops at a bad config before it configures or detects anything', () => {
-    jest.mocked(loadConfig).mockImplementation(() => {
+    mocked(loadConfig).mockImplementation(() => {
       throw new Error('Failed to load JSON config')
     })
 

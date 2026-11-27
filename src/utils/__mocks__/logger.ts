@@ -1,23 +1,25 @@
+import { fn } from 'provino'
+
 const logger = {
-  info: jest.fn(),
-  success: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-  command: jest.fn(),
-  workspace: jest.fn(),
-  memberRun: jest.fn(),
-  allUpToDate: jest.fn(),
-  updatingHeader: jest.fn(),
-  report: jest.fn(),
-  starting: jest.fn(),
-  clean: jest.fn(),
-  debug: jest.fn(),
-  configure: jest.fn(),
-  setQuiet: jest.fn(),
-  setJsonOutput: jest.fn(),
+  info: fn(),
+  success: fn(),
+  warn: fn(),
+  error: fn(),
+  command: fn(),
+  workspace: fn(),
+  memberRun: fn(),
+  allUpToDate: fn(),
+  updatingHeader: fn(),
+  report: fn(),
+  starting: fn(),
+  clean: fn(),
+  debug: fn(),
+  configure: fn(),
+  setQuiet: fn(),
+  setJsonOutput: fn(),
 }
 
-export const pluralize = jest.fn(
+export const pluralize = fn(
   (n: number, sing: string, plural?: string) =>
     `${n} ${n === 1 ? sing : (plural ?? `${sing}s`)}`,
 )

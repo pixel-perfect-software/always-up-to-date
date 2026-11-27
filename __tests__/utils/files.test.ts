@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { describe, expect, it, mock, mocked } from 'provino'
 import type { PackageInfo } from '@/types'
 import {
   readBunCatalogs,
@@ -14,7 +15,7 @@ import {
   updatePackageJson,
 } from '@/utils/manifests'
 
-jest.mock('fs')
+mock('fs')
 
 // The writers take name -> new version; these tests move each package to latest.
 const versionsOf = (
@@ -23,7 +24,7 @@ const versionsOf = (
 ): Record<string, string> =>
   Object.fromEntries(names.map((name) => [name, outdated[name].latest]))
 
-const mockedFs = jest.mocked(fs)
+const mockedFs = mocked(fs)
 
 describe('checkIfFileExists', () => {
   it('returns true for an existing file', () => {
@@ -74,7 +75,7 @@ describe('updatePackageJson', () => {
     )
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.dependencies.react).toBe('^19.0.0')
     expect(written.devDependencies.typescript).toBe('~5.5.0')
@@ -93,7 +94,7 @@ describe('updatePackageJson', () => {
     await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.dependencies.react).toBe('19.0.0')
     expect(written.devDependencies.react).toBe('19.0.0')
@@ -111,7 +112,7 @@ describe('updatePackageJson', () => {
     await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.dependencies.react).toBe('workspace:*')
   })
@@ -126,7 +127,7 @@ describe('updatePackageJson', () => {
     await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.dependencies.react).toBe('catalog:default')
   })
@@ -144,7 +145,7 @@ describe('updatePackageJson', () => {
     await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.dependencies.react).toBe('^19.0.0')
     expect(written.devDependencies.react).toBe('^19.0.0')
@@ -165,7 +166,7 @@ describe('updatePackageJson', () => {
     await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.devDependencies.react).toBe('^19.0.0')
     expect(written.peerDependencies.react).toBe('^18.0.0')
@@ -179,8 +180,8 @@ describe('updatePackageJson', () => {
       mockedFs.writeFileSync.mockImplementation(() => undefined)
     }
     const written = () =>
-      JSON.parse((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1])
-        .dependencies.react
+      JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string).dependencies
+        .react
 
     it.each([
       ['1.x', '^19.0.0'],
@@ -258,7 +259,7 @@ describe('updatePackageJson', () => {
     await updatePackageJson('/test', versionsOf(['react'], outdatedPackages))
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.dependencies.react).toBe('>=19.0.0')
   })
@@ -269,7 +270,7 @@ describe('manifest formatting', () => {
     mockedFs.readFileSync.mockReturnValue(original)
     mockedFs.writeFileSync.mockImplementation(() => undefined)
     await updatePackageJson('/test', { react: '19.0.0' })
-    return (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1] as string
+    return mockedFs.writeFileSync.mock.calls[0][1] as string as string
   }
 
   it('keeps the trailing newline', async () => {
@@ -314,7 +315,7 @@ describe('manifest formatting', () => {
 
     await updateBunCatalogs('/test', { react: '19.0.0' })
 
-    expect((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]).toBe(
+    expect(mockedFs.writeFileSync.mock.calls[0][1] as string).toBe(
       '{\n\t"catalog": {\n\t\t"react": "19.0.0"\n\t}\n}\n',
     )
   })
@@ -340,7 +341,7 @@ describe('updatePNPMWorkspaceYAML', () => {
       versionsOf(['react'], outdatedPackages),
     )
 
-    const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+    const written = mockedFs.writeFileSync.mock.calls[0][1] as string
     expect(written).toContain('^19.0.0')
     expect(written).toContain('^4.17.0') // lodash unchanged
   })
@@ -349,7 +350,7 @@ describe('updatePNPMWorkspaceYAML', () => {
     mockedFs.readFileSync.mockReturnValue(yaml)
     mockedFs.writeFileSync.mockImplementation(() => undefined)
     await updatePNPMWorkspaceYAML('/test', versions)
-    return (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+    return mockedFs.writeFileSync.mock.calls[0][1] as string
   }
 
   it('keeps the quotes a version was written with', async () => {
@@ -451,7 +452,7 @@ describe('updatePNPMWorkspaceYAML', () => {
       versionsOf(['react'], outdatedPackages),
     )
 
-    const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+    const written = mockedFs.writeFileSync.mock.calls[0][1] as string
     expect(written).toBe(`catalog:\n  react: 19.0.0\n  lodash: '4.17.0'`)
   })
 
@@ -465,7 +466,7 @@ describe('updatePNPMWorkspaceYAML', () => {
       versionsOf(['react'], outdatedPackages),
     )
 
-    const written = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+    const written = mockedFs.writeFileSync.mock.calls[0][1] as string
     expect(written).toBe(`catalog:\n  react: '19.0.0'`)
   })
 })
@@ -499,7 +500,7 @@ describe('updateBunCatalogs', () => {
     )
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.catalog.react).toBe('^19.0.0')
     expect(written.catalog.lodash).toBe('^4.18.0')
@@ -521,7 +522,7 @@ describe('updateBunCatalogs', () => {
     )
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.catalogs.ui.react).toBe('^19.0.0')
     expect(written.catalogs.utils.lodash).toBe('^4.18.0')
@@ -541,7 +542,7 @@ describe('updateBunCatalogs', () => {
     )
 
     const written = JSON.parse(
-      (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1],
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
     )
     expect(written.catalog.react).toBe('19.0.0')
     expect(written.catalogs.utils.lodash).toBe('4.18.0')
@@ -710,8 +711,7 @@ describe('readPnpmCatalogs', () => {
       '/test',
       Object.fromEntries(entries.map((name) => [name, '99.0.0'])),
     )
-    const written = (mockedFs.writeFileSync as jest.Mock).mock
-      .calls[0][1] as string
+    const written = mockedFs.writeFileSync.mock.calls[0][1] as string as string
 
     const before = yaml.split('\n')
     const after = written.split('\n')
@@ -798,7 +798,7 @@ describe('catalog entries with a multi-comparator spec', () => {
     mockedFs.readFileSync.mockReturnValue(yaml)
     mockedFs.writeFileSync.mockImplementation(() => undefined)
     await updatePNPMWorkspaceYAML('/test', versions, undefined, catalog)
-    return (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]
+    return mockedFs.writeFileSync.mock.calls[0][1] as string
   }
 
   it.each([
@@ -873,7 +873,7 @@ describe('catalog writers keyed by catalog', () => {
       'react18',
     )
 
-    expect((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]).toBe(
+    expect(mockedFs.writeFileSync.mock.calls[0][1] as string).toBe(
       yaml.replace('^18.0.0', '^18.3.1'),
     )
   })
@@ -892,7 +892,7 @@ describe('catalog writers keyed by catalog', () => {
     await updateBunCatalogs('/test', { react: '18.3.1' }, undefined, 'react18')
 
     expect(
-      JSON.parse((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]),
+      JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string),
     ).toEqual({
       catalogs: {
         react18: { react: '^18.3.1' },
@@ -913,7 +913,7 @@ describe('catalog writers keyed by catalog', () => {
     await updateBunCatalogs('/test', { ms: '2.1.3' }, undefined, 'default')
 
     expect(
-      JSON.parse((mockedFs.writeFileSync as jest.Mock).mock.calls[0][1]),
+      JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string),
     ).toEqual({
       workspaces: { catalog: { ms: '2.1.3' } },
       catalog: { ms: '2.0.0' },

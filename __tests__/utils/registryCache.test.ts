@@ -1,4 +1,6 @@
-jest.mock('@/utils/logger')
+import { beforeEach, describe, expect, it, mock, mocked, spyOn } from 'provino'
+
+mock('@/utils/logger')
 
 import { spawn } from 'child_process'
 import crypto from 'crypto'
@@ -910,7 +912,7 @@ describe('a token in the registry path', () => {
     expect(
       cache.get('packument', 'https://npm-proxy.fury.io/OTHER/acme/', 'pkg'),
     ).toBeUndefined()
-    for (const [line] of jest.mocked(logger.debug).mock.calls)
+    for (const [line] of mocked(logger.debug).mock.calls)
       expect(String(line)).not.toContain('PATHTOKEN123')
   })
 
@@ -925,7 +927,7 @@ describe('a token in the registry path', () => {
       { latest: '1.0.0' },
       PUBLIC,
     )
-    const lines = jest.mocked(logger.debug).mock.calls.map(([l]) => String(l))
+    const lines = mocked(logger.debug).mock.calls.map(([l]) => String(l))
     expect(lines.length).toBeGreaterThan(0)
     for (const line of lines) expect(line).not.toContain('PATHTOKEN123')
   })
@@ -935,7 +937,7 @@ describe('atomic writes', () => {
   it('keeps the old entry and leaves no temp file when the rename fails', () => {
     const cache = open()
     cache.put('dist-tags', REGISTRY, 'pkg', { latest: '1.0.0' }, PUBLIC)
-    jest.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+    spyOn(fs, 'renameSync').mockImplementationOnce(() => {
       throw Object.assign(new Error('EPERM: locked'), { code: 'EPERM' })
     })
     clock += 1000
@@ -1266,7 +1268,7 @@ describe('failing open', () => {
     const file = path.join(tmp, 'file')
     fs.writeFileSync(file, 'in the way')
     const cache = open({ dir: file })
-    const mkdir = jest.spyOn(fs, 'mkdirSync')
+    const mkdir = spyOn(fs, 'mkdirSync')
     expect(cache.get('dist-tags', REGISTRY, 'pkg')).toBeUndefined()
     expect(
       cache.put('dist-tags', REGISTRY, 'pkg', { latest: '1.0.0' }, PUBLIC),

@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'provino'
 import reportFailure from '@/commands/reportFailure'
 import { update } from '@/pipeline'
 import { openProject } from '@/project'
@@ -59,10 +60,10 @@ describe('a registry path token in a manager', () => {
     out = []
     console.log = originalLog
     console.error = originalError
-    jest.spyOn(console, 'log').mockImplementation((...p) => {
+    spyOn(console, 'log').mockImplementation((...p) => {
       out.push(p.join(' '))
     })
-    jest.spyOn(console, 'error').mockImplementation((...p) => {
+    spyOn(console, 'error').mockImplementation((...p) => {
       out.push(p.join(' '))
     })
     logger.setJsonOutput(true)

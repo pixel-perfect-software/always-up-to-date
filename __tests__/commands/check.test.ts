@@ -1,22 +1,33 @@
 import { Command } from 'commander'
+import {
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  mocked,
+  requireActual,
+  spyOn,
+} from 'provino'
 
-jest.mock('@/detectPackageManager', () => ({
+mock('@/detectPackageManager', () => ({
   __esModule: true,
-  default: jest.fn().mockReturnValue('npm'),
+  default: fn().mockReturnValue('npm'),
 }))
 
-jest.mock('@/pipeline', () => ({
-  check: jest.fn(),
-  findOutdated: jest.fn(),
-  plan: jest.fn(),
+mock('@/pipeline', () => ({
+  check: fn(),
+  findOutdated: fn(),
+  plan: fn(),
 }))
 
-jest.mock('@/project', () => {
-  const actual = jest.requireActual<typeof import('@/project')>('@/project')
-  return { ...actual, openProject: jest.fn(actual.openProject) }
+mock('@/project', () => {
+  const actual = requireActual<typeof import('@/project')>('@/project')
+  return { ...actual, openProject: fn(actual.openProject) }
 })
-jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
+mock('@/utils/logger')
+mock('@/utils/config')
 
 import checkCommand from '@/commands/check'
 import detectPackageManager from '@/detectPackageManager'
@@ -28,7 +39,7 @@ import packageJson from '../../package.json'
 import { validateOutput } from '../fixtures/outputSchema'
 import { reasonFor } from '../fixtures/reasons'
 
-const mockCheckPackageVersions = jest.mocked(check)
+const mockCheckPackageVersions = mocked(check)
 
 describe('check command', () => {
   let program: Command
@@ -46,9 +57,10 @@ describe('check command', () => {
     await program.parseAsync(['node', 'test', 'check'])
     await program.parseAsync(['node', 'test', 'check', '--no-cache'])
 
-    expect(
-      jest.mocked(openProject).mock.calls.map(([, o]) => o?.cache),
-    ).toEqual([true, false])
+    expect(mocked(openProject).mock.calls.map(([, o]) => o?.cache)).toEqual([
+      true,
+      false,
+    ])
   })
 
   it('registers the check command', () => {
@@ -81,7 +93,7 @@ describe('check command', () => {
   })
 
   it('uses the manager --pm names', async () => {
-    jest.mocked(detectPackageManager).mockReturnValueOnce('yarn')
+    mocked(detectPackageManager).mockReturnValueOnce('yarn')
     mockCheckPackageVersions.mockResolvedValue({})
 
     await program.parseAsync(['node', 'test', 'check', '--pm', 'yarn'])
@@ -99,7 +111,7 @@ describe('check command', () => {
 
   it('rejects a --pm autd does not support', async () => {
     // commander prints the error before throwing it; keep the test output clean.
-    program.configureOutput({ writeErr: jest.fn() })
+    program.configureOutput({ writeErr: fn() })
 
     await expect(
       program.parseAsync(['node', 'test', 'check', '--pm', 'deno']),
@@ -118,8 +130,8 @@ describe('check command', () => {
         latest: '18.0.1',
       },
     }
-    jest.mocked(findOutdated).mockResolvedValue(outdated)
-    jest.mocked(plan).mockResolvedValue([
+    mocked(findOutdated).mockResolvedValue(outdated)
+    mocked(plan).mockResolvedValue([
       {
         ...outdated.react,
         updateType: 'patch',
@@ -128,7 +140,7 @@ describe('check command', () => {
       },
     ])
 
-    const consoleSpy = jest.spyOn(console, 'log').mockImplementation()
+    const consoleSpy = spyOn(console, 'log').mockImplementation(() => undefined)
     await program.parseAsync(['node', 'test', 'check', '--json'])
 
     const document = JSON.parse(String(consoleSpy.mock.calls[0][0]))

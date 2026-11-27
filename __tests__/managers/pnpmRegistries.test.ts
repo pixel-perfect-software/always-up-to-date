@@ -1,4 +1,6 @@
-jest.mock('@/utils/logger')
+import { describe, expect, it, mock, mocked } from 'provino'
+
+mock('@/utils/logger')
 
 import {
   pnpmRegistrySettings,
@@ -155,7 +157,7 @@ describe('pnpmRegistrySettings with env (a global file)', () => {
 describe('pnpmRegistrySettings debug lines', () => {
   it('names the file whose value it ignores', () => {
     routes('registry: ${HOST}\n')
-    const lines = jest.mocked(logger.debug).mock.calls.map(([line]) => line)
+    const lines = mocked(logger.debug).mock.calls.map(([line]) => line)
     expect(lines).toEqual([
       'Ignoring registry in pnpm-workspace.yaml: holds ${…}',
     ])

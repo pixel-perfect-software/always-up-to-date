@@ -1,12 +1,13 @@
 import fs from 'fs'
 import path from 'path'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'provino'
 import npm from '@/managers/npm'
 import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
 import { prependPath, projectFor, writeNodeShim } from '../fixtures'
 import { tempDir } from '../fixtures/files'
 
-jest.mock('@/utils/logger')
+mock('@/utils/logger')
 
 /**
  * These tests spawn a real process: a fake `npm` placed first on PATH that

@@ -14,22 +14,17 @@ catalog:
   commander: 15.1.0
   semver: 7.8.6
   "@biomejs/biome": 2.6.8
-  "@provino/dialect-jest": 0.1.0-rc.8
   "@swc/core": 1.16.22
-  "@swc/jest": "0.2.39"
-  "@types/jest": 30.0.0
   "@types/node": 26.6.6
   "@types/semver": 7.8.0
   ajv: 8.20.0
   esbuild: 0.28.2
-  jest: 30.5.2
   jest-coverage-badges: 1.1.2
-  provino: 0.1.0-rc.8
+  provino: 0.1.0-rc.10
   typescript: 7.0.2
 
 minimumReleaseAgeExclude:
-  - provino@0.1.0-rc.8
-  - "@provino/dialect-jest@0.1.0-rc.8"
+  - provino@0.1.0-rc.10
 
 overrides:
   minimist@<0.2.4: ^0.2.4

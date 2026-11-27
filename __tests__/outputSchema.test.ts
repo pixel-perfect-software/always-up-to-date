@@ -1,5 +1,14 @@
 import fs from 'fs'
 import path from 'path'
+import {
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  requireActual,
+} from 'provino'
 import { supportedManagers } from '@/managers/names'
 import npm from '@/managers/npm'
 import { findOutdated, plan, update } from '@/pipeline'
@@ -26,10 +35,10 @@ import {
   validatePublished,
 } from './fixtures/outputSchema'
 
-jest.mock('@/utils/logger')
-jest.mock('@/utils/runProcess', () => ({
-  ...jest.requireActual('@/utils/runProcess'),
-  runProcess: jest.fn(),
+mock('@/utils/logger')
+mock('@/utils/runProcess', () => ({
+  ...requireActual('@/utils/runProcess'),
+  runProcess: fn(),
 }))
 
 // When the registry captures were taken, so no version drifts.
@@ -115,7 +124,7 @@ describe('documents from real pipeline runs validate', () => {
   const singlePackage = (config: Partial<AlwaysUpToDateConfig>) => {
     fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify(manifest))
     installPackages(cwd, '.', INSTALLED)
-    const apply = jest.fn(async (_run, dir: string, { beyondRange }) =>
+    const apply = fn<typeof npm.apply>(async (_run, dir, { beyondRange }) =>
       installPackages(dir, '.', beyondRange),
     )
     return projectFor(

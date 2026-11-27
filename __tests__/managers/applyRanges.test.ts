@@ -1,5 +1,16 @@
 import fs from 'fs'
 import path from 'path'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  mocked,
+  requireActual,
+} from 'provino'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
@@ -8,17 +19,17 @@ import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
 import { isolateNpmConfig, projectFor } from '../fixtures'
 
-jest.mock('@/utils/logger')
-jest.mock('@/utils/runProcess', () => ({
-  ...jest.requireActual('@/utils/runProcess'),
-  runProcess: jest.fn(),
+mock('@/utils/logger')
+mock('@/utils/runProcess', () => ({
+  ...requireActual('@/utils/runProcess'),
+  runProcess: fn(),
 }))
 
 import { runProcess } from '@/utils/runProcess'
 import { tempDir } from '../fixtures/files'
 import { reasonFor } from '../fixtures/reasons'
 
-const mockedRunProcess = jest.mocked(runProcess)
+const mockedRunProcess = mocked(runProcess)
 
 // react ^18.2.0 can move to 18.3.1 within its range; dayjs is pinned.
 const manifest = { dependencies: { react: '^18.2.0', dayjs: '1.11.9' } }

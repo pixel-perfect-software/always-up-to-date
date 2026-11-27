@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, it, mock } from 'provino'
 import pnpm from '@/managers/pnpm'
 import { pnpmNpmrcLayers } from '@/managers/pnpm/npmrc'
 import { pnpmRegistrySettings } from '@/managers/pnpm/registries'
@@ -17,7 +18,7 @@ import { readPnpmCatalogs } from '@/utils/catalogs'
 import type { NpmrcSources } from '@/utils/npmrcLoader'
 import { tempDir } from '../fixtures/files'
 
-jest.mock('@/utils/logger')
+mock('@/utils/logger')
 
 let tmp: string
 const at = (...parts: string[]) => path.join(tmp, ...parts)

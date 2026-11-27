@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'provino'
 import semver from 'semver'
 import type { RegistryPackage } from '@/types'
 import { wantedVersion } from '@/utils/wanted'

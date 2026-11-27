@@ -1,4 +1,6 @@
-jest.mock('@/utils/logger')
+import { beforeEach, describe, expect, it, mock, spyOn } from 'provino'
+
+mock('@/utils/logger')
 
 import fs from 'fs'
 import path from 'path'
@@ -332,18 +334,16 @@ describe('yarn v1 .npmrc layers', () => {
       // sit on different drives.
       const rootFile = path.join(path.parse(root()).root, '.npmrc')
       const real = fs.readFileSync
-      const spy = jest
-        .spyOn(fs, 'readFileSync')
-        .mockImplementation(((
-          file: fs.PathOrFileDescriptor,
-          ...rest: unknown[]
-        ) =>
-          file === rootFile
-            ? `registry=${B}\n`
-            : (real as (...args: unknown[]) => unknown)(
-                file,
-                ...rest,
-              )) as typeof fs.readFileSync)
+      const spy = spyOn(fs, 'readFileSync').mockImplementation(((
+        file: fs.PathOrFileDescriptor,
+        ...rest: unknown[]
+      ) =>
+        file === rootFile
+          ? `registry=${B}\n`
+          : (real as (...args: unknown[]) => unknown)(
+              file,
+              ...rest,
+            )) as typeof fs.readFileSync)
       const config = configFor(member())
       expect(registryFor('left-pad', config)).toContain(NPMJS)
       expect(spy.mock.calls.some(([file]) => file === rootFile)).toBe(false)

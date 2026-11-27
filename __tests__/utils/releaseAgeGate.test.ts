@@ -1,3 +1,4 @@
+import { describe, expect, fn, it } from 'provino'
 import type { PackageLookup, ReleaseAgeGate, ReleaseWindow } from '@/types'
 import {
   exemptionOf,
@@ -274,7 +275,7 @@ describe('withReleaseAgeGate', () => {
   it('passes everything through with no gate, and reads the gate only when asked', async () => {
     const lookup: PackageLookup = { ok: true, package: capturedPackage('ms') }
     const base = session(lookup, {})
-    const read = jest.fn(() => undefined)
+    const read = fn(() => undefined)
     const gated = withReleaseAgeGate(base, read, now)
     expect(read).not.toHaveBeenCalled()
     expect(await gated.lookup('ms')).toBe(lookup)

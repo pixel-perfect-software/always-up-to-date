@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, it, mock } from 'provino'
 import { StepError } from '@/stepError'
 import {
   type Catalogs,
@@ -13,7 +14,7 @@ import {
 import logger from '@/utils/logger'
 import { tempDir } from '../fixtures/files'
 
-jest.mock('@/utils/logger')
+mock('@/utils/logger')
 
 const catalogs: Catalogs = {
   default: { react: '^18.0.0' },

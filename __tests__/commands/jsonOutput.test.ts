@@ -1,16 +1,26 @@
 import { Command } from 'commander'
+import {
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  mocked,
+  spyOn,
+} from 'provino'
 
-jest.mock('@/detectPackageManager', () => ({
+mock('@/detectPackageManager', () => ({
   __esModule: true,
-  default: jest.fn().mockReturnValue('npm'),
+  default: fn().mockReturnValue('npm'),
 }))
-jest.mock('@/pipeline', () => ({
-  check: jest.fn(),
-  findOutdated: jest.fn(),
-  plan: jest.fn(),
-  update: jest.fn(),
+mock('@/pipeline', () => ({
+  check: fn(),
+  findOutdated: fn(),
+  plan: fn(),
+  update: fn(),
 }))
-jest.mock('@/utils/config')
+mock('@/utils/config')
 
 import checkCommand from '@/commands/check'
 import updateCommand from '@/commands/update'
@@ -100,21 +110,21 @@ describe('--json output', () => {
   }
 
   beforeEach(() => {
-    jest.mocked(check).mockImplementation(fakePipeline.check)
-    jest.mocked(findOutdated).mockImplementation(fakePipeline.check)
-    jest.mocked(update).mockImplementation(fakePipeline.update)
-    jest.mocked(plan).mockResolvedValue(results)
+    mocked(check).mockImplementation(fakePipeline.check)
+    mocked(findOutdated).mockImplementation(fakePipeline.check)
+    mocked(update).mockImplementation(fakePipeline.update)
+    mocked(plan).mockResolvedValue(results)
 
     stdout = []
     stderr = []
     console.log = originalLog
     console.error = originalError
-    jest
-      .spyOn(console, 'log')
-      .mockImplementation((...parts) => stdout.push(parts.join(' ')))
-    jest
-      .spyOn(console, 'error')
-      .mockImplementation((...parts) => stderr.push(parts.join(' ')))
+    spyOn(console, 'log').mockImplementation((...parts) =>
+      stdout.push(parts.join(' ')),
+    )
+    spyOn(console, 'error').mockImplementation((...parts) =>
+      stderr.push(parts.join(' ')),
+    )
 
     logger.setJsonOutput(false)
     program = new Command()
@@ -142,7 +152,7 @@ describe('--json output', () => {
   })
 
   it('update --dry-run --json prints rows: [] when nothing is outdated', async () => {
-    jest.mocked(findOutdated).mockImplementationOnce(async () => {
+    mocked(findOutdated).mockImplementationOnce(async () => {
       logger.allUpToDate()
       return {}
     })

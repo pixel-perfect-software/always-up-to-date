@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, it, mock } from 'provino'
 import {
   listsMember,
   readWorkspaceManifests,
@@ -7,7 +8,7 @@ import {
 } from '@/managers/workspaces'
 import { tempDir } from '../fixtures/files'
 
-jest.mock('@/utils/logger')
+mock('@/utils/logger')
 
 describe('workspacePatterns', () => {
   it('reads the array form and the { packages } form', () => {

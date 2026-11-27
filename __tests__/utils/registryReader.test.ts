@@ -1,4 +1,14 @@
-jest.mock('@/utils/logger')
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  mocked,
+} from 'provino'
+
+mock('@/utils/logger')
 
 import fs from 'fs'
 import path from 'path'
@@ -386,8 +396,7 @@ describe('registry reader', () => {
       const second = packageOf(await reader.lookup('mkdirp'))
 
       expect(
-        jest
-          .mocked(logger.debug)
+        mocked(logger.debug)
           .mock.calls.map(([line]) => String(line))
           .some((line) => line.startsWith('deps.dev unavailable')),
       ).toBe(true)
@@ -1006,7 +1015,7 @@ describe('registry reader', () => {
         .map((r) => r.headers.accept)
 
     const debugLines = () =>
-      jest.mocked(logger.debug).mock.calls.map(([line]) => String(line))
+      mocked(logger.debug).mock.calls.map(([line]) => String(line))
 
     /** Reads the lagging deps.dev first, so the packument path is the one taken. */
     const behind = async (full?: Reply) => {
@@ -1385,7 +1394,7 @@ describe('registry reader', () => {
         .map((r) => r.url)
         .filter((url) => /^\/(@[^/]+%2f)?[^/]+\/[^/]+$/.test(url))
     const debugLines = (): string[] =>
-      jest.mocked(logger.debug).mock.calls.map(([line]) => String(line))
+      mocked(logger.debug).mock.calls.map(([line]) => String(line))
 
     it('reads a listed version with one request', async () => {
       const { registry, reader } = await setup({
@@ -2002,14 +2011,12 @@ describe('registry reader', () => {
           )
 
       const readingLines = () =>
-        jest
-          .mocked(logger.debug)
+        mocked(logger.debug)
           .mock.calls.map(([line]) => String(line))
           .filter((line) => line.startsWith('Reading the full packument'))
 
       const revalidatedLines = () =>
-        jest
-          .mocked(logger.debug)
+        mocked(logger.debug)
           .mock.calls.map(([line]) => String(line))
           .filter((line) => line.startsWith('Revalidated the full packument'))
 

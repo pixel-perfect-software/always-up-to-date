@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'provino'
 import type { BerryAuth, RegistryCredentials, YarnV1Auth } from '@/types'
 import {
   authorizationFor,

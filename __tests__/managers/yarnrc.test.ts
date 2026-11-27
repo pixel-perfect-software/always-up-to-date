@@ -1,8 +1,19 @@
-jest.mock('@/utils/logger')
+import {
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  requireActual,
+  spyOn,
+} from 'provino'
+
+mock('@/utils/logger')
 // swc's exports cannot be spied on; a counting stand-in for loadNpmrc.
-jest.mock('@/utils/npmrcLoader', () => ({
-  ...jest.requireActual('@/utils/npmrcLoader'),
-  loadNpmrc: jest.fn(),
+mock('@/utils/npmrcLoader', () => ({
+  ...requireActual('@/utils/npmrcLoader'),
+  loadNpmrc: fn(),
 }))
 
 import fs from 'fs'
@@ -284,18 +295,16 @@ describe('yarnRegistryConfig', () => {
       // sit on different drives.
       const rootFile = path.join(path.parse(proj()).root, '.yarnrc')
       const real = fs.readFileSync
-      return jest
-        .spyOn(fs, 'readFileSync')
-        .mockImplementation(((
-          file: fs.PathOrFileDescriptor,
-          ...rest: unknown[]
-        ) =>
-          file === rootFile
-            ? content
-            : (real as (...args: unknown[]) => unknown)(
-                file,
-                ...rest,
-              )) as typeof fs.readFileSync)
+      return spyOn(fs, 'readFileSync').mockImplementation(((
+        file: fs.PathOrFileDescriptor,
+        ...rest: unknown[]
+      ) =>
+        file === rootFile
+          ? content
+          : (real as (...args: unknown[]) => unknown)(
+              file,
+              ...rest,
+            )) as typeof fs.readFileSync)
     }
 
     it('does not read /.yarnrc for ordinary keys', () => {
@@ -327,7 +336,7 @@ describe('yarnRegistryConfig', () => {
 
   it('reads each .yarnrc once', () => {
     write(at('proj', '.yarnrc'), `registry "${A}"\n`)
-    const spy = jest.spyOn(fs, 'readFileSync')
+    const spy = spyOn(fs, 'readFileSync')
     configFor(proj())
     const reads = spy.mock.calls.filter(
       ([file]) => file === at('proj', '.yarnrc'),
@@ -410,7 +419,7 @@ describe('yarnRegistryConfig', () => {
 
   it('reads the .npmrc layers once: loadNpmrc is not called again', () => {
     write(at('proj', '.npmrc'), `registry=${A}\n`)
-    const reads = jest.spyOn(fs, 'readFileSync')
+    const reads = spyOn(fs, 'readFileSync')
     expect(configFor(proj()).registry).toBe(A)
     expect(npmrcLoader.loadNpmrc).not.toHaveBeenCalled()
     expect(
