@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, fn, it, mock, mocked } from 'provino'
 import {
   ConfigError,
   configFileFor,
@@ -9,13 +10,13 @@ import {
 } from '@/utils/config'
 import { checkIfFileExists } from '@/utils/files'
 
-jest.mock('fs')
-jest.mock('@/utils/files', () => ({
-  checkIfFileExists: jest.fn(),
+mock('fs')
+mock('@/utils/files', () => ({
+  checkIfFileExists: fn(),
 }))
 
-const mockedFs = jest.mocked(fs)
-const mockedCheckIfFileExists = jest.mocked(checkIfFileExists)
+const mockedFs = mocked(fs)
+const mockedCheckIfFileExists = mocked(checkIfFileExists)
 
 describe('loadConfig', () => {
   it('returns default config when no config file exists', () => {

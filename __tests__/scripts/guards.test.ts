@@ -1,6 +1,7 @@
 import { build, type Metafile } from 'esbuild'
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, it } from 'provino'
 import {
   checkExternals,
   checkStartup,

@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, fn, it } from 'provino'
 import type { RegistryConfig } from '@/types'
 import {
   type EnvRule,
@@ -241,7 +242,7 @@ describe('npmrc layers', () => {
 
   describe('managerRegistryConfig', () => {
     it("builds from the adapter's layers and hands the hook the config and the merged view", () => {
-      const hook = jest.fn(
+      const hook = fn(
         (_cwd, config: RegistryConfig) =>
           ({ ...config, maxSockets: 7 }) satisfies RegistryConfig,
       )

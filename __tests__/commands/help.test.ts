@@ -1,4 +1,5 @@
 import type { CommanderError } from 'commander'
+import { describe, expect, it } from 'provino'
 import { program } from '@/cli'
 
 /** Run the real program with `args`, capturing what commander prints. */

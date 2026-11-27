@@ -26,7 +26,7 @@ After building, run the CLI from the checkout with `pnpm run autd <command>` (fo
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm run build`            | Bundles `src/index.ts` with esbuild into `dist/index.cjs`, then checks startup imports and externals; a failed check removes `dist/`                                                                                                                                                                           |
 | `pnpm run check-types`      | `tsc --noEmit` over `src`, `__tests__` and `bench`, then over `scripts/`. The build does not type-check                                                                                                                                                                                                        |
-| `pnpm test`                 | The unit suite (Jest with `@swc/jest`). One file: `pnpm test -- __tests__/path/to/test.test.ts`                                                                                                                                                                                                                |
+| `pnpm test`                 | The unit suite (provino native, `provino run`). One file: `pnpm test -- __tests__/path/to/test.test.ts`                                                                                                                                                                                                        |
 | `pnpm run test:coverage`    | The unit suite with coverage; `pnpm run test:badges` regenerates the badges in `./badges`, which are committed                                                                                                                                                                                                 |
 | `pnpm run test:integration` | Builds, then runs the CLI against real npm, pnpm, yarn v1, yarn berry and bun on temp copies of `testRepos/`. Needs network access and the managers on `PATH` (yarn through Corepack: `corepack enable yarn`). `AUTD_INTEGRATION_PM=npm,bun` selects managers, `AUTD_INTEGRATION_KEEP=1` keeps the temp copies |
 | `pnpm run bench`            | Times `check` and startup with hyperfine 2 on a 40-dependency project per manager (macOS and Linux)                                                                                                                                                                                                            |
@@ -51,7 +51,7 @@ schema/                   # config.schema.json and output.schema.json (every --j
 scripts/                  # The build and its guards
 bench/                    # The benchmark and the perf gate
 testRepos/                # Integration fixtures, one per manager and layout
-__tests__/                # Jest tests, mirroring src/
+__tests__/                # provino tests, mirroring src/
 ```
 
 The full tree, with a note for each test file, is in `.claude/context/ai-context/project-structure.md`.

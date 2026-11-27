@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, it, mock } from 'provino'
 import {
   berryRcFiles,
   berryRegistryConfig,
@@ -11,7 +12,7 @@ import type { NpmrcSources } from '@/utils/npmrcLoader'
 import { npmrcSources, tempDir, write } from '../fixtures/files'
 import { readTls } from '../fixtures/registry'
 
-jest.mock('@/utils/logger')
+mock('@/utils/logger')
 
 describe('parseYarnrcYml', () => {
   it('reads block maps, quoted keys and both sequence forms', () => {

@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, it, spyOn } from 'provino'
 import { readInstalledPeers } from '@/utils/peers'
 import { tempDir } from '../fixtures/files'
 
@@ -51,7 +52,7 @@ describe('readInstalledPeers', () => {
       path.join(cwd, 'node_modules/broken/package.json'),
       '{ "name": "broken", "version": "1.0.0", ',
     )
-    const parse = jest.spyOn(JSON, 'parse')
+    const parse = spyOn(JSON, 'parse')
 
     readInstalledPeers(cwd)
 

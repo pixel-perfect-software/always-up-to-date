@@ -1,5 +1,15 @@
 import fs from 'fs'
 import path from 'path'
+import {
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  isolateModules,
+  it,
+  mock,
+  requireActual,
+} from 'provino'
 import type {
   AlwaysUpToDateConfig,
   PackageInfo,
@@ -30,10 +40,10 @@ import { reasonFor } from '../fixtures/reasons'
 const mockLogger = {
   __esModule: true,
   default: {
-    error: jest.fn(),
-    skippingPackage: jest.fn(),
-    debug: jest.fn(),
-    warn: jest.fn(),
+    error: fn(),
+    skippingPackage: fn(),
+    debug: fn<(message: string) => void>(),
+    warn: fn(),
   },
 }
 
@@ -69,22 +79,22 @@ function loadFilterWithConfig(
 ) {
   let filter: typeof filterPackagesType
   let split: typeof splitUpdatesType
-  const releaseTimes = jest.fn(
+  const releaseTimes = fn(
     async (name: string) => opts.releaseTimes?.[name] ?? {},
   )
-  jest.isolateModules(() => {
-    jest.doMock('@/utils/logger', () => mockLogger)
-    jest.doMock('@/utils/peers', () => ({
-      readInstalledPeers: jest.fn(
+  isolateModules(() => {
+    mock('@/utils/logger', () => mockLogger)
+    mock('@/utils/peers', () => ({
+      readInstalledPeers: fn(
         () => new Map(Object.entries(opts.installedPeers ?? {})),
       ),
     }))
     // The default cwd is this repository, whose own pnpm install is no
     // test's graph: a test that needs one passes `installedGraph`.
-    jest.doMock('@/utils/installedGraph', () => ({
-      readInstalledGraph: jest.fn(() => undefined),
+    mock('@/utils/installedGraph', () => ({
+      readInstalledGraph: fn(() => undefined),
     }))
-    // biome-ignore lint/style/noCommonJs: jest.isolateModules requires synchronous require
+    // biome-ignore lint/style/noCommonJs: isolateModules requires synchronous require
     const loaded = require('@/utils/filterPackages')
     filter = loaded.default
     split = loaded.splitUpdates
@@ -706,7 +716,7 @@ describe('filterPackages', () => {
     /** A recording `versionManifest` that knows no document. */
     const recording = () => {
       const asked: string[] = []
-      const versionManifest = jest.fn(async (name: string, version: string) => {
+      const versionManifest = fn(async (name: string, version: string) => {
         asked.push(`${name}@${version}`)
         return undefined
       })
@@ -873,7 +883,7 @@ describe('filterPackages', () => {
     /** A recording `versionManifest` answering from `known`, by `name@version`. */
     const registryOf = (known: Record<string, VersionManifest | undefined>) => {
       const asked: string[] = []
-      const versionManifest = jest.fn(async (name: string, version: string) => {
+      const versionManifest = fn(async (name: string, version: string) => {
         asked.push(`${name}@${version}`)
         return known[`${name}@${version}`]
       })
@@ -1368,7 +1378,7 @@ describe('filterPackages', () => {
     })
 
     it('never asks about a step whose cooldown is zero, and keeps no release age for it', async () => {
-      const declared = jest.fn(({ name }: { name: string }) => ({
+      const declared = fn(({ name }: { name: string }) => ({
         name,
         spec: { range: '^1.0.0' },
       }))
@@ -1620,7 +1630,7 @@ describe('filterPackages', () => {
     })
 
     it('asks what the manifest declares for a row the cooldown checks, by its key and workspace (#151)', async () => {
-      const declared = jest.fn(declaring('foo', '^1.0.0'))
+      const declared = fn(declaring('foo', '^1.0.0'))
       const filter = loadFilterWithConfig(
         { cooldown: 2 },
         {
@@ -2297,7 +2307,7 @@ describe("a target's own peers (#198)", () => {
   })
 
   it('asks for each distinct peer once, however many targets need it', async () => {
-    const installed = jest.fn((_asked: { name: string }[]) => ({
+    const installed = fn((_asked: { name: string }[]) => ({
       react: '18.3.1',
     }))
     await plan(
@@ -2867,7 +2877,7 @@ describe('tiptap 3 pins its peers exactly (transitive peer deadlock)', () => {
     const cwd = tempDir('autd-tiptap-')
     const lock = readFixture(lockFixture)
     write(path.join(cwd, 'node_modules', '.pnpm', 'lock.yaml'), lock)
-    const { readInstalledGraph } = jest.requireActual<
+    const { readInstalledGraph } = requireActual<
       typeof import('@/utils/installedGraph')
     >('@/utils/installedGraph')
     return { cwd, lock, graph: () => readInstalledGraph(cwd) }
@@ -2990,7 +3000,7 @@ describe('tiptap 3 pins its peers exactly (transitive peer deadlock)', () => {
     const cwd = tempDir('autd-tiptap-npm-')
     const text = readFixture('npm/tiptap-3.33.0.package-lock.body')
     write(path.join(cwd, 'package-lock.json'), text)
-    const { readNpmGraph } = jest.requireActual<
+    const { readNpmGraph } = requireActual<
       typeof import('@/managers/npm/graph')
     >('@/managers/npm/graph')
     const { packages } = JSON.parse(text) as {

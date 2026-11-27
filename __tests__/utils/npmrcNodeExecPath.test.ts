@@ -1,4 +1,15 @@
 import path from 'path'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  isolateModules,
+  it,
+  type Mock,
+  mock,
+} from 'provino'
 import type { NpmrcSources } from '@/utils/npmrcLoader'
 import { npmrcSources, tempDir, write } from '../fixtures/files'
 
@@ -35,16 +46,14 @@ describe('the node npm runs under (#269)', () => {
     })
 
   /** Fresh modules (the probe is memoized per module) over a mocked `execFileSync`. */
-  const load = (
-    execFileSync: jest.Mock,
-  ): { loader: Loader; yarn: YarnNpmrc } => {
+  const load = (execFileSync: Mock): { loader: Loader; yarn: YarnNpmrc } => {
     let loaded: { loader: Loader; yarn: YarnNpmrc } | undefined
-    jest.isolateModules(() => {
-      jest.doMock('child_process', () => ({ execFileSync }))
+    isolateModules(() => {
+      mock('child_process', () => ({ execFileSync }))
       loaded = {
-        // biome-ignore lint/style/noCommonJs: jest.isolateModules requires synchronous require
+        // biome-ignore lint/style/noCommonJs: isolateModules requires synchronous require
         loader: require('@/utils/npmrcLoader'),
-        // biome-ignore lint/style/noCommonJs: jest.isolateModules requires synchronous require
+        // biome-ignore lint/style/noCommonJs: isolateModules requires synchronous require
         yarn: require('@/managers/yarn/npmrc'),
       }
     })
@@ -52,7 +61,7 @@ describe('the node npm runs under (#269)', () => {
     return loaded
   }
 
-  const printsNode = () => jest.fn(() => `${nodePath()}\n`)
+  const printsNode = () => fn(() => `${nodePath()}\n`)
   const errno = (code: string) =>
     Object.assign(new Error(`spawn node ${code}`), { code })
 
@@ -65,7 +74,6 @@ describe('the node npm runs under (#269)', () => {
     if (hadBun) Object.defineProperty(process.versions, 'bun', hadBun)
     else delete (process.versions as { bun?: string }).bun
     if (hadPlatform) Object.defineProperty(process, 'platform', hadPlatform)
-    jest.dontMock('child_process')
   })
 
   describe('npmNodeExecPath', () => {
@@ -157,7 +165,7 @@ describe('the node npm runs under (#269)', () => {
           write(at('winbin', 'node.exe'), '')
           process.env.PATH = at('winbin')
           const { loader } = load(
-            jest.fn(() => {
+            fn(() => {
               throw Object.assign(new Error('Command failed'), {
                 status: 9009,
               })
@@ -203,7 +211,7 @@ describe('the node npm runs under (#269)', () => {
       })
 
       it('remembers that there is no node', () => {
-        const exec = jest.fn(() => {
+        const exec = fn(() => {
           throw errno('ENOENT')
         })
         const { loader } = load(exec)
@@ -214,7 +222,7 @@ describe('the node npm runs under (#269)', () => {
       })
 
       it('fails the discover step on any other failure, naming the cause, once', () => {
-        const exec = jest.fn(() => {
+        const exec = fn(() => {
           throw errno('EACCES')
         })
         const { loader } = load(exec)
@@ -236,7 +244,7 @@ describe('the node npm runs under (#269)', () => {
       })
 
       it('throws when node prints nothing', () => {
-        const { loader } = load(jest.fn(() => '\n'))
+        const { loader } = load(fn(() => '\n'))
 
         expect(() => loader.npmNodeExecPath()).toThrow(/printed nothing/)
       })

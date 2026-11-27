@@ -1,6 +1,16 @@
-jest.mock('@/utils/logger')
-jest.mock('@/utils/engines', () => ({
-  ...jest.requireActual('@/utils/engines'),
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  requireActual,
+} from 'provino'
+
+mock('@/utils/logger')
+mock('@/utils/engines', () => ({
+  ...requireActual('@/utils/engines'),
   runningNode: () => '12.22.12',
 }))
 

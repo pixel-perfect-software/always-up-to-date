@@ -1,4 +1,6 @@
-jest.mock('@/utils/logger')
+import { beforeEach, describe, expect, it, mock, mocked } from 'provino'
+
+mock('@/utils/logger')
 
 import fs from 'fs'
 import path from 'path'
@@ -334,7 +336,7 @@ describe('bunRegistryConfig', () => {
       `[install]\nregistry = { url = "${route}", token = "default" }\n[install.scopes]\n"@acme" = { url = "${route}", token = "scope" }\n`,
     )
     bunRegistryConfig(at('proj'), base(), sourcesFor())
-    const lines = jest.mocked(logger.debug).mock.calls.map(([line]) => line)
+    const lines = mocked(logger.debug).mock.calls.map(([line]) => line)
     expect(lines).toEqual([expect.stringContaining('127.0.0.1:4002')])
     expect(lines.join('\n')).not.toContain('SECRET')
   })

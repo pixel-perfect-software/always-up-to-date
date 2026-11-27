@@ -1,20 +1,30 @@
 import fs from 'fs'
 import path from 'path'
+import {
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  mocked,
+  requireActual,
+} from 'provino'
 import pnpm from '@/managers/pnpm'
 import { update } from '@/pipeline'
 import type { PackageInfo } from '@/types'
 import { projectFor, writeWorkspaceProject } from '../fixtures'
 
-jest.mock('@/utils/logger')
-jest.mock('@/utils/runProcess', () => ({
-  ...jest.requireActual('@/utils/runProcess'),
-  runProcess: jest.fn(),
+mock('@/utils/logger')
+mock('@/utils/runProcess', () => ({
+  ...requireActual('@/utils/runProcess'),
+  runProcess: fn(),
 }))
 
 import { runProcess } from '@/utils/runProcess'
 import { tempDir } from '../fixtures/files'
 
-const mockedRunProcess = jest.mocked(runProcess)
+const mockedRunProcess = mocked(runProcess)
 
 describe('pnpm.nodeVersion (#199)', () => {
   let cwd: string

@@ -1,6 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { spyOn } from 'provino'
 import semver from 'semver'
 import type { ManagerAdapter } from '@/managers'
 import type { WorkspaceManifest } from '@/managers/adapter'
@@ -349,7 +350,7 @@ export const isolateNpmConfig = (dir: string): (() => void) => {
   remember('PREFIX')
   process.env.HOME = dir
   process.env.PREFIX = dir
-  const homedir = jest.spyOn(os, 'homedir').mockReturnValue(dir)
+  const homedir = spyOn(os, 'homedir').mockReturnValue(dir)
   return () => {
     homedir.mockRestore()
     for (const [key, value] of saved) {

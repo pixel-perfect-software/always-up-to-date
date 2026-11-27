@@ -1,4 +1,6 @@
-jest.mock('@/utils/logger')
+import { afterEach, beforeEach, describe, expect, it, mock } from 'provino'
+
+mock('@/utils/logger')
 
 import path from 'path'
 import { bunReleaseAgeGate } from '@/managers/bun/bunfig'

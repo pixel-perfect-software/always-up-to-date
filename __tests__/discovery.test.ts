@@ -1,5 +1,15 @@
 import fs from 'fs'
 import path from 'path'
+import {
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  mocked,
+  requireActual,
+} from 'provino'
 import { discoverFromRegistry } from '@/discovery'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
@@ -17,17 +27,17 @@ import {
   writeWorkspaceProject,
 } from './fixtures'
 
-jest.mock('@/utils/logger')
-jest.mock('@/utils/runProcess', () => ({
-  ...jest.requireActual('@/utils/runProcess'),
-  runProcess: jest.fn(),
+mock('@/utils/logger')
+mock('@/utils/runProcess', () => ({
+  ...requireActual('@/utils/runProcess'),
+  runProcess: fn(),
 }))
 
 import logger from '@/utils/logger'
 import { runProcess } from '@/utils/runProcess'
 import { tempDir } from './fixtures/files'
 
-const mockedRunProcess = jest.mocked(runProcess)
+const mockedRunProcess = mocked(runProcess)
 
 // When the workspace fixtures were captured, so no version drifts with the registry.
 const AS_OF = '2026-10-23T16:38:12-03:00'
@@ -155,7 +165,7 @@ describe('discoverFromRegistry', () => {
       // capturedRegistry throws for a name it was not told to expect: ms is
       // declared by the root and packages/a, not by packages/b.
       const registry = capturedRegistry(['dayjs', 'debug'], { asOf: AS_OF })
-      const lookup = jest.fn(registry.lookup)
+      const lookup = fn(registry.lookup)
 
       const discovery = await discoverMember({ ...registry, lookup })
 
@@ -216,7 +226,7 @@ describe('discoverFromRegistry', () => {
     writeWorkspaceProject(cwd)
     installPackages(cwd, '.', { dayjs: '1.11.9', ms: '2.1.1', debug: '4.3.1' })
     const registry = capturedRegistry(['dayjs', 'ms', 'debug'], { asOf: AS_OF })
-    const lookup = jest.fn(registry.lookup)
+    const lookup = fn(registry.lookup)
 
     await discover({ ...registry, lookup })
 
@@ -390,7 +400,7 @@ describe('discoverFromRegistry', () => {
     installPackages(cwd, '.', { dayjs: '1.11.9', ms: '2.1.1' })
     installPackages(cwd, 'packages/b', { m: '2.1.1' })
     const registry = capturedRegistry(['dayjs', 'ms'], { asOf: AS_OF })
-    const lookup = jest.fn(registry.lookup)
+    const lookup = fn(registry.lookup)
 
     await discover({ ...registry, lookup })
 
@@ -401,7 +411,7 @@ describe('discoverFromRegistry', () => {
     writeJson('package.json', { dependencies: { l: 'npm:ms' } })
     installPackages(cwd, '.', { l: '2.1.1' })
     const registry = capturedRegistry(['ms'], { asOf: AS_OF })
-    const lookup = jest.fn(registry.lookup)
+    const lookup = fn(registry.lookup)
 
     const discovery = await discover({ ...registry, lookup })
 

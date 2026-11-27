@@ -1,5 +1,15 @@
 import fs from 'fs'
 import path from 'path'
+import {
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  requireActual,
+  spyOn,
+} from 'provino'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
@@ -12,10 +22,10 @@ import {
   writeWorkspaceProject,
 } from './fixtures'
 
-jest.mock('@/utils/logger')
-jest.mock('@/utils/runProcess', () => ({
-  ...jest.requireActual('@/utils/runProcess'),
-  runProcess: jest.fn(),
+mock('@/utils/logger')
+mock('@/utils/runProcess', () => ({
+  ...requireActual('@/utils/runProcess'),
+  runProcess: fn(),
 }))
 
 import logger from '@/utils/logger'
@@ -82,7 +92,7 @@ describe.each(ADAPTERS)('a member run with $pm', ({ adapter }) => {
 
   it('names a target the member does not declare, though the root does (#222)', async () => {
     const p = project()
-    const lookup = jest.spyOn(p.registry, 'lookup')
+    const lookup = spyOn(p.registry, 'lookup')
 
     await expect(findOutdated(p, ['ms'])).rejects.toMatchObject({
       step: 'discover',
@@ -112,7 +122,7 @@ describe.each(ADAPTERS)('a member run with $pm', ({ adapter }) => {
     const bytes = () =>
       manifests.map((f) => fs.readFileSync(path.join(cwd, f), 'utf8'))
     const before = bytes()
-    const lookup = jest.spyOn(p.registry, 'lookup')
+    const lookup = spyOn(p.registry, 'lookup')
 
     await expect(update(p)).rejects.toMatchObject({
       step: 'apply',

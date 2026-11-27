@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, fn, it, type Mock, mock } from 'provino'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
@@ -8,7 +9,7 @@ import { check, plan } from '@/pipeline'
 import { capturedRegistry, installPackages, projectFor } from '../fixtures'
 import { tempDir } from '../fixtures/files'
 
-jest.mock('@/utils/logger')
+mock('@/utils/logger')
 // The scratch project the fixtures come from: `dj` is an npm: alias.
 const manifest = {
   dependencies: {
@@ -38,7 +39,7 @@ describe.each([
 ] as const)('$pm with an npm: alias', ({ pm, adapter }) => {
   let cwd: string
   let registry: ReturnType<typeof capturedRegistry>
-  let lookup: jest.Mock
+  let lookup: Mock<ReturnType<typeof capturedRegistry>['lookup']>
 
   beforeEach(() => {
     cwd = tempDir(`autd-alias-${pm}-`)
@@ -48,7 +49,7 @@ describe.each([
       ['zod', 'express', 'semver', 'dayjs', 'ms'],
       { asOf: AS_OF },
     )
-    lookup = jest.fn(captured.lookup)
+    lookup = fn(captured.lookup)
     registry = { ...captured, lookup }
   })
 

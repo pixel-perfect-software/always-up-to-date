@@ -1,18 +1,30 @@
 import { Command } from 'commander'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  mocked,
+  requireActual,
+  spyOn,
+} from 'provino'
 
-jest.mock('@/detectPackageManager', () => ({
+mock('@/detectPackageManager', () => ({
   __esModule: true,
-  default: jest.fn().mockReturnValue('pnpm'),
+  default: fn().mockReturnValue('pnpm'),
 }))
-jest.mock('@/pipeline', () => ({
-  check: jest.fn(),
-  findOutdated: jest.fn(),
-  plan: jest.fn(),
-  update: jest.fn(),
+mock('@/pipeline', () => ({
+  check: fn(),
+  findOutdated: fn(),
+  plan: fn(),
+  update: fn(),
 }))
-jest.mock('@/utils/config')
-jest.mock('@/utils/registry', () => ({
-  createRegistrySession: jest.fn(),
+mock('@/utils/config')
+mock('@/utils/registry', () => ({
+  createRegistrySession: fn(),
 }))
 
 import checkCommand from '@/commands/check'
@@ -37,14 +49,16 @@ const discoverFailed = new StepError(
   'Command execution failed: ERR_PNPM_OUTDATED_REGISTRY_ERROR',
 )
 
-const configFailed = new (jest.requireActual('@/utils/config').ConfigError)(
+const configFailed = new (requireActual<typeof import('@/utils/config')>(
+  '@/utils/config',
+).ConfigError)(
   'Failed to load JSON config from /project/.always-up-to-date.json: rules["react"] must be one of "hold", "followRange", "latest" (got "hodl")',
 )
 
 const pipeline = {
-  check: jest.mocked(check),
-  findOutdated: jest.mocked(findOutdated),
-  update: jest.mocked(update),
+  check: mocked(check),
+  findOutdated: mocked(findOutdated),
+  update: mocked(update),
 }
 
 const originalLog = Object.getPrototypeOf(console).log
@@ -66,18 +80,18 @@ describe('command failures', () => {
   beforeEach(() => {
     pipeline.check.mockReset()
     pipeline.update.mockReset()
-    jest.mocked(createRegistrySession).mockReturnValue(fakeRegistry())
+    mocked(createRegistrySession).mockReturnValue(fakeRegistry())
 
     stdout = []
     stderr = []
     console.log = originalLog
     console.error = originalError
-    jest
-      .spyOn(console, 'log')
-      .mockImplementation((...parts) => stdout.push(parts.join(' ')))
-    jest
-      .spyOn(console, 'error')
-      .mockImplementation((...parts) => stderr.push(parts.join(' ')))
+    spyOn(console, 'log').mockImplementation((...parts) =>
+      stdout.push(parts.join(' ')),
+    )
+    spyOn(console, 'error').mockImplementation((...parts) =>
+      stderr.push(parts.join(' ')),
+    )
 
     logger.setJsonOutput(false)
     process.exitCode = undefined
@@ -107,11 +121,9 @@ describe('command failures', () => {
   it.each([['check'], ['update']] as const)(
     '%s with silent: true still prints the failure, and the rewritten-manifest note',
     async (command) => {
-      jest
-        .mocked(loadConfig)
-        .mockImplementation(
-          () => ({ silent: true }) as ReturnType<typeof loadConfig>,
-        )
+      mocked(loadConfig).mockImplementation(
+        () => ({ silent: true }) as ReturnType<typeof loadConfig>,
+      )
       pipeline[command].mockRejectedValue(applyFailed)
 
       await run(command)
@@ -256,11 +268,11 @@ describe('command failures', () => {
 
   it('check reports a missing package manager as a detect failure', async () => {
     // The real detector, pointed at a directory with no lockfile.
-    jest
-      .mocked(detectPackageManager)
-      .mockImplementationOnce(() =>
-        jest.requireActual('@/detectPackageManager').default(__dirname),
-      )
+    mocked(detectPackageManager).mockImplementationOnce(() =>
+      requireActual<typeof import('@/detectPackageManager')>(
+        '@/detectPackageManager',
+      ).default(__dirname),
+    )
 
     const output = await run('check', '--json')
 
@@ -277,7 +289,7 @@ describe('command failures', () => {
   it.each([['check'], ['update']])(
     '%s reports a malformed config once and exits 1',
     async (command) => {
-      jest.mocked(loadConfig).mockImplementationOnce(() => {
+      mocked(loadConfig).mockImplementationOnce(() => {
         throw configFailed
       })
 
@@ -299,7 +311,7 @@ describe('command failures', () => {
   ])(
     '%s --json prints a malformed config as the JSON error object',
     async (...args) => {
-      jest.mocked(loadConfig).mockImplementationOnce(() => {
+      mocked(loadConfig).mockImplementationOnce(() => {
         throw configFailed
       })
 
@@ -329,10 +341,8 @@ describe('command failures', () => {
   ] as const)(
     "%s closes the run's registry session after a %s command",
     async (command, outcome) => {
-      const close = jest.fn()
-      jest
-        .mocked(createRegistrySession)
-        .mockReturnValue(fakeRegistry({ close }))
+      const close = fn()
+      mocked(createRegistrySession).mockReturnValue(fakeRegistry({ close }))
       if (outcome === 'failed') {
         pipeline[command].mockRejectedValue(discoverFailed)
       } else if (command === 'check') {

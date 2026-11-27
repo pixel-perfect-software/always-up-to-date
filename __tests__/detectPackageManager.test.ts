@@ -1,4 +1,6 @@
-jest.mock('@/utils/logger')
+import { beforeEach, describe, expect, it, mock, mocked } from 'provino'
+
+mock('@/utils/logger')
 
 import fs from 'fs'
 import path from 'path'
@@ -14,7 +16,7 @@ describe('detectPackageManager', () => {
     fs.writeFileSync(path.join(cwd, file), content)
   const manifest = (fields: Record<string, unknown>) =>
     write('package.json', JSON.stringify({ name: 'project', ...fields }))
-  const debugLines = () => jest.mocked(logger.debug).mock.calls.map(([l]) => l)
+  const debugLines = () => mocked(logger.debug).mock.calls.map(([l]) => l)
 
   beforeEach(() => {
     cwd = tempDir('autd-detect-')

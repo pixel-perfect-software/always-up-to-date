@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'provino'
 import { adapterFor, adapters, supportedManagers } from '@/managers'
 
 describe('adapter registry', () => {

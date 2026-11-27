@@ -1,3 +1,4 @@
+import { describe, expect, fn, it } from 'provino'
 import type { UpdateResult, VersionManifest } from '@/types'
 import { readTargetManifests, targetManifestOf } from '@/utils/targetManifests'
 import { reasonFor } from '../fixtures/reasons'
@@ -28,7 +29,7 @@ const byName = (r: { name: string }) => r.name
 
 describe('readTargetManifests (#196)', () => {
   it('asks once per looked-up name and target, for moving rows only', async () => {
-    const versionManifest = jest.fn(async (name: string, version: string) =>
+    const versionManifest = fn(async (name: string, version: string) =>
       manifestFor(name, version),
     )
 

@@ -1,4 +1,6 @@
-jest.mock('@/utils/logger')
+import { afterEach, beforeEach, describe, expect, it, mock } from 'provino'
+
+mock('@/utils/logger')
 
 import fs from 'fs'
 import path from 'path'

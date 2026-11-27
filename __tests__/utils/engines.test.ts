@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, fn, it, mock } from 'provino'
 import {
   declaredNodeRange,
   enginesHold,
@@ -5,8 +6,8 @@ import {
   runningNode,
 } from '@/utils/engines'
 
-const mockDebug = jest.fn()
-jest.mock('@/utils/logger', () => ({
+const mockDebug = fn()
+mock('@/utils/logger', () => ({
   __esModule: true,
   default: { debug: (...args: unknown[]) => mockDebug(...args) },
 }))

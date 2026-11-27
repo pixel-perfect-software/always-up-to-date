@@ -1,22 +1,23 @@
-import CommandRunner from '@/commandRunner'
+import { beforeEach, describe, expect, fn, it, mock, mocked } from 'provino'
+import CommandRunner, { type SuccessCheck } from '@/commandRunner'
 import { exitError } from './fixtures'
 
-jest.mock('@/utils/runProcess', () => ({
-  runProcess: jest.fn(),
+mock('@/utils/runProcess', () => ({
+  runProcess: fn(),
 }))
-jest.mock('@/utils/logger', () => ({
+mock('@/utils/logger', () => ({
   __esModule: true,
   default: {
-    command: jest.fn(),
-    debug: jest.fn(),
-    error: jest.fn(),
+    command: fn(),
+    debug: fn(),
+    error: fn(),
   },
 }))
 
 import logger from '@/utils/logger'
 import { runProcess } from '@/utils/runProcess'
 
-const mockedRunProcess = jest.mocked(runProcess)
+const mockedRunProcess = mocked(runProcess)
 
 describe('CommandRunner', () => {
   let runner: CommandRunner
@@ -72,7 +73,7 @@ describe('CommandRunner', () => {
     mockedRunProcess.mockRejectedValue(
       exitError(1, '{"outdated": true}', '(node:1) [DEP0169] Warning'),
     )
-    const isSuccess = jest.fn().mockReturnValue(true)
+    const isSuccess = fn<SuccessCheck>().mockReturnValue(true)
 
     const result = await runner.runCommand(
       'yarn',

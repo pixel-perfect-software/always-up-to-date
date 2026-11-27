@@ -1,5 +1,14 @@
 import fs from 'fs'
 import path from 'path'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mocks,
+  spyOn,
+} from 'provino'
 import type { UpdateResult } from '@/types'
 import {
   checkApplied,
@@ -440,13 +449,13 @@ describe('readInstalledPackages link detection cost', () => {
   })
 
   afterEach(() => {
-    jest.restoreAllMocks()
+    mocks.restoreAll()
   })
 
   const rows = [{ name: 'a' }, { name: 'b' }, { name: 'c' }]
 
   it('resolves the project root once per call, not once per row', () => {
-    const realpath = jest.spyOn(fs, 'realpathSync')
+    const realpath = spyOn(fs, 'realpathSync')
 
     readInstalledPackages(cwd, rows)
 
@@ -455,8 +464,8 @@ describe('readInstalledPackages link detection cost', () => {
   })
 
   it('does no link test for the post-apply versions', () => {
-    const lstat = jest.spyOn(fs, 'lstatSync')
-    const realpath = jest.spyOn(fs, 'realpathSync')
+    const lstat = spyOn(fs, 'lstatSync')
+    const realpath = spyOn(fs, 'realpathSync')
 
     expect(readInstalledVersions(cwd, rows)).toEqual({
       a: '1.0.0',

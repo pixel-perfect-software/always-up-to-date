@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'provino'
 import { licenseField, normalizeLicense, sameLicense } from '@/utils/license'
 import { derive, registryBody } from '../fixtures/registry'
 

@@ -1,10 +1,11 @@
 import { Command } from 'commander'
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, it, mock, mocked, spyOn } from 'provino'
 
-jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
-jest.mock('@/utils/files')
+mock('@/utils/logger')
+mock('@/utils/config')
+mock('@/utils/files')
 
 import initCommand from '@/commands/init'
 import { saveJsonConfig } from '@/utils/config'
@@ -12,8 +13,8 @@ import { checkIfFileExists } from '@/utils/files'
 import logger from '@/utils/logger'
 import { tempDir } from '../fixtures/files'
 
-const mockedSaveJsonConfig = jest.mocked(saveJsonConfig)
-const mockCheckIfFileExists = jest.mocked(checkIfFileExists)
+const mockedSaveJsonConfig = mocked(saveJsonConfig)
+const mockCheckIfFileExists = mocked(checkIfFileExists)
 
 describe('init command', () => {
   let program: Command
@@ -82,9 +83,9 @@ describe('init command', () => {
     const tmp = tempDir('autd-init-', { real: true })
     fs.mkdirSync(path.join(tmp, 'packages', 'a', 'src'), { recursive: true })
     fs.writeFileSync(path.join(tmp, 'packages', 'a', 'package.json'), '{}')
-    jest
-      .spyOn(process, 'cwd')
-      .mockReturnValue(path.join(tmp, 'packages', 'a', 'src'))
+    spyOn(process, 'cwd').mockReturnValue(
+      path.join(tmp, 'packages', 'a', 'src'),
+    )
     mockCheckIfFileExists.mockReturnValue(false)
 
     await program.parseAsync(['node', 'test', 'init'])

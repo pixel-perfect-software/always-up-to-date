@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'provino'
 import { type GateDeps, runGate } from '../../bench/gate'
 import { readFixture } from '../fixtures'
 

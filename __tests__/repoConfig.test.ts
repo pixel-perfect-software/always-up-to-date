@@ -1,10 +1,10 @@
 import { spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
+import { describe, expect, it } from 'provino'
 import { toPosix } from '@/managers/workspaces'
-import jestConfig from '../jest.config'
+import provinoConfig from '../provino.config'
 import { tempDir, write } from './fixtures/files'
-import { escapeRegExp } from './integration/lockfiles'
 
 const repoRoot = path.resolve(__dirname, '..')
 
@@ -21,14 +21,20 @@ const sourceFiles = (dir: string): string[] =>
         : []
     })
 
-// Jest substitutes <rootDir> and matches each pattern against the full path.
-// Both sides use `/`, as the patterns do, so Windows backslashes don't matter.
-const isIgnoredForCoverage = (file: string): boolean =>
-  jestConfig.coveragePathIgnorePatterns.some((pattern) =>
-    new RegExp(
-      pattern.replace('<rootDir>', escapeRegExp(toPosix(repoRoot))),
-    ).test(toPosix(path.join(repoRoot, file))),
+// A file counts when a glob of `coverage.include` matches it and no `!` glob does.
+// Both sides are relative to the root and use `/`, so Windows backslashes don't matter.
+const coverageGlobs = provinoConfig.coverage?.include ?? []
+const isIgnoredForCoverage = (file: string): boolean => {
+  const posix = toPosix(file)
+  const counts = coverageGlobs.some(
+    (glob) => !glob.startsWith('!') && path.posix.matchesGlob(posix, glob),
   )
+  const leftOut = coverageGlobs.some(
+    (glob) =>
+      glob.startsWith('!') && path.posix.matchesGlob(posix, glob.slice(1)),
+  )
+  return !counts || leftOut
+}
 
 describe('coverage configuration', () => {
   it('measures all four managers and the CLI entry', () => {
@@ -397,9 +403,7 @@ describe('release workflow', () => {
 
 describe('integration matrix', () => {
   it('stays out of pnpm test', () => {
-    expect(jestConfig.testPathIgnorePatterns).toContain(
-      '<rootDir>/__tests__/integration/',
-    )
+    expect(provinoConfig.exclude).toContain('__tests__/integration/**')
   })
 })
 

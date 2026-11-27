@@ -1,5 +1,17 @@
 import fs from 'fs'
 import path from 'path'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  mocked,
+  requireActual,
+  spyOn,
+} from 'provino'
 import npm from '@/managers/npm'
 import { check, findOutdated, plan, update } from '@/pipeline'
 import type { VersionManifest } from '@/types'
@@ -13,14 +25,14 @@ import {
   writeWorkspaceProject,
 } from './fixtures'
 
-jest.mock('@/utils/config', () => ({
-  ...jest.requireActual('@/utils/config'),
-  loadConfig: jest.fn(),
+mock('@/utils/config', () => ({
+  ...requireActual('@/utils/config'),
+  loadConfig: fn(),
 }))
-jest.mock('@/utils/logger')
-jest.mock('@/utils/runProcess', () => ({
-  ...jest.requireActual('@/utils/runProcess'),
-  runProcess: jest.fn(),
+mock('@/utils/logger')
+mock('@/utils/runProcess', () => ({
+  ...requireActual('@/utils/runProcess'),
+  runProcess: fn(),
 }))
 
 import { loadConfig } from '@/utils/config'
@@ -55,7 +67,7 @@ describe('pipeline', () => {
       JSON.stringify({ dependencies: { dayjs: '1.11.9' } }),
     )
     installPackages(cwd, '.', { dayjs: '1.11.9' })
-    jest.mocked(runProcess).mockResolvedValue({ stdout: '', stderr: '' })
+    mocked(runProcess).mockResolvedValue({ stdout: '', stderr: '' })
   })
 
   it('reads the config from the project and never loads it', async () => {
@@ -71,7 +83,7 @@ describe('pipeline', () => {
   it('plans with the config the project carries', async () => {
     const registry = registryFor('dayjs')
     // The manager moves dayjs to its target, so the post-apply check agrees.
-    jest.mocked(runProcess).mockImplementation(async () => {
+    mocked(runProcess).mockImplementation(async () => {
       installPackages(cwd, '.', { dayjs: '1.11.23' })
       return { stdout: '', stderr: '' }
     })
@@ -98,7 +110,7 @@ describe('pipeline', () => {
 
     it('fails for a name the manifest does not declare, before any lookup', async () => {
       const registry = registryFor('dayjs')
-      const lookup = jest.spyOn(registry, 'lookup')
+      const lookup = spyOn(registry, 'lookup')
       const p = projectFor(npm, cwd, {}, registry)
 
       await expect(findOutdated(p, ['leftpad-nope'])).rejects.toMatchObject({
@@ -454,7 +466,7 @@ describe('pipeline', () => {
       install('ms', '2.1.1')
       install('debug', '4.3.1')
       install('express', '4.17.1')
-      jest.mocked(runProcess).mockImplementation(async () => {
+      mocked(runProcess).mockImplementation(async () => {
         install('debug', '4.3.7')
         return { stdout: '', stderr: '' }
       })
@@ -463,9 +475,9 @@ describe('pipeline', () => {
         projectFor(npm, cwd, {}, registryFor('ms', 'express', 'debug')),
       )
 
-      const updateCall = jest
-        .mocked(runProcess)
-        .mock.calls.find(([, args]) => args[0] === 'update')
+      const updateCall = mocked(runProcess).mock.calls.find(
+        ([, args]) => args[0] === 'update',
+      )
       expect(updateCall?.[1]).toEqual(['update', 'debug', 'ms'])
       expect(results.find((r) => r.name === 'ms')).toMatchObject({
         updated: false,
@@ -497,7 +509,7 @@ describe('pipeline', () => {
       install('.', 'ms', '2.1.1')
       install('.', 'debug', '4.3.1')
       install('packages/a', 'ms', '2.1.2')
-      jest.mocked(runProcess).mockImplementation(async () => {
+      mocked(runProcess).mockImplementation(async () => {
         install('.', 'debug', '4.3.7')
         install('.', 'ms', '2.1.3')
         return { stdout: '', stderr: '' }
@@ -514,8 +526,7 @@ describe('pipeline', () => {
         reason,
       }))
       // One workspace-wide command; --workspaces would skip the root's own.
-      const applied = jest
-        .mocked(runProcess)
+      const applied = mocked(runProcess)
         .mock.calls.map(([, args]) => args)
         .filter((args) => args[0] === 'update')
       expect(applied).toEqual([['update', 'dayjs', 'debug', 'ms']])
@@ -559,7 +570,7 @@ describe('pipeline', () => {
       install('.', 'ms', '2.1.1')
       install('.', 'debug', '4.3.1')
       install('packages/a', 'ms', '2.1.2')
-      jest.mocked(runProcess).mockImplementation(async () => {
+      mocked(runProcess).mockImplementation(async () => {
         install('.', 'dayjs', '1.11.23')
         install('.', 'debug', '4.3.7')
         install('.', 'ms', '2.1.3')

@@ -1,4 +1,6 @@
-jest.mock('@/utils/config')
+import { describe, expect, it, mock } from 'provino'
+
+mock('@/utils/config')
 
 import { loadConfig } from '@/utils/config'
 

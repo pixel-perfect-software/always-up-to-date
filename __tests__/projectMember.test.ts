@@ -1,6 +1,8 @@
-jest.mock('@/utils/logger')
-jest.mock('@/utils/registry', () => ({
-  createRegistrySession: jest.fn(() => ({ registryConfig: jest.fn() })),
+import { beforeEach, describe, expect, fn, it, mock } from 'provino'
+
+mock('@/utils/logger')
+mock('@/utils/registry', () => ({
+  createRegistrySession: fn(() => ({ registryConfig: fn() })),
 }))
 
 import fs from 'fs'

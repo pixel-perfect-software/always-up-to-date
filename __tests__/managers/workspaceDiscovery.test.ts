@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, it, mock, mocked } from 'provino'
 import bun from '@/managers/bun'
 import npm from '@/managers/npm'
 import pnpm from '@/managers/pnpm'
@@ -12,9 +13,9 @@ import {
 } from '../fixtures'
 import { tempDir } from '../fixtures/files'
 
-jest.mock('@/utils/logger')
+mock('@/utils/logger')
 
-const mockedReport = jest.mocked(logger.report)
+const mockedReport = mocked(logger.report)
 
 // When the workspace fixtures were captured, so no version drifts with the registry.
 const AS_OF = '2026-10-23T16:38:12-03:00'

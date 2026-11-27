@@ -1,3 +1,12 @@
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type MockInstance,
+  spyOn,
+} from 'provino'
 import { stripVTControlCharacters } from 'util'
 import type { UpdateResult } from '@/types'
 import logger, { emojiAllowed, formatElapsed, pluralize } from '@/utils/logger'
@@ -39,11 +48,11 @@ const held = (
 })
 
 describe('Logger', () => {
-  let logSpy: jest.SpyInstance
+  let logSpy: MockInstance<typeof console.log>
 
   beforeEach(() => {
     console.log = originalLog
-    logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    logSpy = spyOn(console, 'log').mockImplementation(() => undefined)
     logger.configure({})
     logger.setQuiet(false)
   })
@@ -53,13 +62,11 @@ describe('Logger', () => {
   })
 
   describe('JSON output mode', () => {
-    let errorSpy: jest.SpyInstance
+    let errorSpy: MockInstance<typeof console.error>
 
     beforeEach(() => {
       console.error = Object.getPrototypeOf(console).error
-      errorSpy = jest
-        .spyOn(console, 'error')
-        .mockImplementation(() => undefined)
+      errorSpy = spyOn(console, 'error').mockImplementation(() => undefined)
       logger.setJsonOutput(true)
     })
 
@@ -109,13 +116,11 @@ describe('Logger', () => {
     })
 
     describe('diagnostics in human mode', () => {
-      let errorSpy: jest.SpyInstance
+      let errorSpy: MockInstance<typeof console.error>
 
       beforeEach(() => {
         console.error = Object.getPrototypeOf(console).error
-        errorSpy = jest
-          .spyOn(console, 'error')
-          .mockImplementation(() => undefined)
+        errorSpy = spyOn(console, 'error').mockImplementation(() => undefined)
       })
 
       afterEach(() => {
@@ -206,9 +211,9 @@ describe('Logger', () => {
 
   describe('configure', () => {
     it('prints command and debug lines to stderr once debug is on', () => {
-      const errorSpy = jest
-        .spyOn(console, 'error')
-        .mockImplementation(() => undefined)
+      const errorSpy = spyOn(console, 'error').mockImplementation(
+        () => undefined,
+      )
       logger.configure({ debug: true })
 
       logger.command('npm outdated')
@@ -819,9 +824,9 @@ describe('Logger', () => {
     })
 
     it('marks a warning with ! and an error with error: when emoji are off', () => {
-      const errorSpy = jest
-        .spyOn(console, 'error')
-        .mockImplementation(() => undefined)
+      const errorSpy = spyOn(console, 'error').mockImplementation(
+        () => undefined,
+      )
       logger.setEmoji(false)
       logger.warn('careful')
       logger.error('broke')

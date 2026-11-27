@@ -1,11 +1,12 @@
 import fs from 'fs'
 import path from 'path'
+import { beforeEach, describe, expect, it, mock } from 'provino'
 import npm, { readLockedPackages, readLockedPeers } from '@/managers/npm'
 import { check } from '@/pipeline'
 import { capturedRegistry, projectFor } from '../fixtures'
 import { tempDir, write as writeFile } from '../fixtures/files'
 
-jest.mock('@/utils/logger')
+mock('@/utils/logger')
 
 // Real captures: npm 11.19.1 `install --package-lock-only` on
 // testRepos/npm-workspace (2026-11-03), and a single package's lockfile.

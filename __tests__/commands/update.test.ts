@@ -1,25 +1,37 @@
 import { Command } from 'commander'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  fn,
+  it,
+  mock,
+  mocked,
+  requireActual,
+  spyOn,
+} from 'provino'
 
-jest.mock('@/detectPackageManager', () => ({
+mock('@/detectPackageManager', () => ({
   __esModule: true,
-  default: jest.fn(),
+  default: fn(),
 }))
 
-jest.mock('@/pipeline', () => ({
-  findOutdated: jest.fn(),
-  plan: jest.fn(),
-  refuseMemberApply: jest.fn(),
-  update: jest.fn(),
+mock('@/pipeline', () => ({
+  findOutdated: fn(),
+  plan: fn(),
+  refuseMemberApply: fn(),
+  update: fn(),
 }))
 
-jest.mock('@/project', () => {
-  const actual = jest.requireActual<typeof import('@/project')>('@/project')
-  return { ...actual, openProject: jest.fn(actual.openProject) }
+mock('@/project', () => {
+  const actual = requireActual<typeof import('@/project')>('@/project')
+  return { ...actual, openProject: fn(actual.openProject) }
 })
-jest.mock('@/utils/logger')
-jest.mock('@/utils/config')
-jest.mock('@inquirer/prompts', () => ({
-  checkbox: jest.fn(),
+mock('@/utils/logger')
+mock('@/utils/config')
+mock('@inquirer/prompts', () => ({
+  checkbox: fn(),
 }))
 
 import { checkbox } from '@inquirer/prompts'
@@ -34,12 +46,12 @@ import logger from '@/utils/logger'
 import { validateOutput } from '../fixtures/outputSchema'
 import { reasonFor } from '../fixtures/reasons'
 
-const mockDetectPackageManager = jest.mocked(detectPackageManager)
-const mockPlan = jest.mocked(plan)
-const mockCheckbox = jest.mocked(checkbox)
+const mockDetectPackageManager = mocked(detectPackageManager)
+const mockPlan = mocked(plan)
+const mockCheckbox = mocked(checkbox)
 
-const mockUpdatePackages = jest.mocked(update)
-const mockCheckPackageVersions = jest.mocked(findOutdated)
+const mockUpdatePackages = mocked(update)
+const mockCheckPackageVersions = mocked(findOutdated)
 
 describe('update command', () => {
   let program: Command
@@ -50,7 +62,7 @@ describe('update command', () => {
   })
 
   beforeEach(() => {
-    // `-i` needs a terminal (#222); jest has none.
+    // `-i` needs a terminal (#222); a test run has none.
     process.stdin.isTTY = true
     mockDetectPackageManager.mockReturnValue('npm')
     mockUpdatePackages.mockReset()
@@ -68,9 +80,10 @@ describe('update command', () => {
     await program.parseAsync(['node', 'test', 'update'])
     await program.parseAsync(['node', 'test', 'update', '--no-cache'])
 
-    expect(
-      jest.mocked(openProject).mock.calls.map(([, o]) => o?.cache),
-    ).toEqual([true, false])
+    expect(mocked(openProject).mock.calls.map(([, o]) => o?.cache)).toEqual([
+      true,
+      false,
+    ])
   })
 
   it('registers the update command', () => {
@@ -145,7 +158,7 @@ describe('update command', () => {
     })
 
     it('is refused bare, before the project opens, as a refusal', async () => {
-      jest.mocked(openProject).mockClear()
+      mocked(openProject).mockClear()
 
       await program.parseAsync(['node', 'test', 'update', '--accept-license'])
 
@@ -158,7 +171,7 @@ describe('update command', () => {
     })
 
     it('cannot be combined with -i, which names no packages', async () => {
-      jest.mocked(openProject).mockClear()
+      mocked(openProject).mockClear()
 
       await expect(
         program.parseAsync([
@@ -205,7 +218,7 @@ describe('update command', () => {
     mockCheckPackageVersions.mockResolvedValue({
       ms: { current: '2.0.0', wanted: '2.1.3', latest: '2.1.3' },
     } as never)
-    jest.mocked(plan).mockResolvedValue([
+    mocked(plan).mockResolvedValue([
       {
         name: 'ms',
         current: '2.0.0',
@@ -287,7 +300,7 @@ describe('update command', () => {
     })
     mockPlan.mockResolvedValue(results)
 
-    const consoleSpy = jest.spyOn(console, 'log').mockImplementation()
+    const consoleSpy = spyOn(console, 'log').mockImplementation(() => undefined)
     await program.parseAsync(['node', 'test', 'update', '--dry-run', '--json'])
 
     const document = JSON.parse(String(consoleSpy.mock.calls[0][0]))
@@ -316,7 +329,7 @@ describe('update command', () => {
     ]
     mockUpdatePackages.mockResolvedValue(results)
 
-    const consoleSpy = jest.spyOn(console, 'log').mockImplementation()
+    const consoleSpy = spyOn(console, 'log').mockImplementation(() => undefined)
     await program.parseAsync(['node', 'test', 'update', '--json'])
 
     const document = JSON.parse(String(consoleSpy.mock.calls[0][0]))
@@ -424,7 +437,7 @@ describe('update command', () => {
     })
 
     it('refuses -i from a member before discovering or prompting (#123)', async () => {
-      jest.mocked(refuseMemberApply).mockImplementationOnce(() => {
+      mocked(refuseMemberApply).mockImplementationOnce(() => {
         throw new StepError('apply', 'update runs from the workspace root')
       })
 
