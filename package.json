@@ -10,6 +10,7 @@
   "scripts": {
     "build": "node scripts/build.mts",
     "check-types": "tsc --noEmit && tsc -p scripts",
+    "check-deps": "pnpm autd check",
     "format-and-lint": "biome check .",
     "format-and-lint:fix": "biome check . --write",
     "build:binary": "node scripts/buildBinary.mts",
@@ -21,7 +22,8 @@
     "test:coverage": "provino run --coverage",
     "test:badges": "pnpm test:coverage && jest-coverage-badges --output ./badges",
     "clean": "rm -rf dist dist-binary",
-    "autd": "node dist/index.cjs"
+    "autd": "node dist/index.cjs",
+    "update-deps": "pnpm autd update"
   },
   "bin": {
     "autd": "dist/index.cjs",
