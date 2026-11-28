@@ -20,11 +20,11 @@ catalog:
   ajv: 8.20.0
   esbuild: 0.28.2
   jest-coverage-badges: 1.1.2
-  provino: 0.1.0-rc.10
+  provino: 0.1.0-rc.14
   typescript: 7.0.2
 
 minimumReleaseAgeExclude:
-  - provino@0.1.0-rc.10
+  - provino@0.1.0-rc.14
 
 overrides:
   minimist@<0.2.4: ^0.2.4
